@@ -2,6 +2,7 @@ import os
 import time
 import redis
 from dotenv import load_dotenv
+from processor import CodiceParser
 
 # 1. Loads variables from the .env file located at the project root
 # The worker is inside the /worker folder, so the .env is one level up
@@ -38,13 +39,15 @@ def setup_redis_stream():
         exit(1)
 
 def listen_for_tasks():
-    """Main loop that listens for new tasks in the queue."""
     setup_redis_stream()
+    
+    # Instancia o parser antes do loop para não recarregar os modelos de IA a cada PDF
+    parser = CodiceParser()
+    
     print("⏳ Python Worker waiting for PDFs in the queue...")
 
     while True:
         try:
-            # Requests new messages ('>') and waits up to 5 seconds
             messages = r.xreadgroup(
                 groupname=GROUP_NAME, 
                 consumername=CONSUMER_NAME, 
@@ -62,16 +65,26 @@ def listen_for_tasks():
                     work_id = data.get('work_id')
                     
                     print(f"\n📥 New task received! ID: {message_id}")
-                    print(f"   Processing file: {file_path}")
+                    print(f"   Processing Work ID: {work_id}")
+                    print(f"   File: {file_path}")
                     
-                    # TODO: The extract_pdf_data() function using Docling will go here
-                    time.sleep(2) # Simulating work
-                    
-                    print(f"✅ Task {message_id} completed. Acknowledging Redis...")
-                    r.xack(STREAM_NAME, GROUP_NAME, message_id)
+                    try:
+                        # Aciona o Docling
+                        md_text = parser.extract_to_markdown(file_path)
+                        
+                        print(f"✅ Extração concluída! Gerados {len(md_text)} caracteres.")
+                        print(f"📄 Preview: {md_text[:150]}...")
+                        
+                        # Confirma para o Redis que a tarefa foi um sucesso
+                        r.xack(STREAM_NAME, GROUP_NAME, message_id)
+                        
+                    except Exception as parse_err:
+                        print(f"❌ Erro ao extrair documento: {parse_err}")
+                        # Não damos o xack() aqui para o arquivo não ser perdido. 
+                        # Ele fica pendente para reprocessamento futuro.
 
         except Exception as e:
-            print(f"⚠️ Unexpected error: {e}")
+            print(f"⚠️ Unexpected network error: {e}")
             time.sleep(2)
 
 if __name__ == "__main__":
