@@ -9,16 +9,23 @@ if hasattr(sys.stdout, 'reconfigure'):
 class CodiceExtractor:
     def __init__(self, covers_dir=None, allowed_dirs=None):
         base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        env_storage = os.getenv("CODICE_STORAGE_PATH")
+        if env_storage:
+            storage_path = os.path.abspath(env_storage)
+        else:
+            storage_path = os.path.abspath(os.path.join(base_dir, "backend", "uploads"))
+
         if covers_dir is None:
-            self.covers_dir = os.path.join(base_dir, "backend", "uploads", "covers")
+            self.covers_dir = os.path.join(storage_path, "covers")
         else:
             self.covers_dir = os.path.abspath(covers_dir)
 
         os.makedirs(self.covers_dir, exist_ok=True)
-        print("🧠 Universal extraction engine initialized...")
+        print(f"🧠 Universal extraction engine initialized (Covers Dir: {self.covers_dir})...")
 
         if allowed_dirs is None:
             self.allowed_dirs = [
+                storage_path,
                 os.path.abspath(os.path.join(base_dir, "backend", "uploads")),
                 os.path.abspath(os.path.join(base_dir, "uploads"))
             ]
