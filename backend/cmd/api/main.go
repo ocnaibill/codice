@@ -68,6 +68,9 @@ func main() {
 	wsHandler := &handlers.WsHandler{
 		RedisClient: redisClient,
 	}
+	authHandler := &handlers.AuthHandler{
+		DB: db,
+	}
 
 	// Start Redis PubSub listener in background goroutine
 	go wsHandler.ListenToRedis()
@@ -92,12 +95,17 @@ func main() {
 		w.Write([]byte("📚 Códice API is online!"))
 	})
 
+	// Public Auth Endpoints
+	r.Post("/auth/register", authHandler.Register)
+	r.Post("/auth/login", authHandler.Login)
+
+	// Protected Application Endpoints
 	r.Get("/works", libHandler.GetWorks)
 	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}", libHandler.GetWorkByID)
 	r.With(appMiddleware.AuthMiddleware).Put("/works/{id}", libHandler.UpdateWork)
 	r.With(appMiddleware.AuthMiddleware).Patch("/works/{id}/progress", libHandler.UpdateProgress)
 	r.With(appMiddleware.AuthMiddleware).Delete("/works/{id}", libHandler.DeleteWork)
-	r.Post("/upload", uploadHandler.HandleUpload)
+	r.With(appMiddleware.AuthMiddleware).Post("/upload", uploadHandler.HandleUpload)
 	r.Get("/ws", wsHandler.HandleWS)
 
 	// Define base storage directory (fallback to ./uploads)
