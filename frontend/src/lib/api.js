@@ -5,9 +5,11 @@ export const api = axios.create({
   timeout: 10000,
 });
 
-// Placeholder to inject authentication token in the future
+// Automatically attach JWT token to all outgoing HTTP requests
 api.interceptors.request.use((config) => {
-  // const token = localStorage.getItem('codice_token');
-  // if (token) config.headers.Authorization = `Bearer ${token}`;
+  const token = localStorage.getItem('codice_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
