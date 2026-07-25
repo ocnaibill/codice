@@ -1,3 +1,4 @@
+import os
 import re
 import sys
 import requests
@@ -6,7 +7,14 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 class MetadataScraper:
-    def __init__(self):
+    def __init__(self, covers_dir=None):
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        if covers_dir is None:
+            self.covers_dir = os.path.join(base_dir, "backend", "uploads", "covers")
+        else:
+            self.covers_dir = os.path.abspath(covers_dir)
+
+        os.makedirs(self.covers_dir, exist_ok=True)
         self.google_url = "https://www.googleapis.com/books/v1/volumes"
         self.openlibrary_url = "https://openlibrary.org/search.json"
         print("🌐 Multi-provider Metadata Scraper initialized...")
@@ -53,6 +61,32 @@ class MetadataScraper:
             return result
 
         print("   ❌ No better web metadata found across providers. Keeping local metadata.")
+        return None
+
+    def download_cover(self, image_url, original_filename):
+        """Downloads cover image from web provider and caches it locally on server disk."""
+        if not image_url:
+            return None
+
+        print("   🖼️ Downloading high-res cover image from web provider...")
+        try:
+            response = requests.get(image_url, stream=True, timeout=5)
+            if response.status_code == 200:
+                safe_base = os.path.splitext(original_filename)[0]
+                safe_base = re.sub(r'[^a-zA-Z0-9]', '_', safe_base)[:40]
+                
+                cover_filename = f"official_{safe_base}.jpg"
+                cover_path = os.path.join(self.covers_dir, cover_filename)
+                
+                with open(cover_path, 'wb') as f:
+                    for chunk in response.iter_content(8192):
+                        f.write(chunk)
+                        
+                print(f"   ✅ Local cover saved: {cover_filename}")
+                return f"http://localhost:8080/covers/{cover_filename}"
+        except Exception as e:
+            print(f"   ⚠️ Failed to save web cover image locally: {e}")
+
         return None
 
     def _fetch_google_books(self, query):
