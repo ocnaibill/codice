@@ -45,9 +45,13 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Prepare target directory and sanitize filename against path traversal
-	uploadDir := "./uploads"
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+	// 4. Prepare target directory using CODICE_STORAGE_PATH (fallback to ./uploads)
+	storagePath := os.Getenv("CODICE_STORAGE_PATH")
+	if storagePath == "" {
+		storagePath = "./uploads"
+	}
+
+	if err := os.MkdirAll(storagePath, 0755); err != nil {
 		http.Error(w, "Error preparing uploads directory", http.StatusInternalServerError)
 		return
 	}
@@ -55,7 +59,7 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	// Isolate base filename to prevent directory traversal attacks
 	safeFilename := filepath.Base(header.Filename)
 	fileName := fmt.Sprintf("%d_%s", time.Now().Unix(), safeFilename)
-	filePath := filepath.Join(uploadDir, fileName)
+	filePath := filepath.Join(storagePath, fileName)
 
 	// 5. Save file to disk
 	dst, err := os.Create(filePath)
