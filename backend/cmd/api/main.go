@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	_ "github.com/lib/pq" // Underscore initializes the driver anonymously
+	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 )
 
 func main() {
@@ -92,10 +93,10 @@ func main() {
 	})
 
 	r.Get("/works", libHandler.GetWorks)
-	r.Get("/works/{id}", libHandler.GetWorkByID)
-	r.Put("/works/{id}", libHandler.UpdateWork)
-	r.Patch("/works/{id}/progress", libHandler.UpdateProgress)
-	r.Delete("/works/{id}", libHandler.DeleteWork)
+	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}", libHandler.GetWorkByID)
+	r.With(appMiddleware.AuthMiddleware).Put("/works/{id}", libHandler.UpdateWork)
+	r.With(appMiddleware.AuthMiddleware).Patch("/works/{id}/progress", libHandler.UpdateProgress)
+	r.With(appMiddleware.AuthMiddleware).Delete("/works/{id}", libHandler.DeleteWork)
 	r.Post("/upload", uploadHandler.HandleUpload)
 	r.Get("/ws", wsHandler.HandleWS)
 
