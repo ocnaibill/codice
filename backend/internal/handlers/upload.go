@@ -38,10 +38,10 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// 3. Validate file extension (PDF or EPUB)
+	// 3. Validate file extension (PDF, EPUB, or CBZ)
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	if ext != ".pdf" && ext != ".epub" {
-		http.Error(w, "Unsupported file format. Please upload PDF or EPUB only.", http.StatusBadRequest)
+	if ext != ".pdf" && ext != ".epub" && ext != ".cbz" {
+		http.Error(w, "Unsupported file format. Please upload PDF, EPUB, or CBZ only.", http.StatusBadRequest)
 		return
 	}
 
