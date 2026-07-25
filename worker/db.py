@@ -49,7 +49,27 @@ class CodiceDatabase:
                         DO UPDATE SET cover_url = EXCLUDED.cover_url;
                     """, (work_id, metadata['title'], metadata['cover_url']))
                     
-            print(f"✅ Metadata, author, and cover saved to PostgreSQL for Work ID: {work_id}!")
+                    # 4. Insert and link tags (Many-to-Many relationship)
+                    tags_list = metadata.get('tags', [])
+                    if tags_list:
+                        print(f"   🏷️ Linking tags: {', '.join(tags_list)}")
+                        for tag_name in tags_list:
+                            cur.execute("""
+                                INSERT INTO tags (name) VALUES (%s)
+                                ON CONFLICT (name) DO NOTHING;
+                            """, (tag_name,))
+                            
+                            cur.execute("SELECT id FROM tags WHERE name = %s;", (tag_name,))
+                            row = cur.fetchone()
+                            if row:
+                                tag_id = row[0]
+                                cur.execute("""
+                                    INSERT INTO work_tags (work_id, tag_id) 
+                                    VALUES (%s, %s)
+                                    ON CONFLICT DO NOTHING;
+                                """, (work_id, tag_id))
+                    
+            print(f"✅ Metadata, author, cover, and tags saved to PostgreSQL for Work ID: {work_id}!")
         except Exception as e:
             print(f"❌ Error saving to database: {e}")
             raise e
