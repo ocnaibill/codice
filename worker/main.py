@@ -2,7 +2,8 @@ import os
 import time
 import redis
 from dotenv import load_dotenv
-from processor import CodiceParser
+
+from processor import CodiceExtractor
 from db import CodiceDatabase
 
 # 1. Loads variables from the .env file located at the project root
@@ -42,8 +43,7 @@ def setup_redis_stream():
 def listen_for_tasks():
     setup_redis_stream()
     
-    # Instantiate parser and database connection before the loop
-    parser = CodiceParser()
+    extractor = CodiceExtractor()
     db = CodiceDatabase()
     
     print("⏳ Python Worker waiting for PDFs in the queue...")
@@ -67,31 +67,28 @@ def listen_for_tasks():
                     work_id = data.get('work_id')
                     
                     print(f"\n📥 New task received! ID: {message_id}")
-                    print(f"   Processing Work ID: {work_id}")
+                    print(f"   Work ID: {work_id}")
                     print(f"   File: {file_path}")
                     
                     try:
-                        # 1. Trigger Docling parser
-                        md_text = parser.extract_to_markdown(file_path)
+                        # 1. Extract metadata and cover image
+                        metadata = extractor.process_pdf(file_path)
+                        print(f"📄 Extracted metadata: {metadata['title']} ({metadata['page_count']} pages)")
                         
-                        print(f"✅ Extraction complete! Generated {len(md_text)} characters.")
-                        print(f"📄 Preview: {md_text[:150]}...")
+                        # 2. Update database record
+                        db.update_work_metadata(work_id, metadata)
                         
-                        # 2. Save extracted Markdown content into PostgreSQL
-                        if work_id:
-                            db.update_work_content(work_id, md_text)
-
-                        # 3. Acknowledge task to Redis on success
+                        # 3. Acknowledge task in Redis
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
-                        print(f"✅ Task {message_id} completed and removed from queue.")
+                        print(f"✅ Task {message_id} completed successfully.")
                         
                     except (ValueError, FileNotFoundError) as sec_err:
                         print(f"⚠️ Validation/security error: {sec_err}")
                         # Acknowledge task to remove invalid/malicious item from queue
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
-                    except Exception as parse_err:
-                        print(f"❌ Processing failure: {parse_err}")
-                        # Temporary errors stay pending for future retry
+                    except Exception as err:
+                        print(f"❌ Processing failure: {err}")
+                        # Temporary errors remain pending for future retry
 
         except Exception as e:
             print(f"⚠️ Unexpected network error: {e}")
