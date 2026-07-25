@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"context"
 	"os"
+	"path/filepath"
 
 	"github.com/ocnaibill/codice/backend/internal/config"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
@@ -98,15 +99,24 @@ func main() {
 	r.Post("/upload", uploadHandler.HandleUpload)
 	r.Get("/ws", wsHandler.HandleWS)
 
+	// Define base storage directory (fallback to ./uploads)
+	storagePath := os.Getenv("CODICE_STORAGE_PATH")
+	if storagePath == "" {
+		storagePath = "./uploads"
+	}
+
+	// Ensure covers directory exists
+	coversPath := filepath.Join(storagePath, "covers")
+	os.MkdirAll(coversPath, 0755)
+
 	// Serve cover images as static files under /covers/
-	os.MkdirAll("./uploads/covers", 0755)
-	fsCovers := http.StripPrefix("/covers/", http.FileServer(http.Dir("./uploads/covers")))
+	fsCovers := http.StripPrefix("/covers/", http.FileServer(http.Dir(coversPath)))
 	r.Get("/covers/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fsCovers.ServeHTTP(w, r)
 	}))
 
 	// Serve original files under /files/
-	fsFiles := http.StripPrefix("/files/", http.FileServer(http.Dir("./uploads")))
+	fsFiles := http.StripPrefix("/files/", http.FileServer(http.Dir(storagePath)))
 	r.Get("/files/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fsFiles.ServeHTTP(w, r)
 	}))
