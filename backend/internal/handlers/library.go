@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
@@ -301,13 +302,18 @@ func (h *LibraryHandler) DeleteWork(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Physical Server Disk Cleanup
+	storagePath := os.Getenv("CODICE_STORAGE_PATH")
+	if storagePath == "" {
+		storagePath = "./uploads"
+	}
+
 	if filePath.Valid && filePath.String != "" {
-		os.Remove("./uploads/" + filePath.String)
+		os.Remove(filepath.Join(storagePath, filePath.String))
 	}
 
 	if coverURL.Valid && coverURL.String != "" {
 		coverFilename := path.Base(coverURL.String)
-		os.Remove("./uploads/covers/" + coverFilename)
+		os.Remove(filepath.Join(storagePath, "covers", coverFilename))
 	}
 
 	w.WriteHeader(http.StatusOK)
