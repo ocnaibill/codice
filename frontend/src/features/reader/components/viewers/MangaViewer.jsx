@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import JSZip from 'jszip';
+import { api } from '../../../../lib/api';
 
-export default function MangaViewer({ fileUrl }) {
+export default function MangaViewer({ fileUrl, bookId, initialProgress }) {
   const [pages, setPages] = useState([]);
-  const [currentPage, setCurrentPage] = useState(0);
+  const [currentPage, setCurrentPage] = useState(initialProgress ? parseInt(initialProgress, 10) || 0 : 0);
   const [loading, setLoading] = useState(true);
+  const timeoutRef = useRef(null);
 
   useEffect(() => {
     let createdUrls = [];
@@ -46,8 +48,41 @@ export default function MangaViewer({ fileUrl }) {
     };
   }, [fileUrl]);
 
-  const prevPage = () => setCurrentPage((p) => Math.max(0, p - 1));
-  const nextPage = () => setCurrentPage((p) => Math.min(pages.length - 1, p + 1));
+  // Debounced progress saving when currentPage changes
+  const changePage = (newPage) => {
+    setCurrentPage(newPage);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    if (bookId) {
+      timeoutRef.current = setTimeout(() => {
+        api.patch(`/works/${bookId}/progress`, { progress: newPage.toString() })
+          .catch((err) => console.error("Failed to save Manga reading progress:", err));
+      }, 1000);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const prevPage = () => {
+    if (currentPage > 0) {
+      changePage(currentPage - 1);
+    }
+  };
+
+  const nextPage = () => {
+    if (currentPage < pages.length - 1) {
+      changePage(currentPage + 1);
+    }
+  };
 
   if (loading) {
     return (
