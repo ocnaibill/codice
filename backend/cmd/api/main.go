@@ -63,6 +63,12 @@ func main() {
 		DB:          db, 
 		RedisClient: redisClient,
 	}
+	wsHandler := &handlers.WsHandler{
+		RedisClient: redisClient,
+	}
+
+	// Start Redis PubSub listener in background goroutine
+	go wsHandler.ListenToRedis()
 
 	// 4. Configure Router
 	r := chi.NewRouter()
@@ -87,6 +93,7 @@ func main() {
 	r.Get("/works", libHandler.GetWorks)
 	r.Get("/works/{id}", libHandler.GetWorkByID)
 	r.Post("/upload", uploadHandler.HandleUpload)
+	r.Get("/ws", wsHandler.HandleWS)
 
 	// Serve cover images as static files under /covers/
 	os.MkdirAll("./uploads/covers", 0755)
