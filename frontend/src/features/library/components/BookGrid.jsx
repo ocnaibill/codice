@@ -6,14 +6,14 @@ export function BookGrid() {
   const searchQuery = useGlobalStore((state) => state.searchQuery);
   const openBook = useGlobalStore((state) => state.openBook);
 
-  // Consumindo o TanStack Query
+  // Consume TanStack Query
   const { data: works, isLoading, isError } = useWorks();
 
-  // Tratamento de UI para estados transicionais
+  // UI handling for transitional states
   if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-20 flex justify-center">
-        <span className="text-zinc-500 animate-pulse font-medium">Carregando acervo do servidor...</span>
+        <span className="text-zinc-500 animate-pulse font-medium">Loading collection from server...</span>
       </div>
     );
   }
@@ -21,12 +21,12 @@ export function BookGrid() {
   if (isError) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-20 flex justify-center">
-        <span className="text-red-400 font-medium">❌ Erro ao comunicar com o servidor em Go.</span>
+        <span className="text-red-400 font-medium">❌ Error communicating with Go server.</span>
       </div>
     );
   }
 
-  // Filtragem reativa no client-side (como a lista mockada é pequena, resolvemos aqui)
+  // Client-side reactive filtering
   const filteredWorks = works?.filter((work) => 
     work.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     work.author.toLowerCase().includes(searchQuery.toLowerCase())
@@ -35,11 +35,11 @@ export function BookGrid() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h2 className="text-lg font-semibold text-zinc-100 mb-6 flex items-center gap-2">
-        <span>📖</span> Adicionados Recentemente
+        <span>📖</span> Recently Added
       </h2>
       
       {filteredWorks.length === 0 ? (
-        <div className="text-zinc-500 mt-10">Nenhum livro encontrado para "{searchQuery}".</div>
+        <div className="text-zinc-500 mt-10">No books found for "{searchQuery}".</div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
           {filteredWorks.map((work) => (
