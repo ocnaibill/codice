@@ -1,5 +1,9 @@
 import os
+import sys
 import psycopg2
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 class CodiceDatabase:
     def __init__(self):
