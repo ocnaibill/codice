@@ -89,6 +89,10 @@ def listen_for_tasks():
                             metadata['title'] = enriched.get('title') or metadata['title']
                             metadata['author'] = enriched.get('author') or metadata['author']
                             
+                            # Transfer web tags to work metadata
+                            if enriched.get('tags'):
+                                metadata['tags'] = enriched['tags']
+
                             # Cache web cover image locally for privacy and self-hosting performance
                             if enriched.get('cover_url'):
                                 local_cover = scraper.download_cover(enriched['cover_url'], original_filename)
