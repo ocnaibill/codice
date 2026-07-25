@@ -105,8 +105,15 @@ class MetadataScraper:
                     if cover_url:
                         cover_url = cover_url.replace("http://", "https://")
 
-                    print(f"   ✨ Found Google Books metadata: '{title}' by {author}")
-                    return {"title": title, "author": author, "cover_url": cover_url}
+                    raw_categories = volume_info.get("categories", [])
+                    extracted_tags = []
+                    for cat in raw_categories:
+                        parts = [p.strip() for p in cat.split('/')]
+                        extracted_tags.extend(parts)
+                    clean_tags = list(dict.fromkeys([t for t in extracted_tags if t]))[:4]
+
+                    print(f"   ✨ Found Google Books metadata: '{title}' by {author} (Tags: {clean_tags})")
+                    return {"title": title, "author": author, "cover_url": cover_url, "tags": clean_tags}
         except Exception as e:
             print(f"   ⚠️ Google Books API skipped: {e}")
         return None
@@ -125,8 +132,11 @@ class MetadataScraper:
                     cover_i = doc.get("cover_i")
                     cover_url = f"https://covers.openlibrary.org/b/id/{cover_i}-L.jpg" if cover_i else None
 
-                    print(f"   ✨ Found OpenLibrary metadata: '{title}' by {author}")
-                    return {"title": title, "author": author, "cover_url": cover_url}
+                    raw_subjects = doc.get("subject", [])
+                    clean_tags = list(dict.fromkeys([s.strip() for s in raw_subjects if s and len(s.strip()) <= 30]))[:4]
+
+                    print(f"   ✨ Found OpenLibrary metadata: '{title}' by {author} (Tags: {clean_tags})")
+                    return {"title": title, "author": author, "cover_url": cover_url, "tags": clean_tags}
         except Exception as e:
             print(f"   ⚠️ OpenLibrary API skipped: {e}")
         return None
