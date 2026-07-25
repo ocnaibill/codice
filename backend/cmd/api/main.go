@@ -87,6 +87,13 @@ func main() {
 	r.Get("/works", libHandler.GetWorks)
 	r.Post("/upload", uploadHandler.HandleUpload)
 
+	// Serve cover images as static files under /covers/
+	os.MkdirAll("./uploads/covers", 0755)
+	fs := http.StripPrefix("/covers/", http.FileServer(http.Dir("./uploads/covers")))
+	r.Get("/covers/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fs.ServeHTTP(w, r)
+	}))
+
 	// 5. Start HTTP Server
 	port := os.Getenv("PORT")
 	if port == "" {
