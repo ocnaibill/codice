@@ -85,13 +85,20 @@ func main() {
 	})
 
 	r.Get("/works", libHandler.GetWorks)
+	r.Get("/works/{id}", libHandler.GetWorkByID)
 	r.Post("/upload", uploadHandler.HandleUpload)
 
 	// Serve cover images as static files under /covers/
 	os.MkdirAll("./uploads/covers", 0755)
-	fs := http.StripPrefix("/covers/", http.FileServer(http.Dir("./uploads/covers")))
+	fsCovers := http.StripPrefix("/covers/", http.FileServer(http.Dir("./uploads/covers")))
 	r.Get("/covers/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fs.ServeHTTP(w, r)
+		fsCovers.ServeHTTP(w, r)
+	}))
+
+	// Serve original files under /files/
+	fsFiles := http.StripPrefix("/files/", http.FileServer(http.Dir("./uploads")))
+	r.Get("/files/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fsFiles.ServeHTTP(w, r)
 	}))
 
 	// 5. Start HTTP Server
