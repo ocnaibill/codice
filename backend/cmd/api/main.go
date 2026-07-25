@@ -82,7 +82,7 @@ func main() {
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{allowedOrigin},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 	}))
 
@@ -93,6 +93,7 @@ func main() {
 	r.Get("/works", libHandler.GetWorks)
 	r.Get("/works/{id}", libHandler.GetWorkByID)
 	r.Put("/works/{id}", libHandler.UpdateWork)
+	r.Patch("/works/{id}/progress", libHandler.UpdateProgress)
 	r.Delete("/works/{id}", libHandler.DeleteWork)
 	r.Post("/upload", uploadHandler.HandleUpload)
 	r.Get("/ws", wsHandler.HandleWS)
