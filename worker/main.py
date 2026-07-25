@@ -81,13 +81,18 @@ def listen_for_tasks():
                         metadata = extractor.process_file(file_path)
                         print(f"📄 Local metadata: {metadata['title']} ({metadata['page_count']} pages)")
                         
-                        # 2. Web enrichment via Google Books API
+                        # 2. Web enrichment via Google Books / OpenLibrary API
+                        original_filename = os.path.basename(file_path)
                         enriched = scraper.fetch_metadata(metadata['title'])
                         if enriched:
                             metadata['title'] = enriched.get('title') or metadata['title']
                             metadata['author'] = enriched.get('author') or metadata['author']
+                            
+                            # Cache web cover image locally for privacy and self-hosting performance
                             if enriched.get('cover_url'):
-                                metadata['cover_url'] = enriched.get('cover_url')
+                                local_cover = scraper.download_cover(enriched['cover_url'], original_filename)
+                                if local_cover:
+                                    metadata['cover_url'] = local_cover
 
                         # 3. Save enriched metadata to PostgreSQL database
                         db.update_work_metadata(work_id, metadata)
