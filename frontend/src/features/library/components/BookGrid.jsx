@@ -1,9 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { useWorks } from '../api/useWorks';
+import { EditBookModal } from './EditBookModal';
 
 export function BookGrid() {
   const [activeFilter, setActiveFilter] = useState('All');
+  const [editingBook, setEditingBook] = useState(null);
+
   const searchQuery = useGlobalStore((state) => state.searchQuery);
   const openBook = useGlobalStore((state) => state.openBook);
 
@@ -84,6 +87,17 @@ export function BookGrid() {
               onClick={() => openBook(work.id)} 
             >
               <div className="relative aspect-[2/3] w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-900 transition-all duration-300 group-hover:border-zinc-600 group-hover:shadow-lg group-hover:shadow-blue-900/20 group-hover:-translate-y-1">
+                {/* Floating Edit Button */}
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingBook(work);
+                  }}
+                  className="absolute top-2 right-2 p-1.5 bg-black/75 backdrop-blur-sm text-zinc-300 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-200 z-10 hover:bg-blue-600 hover:text-white shadow-md"
+                  title="Edit metadata"
+                >
+                  ✎
+                </button>
                 <img 
                   src={work.coverUrl} 
                   alt={work.title} 
@@ -113,6 +127,14 @@ export function BookGrid() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Edit Book Metadata Modal */}
+      {editingBook && (
+        <EditBookModal 
+          book={editingBook} 
+          onClose={() => setEditingBook(null)} 
+        />
       )}
     </div>
   );
