@@ -2,8 +2,9 @@ import React, { lazy, Suspense } from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { useWork } from '../api/useWork';
 
-// Lazy loading: PdfViewer component is dynamically imported only when rendering
+// Dynamic imports (Lazy Loading) - Readers are loaded on demand
 const PdfViewer = lazy(() => import('./viewers/PdfViewer'));
+const EpubViewer = lazy(() => import('./viewers/EpubViewer'));
 
 export function Reader() {
   const activeBookId = useGlobalStore((state) => state.activeBookId);
@@ -19,10 +20,10 @@ export function Reader() {
     );
   }
 
-  if (isError || !book) {
+  if (isError || !book || !book.fileUrl) {
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col items-center justify-center bg-zinc-950 gap-4">
-        <span className="text-red-400 font-medium">Error loading book details.</span>
+        <span className="text-red-400 font-medium">Error: File not found on server.</span>
         <button 
           onClick={closeBook} 
           className="text-sm font-medium bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-md hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
@@ -32,6 +33,9 @@ export function Reader() {
       </div>
     );
   }
+
+  // Determine file extension from URL
+  const fileExtension = book.fileUrl.split('.').pop().toLowerCase();
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-zinc-950">
@@ -52,10 +56,19 @@ export function Reader() {
         </div>
       </div>
 
-      {/* Reader Content Area */}
+      {/* Dynamic Reader Router Viewport */}
       <div className="flex-1 overflow-y-auto px-4 py-8 bg-zinc-900/30">
         <Suspense fallback={<div className="flex justify-center p-10 text-zinc-500 animate-pulse">Initializing reading engine...</div>}>
-          <PdfViewer fileUrl={book.fileUrl} />
+          
+          {fileExtension === 'pdf' && <PdfViewer fileUrl={book.fileUrl} />}
+          {fileExtension === 'epub' && <EpubViewer fileUrl={book.fileUrl} />}
+          
+          {fileExtension !== 'pdf' && fileExtension !== 'epub' && (
+            <div className="text-zinc-400 text-center mt-10 font-medium">
+              File format (.{fileExtension}) is not supported yet by the reader.
+            </div>
+          )}
+
         </Suspense>
       </div>
     </div>
