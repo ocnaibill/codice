@@ -1,5 +1,6 @@
 import os
 import sys
+import zipfile
 import fitz  # PyMuPDF
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -46,6 +47,8 @@ class CodiceExtractor:
             return self._process_pdf(file_path)
         elif ext == '.epub':
             return self._process_epub(file_path)
+        elif ext == '.cbz':
+            return self._process_cbz(file_path)
         else:
             raise ValueError(f"Unsupported format: {ext}")
 
@@ -88,6 +91,38 @@ class CodiceExtractor:
             }
         finally:
             doc.close()
+
+    def _process_cbz(self, file_path):
+        """Processes Comic Book / Manga (CBZ) archives by extracting the first page image."""
+        print(f"🖼️ Processing Comic/Manga archive (CBZ): {file_path}")
+        
+        title = self._fallback_title(file_path)
+        author = "Unknown Author"
+        page_count = 0
+        cover_url = None
+
+        with zipfile.ZipFile(file_path, 'r') as archive:
+            valid_exts = ('.jpg', '.jpeg', '.png', '.webp')
+            images = [f for f in archive.namelist() if f.lower().endswith(valid_exts)]
+            images.sort()
+            page_count = len(images)
+
+            if page_count > 0:
+                first_image = images[0]
+                cover_filename = f"cover_{os.path.basename(file_path)}.jpg"
+                cover_path = os.path.join(self.covers_dir, cover_filename)
+
+                with open(cover_path, 'wb') as f:
+                    f.write(archive.read(first_image))
+
+                cover_url = f"http://localhost:8080/covers/{cover_filename}"
+
+        return {
+            "title": title,
+            "author": author,
+            "page_count": page_count,
+            "cover_url": cover_url
+        }
 
     def _generate_cover(self, doc, file_path):
         """Utility method to render first page as JPG cover."""
