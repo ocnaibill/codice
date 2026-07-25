@@ -13,12 +13,13 @@ import (
 
 // Work represents the structure sent to the frontend
 type Work struct {
-	ID       int      `json:"id"`
-	Title    string   `json:"title"`
-	Author   string   `json:"author"`
-	CoverURL string   `json:"coverUrl"`
-	FileURL  string   `json:"fileUrl,omitempty"`
-	Tags     []string `json:"tags"`
+	ID              int      `json:"id"`
+	Title           string   `json:"title"`
+	Author          string   `json:"author"`
+	CoverURL        string   `json:"coverUrl"`
+	FileURL         string   `json:"fileUrl,omitempty"`
+	Tags            []string `json:"tags"`
+	ReadingProgress string   `json:"readingProgress,omitempty"`
 }
 
 // LibraryHandler stores the database connection
@@ -80,11 +81,12 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(works)
 }
 
-// GetWorkByID fetches a single work by its ID along with tags
+// GetWorkByID fetches a single work by its ID along with tags and reading progress
 func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	var filePath sql.NullString
+	var progress sql.NullString
 	var work Work
 
 	query := `
@@ -94,6 +96,7 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 			COALESCE(p.name, 'Unknown Author') as author, 
 			COALESCE(e.cover_url, '') as cover_url,
 			w.file_path,
+			w.reading_progress,
 			COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags
 		FROM works w
 		LEFT JOIN person p ON w.author_id = p.id
@@ -101,10 +104,10 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN work_tags wt ON w.id = wt.work_id
 		LEFT JOIN tags t ON wt.tag_id = t.id
 		WHERE w.id = $1
-		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path
+		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, w.reading_progress
 	`
 
-	err := h.DB.QueryRow(query, id).Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, pq.Array(&work.Tags))
+	err := h.DB.QueryRow(query, id).Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &progress, pq.Array(&work.Tags))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Book not found", http.StatusNotFound)
@@ -120,6 +123,10 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 
 	if work.Tags == nil {
 		work.Tags = []string{}
+	}
+
+	if progress.Valid {
+		work.ReadingProgress = progress.String
 	}
 
 	if filePath.Valid && filePath.String != "" {
@@ -217,6 +224,30 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 
 	if err = tx.Commit(); err != nil {
 		http.Error(w, "Error committing database transaction", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// ProgressRequest represents the payload for updating reading progress
+type ProgressRequest struct {
+	Progress string `json:"progress"`
+}
+
+// UpdateProgress updates the reading progress location for a work
+func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req ProgressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	_, err := h.DB.Exec("UPDATE works SET reading_progress = $1 WHERE id = $2", req.Progress, id)
+	if err != nil {
+		http.Error(w, "Error saving reading progress", http.StatusInternalServerError)
 		return
 	}
 
