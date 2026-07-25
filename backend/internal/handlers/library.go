@@ -127,3 +127,96 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(work)
 }
+
+// UpdateWorkRequest represents the payload for updating work metadata
+type UpdateWorkRequest struct {
+	Title  string   `json:"title"`
+	Author string   `json:"author"`
+	Tags   []string `json:"tags"`
+}
+
+// UpdateWork updates title, resolves author, and syncs tags within an atomic database transaction
+func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req UpdateWorkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	tx, err := h.DB.Begin()
+	if err != nil {
+		http.Error(w, "Error starting database transaction", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	// 1. Resolve Author
+	var authorID int
+	authorName := req.Author
+	if authorName == "" {
+		authorName = "Unknown Author"
+	}
+
+	err = tx.QueryRow("SELECT id FROM person WHERE name = $1", authorName).Scan(&authorID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			err = tx.QueryRow("INSERT INTO person (name) VALUES ($1) RETURNING id", authorName).Scan(&authorID)
+			if err != nil {
+				http.Error(w, "Error creating author record", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			http.Error(w, "Error querying author record", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// 2. Update Work record with new Title and Author ID
+	_, err = tx.Exec("UPDATE works SET original_title = $1, author_id = $2 WHERE id = $3", req.Title, authorID, id)
+	if err != nil {
+		http.Error(w, "Error updating work record", http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Sync Tags (delete existing relations and re-insert new ones)
+	_, err = tx.Exec("DELETE FROM work_tags WHERE work_id = $1", id)
+	if err != nil {
+		http.Error(w, "Error resetting work tags", http.StatusInternalServerError)
+		return
+	}
+
+	for _, tagName := range req.Tags {
+		if tagName == "" {
+			continue
+		}
+		var tagID int
+		err = tx.QueryRow("SELECT id FROM tags WHERE name = $1", tagName).Scan(&tagID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				err = tx.QueryRow("INSERT INTO tags (name) VALUES ($1) RETURNING id", tagName).Scan(&tagID)
+				if err != nil {
+					http.Error(w, "Error creating tag record", http.StatusInternalServerError)
+					return
+				}
+			} else {
+				http.Error(w, "Error querying tag record", http.StatusInternalServerError)
+				return
+			}
+		}
+
+		_, err = tx.Exec("INSERT INTO work_tags (work_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", id, tagID)
+		if err != nil {
+			http.Error(w, "Error linking work tag", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		http.Error(w, "Error committing database transaction", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
