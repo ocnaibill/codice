@@ -6,18 +6,37 @@ import { Reader } from './features/reader/components/Reader';
 import { useGlobalStore } from './store/useGlobalStore';
 import { UploadModal } from './features/upload/components/UploadModal';
 import { Auth } from './features/auth/components/Auth';
+import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
+import { api } from './lib/api';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isFirstRun, setIsFirstRun] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(true);
+
   const queryClient = useQueryClient();
   const activeBookId = useGlobalStore((state) => state.activeBookId);
 
   useEffect(() => {
-    // Check if token exists in localStorage on app mount
-    const token = localStorage.getItem('codice_token');
-    if (token) {
-      setIsAuthenticated(true);
-    }
+    const checkStatusAndToken = async () => {
+      try {
+        const res = await api.get('/auth/setup-status');
+        if (res.data.isFirstRun) {
+          setIsFirstRun(true);
+        } else {
+          const token = localStorage.getItem('codice_token');
+          if (token) {
+            setIsAuthenticated(true);
+          }
+        }
+      } catch (err) {
+        console.error('Error checking setup status:', err);
+      } finally {
+        setCheckingStatus(false);
+      }
+    };
+
+    checkStatusAndToken();
   }, []);
 
   useEffect(() => {
@@ -47,6 +66,25 @@ function App() {
     localStorage.removeItem('codice_token');
     setIsAuthenticated(false);
   };
+
+  if (checkingStatus) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-zinc-950 text-zinc-400 font-mono text-sm">
+        Initializing Códice environment...
+      </div>
+    );
+  }
+
+  if (isFirstRun) {
+    return (
+      <FirstRunSetup 
+        onSetupComplete={() => {
+          setIsFirstRun(false);
+          setIsAuthenticated(true);
+        }} 
+      />
+    );
+  }
 
   if (!isAuthenticated) {
     return <Auth onLoginSuccess={() => setIsAuthenticated(true)} />;
