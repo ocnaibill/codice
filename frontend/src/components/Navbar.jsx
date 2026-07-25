@@ -1,7 +1,7 @@
 import React from 'react';
 import { useGlobalStore } from '../store/useGlobalStore';
 
-export function Navbar() {
+export function Navbar({ onLogout }) {
   // Retrieve state and actions from Zustand
   const searchQuery = useGlobalStore((state) => state.searchQuery);
   const setSearchQuery = useGlobalStore((state) => state.setSearchQuery);
@@ -47,8 +47,15 @@ export function Navbar() {
               className="text-sm font-medium bg-zinc-800 border border-zinc-700 text-zinc-300 px-3 py-1.5 rounded-md hover:bg-zinc-700 hover:text-zinc-100 transition-colors">
               + New Book
             </button>
+            <button 
+              onClick={onLogout}
+              className="text-xs font-medium text-zinc-400 hover:text-red-400 transition-colors px-1"
+              title="Log Out"
+            >
+              Log Out
+            </button>
             <div className="h-8 w-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all">
-              <span className="text-xs font-bold text-zinc-300">BO</span>
+              <span className="text-xs font-bold text-zinc-300">AD</span>
             </div>
           </div>
         </div>
