@@ -114,6 +114,7 @@ func main() {
 	r.With(appMiddleware.AuthMiddleware).Patch("/works/{id}/progress", libHandler.UpdateProgress)
 	r.With(appMiddleware.AuthMiddleware).Delete("/works/{id}", libHandler.DeleteWork)
 	r.With(appMiddleware.AuthMiddleware).Post("/upload", uploadHandler.HandleUpload)
+	r.With(appMiddleware.AuthMiddleware).Post("/works/bulk-import", uploadHandler.HandleBulkImport)
 	r.Get("/ws", wsHandler.HandleWS)
 
 	// Define base storage directory (fallback to ./uploads)
