@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/ocnaibill/codice/backend/internal/config"
+	"github.com/ocnaibill/codice/backend/internal/database"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/redis/go-redis/v9"
 	"github.com/go-chi/chi/v5"
@@ -40,6 +41,11 @@ func main() {
 		log.Fatalf("Database did not respond to ping: %v", err)
 	}
 	log.Println("✅ Successfully connected to PostgreSQL!")
+
+	// Run automatic database migrations on startup
+	if err := database.RunAutoMigrations(db); err != nil {
+		log.Fatalf("❌ Database auto-migrations failed: %v", err)
+	}
 
 
 	// 2. Connection with Redis
@@ -95,7 +101,9 @@ func main() {
 		w.Write([]byte("📚 Códice API is online!"))
 	})
 
-	// Public Auth Endpoints
+	// Public Auth & Setup Endpoints
+	r.Get("/auth/setup-status", authHandler.GetSetupStatus)
+	r.Post("/auth/setup", authHandler.SetupMasterAdmin)
 	r.Post("/auth/register", authHandler.Register)
 	r.Post("/auth/login", authHandler.Login)
 
