@@ -1,21 +1,21 @@
 # Códice 📚
 
-Um sistema completo, moderno e open-source para gerenciamento e consumo de bibliotecas digitais (Homelab). O Códice suporta livros de ficção (EPUB), coleções de mangás/HQs (CBZ) e possui uma esteira especializada com Full-Text Search para PDFs de estudos e artigos acadêmicos.
+A complete, modern, and open-source system for managing and consuming digital libraries (Homelab). Códice supports fiction books (EPUB), manga/comic collections (CBZ), and features a specialized processing pipeline with Full-Text Search for study PDFs and academic articles.
 
-## 🏗️ Arquitetura
+## 🏗️ Architecture
 
-O Códice é construído com foco em performance, resiliência e baixo consumo de recursos, ideal para rodar em servidores locais (Homelabs).
+Códice is built with a focus on performance, resilience, and low resource consumption, ideal for running on local servers (Homelabs).
 
 *   **Backend (API & OPDS):** Go (Golang)
-*   **Worker de Extração:** Python + Docling (Processamento assíncrono de PDFs)
-*   **Fila de Mensagens:** Redis Streams
-*   **Banco de Dados:** PostgreSQL (com índices GIN para buscas Full-Text)
+*   **Extraction Worker:** Python + Docling (Asynchronous PDF processing)
+*   **Message Queue:** Redis Streams
+*   **Database:** PostgreSQL (with GIN indexes for Full-Text searches)
 *   **Frontend:** React (Vite) + Tailwind CSS + Zustand
 
-## 🚀 Status do Projeto
+## 🚀 Project Status
 
-Atualmente em fase de **fundação estrutural**. Consulte as [Issues](https://github.com/ocnaibill/codice/issues) para ver o que está sendo desenvolvido.
+Currently in the **structural foundation** phase. Check the [Issues](https://github.com/ocnaibill/codice/issues) to see active development tasks.
 
-## 📄 Licença
+## 📄 License
 
-Este projeto está licenciado sob a **GNU AGPLv3** - veja o arquivo [LICENSE](LICENSE) para detalhes. O Códice é copyleft: sinta-se livre para hospedar, usar e modificar, desde que mantenha o código-fonte de qualquer modificação público.
+This project is licensed under **GNU AGPLv3** - see the [LICENSE](LICENSE) file for details. Códice is copyleft: feel free to host, use, and modify, as long as any modified source code remains public.
