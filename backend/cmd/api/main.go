@@ -92,6 +92,7 @@ func main() {
 
 	r.Get("/works", libHandler.GetWorks)
 	r.Get("/works/{id}", libHandler.GetWorkByID)
+	r.Put("/works/{id}", libHandler.UpdateWork)
 	r.Post("/upload", uploadHandler.HandleUpload)
 	r.Get("/ws", wsHandler.HandleWS)
 
