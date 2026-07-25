@@ -6,7 +6,7 @@ import { useGlobalStore } from './store/useGlobalStore';
 import { UploadModal } from './features/upload/components/UploadModal';
 
 function App() {
-  // Observa se há algum livro aberto na Store
+  // Check if there is an active book opened in Store
   const activeBookId = useGlobalStore((state) => state.activeBookId);
 
   return (
@@ -14,7 +14,7 @@ function App() {
       <Navbar />
       <UploadModal />
       <main className="flex-1">
-        {/* O switch de roteamento virtual */}
+        {/* Virtual routing view switch */}
         {activeBookId ? <Reader /> : <BookGrid />}
       </main>
     </div>
