@@ -73,9 +73,9 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	dst.Close()
 
 	var workID int
-	query := `INSERT INTO works (original_title) VALUES ($1) RETURNING id`
+	query := `INSERT INTO works (original_title, file_path) VALUES ($1, $2) RETURNING id`
 
-	err = h.DB.QueryRow(query, safeFilename).Scan(&workID)
+	err = h.DB.QueryRow(query, safeFilename, fileName).Scan(&workID)
 	if err != nil {
 		os.Remove(filePath)
 		http.Error(w, "Error creating database record", http.StatusInternalServerError)
