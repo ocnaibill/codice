@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
@@ -216,6 +218,65 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 	if err = tx.Commit(); err != nil {
 		http.Error(w, "Error committing database transaction", http.StatusInternalServerError)
 		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// DeleteWork removes a work from PostgreSQL within a transaction and deletes its physical files from server disk
+func (h *LibraryHandler) DeleteWork(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	// 1. Retrieve file_path and cover_url before database deletion
+	var filePath sql.NullString
+	var coverURL sql.NullString
+
+	query := `
+		SELECT w.file_path, e.cover_url
+		FROM works w
+		LEFT JOIN editions e ON w.id = e.work_id
+		WHERE w.id = $1
+	`
+	err := h.DB.QueryRow(query, id).Scan(&filePath, &coverURL)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Book not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Error fetching book files", http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Atomic Database Transaction Cleanup
+	tx, err := h.DB.Begin()
+	if err != nil {
+		http.Error(w, "Error starting transaction", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	tx.Exec("DELETE FROM work_tags WHERE work_id = $1", id)
+	tx.Exec("DELETE FROM editions WHERE work_id = $1", id)
+
+	_, err = tx.Exec("DELETE FROM works WHERE id = $1", id)
+	if err != nil {
+		http.Error(w, "Error deleting work from database", http.StatusInternalServerError)
+		return
+	}
+
+	if err = tx.Commit(); err != nil {
+		http.Error(w, "Error committing deletion transaction", http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Physical Server Disk Cleanup
+	if filePath.Valid && filePath.String != "" {
+		os.Remove("./uploads/" + filePath.String)
+	}
+
+	if coverURL.Valid && coverURL.String != "" {
+		coverFilename := path.Base(coverURL.String)
+		os.Remove("./uploads/covers/" + coverFilename)
 	}
 
 	w.WriteHeader(http.StatusOK)
