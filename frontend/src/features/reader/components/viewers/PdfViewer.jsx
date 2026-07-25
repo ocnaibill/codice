@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import { api } from '../../../../lib/api';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -10,16 +11,50 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-export default function PdfViewer({ fileUrl }) {
+export default function PdfViewer({ fileUrl, bookId, initialProgress }) {
   const [numPages, setNumPages] = useState(null);
-  const [pageNumber, setPageNumber] = useState(1);
+  const [pageNumber, setPageNumber] = useState(initialProgress ? parseInt(initialProgress, 10) || 1 : 1);
+  const timeoutRef = useRef(null);
 
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);
   }
 
-  const prevPage = () => setPageNumber((prev) => (prev > 1 ? prev - 1 : prev));
-  const nextPage = () => setPageNumber((prev) => (prev < numPages ? prev + 1 : prev));
+  // Debounced progress saving when pageNumber changes
+  const changePage = (newPage) => {
+    setPageNumber(newPage);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    if (bookId) {
+      timeoutRef.current = setTimeout(() => {
+        api.patch(`/works/${bookId}/progress`, { progress: newPage.toString() })
+          .catch((err) => console.error("Failed to save PDF reading progress:", err));
+      }, 1000);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const prevPage = () => {
+    if (pageNumber > 1) {
+      changePage(pageNumber - 1);
+    }
+  };
+
+  const nextPage = () => {
+    if (pageNumber < numPages) {
+      changePage(pageNumber + 1);
+    }
+  };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-full">
