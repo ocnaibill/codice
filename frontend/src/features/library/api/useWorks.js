@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../../../lib/api'; // Ajuste o caminho relativo se necessário
+import { api } from '../../../lib/api';
 
-// A função fetcher pura
+// Pure fetcher function
 const fetchWorks = async () => {
   const { data } = await api.get('/works');
   return data;
 };
 
-// O Hook que o componente vai consumir
+// React Query hook consumed by components
 export const useWorks = () => {
   return useQuery({
     queryKey: ['works'],
