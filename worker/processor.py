@@ -1,5 +1,9 @@
 import os
+import sys
 import fitz  # PyMuPDF
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 class CodiceExtractor:
     def __init__(self, covers_dir=None, allowed_dirs=None):
