@@ -14,10 +14,10 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 r = redis.from_url(
     REDIS_URL, 
     decode_responses=True,
-    socket_timeout=10.0,         # Deve ser estritamente MAIOR que o tempo do 'block' (5s)
-    socket_connect_timeout=5.0,  # Tempo máximo para tentar a primeira conexão
-    socket_keepalive=True,       # Avisa a rede do Windows/Docker para não derrubar a conexão ociosa
-    retry_on_timeout=True        # Tenta reconectar silenciosamente se houver oscilação
+    socket_timeout=10.0,         # Must be strictly GREATER than 'block' time (5s)
+    socket_connect_timeout=5.0,  # Max time for first connection attempt
+    socket_keepalive=True,       # Prevent network drops on idle connection
+    retry_on_timeout=True        # Silently retry on transient timeout
 )
 
 STREAM_NAME = 'ingestion_tasks'
@@ -41,7 +41,7 @@ def setup_redis_stream():
 def listen_for_tasks():
     setup_redis_stream()
     
-    # Instancia o parser antes do loop para não recarregar os modelos de IA a cada PDF
+    # Instantiate parser before the loop to avoid reloading models on every file
     parser = CodiceParser()
     
     print("⏳ Python Worker waiting for PDFs in the queue...")
@@ -69,22 +69,22 @@ def listen_for_tasks():
                     print(f"   File: {file_path}")
                     
                     try:
-                        # Aciona o Docling
+                        # Trigger Docling parser
                         md_text = parser.extract_to_markdown(file_path)
                         
-                        print(f"✅ Extração concluída! Gerados {len(md_text)} caracteres.")
+                        print(f"✅ Extraction complete! Generated {len(md_text)} characters.")
                         print(f"📄 Preview: {md_text[:150]}...")
                         
-                        # Confirma para o Redis que a tarefa foi um sucesso
+                        # Acknowledge task to Redis on success
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
                         
                     except (ValueError, FileNotFoundError) as sec_err:
-                        print(f"⚠️ Erro de validação/segurança: {sec_err}")
-                        # Confirma o xack para remover tarefa inválida/maliciosa da fila
+                        print(f"⚠️ Validation/security error: {sec_err}")
+                        # Acknowledge task to remove invalid/malicious item from queue
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
                     except Exception as parse_err:
-                        print(f"❌ Erro temporário ao extrair documento: {parse_err}")
-                        # Erros temporários ficam pendentes para reprocessamento futuro
+                        print(f"❌ Temporary error extracting document: {parse_err}")
+                        # Temporary errors stay pending for future retry
 
         except Exception as e:
             print(f"⚠️ Unexpected network error: {e}")
