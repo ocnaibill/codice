@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import json
 import redis
 from dotenv import load_dotenv
 
@@ -97,7 +98,16 @@ def listen_for_tasks():
                         # 3. Save enriched metadata to PostgreSQL database
                         db.update_work_metadata(work_id, metadata)
                         
-                        # 4. Acknowledge task in Redis
+                        # 4. Broadcast WORK_READY event via Redis PubSub for real-time WebSocket updates
+                        event = {
+                            "type": "WORK_READY",
+                            "work_id": work_id,
+                            "title": metadata.get('title', 'Book')
+                        }
+                        r.publish('codice_updates', json.dumps(event))
+                        print(f"📡 Broadcast WORK_READY event for Work ID: {work_id}")
+
+                        # 5. Acknowledge task in Redis
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
                         print(f"✅ Task {message_id} completed successfully.")
                         
