@@ -3,11 +3,11 @@ from docling.document_converter import DocumentConverter
 
 class CodiceParser:
     def __init__(self, allowed_dirs=None):
-        # Inicializa o conversor pesado uma única vez na memória
-        print("🧠 Inicializando o motor do Docling...")
+        # Initialize the heavy converter once in memory
+        print("🧠 Initializing Docling engine...")
         self.converter = DocumentConverter()
         
-        # Define diretórios permitidos para processamento de arquivos
+        # Define allowed directories for file processing
         if allowed_dirs is None:
             base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
             self.allowed_dirs = [
@@ -18,7 +18,7 @@ class CodiceParser:
             self.allowed_dirs = [os.path.abspath(d) for d in allowed_dirs]
 
     def is_safe_path(self, file_path):
-        """Verifica se o caminho do arquivo está estritamente dentro dos diretórios permitidos."""
+        """Check if the file path is strictly within allowed directories."""
         abs_target = os.path.abspath(file_path)
         for allowed in self.allowed_dirs:
             if abs_target.startswith(allowed + os.sep) or abs_target == allowed:
@@ -26,19 +26,19 @@ class CodiceParser:
         return False
 
     def extract_to_markdown(self, file_path):
-        """Converte o PDF/EPUB em Markdown estruturado."""
+        """Converts PDF/EPUB to structured Markdown."""
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
+            raise FileNotFoundError(f"File not found: {file_path}")
 
         if not self.is_safe_path(file_path):
-            raise ValueError(f"Acesso negado a arquivo fora do diretório de uploads: {file_path}")
+            raise ValueError(f"Access denied to file outside allowed upload directory: {file_path}")
 
-        print(f"⚙️ Lendo e extraindo blocos de texto...")
+        print(f"⚙️ Reading and extracting text blocks...")
         
-        # O Docling faz a mágica do OCR e análise de layout aqui
+        # Docling performs OCR and layout analysis here
         result = self.converter.convert(file_path)
         
-        # Exporta o resultado para a sintaxe Markdown
+        # Export result to Markdown format
         md_content = result.document.export_to_markdown()
         
         return md_content
