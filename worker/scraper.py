@@ -9,8 +9,14 @@ if hasattr(sys.stdout, 'reconfigure'):
 class MetadataScraper:
     def __init__(self, covers_dir=None):
         base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        env_storage = os.getenv("CODICE_STORAGE_PATH")
+        if env_storage:
+            storage_path = os.path.abspath(env_storage)
+        else:
+            storage_path = os.path.abspath(os.path.join(base_dir, "backend", "uploads"))
+
         if covers_dir is None:
-            self.covers_dir = os.path.join(base_dir, "backend", "uploads", "covers")
+            self.covers_dir = os.path.join(storage_path, "covers")
         else:
             self.covers_dir = os.path.abspath(covers_dir)
 
