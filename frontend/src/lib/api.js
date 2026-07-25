@@ -5,7 +5,7 @@ export const api = axios.create({
   timeout: 10000,
 });
 
-// Espaço reservado para injetar token de autenticação no futuro
+// Placeholder to inject authentication token in the future
 api.interceptors.request.use((config) => {
   // const token = localStorage.getItem('codice_token');
   // if (token) config.headers.Authorization = `Bearer ${token}`;
