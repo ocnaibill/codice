@@ -75,8 +75,8 @@ def listen_for_tasks():
                     print(f"   File: {file_path}")
                     
                     try:
-                        # 1. Extract metadata and cover image
-                        metadata = extractor.process_pdf(file_path)
+                        # 1. Extract metadata and cover image (Universal for PDF, EPUB, etc.)
+                        metadata = extractor.process_file(file_path)
                         print(f"📄 Extracted metadata: {metadata['title']} ({metadata['page_count']} pages)")
                         
                         # 2. Update database record
