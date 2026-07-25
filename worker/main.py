@@ -78,10 +78,13 @@ def listen_for_tasks():
                         # Confirma para o Redis que a tarefa foi um sucesso
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
                         
+                    except (ValueError, FileNotFoundError) as sec_err:
+                        print(f"⚠️ Erro de validação/segurança: {sec_err}")
+                        # Confirma o xack para remover tarefa inválida/maliciosa da fila
+                        r.xack(STREAM_NAME, GROUP_NAME, message_id)
                     except Exception as parse_err:
-                        print(f"❌ Erro ao extrair documento: {parse_err}")
-                        # Não damos o xack() aqui para o arquivo não ser perdido. 
-                        # Ele fica pendente para reprocessamento futuro.
+                        print(f"❌ Erro temporário ao extrair documento: {parse_err}")
+                        # Erros temporários ficam pendentes para reprocessamento futuro
 
         except Exception as e:
             print(f"⚠️ Unexpected network error: {e}")
