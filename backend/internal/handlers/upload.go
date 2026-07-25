@@ -116,3 +116,127 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		"work_id": workID,
 	})
 }
+
+type BulkImportRequest struct {
+	Directory string `json:"directory"`
+}
+
+type BulkImportResponse struct {
+	Message  string `json:"message"`
+	Scanned  int    `json:"scanned"`
+	Enqueued int    `json:"enqueued"`
+	Errors   int    `json:"errors"`
+}
+
+// HandleBulkImport scans a directory recursively and enqueues all discovered PDF/EPUB/CBZ documents
+func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request) {
+	var req BulkImportRequest
+	json.NewDecoder(r.Body).Decode(&req)
+
+	storagePath := os.Getenv("CODICE_STORAGE_PATH")
+	if storagePath == "" {
+		storagePath = "./uploads"
+	}
+
+	targetDir := req.Directory
+	if targetDir == "" {
+		targetDir = filepath.Join(storagePath, "import")
+	}
+
+	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
+		os.MkdirAll(targetDir, 0755)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(BulkImportResponse{
+			Message:  fmt.Sprintf("Import directory created at '%s'. Place files there and run bulk import again.", targetDir),
+			Scanned:  0,
+			Enqueued: 0,
+			Errors:   0,
+		})
+		return
+	}
+
+	var scannedCount, enqueuedCount, errorCount int
+	ctx := context.Background()
+
+	err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+
+		ext := strings.ToLower(filepath.Ext(info.Name()))
+		if ext != ".pdf" && ext != ".epub" && ext != ".cbz" {
+			return nil
+		}
+
+		scannedCount++
+
+		safeFilename := filepath.Base(info.Name())
+		fileName := fmt.Sprintf("%d_%d_%s", time.Now().Unix(), scannedCount, safeFilename)
+		dstPath := filepath.Join(storagePath, fileName)
+
+		srcFile, err := os.Open(path)
+		if err != nil {
+			errorCount++
+			return nil
+		}
+		defer srcFile.Close()
+
+		dstFile, err := os.Create(dstPath)
+		if err != nil {
+			errorCount++
+			return nil
+		}
+
+		if _, err := io.Copy(dstFile, srcFile); err != nil {
+			dstFile.Close()
+			os.Remove(dstPath)
+			errorCount++
+			return nil
+		}
+		dstFile.Close()
+
+		var workID int
+		query := `INSERT INTO works (original_title, file_path) VALUES ($1, $2) RETURNING id`
+		if err := h.DB.QueryRow(query, safeFilename, fileName).Scan(&workID); err != nil {
+			os.Remove(dstPath)
+			errorCount++
+			return nil
+		}
+
+		absDstPath, err := filepath.Abs(dstPath)
+		if err != nil {
+			os.Remove(dstPath)
+			errorCount++
+			return nil
+		}
+
+		if err := h.RedisClient.XAdd(ctx, &redis.XAddArgs{
+			Stream: "ingestion_tasks",
+			Values: map[string]interface{}{
+				"file_path": absDstPath,
+				"work_id":   workID,
+			},
+		}).Err(); err != nil {
+			os.Remove(dstPath)
+			errorCount++
+			return nil
+		}
+
+		enqueuedCount++
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, "Error during bulk directory traversal", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(BulkImportResponse{
+		Message:  "Bulk import completed",
+		Scanned:  scannedCount,
+		Enqueued: enqueuedCount,
+		Errors:   errorCount,
+	})
+}
