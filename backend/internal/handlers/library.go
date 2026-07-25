@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-// Work representa a estrutura enviada ao frontend
+// Work represents the structure sent to the frontend
 type Work struct {
 	ID       int    `json:"id"`
 	Title    string `json:"title"`
@@ -14,19 +14,19 @@ type Work struct {
 	CoverURL string `json:"coverUrl"`
 }
 
-// LibraryHandler guarda a conexão com o banco
+// LibraryHandler stores the database connection
 type LibraryHandler struct {
 	DB *sql.DB
 }
 
-// GetWorks busca as obras reais no PostgreSQL
+// GetWorks fetches works from PostgreSQL
 func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
-	// A Query faz um JOIN seguro considerando que autor ou capa podem ser nulos
+	// Query performs a safe JOIN considering author or cover can be null
 	query := `
 		SELECT 
 			w.id, 
 			w.original_title, 
-			COALESCE(p.name, 'Autor Desconhecido') as author, 
+			COALESCE(p.name, 'Unknown Author') as author, 
 			COALESCE(e.cover_url, '') as cover_url
 		FROM works w
 		LEFT JOIN person p ON w.author_id = p.id
@@ -36,7 +36,7 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.DB.Query(query)
 	if err != nil {
-		http.Error(w, "Erro ao buscar obras", http.StatusInternalServerError)
+		http.Error(w, "Error fetching works", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -45,19 +45,19 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var work Work
 		if err := rows.Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL); err != nil {
-			http.Error(w, "Erro ao ler os dados", http.StatusInternalServerError)
+			http.Error(w, "Error reading data", http.StatusInternalServerError)
 			return
 		}
 		
-		// Fallback para capa caso o banco retorne vazio
+		// Fallback cover if database returns empty string
 		if work.CoverURL == "" {
-			work.CoverURL = "https://via.placeholder.com/300x450/1f2937/d1d5db?text=Sem+Capa"
+			work.CoverURL = "https://via.placeholder.com/300x450/1f2937/d1d5db?text=No+Cover"
 		}
 		
 		works = append(works, work)
 	}
 
-	// Evita retornar null (retorna array vazio)
+	// Prevent returning null (returns empty array)
 	if works == nil {
 		works = []Work{}
 	}
