@@ -3,6 +3,7 @@ import time
 import redis
 from dotenv import load_dotenv
 from processor import CodiceParser
+from db import CodiceDatabase
 
 # 1. Loads variables from the .env file located at the project root
 # The worker is inside the /worker folder, so the .env is one level up
@@ -41,8 +42,9 @@ def setup_redis_stream():
 def listen_for_tasks():
     setup_redis_stream()
     
-    # Instantiate parser before the loop to avoid reloading models on every file
+    # Instantiate parser and database connection before the loop
     parser = CodiceParser()
+    db = CodiceDatabase()
     
     print("⏳ Python Worker waiting for PDFs in the queue...")
 
@@ -69,21 +71,26 @@ def listen_for_tasks():
                     print(f"   File: {file_path}")
                     
                     try:
-                        # Trigger Docling parser
+                        # 1. Trigger Docling parser
                         md_text = parser.extract_to_markdown(file_path)
                         
                         print(f"✅ Extraction complete! Generated {len(md_text)} characters.")
                         print(f"📄 Preview: {md_text[:150]}...")
                         
-                        # Acknowledge task to Redis on success
+                        # 2. Save extracted Markdown content into PostgreSQL
+                        if work_id:
+                            db.update_work_content(work_id, md_text)
+
+                        # 3. Acknowledge task to Redis on success
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
+                        print(f"✅ Task {message_id} completed and removed from queue.")
                         
                     except (ValueError, FileNotFoundError) as sec_err:
                         print(f"⚠️ Validation/security error: {sec_err}")
                         # Acknowledge task to remove invalid/malicious item from queue
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
                     except Exception as parse_err:
-                        print(f"❌ Temporary error extracting document: {parse_err}")
+                        print(f"❌ Processing failure: {parse_err}")
                         # Temporary errors stay pending for future retry
 
         except Exception as e:
