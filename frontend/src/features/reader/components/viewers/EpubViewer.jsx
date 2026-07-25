@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ReactReader } from 'react-reader';
+import { api } from '../../../../lib/api';
 
-export default function EpubViewer({ fileUrl }) {
-  const [location, setLocation] = useState(null);
+export default function EpubViewer({ fileUrl, bookId, initialProgress }) {
+  const [location, setLocation] = useState(initialProgress || null);
   const [size, setSize] = useState(100);
   const [theme, setTheme] = useState('dark');
 
   const renditionRef = useRef(null);
+  const timeoutRef = useRef(null);
 
   // Inject themes into EPUB iframe whenever theme state updates
   useEffect(() => {
@@ -36,6 +38,31 @@ export default function EpubViewer({ fileUrl }) {
       renditionRef.current.themes.fontSize(`${newSize}%`);
     }
   };
+
+  const handleLocationChange = (epubcfi) => {
+    setLocation(epubcfi);
+
+    // Debounce: reset previous timer if user navigated quickly
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    // Set 1-second debounce timer before sending PATCH to backend
+    if (bookId) {
+      timeoutRef.current = setTimeout(() => {
+        api.patch(`/works/${bookId}/progress`, { progress: epubcfi })
+          .catch((err) => console.error("Failed to save reading progress:", err));
+      }, 1000);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="flex flex-col items-center min-h-full w-full">
@@ -81,7 +108,7 @@ export default function EpubViewer({ fileUrl }) {
         <ReactReader
           url={fileUrl}
           location={location}
-          locationChanged={(epubcfi) => setLocation(epubcfi)}
+          locationChanged={handleLocationChange}
           title="Códice"
           getRendition={(rendition) => {
             renditionRef.current = rendition;
