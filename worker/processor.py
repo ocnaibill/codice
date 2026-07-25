@@ -7,7 +7,6 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 class CodiceExtractor:
     def __init__(self, covers_dir=None, allowed_dirs=None):
-        # Resolve absolute path for covers directory
         base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         if covers_dir is None:
             self.covers_dir = os.path.join(base_dir, "backend", "uploads", "covers")
@@ -15,9 +14,8 @@ class CodiceExtractor:
             self.covers_dir = os.path.abspath(covers_dir)
 
         os.makedirs(self.covers_dir, exist_ok=True)
-        print("🧠 PyMuPDF extraction engine initialized...")
+        print("🧠 Universal extraction engine initialized...")
 
-        # Allowed directories for file safety validation
         if allowed_dirs is None:
             self.allowed_dirs = [
                 os.path.abspath(os.path.join(base_dir, "backend", "uploads")),
@@ -34,50 +32,77 @@ class CodiceExtractor:
                 return True
         return False
 
-    def process_pdf(self, file_path):
-        """Extracts basic metadata and generates cover image from first page."""
+    def process_file(self, file_path):
+        """Main router method: dispatches file to appropriate handler by extension."""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
         if not self.is_safe_path(file_path):
             raise ValueError(f"Access denied to file outside allowed upload directory: {file_path}")
 
-        print(f"⚙️ Analyzing document: {file_path}")
-        
+        _, ext = os.path.splitext(file_path.lower())
+
+        if ext == '.pdf':
+            return self._process_pdf(file_path)
+        elif ext == '.epub':
+            return self._process_epub(file_path)
+        else:
+            raise ValueError(f"Unsupported format: {ext}")
+
+    def _process_pdf(self, file_path):
+        """Processes PDF documents specifically."""
+        print(f"📄 Processing PDF file: {file_path}")
         doc = fitz.open(file_path)
-        
-        # 1. Metadata Extraction
-        meta = doc.metadata or {}
-        title = meta.get("title")
-        author = meta.get("author")
-        page_count = len(doc)
-        
-        # Fallback if title metadata is missing or blank
-        if not title or not title.strip():
-            filename = os.path.basename(file_path)
-            title = os.path.splitext(filename)[0]
+        try:
+            meta = doc.metadata or {}
+            title = meta.get("title") or self._fallback_title(file_path)
+            author = meta.get("author") or "Unknown Author"
+            page_count = len(doc)
+            cover_url = self._generate_cover(doc, file_path)
 
-        if not author or not author.strip():
-            author = "Unknown Author"
+            return {
+                "title": title,
+                "author": author,
+                "page_count": page_count,
+                "cover_url": cover_url
+            }
+        finally:
+            doc.close()
 
-        # 2. Cover Generation (First Page Rasterization)
+    def _process_epub(self, file_path):
+        """Processes EPUB documents specifically."""
+        print(f"📚 Processing EPUB file: {file_path}")
+        doc = fitz.open(file_path)
+        try:
+            meta = doc.metadata or {}
+            title = meta.get("title") or self._fallback_title(file_path)
+            author = meta.get("author") or "Unknown Author"
+            page_count = len(doc)
+            cover_url = self._generate_cover(doc, file_path)
+
+            return {
+                "title": title,
+                "author": author,
+                "page_count": page_count,
+                "cover_url": cover_url
+            }
+        finally:
+            doc.close()
+
+    def _generate_cover(self, doc, file_path):
+        """Utility method to render first page as JPG cover."""
         cover_filename = f"cover_{os.path.basename(file_path)}.jpg"
         cover_path = os.path.join(self.covers_dir, cover_filename)
-        
-        if page_count > 0:
+
+        if len(doc) > 0:
             page = doc.load_page(0)
-            # Matrix(2, 2) scales resolution up for high quality rendering
             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
             pix.save(cover_path)
-        
-        doc.close()
-        
-        # Public URL served by backend
-        cover_url = f"http://localhost:8080/covers/{cover_filename}"
 
-        return {
-            "title": title,
-            "author": author,
-            "page_count": page_count,
-            "cover_url": cover_url
-        }
+        return f"http://localhost:8080/covers/{cover_filename}"
+
+    def _fallback_title(self, file_path):
+        """Generates clean title from filename if metadata is empty."""
+        filename = os.path.basename(file_path)
+        clean_name = filename.split("_", 1)[-1] if "_" in filename else filename
+        return os.path.splitext(clean_name)[0]
