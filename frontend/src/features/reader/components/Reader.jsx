@@ -5,6 +5,7 @@ import { useWork } from '../api/useWork';
 // Dynamic imports (Lazy Loading) - Readers are loaded on demand
 const PdfViewer = lazy(() => import('./viewers/PdfViewer'));
 const EpubViewer = lazy(() => import('./viewers/EpubViewer'));
+const MangaViewer = lazy(() => import('./viewers/MangaViewer'));
 
 export function Reader() {
   const activeBookId = useGlobalStore((state) => state.activeBookId);
@@ -62,8 +63,9 @@ export function Reader() {
           
           {fileExtension === 'pdf' && <PdfViewer fileUrl={book.fileUrl} />}
           {fileExtension === 'epub' && <EpubViewer fileUrl={book.fileUrl} />}
+          {fileExtension === 'cbz' && <MangaViewer fileUrl={book.fileUrl} />}
           
-          {fileExtension !== 'pdf' && fileExtension !== 'epub' && (
+          {fileExtension !== 'pdf' && fileExtension !== 'epub' && fileExtension !== 'cbz' && (
             <div className="text-zinc-400 text-center mt-10 font-medium">
               File format (.{fileExtension}) is not supported yet by the reader.
             </div>
