@@ -1,27 +1,85 @@
+version: '3.8'
+
 services:
-  db:
-    image: postgres:16-alpine
-    container_name: codice_db_dev
+  # 1. PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: codice_db
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-codice_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codice_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-codice_db}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      POSTGRES_USER: codice_user
+      POSTGRES_PASSWORD: codice_secret
+      POSTGRES_DB: codice_db
     volumes:
-      - pg_data_dev:/var/lib/postgresql/data
+      - codice_pgdata:/var/lib/postgresql/data
+    networks:
+      - codice_network
     restart: unless-stopped
 
+  # 2. Redis Queue & PubSub
   redis:
     image: redis:7-alpine
-    container_name: codice_redis_dev
-    command: redis-server --save 60 1 --loglevel warning
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis_data_dev:/data
+    container_name: codice_redis
+    networks:
+      - codice_network
     restart: unless-stopped
 
+  # 3. Go API Backend
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: codice_backend
+    environment:
+      - DATABASE_URL=postgres://codice_user:codice_secret@postgres:5432/codice_db?sslmode=disable
+      - REDIS_URL=redis://redis:6379/0
+      - CODICE_STORAGE_PATH=/app/storage
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./uploads:/app/storage
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - codice_network
+    restart: unless-stopped
+
+  # 4. Asynchronous Python Worker
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: codice_worker
+    environment:
+      - DATABASE_URL=postgres://codice_user:codice_secret@postgres:5432/codice_db?sslmode=disable
+      - REDIS_URL=redis://redis:6379/0
+      - CODICE_STORAGE_PATH=/app/storage
+    volumes:
+      - ./uploads:/app/storage
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - codice_network
+    restart: unless-stopped
+
+  # 5. React Frontend App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: codice_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - codice_network
+    restart: unless-stopped
+
+networks:
+  codice_network:
+    driver: bridge
+
 volumes:
-  pg_data_dev:
-  redis_data_dev:
+  codice_pgdata:
