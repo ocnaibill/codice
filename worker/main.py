@@ -9,6 +9,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 from processor import CodiceExtractor
 from db import CodiceDatabase
+from scraper import MetadataScraper
 
 # 1. Loads variables from the .env file located at the project root
 # The worker is inside the /worker folder, so the .env is one level up
@@ -49,6 +50,7 @@ def listen_for_tasks():
     
     extractor = CodiceExtractor()
     db = CodiceDatabase()
+    scraper = MetadataScraper()
     
     print("⏳ Python Worker waiting for PDFs in the queue...")
 
@@ -75,14 +77,22 @@ def listen_for_tasks():
                     print(f"   File: {file_path}")
                     
                     try:
-                        # 1. Extract metadata and cover image (Universal for PDF, EPUB, etc.)
+                        # 1. Local metadata and cover extraction (Fallback)
                         metadata = extractor.process_file(file_path)
-                        print(f"📄 Extracted metadata: {metadata['title']} ({metadata['page_count']} pages)")
+                        print(f"📄 Local metadata: {metadata['title']} ({metadata['page_count']} pages)")
                         
-                        # 2. Update database record
+                        # 2. Web enrichment via Google Books API
+                        enriched = scraper.fetch_metadata(metadata['title'])
+                        if enriched:
+                            metadata['title'] = enriched.get('title') or metadata['title']
+                            metadata['author'] = enriched.get('author') or metadata['author']
+                            if enriched.get('cover_url'):
+                                metadata['cover_url'] = enriched.get('cover_url')
+
+                        # 3. Save enriched metadata to PostgreSQL database
                         db.update_work_metadata(work_id, metadata)
                         
-                        # 3. Acknowledge task in Redis
+                        # 4. Acknowledge task in Redis
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
                         print(f"✅ Task {message_id} completed successfully.")
                         
