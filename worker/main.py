@@ -1,7 +1,11 @@
 import os
+import sys
 import time
 import redis
 from dotenv import load_dotenv
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 from processor import CodiceExtractor
 from db import CodiceDatabase
