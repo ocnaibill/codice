@@ -61,9 +61,27 @@ export function Reader() {
       <div className="flex-1 overflow-y-auto px-4 py-8 bg-zinc-900/30">
         <Suspense fallback={<div className="flex justify-center p-10 text-zinc-500 animate-pulse">Initializing reading engine...</div>}>
           
-          {fileExtension === 'pdf' && <PdfViewer fileUrl={book.fileUrl} />}
-          {fileExtension === 'epub' && <EpubViewer fileUrl={book.fileUrl} />}
-          {fileExtension === 'cbz' && <MangaViewer fileUrl={book.fileUrl} />}
+          {fileExtension === 'pdf' && (
+            <PdfViewer 
+              fileUrl={book.fileUrl} 
+              bookId={book.id} 
+              initialProgress={book.readingProgress} 
+            />
+          )}
+          {fileExtension === 'epub' && (
+            <EpubViewer 
+              fileUrl={book.fileUrl} 
+              bookId={book.id} 
+              initialProgress={book.readingProgress} 
+            />
+          )}
+          {fileExtension === 'cbz' && (
+            <MangaViewer 
+              fileUrl={book.fileUrl} 
+              bookId={book.id} 
+              initialProgress={book.readingProgress} 
+            />
+          )}
           
           {fileExtension !== 'pdf' && fileExtension !== 'epub' && fileExtension !== 'cbz' && (
             <div className="text-zinc-400 text-center mt-10 font-medium">
