@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
+	"github.com/ocnaibill/codice/backend/internal/middleware"
 )
 
 // Work represents the structure sent to the frontend
@@ -82,9 +83,14 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(works)
 }
 
-// GetWorkByID fetches a single work by its ID along with tags and reading progress
+// GetWorkByID fetches a single work by its ID along with tags and per-user reading progress
 func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	if userID == "" {
+		userID = middleware.DefaultDevUserID
+	}
 
 	var filePath sql.NullString
 	var progress sql.NullString
@@ -97,18 +103,19 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 			COALESCE(p.name, 'Unknown Author') as author, 
 			COALESCE(e.cover_url, '') as cover_url,
 			w.file_path,
-			w.reading_progress,
+			up.progress,
 			COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags
 		FROM works w
 		LEFT JOIN person p ON w.author_id = p.id
 		LEFT JOIN editions e ON w.id = e.work_id
+		LEFT JOIN user_progress up ON w.id = up.work_id AND up.user_id = $2
 		LEFT JOIN work_tags wt ON w.id = wt.work_id
 		LEFT JOIN tags t ON wt.tag_id = t.id
 		WHERE w.id = $1
-		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, w.reading_progress
+		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, up.progress
 	`
 
-	err := h.DB.QueryRow(query, id).Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &progress, pq.Array(&work.Tags))
+	err := h.DB.QueryRow(query, id, userID).Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &progress, pq.Array(&work.Tags))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Book not found", http.StatusNotFound)
@@ -236,9 +243,14 @@ type ProgressRequest struct {
 	Progress string `json:"progress"`
 }
 
-// UpdateProgress updates the reading progress location for a work
+// UpdateProgress updates the reading progress location for a work isolated by user_id
 func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	workID := chi.URLParam(r, "id")
+
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		userID = middleware.DefaultDevUserID
+	}
 
 	var req ProgressRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -246,9 +258,16 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, err := h.DB.Exec("UPDATE works SET reading_progress = $1 WHERE id = $2", req.Progress, id)
+	query := `
+		INSERT INTO user_progress (user_id, work_id, progress, updated_at)
+		VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+		ON CONFLICT (user_id, work_id) 
+		DO UPDATE SET progress = EXCLUDED.progress, updated_at = CURRENT_TIMESTAMP;
+	`
+
+	_, err := h.DB.Exec(query, userID, workID, req.Progress)
 	if err != nil {
-		http.Error(w, "Error saving reading progress", http.StatusInternalServerError)
+		http.Error(w, "Error saving isolated user reading progress", http.StatusInternalServerError)
 		return
 	}
 
@@ -288,6 +307,7 @@ func (h *LibraryHandler) DeleteWork(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	tx.Exec("DELETE FROM work_tags WHERE work_id = $1", id)
+	tx.Exec("DELETE FROM user_progress WHERE work_id = $1", id)
 	tx.Exec("DELETE FROM editions WHERE work_id = $1", id)
 
 	_, err = tx.Exec("DELETE FROM works WHERE id = $1", id)
