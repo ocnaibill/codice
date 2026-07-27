@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-from extractors import EpubExtractor, PdfExtractor, CbzExtractor, TxtExtractor
+from extractors import EpubExtractor, PdfExtractor, CbzExtractor, CbrExtractor, TxtExtractor, AudiobookExtractor
 from extractors.base import BaseExtractor
 from providers import ProviderRegistry
 from db import CodiceDatabase
@@ -63,7 +63,9 @@ def register_extractors() -> list:
         EpubExtractor(),
         PdfExtractor(),
         CbzExtractor(),
+        CbrExtractor(),
         TxtExtractor(),
+        AudiobookExtractor(),
     ]
 
 

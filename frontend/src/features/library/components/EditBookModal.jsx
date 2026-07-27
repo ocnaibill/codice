@@ -14,6 +14,9 @@ export function EditBookModal({ book, onClose }) {
   const [language, setLanguage] = useState(book.language || '');
   const [description, setDescription] = useState(book.description || '');
   const [tagsInput, setTagsInput] = useState(book.tags ? book.tags.join(', ') : '');
+  const [titleLock, setTitleLock] = useState(book.titleLock || false);
+  const [authorLock, setAuthorLock] = useState(book.authorLock || false);
+  const [coverLock, setCoverLock] = useState(book.coverLock || false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   const updateMutation = useMutation({
@@ -53,6 +56,9 @@ export function EditBookModal({ book, onClose }) {
       language,
       description,
       tags: cleanTags,
+      title_lock: titleLock,
+      author_lock: authorLock,
+      cover_lock: coverLock,
     });
   };
 
@@ -167,6 +173,28 @@ export function EditBookModal({ book, onClose }) {
               rows={3}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500 resize-none"
               disabled={isPending} />
+          </div>
+
+          {/* Lock toggles */}
+          <div className="flex items-center justify-between gap-4 border-t border-zinc-800/80 pt-4">
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="titleLock" checked={titleLock}
+                onChange={(e) => setTitleLock(e.target.checked)}
+                className="rounded bg-zinc-800 border-zinc-700 text-blue-600 focus:ring-blue-500" />
+              <label htmlFor="titleLock" className="text-xs text-zinc-400">🔒 Title</label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="authorLock" checked={authorLock}
+                onChange={(e) => setAuthorLock(e.target.checked)}
+                className="rounded bg-zinc-800 border-zinc-700 text-blue-600 focus:ring-blue-500" />
+              <label htmlFor="authorLock" className="text-xs text-zinc-400">🔒 Author</label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="coverLock" checked={coverLock}
+                onChange={(e) => setCoverLock(e.target.checked)}
+                className="rounded bg-zinc-800 border-zinc-700 text-blue-600 focus:ring-blue-500" />
+              <label htmlFor="coverLock" className="text-xs text-zinc-400">🔒 Cover</label>
+            </div>
           </div>
 
           {(updateMutation.isError || deleteMutation.isError) && (
