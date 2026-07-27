@@ -20,6 +20,7 @@ type Work struct {
 	Author          string   `json:"author"`
 	CoverURL        string   `json:"coverUrl"`
 	FileURL         string   `json:"fileUrl,omitempty"`
+	Format          string   `json:"format,omitempty"`
 	Tags            []string `json:"tags"`
 	ReadingProgress string   `json:"readingProgress,omitempty"`
 }
@@ -103,6 +104,7 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 			COALESCE(p.name, 'Unknown Author') as author, 
 			COALESCE(e.cover_url, '') as cover_url,
 			w.file_path,
+			w.format,
 			up.progress,
 			COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags
 		FROM works w
@@ -112,10 +114,10 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN work_tags wt ON w.id = wt.work_id
 		LEFT JOIN tags t ON wt.tag_id = t.id
 		WHERE w.id = $1
-		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, up.progress
+		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, w.format, up.progress
 	`
 
-	err := h.DB.QueryRow(query, id, userID).Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &progress, pq.Array(&work.Tags))
+	err := h.DB.QueryRow(query, id, userID).Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format, &progress, pq.Array(&work.Tags))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Book not found", http.StatusNotFound)
@@ -306,9 +308,18 @@ func (h *LibraryHandler) DeleteWork(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	tx.Exec("DELETE FROM work_tags WHERE work_id = $1", id)
-	tx.Exec("DELETE FROM user_progress WHERE work_id = $1", id)
-	tx.Exec("DELETE FROM editions WHERE work_id = $1", id)
+	if _, err = tx.Exec("DELETE FROM work_tags WHERE work_id = $1", id); err != nil {
+		http.Error(w, "Error deleting work tags", http.StatusInternalServerError)
+		return
+	}
+	if _, err = tx.Exec("DELETE FROM user_progress WHERE work_id = $1", id); err != nil {
+		http.Error(w, "Error deleting user progress", http.StatusInternalServerError)
+		return
+	}
+	if _, err = tx.Exec("DELETE FROM editions WHERE work_id = $1", id); err != nil {
+		http.Error(w, "Error deleting editions", http.StatusInternalServerError)
+		return
+	}
 
 	_, err = tx.Exec("DELETE FROM works WHERE id = $1", id)
 	if err != nil {
