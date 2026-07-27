@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/ocnaibill/codice/backend/internal/middleware"
 )
 
 type AuthHandler struct {
@@ -25,16 +26,24 @@ type AuthResponse struct {
 	Token string `json:"token"`
 }
 
-func getJWTSecret() []byte {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		secret = "default_codice_jwt_secret_key_change_me"
-	}
-	return []byte(secret)
-}
 
 // Register creates a new user account with hashed password
+// Registration can be disabled via ALLOW_REGISTRATION=false or APP_ENV=production without explicit ALLOW_REGISTRATION=true
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	allowRegistration := os.Getenv("ALLOW_REGISTRATION")
+	if allowRegistration == "" {
+		allowRegistration = "false"
+	}
+	appEnv := os.Getenv("APP_ENV")
+	if appEnv == "production" && allowRegistration != "true" {
+		http.Error(w, "Registration is disabled in production", http.StatusForbidden)
+		return
+	}
+	if allowRegistration == "false" {
+		http.Error(w, "Registration is disabled", http.StatusForbidden)
+		return
+	}
+
 	var req AuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
@@ -107,7 +116,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(getJWTSecret())
+	tokenString, err := token.SignedString(middleware.GetJWTSecret())
 	if err != nil {
 		http.Error(w, "Error generating authentication token", http.StatusInternalServerError)
 		return
@@ -187,7 +196,7 @@ func (h *AuthHandler) SetupMasterAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(getJWTSecret())
+	tokenString, err := token.SignedString(middleware.GetJWTSecret())
 	if err != nil {
 		http.Error(w, "Error generating authentication token", http.StatusInternalServerError)
 		return
