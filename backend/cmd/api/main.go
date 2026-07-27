@@ -24,7 +24,6 @@ func main() {
 	config.Load()
 
 	// 1. Connection with PostgreSQL
-	// Default to local docker-compose credentials if DATABASE_URL is not set
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		dbURL = "postgres://codice_user:codice_secret@localhost:5432/codice_db?sslmode=disable"
@@ -47,18 +46,17 @@ func main() {
 		log.Fatalf("❌ Database auto-migrations failed: %v", err)
 	}
 
-
 	// 2. Connection with Redis
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
 		redisURL = "redis://localhost:6379/0"
 	}
-	
+
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
 		log.Fatalf("Failed to parse Redis URL: %v", err)
 	}
-	
+
 	redisClient := redis.NewClient(opt)
 	if err := redisClient.Ping(context.Background()).Err(); err != nil {
 		log.Fatalf("Redis did not respond to ping: %v", err)
@@ -68,7 +66,7 @@ func main() {
 	// 3. Instantiate Handlers
 	libHandler := &handlers.LibraryHandler{DB: db}
 	uploadHandler := &handlers.UploadHandler{
-		DB:          db, 
+		DB:          db,
 		RedisClient: redisClient,
 	}
 	wsHandler := &handlers.WsHandler{
@@ -108,13 +106,15 @@ func main() {
 	r.Post("/auth/login", authHandler.Login)
 
 	// Protected Application Endpoints
-	r.Get("/works", libHandler.GetWorks)
+	r.With(appMiddleware.AuthMiddleware).Get("/works", libHandler.GetWorks)
 	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}", libHandler.GetWorkByID)
 	r.With(appMiddleware.AuthMiddleware).Put("/works/{id}", libHandler.UpdateWork)
 	r.With(appMiddleware.AuthMiddleware).Patch("/works/{id}/progress", libHandler.UpdateProgress)
 	r.With(appMiddleware.AuthMiddleware).Delete("/works/{id}", libHandler.DeleteWork)
 	r.With(appMiddleware.AuthMiddleware).Post("/upload", uploadHandler.HandleUpload)
 	r.With(appMiddleware.AuthMiddleware).Post("/works/bulk-import", uploadHandler.HandleBulkImport)
+
+	// WebSocket (auth handled inside handler for upgrade)
 	r.Get("/ws", wsHandler.HandleWS)
 
 	// Define base storage directory (fallback to ./uploads)
@@ -127,15 +127,15 @@ func main() {
 	coversPath := filepath.Join(storagePath, "covers")
 	os.MkdirAll(coversPath, 0755)
 
-	// Serve cover images as static files under /covers/
+	// Serve cover images under /covers/ (requires auth via header or ?token= query param)
 	fsCovers := http.StripPrefix("/covers/", http.FileServer(http.Dir(coversPath)))
-	r.Get("/covers/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.With(appMiddleware.AuthMiddleware).Get("/covers/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fsCovers.ServeHTTP(w, r)
 	}))
 
-	// Serve original files under /files/
+	// Serve original files under /files/ (requires auth via header or ?token= query param)
 	fsFiles := http.StripPrefix("/files/", http.FileServer(http.Dir(storagePath)))
-	r.Get("/files/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.With(appMiddleware.AuthMiddleware).Get("/files/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fsFiles.ServeHTTP(w, r)
 	}))
 
