@@ -122,7 +122,7 @@ class CodiceExtractor:
                 with open(cover_path, 'wb') as f:
                     f.write(archive.read(first_image))
 
-                cover_url = f"http://localhost:8080/covers/{cover_filename}"
+                cover_url = f"/covers/{cover_filename}"
 
         return {
             "title": title,
@@ -141,7 +141,7 @@ class CodiceExtractor:
             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
             pix.save(cover_path)
 
-        return f"http://localhost:8080/covers/{cover_filename}"
+        return f"/covers/{cover_filename}"
 
     def _fallback_title(self, file_path):
         """Generates clean title from filename if metadata is empty."""
