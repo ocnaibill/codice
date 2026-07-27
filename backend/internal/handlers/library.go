@@ -3,10 +3,12 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
@@ -30,8 +32,31 @@ type LibraryHandler struct {
 	DB *sql.DB
 }
 
-// GetWorks fetches works from PostgreSQL with aggregated tags
+// GetWorks fetches works from PostgreSQL with aggregated tags, server-side pagination and search
 func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
+	page := 1
+	limit := 50
+	search := r.URL.Query().Get("search")
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		if v, err := strconv.Atoi(p); err == nil && v > 0 {
+			page = v
+		}
+	}
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 100 {
+			limit = v
+		}
+	}
+	offset := (page - 1) * limit
+
+	var totalCount int
+	err := h.DB.QueryRow("SELECT COUNT(*) FROM works").Scan(&totalCount)
+	if err != nil {
+		http.Error(w, "Error counting works", http.StatusInternalServerError)
+		return
+	}
+
 	query := `
 		SELECT 
 			w.id, 
@@ -44,11 +69,23 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN editions e ON w.id = e.work_id
 		LEFT JOIN work_tags wt ON w.id = wt.work_id
 		LEFT JOIN tags t ON wt.tag_id = t.id
-		GROUP BY w.id, w.original_title, p.name, e.cover_url
-		ORDER BY w.id DESC
 	`
 
-	rows, err := h.DB.Query(query)
+	var args []interface{}
+	argIdx := 1
+
+	if search != "" {
+		query += fmt.Sprintf(" WHERE (LOWER(w.original_title) LIKE LOWER($%d) OR LOWER(COALESCE(p.name, '')) LIKE LOWER($%d))", argIdx, argIdx)
+		args = append(args, "%"+search+"%")
+		argIdx++
+	}
+
+	query += ` GROUP BY w.id, w.original_title, p.name, e.cover_url ORDER BY w.id DESC`
+
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	args = append(args, limit, offset)
+
+	rows, err := h.DB.Query(query, args...)
 	if err != nil {
 		http.Error(w, "Error fetching works", http.StatusInternalServerError)
 		return
@@ -63,7 +100,6 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Fallback cover if database returns empty string
 		if work.CoverURL == "" {
 			work.CoverURL = "/covers/placeholder.svg"
 		}
@@ -75,13 +111,18 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 		works = append(works, work)
 	}
 
-	// Prevent returning null (returns empty array)
 	if works == nil {
 		works = []Work{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(works)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data":       works,
+		"total":      totalCount,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": (totalCount + limit - 1) / limit,
+	})
 }
 
 // GetWorkByID fetches a single work by its ID along with tags and per-user reading progress

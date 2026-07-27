@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { useWork } from '../api/useWork';
+import { ErrorBoundary } from '../../../components/ErrorBoundary';
 
 // Dynamic imports (Lazy Loading) - Readers are loaded on demand
 const PdfViewer = lazy(() => import('./viewers/PdfViewer'));
@@ -60,6 +61,7 @@ export function Reader() {
       {/* Dynamic Reader Router Viewport */}
       <div className="flex-1 overflow-y-auto px-4 py-8 bg-zinc-900/30">
         <Suspense fallback={<div className="flex justify-center p-10 text-zinc-500 animate-pulse">Initializing reading engine...</div>}>
+          <ErrorBoundary>
           
           {format === 'pdf' && (
             <PdfViewer 
@@ -90,6 +92,7 @@ export function Reader() {
             </div>
           )}
 
+          </ErrorBoundary>
         </Suspense>
       </div>
     </div>
