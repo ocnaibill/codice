@@ -4,3 +4,5 @@ PyMuPDF>=1.23
 requests>=2.31
 python-dotenv>=1.0
 lxml>=5.0
+rarfile>=4.0
+mutagen>=1.47
