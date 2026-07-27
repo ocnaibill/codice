@@ -12,9 +12,17 @@ from processor import CodiceExtractor
 from db import CodiceDatabase
 from scraper import MetadataScraper
 
-# 1. Loads variables from the .env file located at the project root
-# The worker is inside the /worker folder, so the .env is one level up
-load_dotenv(dotenv_path="../.env")
+# 1. Loads variables from .env, trying multiple locations
+# The worker is inside /worker, so the .env is usually one level up
+env_paths = ["../.env", ".env"]
+loaded = False
+for p in env_paths:
+    if load_dotenv(dotenv_path=p):
+        print(f"Config loaded from: {p}")
+        loaded = True
+        break
+if not loaded:
+    print("Warning: No .env file found. Using system environment variables.")
 
 # 2. Configures the Redis connection
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
