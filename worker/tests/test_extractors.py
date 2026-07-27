@@ -142,10 +142,12 @@ class TestCbzExtractor:
             covers_dir = os.path.join(tmp, "covers")
             os.makedirs(covers_dir, exist_ok=True)
             meta = self.extractor.extract(cbz_path, covers_dir)
-            # The fallback_title overwrites with filename-based title.
-            # ComicInfo.xml IS parsed but filename fallback comes after.
-            # For now assert that series (from ComicInfo) is set correctly
-            assert meta.title == "test", f"got '{meta.title}' (filename-based fallback)"
+            # ComicInfo.xml is parsed; title comes from it
+            # _fallback_title only runs if parse didn't set a title
+            # But the CBZ filename is 'test.cbz', _fallback_title gives 'test',
+            # and the check `if not meta.title:` triggers because meta.title was
+            # set by _parse_comicinfo to 'Test Comic'. So this should pass.
+            assert meta.title == "Test Comic", f"got '{meta.title}'"
             assert meta.series == "Test Series"
             assert meta.series_index == 3.0
             assert meta.author == "John Doe"
