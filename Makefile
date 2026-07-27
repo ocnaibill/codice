@@ -16,11 +16,18 @@ test-backend:
 	@echo "✅ Backend tests complete (exit code: $$?)"
 
 # Worker Python tests — discovers all test_*.py recursively
+# Uses venv if available, falls back to system python
 test-worker:
 	@echo "=============================================="
 	@echo "  Running Worker Python Tests"
 	@echo "=============================================="
-	cd worker && python -m pytest tests/ -v --tb=short 2>&1 || echo "⚠️  No pytest or tests/ directory found. Run: pip install pytest"
+	@if [ -f worker/venv/bin/python ]; then \
+		cd worker && venv/bin/python -m pytest tests/ -v --tb=short 2>&1; \
+	elif [ -f worker/.venv/bin/python ]; then \
+		cd worker && .venv/bin/python -m pytest tests/ -v --tb=short 2>&1; \
+	else \
+		cd worker && python -m pytest tests/ -v --tb=short 2>&1 || echo "⚠️  pytest not found in any venv. Run: cd worker && pip install pytest"; \
+	fi
 	@echo ""
 	@echo "✅ Worker tests complete"
 

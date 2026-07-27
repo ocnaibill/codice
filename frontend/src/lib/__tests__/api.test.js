@@ -32,19 +32,27 @@ describe('authenticatedUrl', () => {
 });
 
 describe('wsUrl', () => {
-  it('returns ws:// for http protocol', () => {
-    window.location.protocol = 'http:';
-    window.location.host = 'localhost:5173';
-    localStorage.setItem('codice_token', 'tok');
+  it('uses ws:// and current host for http protocol', () => {
+    localStorage.setItem('codice_token', 'mytoken');
     const result = wsUrl('/ws');
-    expect(result).toBe('ws://localhost:5173/ws?token=tok');
+    // jsdom default: protocol=http:, host=localhost:3000
+    expect(result).toMatch(/^ws:\/\/localhost:3000\/ws\?token=mytoken$/);
   });
 
-  it('returns wss:// for https protocol', () => {
-    window.location.protocol = 'https:';
-    window.location.host = 'myserver.com';
+  it('uses wss:// and current host for https protocol', () => {
+    Object.defineProperty(window, 'location', {
+      value: { protocol: 'https:', host: 'myserver.com' },
+      writable: true,
+      configurable: true,
+    });
     localStorage.setItem('codice_token', 'tok');
     const result = wsUrl('/ws');
     expect(result).toBe('wss://myserver.com/ws?token=tok');
+    // restore
+    Object.defineProperty(window, 'location', {
+      value: { protocol: 'http:', host: 'localhost:3000' },
+      writable: true,
+      configurable: true,
+    });
   });
 });

@@ -21,7 +21,8 @@ class CbzExtractor(BaseExtractor):
         try:
             with zipfile.ZipFile(file_path, 'r') as zf:
                 # 1. Try to parse ComicInfo.xml
-                if 'ComicInfo.xml' in [f.lower() for f in zf.namelist()]:
+                comicinfo_present = any(f.lower() == 'comicinfo.xml' for f in zf.namelist())
+                if comicinfo_present:
                     # Find actual ComicInfo.xml (case-insensitive)
                     for name in zf.namelist():
                         if name.lower() == 'comicinfo.xml':
@@ -52,6 +53,7 @@ class CbzExtractor(BaseExtractor):
         except Exception as e:
             print(f"   ⚠️ CBZ extraction error: {e}")
 
+        # Only apply fallback if extractor didn't find any metadata at all
         if not meta.title:
             meta.title = self._fallback_title(file_path)
         if not meta.author:
