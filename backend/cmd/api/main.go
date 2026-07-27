@@ -140,6 +140,12 @@ func main() {
 	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/text", mediaHandler.ServeText)
 	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/audio", mediaHandler.ServeAudio)
 
+	// OPDS 1.2 Catalog (Basic Auth for mobile apps, JWT for web)
+	opdsHandler := &handlers.OPDSHandler{DB: db}
+	r.With(appMiddleware.AuthMiddleware).Get("/opds/v1.2/catalog", opdsHandler.RootCatalog)
+	r.With(appMiddleware.AuthMiddleware).Get("/opds/v1.2/recent", opdsHandler.RecentFeed)
+	r.With(appMiddleware.AuthMiddleware).Get("/opds/v1.2/search", opdsHandler.SearchFeed)
+
 	// WebSocket (auth handled inside handler for upgrade)
 	r.Get("/ws", wsHandler.HandleWS)
 
