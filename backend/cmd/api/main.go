@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ocnaibill/codice/backend/internal/config"
 	"github.com/ocnaibill/codice/backend/internal/database"
@@ -15,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/go-chi/httprate"
 	_ "github.com/lib/pq" // Underscore initializes the driver anonymously
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 )
@@ -99,11 +101,14 @@ func main() {
 		w.Write([]byte("📚 Códice API is online!"))
 	})
 
+	// Rate limiting for auth endpoints (SEC-09): 10 requests per minute per IP
+	authRateLimit := httprate.LimitByIP(10, 1*time.Minute)
+
 	// Public Auth & Setup Endpoints
-	r.Get("/auth/setup-status", authHandler.GetSetupStatus)
-	r.Post("/auth/setup", authHandler.SetupMasterAdmin)
-	r.Post("/auth/register", authHandler.Register)
-	r.Post("/auth/login", authHandler.Login)
+	r.With(authRateLimit).Get("/auth/setup-status", authHandler.GetSetupStatus)
+	r.With(authRateLimit).Post("/auth/setup", authHandler.SetupMasterAdmin)
+	r.With(authRateLimit).Post("/auth/register", authHandler.Register)
+	r.With(authRateLimit).Post("/auth/login", authHandler.Login)
 
 	// Protected Application Endpoints
 	r.With(appMiddleware.AuthMiddleware).Get("/works", libHandler.GetWorks)
