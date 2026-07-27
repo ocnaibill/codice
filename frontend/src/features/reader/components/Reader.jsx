@@ -79,6 +79,7 @@ export function Reader() {
             <MangaViewer 
               fileUrl={book.fileUrl} 
               bookId={book.id} 
+              workId={book.id}
               initialProgress={book.readingProgress} 
             />
           )}

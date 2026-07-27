@@ -129,6 +129,12 @@ func main() {
 	r.With(appMiddleware.AuthMiddleware).Post("/upload", uploadHandler.HandleUpload)
 	r.With(appMiddleware.AuthMiddleware).Post("/works/bulk-import", uploadHandler.HandleBulkImport)
 
+	// Page streaming endpoints (CBZ/CBR)
+	pageHandler := &handlers.PageHandler{DB: db}
+	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/pages", pageHandler.GetPages)
+	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/pages/{page}", pageHandler.ServePage)
+	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/pages/{page}/thumbnail", pageHandler.ServePageThumbnail)
+
 	// WebSocket (auth handled inside handler for upgrade)
 	r.Get("/ws", wsHandler.HandleWS)
 
