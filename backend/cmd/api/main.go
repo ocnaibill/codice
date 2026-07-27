@@ -135,6 +135,11 @@ func main() {
 	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/pages/{page}", pageHandler.ServePage)
 	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/pages/{page}/thumbnail", pageHandler.ServePageThumbnail)
 
+	// Text file serving (TXT, MD)
+	mediaHandler := &handlers.MediaHandler{DB: db}
+	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/text", mediaHandler.ServeText)
+	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/audio", mediaHandler.ServeAudio)
+
 	// WebSocket (auth handled inside handler for upgrade)
 	r.Get("/ws", wsHandler.HandleWS)
 

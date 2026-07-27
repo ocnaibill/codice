@@ -7,6 +7,9 @@ import { ErrorBoundary } from '../../../components/ErrorBoundary';
 const PdfViewer = lazy(() => import('./viewers/PdfViewer'));
 const EpubViewer = lazy(() => import('./viewers/EpubViewer'));
 const MangaViewer = lazy(() => import('./viewers/MangaViewer'));
+const TextViewer = lazy(() => import('./viewers/TextViewer'));
+const MarkdownViewer = lazy(() => import('./viewers/MarkdownViewer'));
+const AudioViewer = lazy(() => import('./viewers/AudioViewer'));
 
 export function Reader() {
   const activeBookId = useGlobalStore((state) => state.activeBookId);
@@ -39,6 +42,35 @@ export function Reader() {
   // Determine file format from backend metadata, fallback to file extension
   const format = (book.format || book.fileUrl.split('.').pop() || '').toLowerCase();
 
+  const renderViewer = () => {
+    switch (format) {
+      case 'pdf':
+        return <PdfViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+      case 'epub':
+        return <EpubViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+      case 'cbz':
+      case 'cbr':
+        return <MangaViewer fileUrl={book.fileUrl} bookId={book.id} workId={book.id} initialProgress={book.readingProgress} />;
+      case 'txt':
+        return <TextViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+      case 'md':
+        return <MarkdownViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+      case 'mp3':
+      case 'm4a':
+      case 'm4b':
+      case 'ogg':
+      case 'wav':
+      case 'flac':
+        return <AudioViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+      default:
+        return (
+          <div className="text-zinc-400 text-center mt-10 font-medium">
+            File format (.{format}) is not supported yet by the reader.
+          </div>
+        );
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-zinc-950">
       {/* Sticky Reader Header */}
@@ -59,39 +91,10 @@ export function Reader() {
       </div>
 
       {/* Dynamic Reader Router Viewport */}
-      <div className="flex-1 overflow-y-auto px-4 py-8 bg-zinc-900/30">
+      <div className="flex-1 overflow-y-auto bg-zinc-900/30">
         <Suspense fallback={<div className="flex justify-center p-10 text-zinc-500 animate-pulse">Initializing reading engine...</div>}>
           <ErrorBoundary>
-          
-          {format === 'pdf' && (
-            <PdfViewer 
-              fileUrl={book.fileUrl} 
-              bookId={book.id} 
-              initialProgress={book.readingProgress} 
-            />
-          )}
-          {format === 'epub' && (
-            <EpubViewer 
-              fileUrl={book.fileUrl} 
-              bookId={book.id} 
-              initialProgress={book.readingProgress} 
-            />
-          )}
-          {['cbz', 'cbr'].includes(format) && (
-            <MangaViewer 
-              fileUrl={book.fileUrl} 
-              bookId={book.id} 
-              workId={book.id}
-              initialProgress={book.readingProgress} 
-            />
-          )}
-          
-          {!['pdf', 'epub', 'cbz', 'cbr'].includes(format) && (
-            <div className="text-zinc-400 text-center mt-10 font-medium">
-              File format (.{format}) is not supported yet by the reader.
-            </div>
-          )}
-
+            {renderViewer()}
           </ErrorBoundary>
         </Suspense>
       </div>
