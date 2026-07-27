@@ -16,7 +16,7 @@ type OPDSHandler struct {
 	DB *sql.DB
 }
 
-func (h *OPDSHandler) opdsAuth(next http.Handler) http.Handler {
+func (h *OPDSHandler) OpdsAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
