@@ -22,6 +22,8 @@ function App() {
       try {
         const res = await api.get('/auth/setup-status');
         if (res.data.isFirstRun) {
+          // Always show first-run wizard regardless of stale tokens
+          localStorage.removeItem('codice_token');
           setIsFirstRun(true);
         } else {
           const token = localStorage.getItem('codice_token');
