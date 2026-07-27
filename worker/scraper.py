@@ -89,7 +89,7 @@ class MetadataScraper:
                         f.write(chunk)
                         
                 print(f"   ✅ Local cover saved: {cover_filename}")
-                return f"http://localhost:8080/covers/{cover_filename}"
+                return f"/covers/{cover_filename}"
         except Exception as e:
             print(f"   ⚠️ Failed to save web cover image locally: {e}")
 
