@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ocnaibill/codice/backend/internal/config"
@@ -14,7 +15,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/redis/go-redis/v9"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
 	_ "github.com/lib/pq" // Underscore initializes the driver anonymously
@@ -25,7 +26,7 @@ func main() {
 	// 0. Load environment variables from .env
 	config.Load()
 
-	// 1. Connection with PostgreSQL
+	// 1. Connection with PostgreSQL (PERF-02: connection pooling)
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		dbURL = "postgres://codice_user:codice_secret@localhost:5432/codice_db?sslmode=disable"
@@ -36,6 +37,12 @@ func main() {
 		log.Fatalf("Failed to open database connection: %v", err)
 	}
 	defer db.Close()
+
+	// Configure connection pool
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(1 * time.Minute)
 
 	// Ping database to verify active connection
 	if err := db.Ping(); err != nil {
@@ -83,8 +90,11 @@ func main() {
 
 	// 4. Configure Router
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	r.Use(chiMiddleware.Logger)
+	r.Use(chiMiddleware.Recoverer)
+
+	// PERF-03: Gzip compression middleware
+	r.Use(chiMiddleware.Compress(5, "text/html", "text/css", "text/javascript", "application/json", "application/javascript", "image/svg+xml"))
 
 	allowedOrigin := os.Getenv("CORS_ALLOWED_ORIGINS")
 	if allowedOrigin == "" {
@@ -132,15 +142,21 @@ func main() {
 	coversPath := filepath.Join(storagePath, "covers")
 	os.MkdirAll(coversPath, 0755)
 
-	// Serve cover images under /covers/ (requires auth via header or ?token= query param)
+	// Helper to serve static files with Cache-Control headers (PERF-04)
 	fsCovers := http.StripPrefix("/covers/", http.FileServer(http.Dir(coversPath)))
 	r.With(appMiddleware.AuthMiddleware).Get("/covers/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Cache images for 7 days, revalidate
+		w.Header().Set("Cache-Control", "public, max-age=604800, must-revalidate")
+		if strings.HasSuffix(r.URL.Path, ".svg") {
+			w.Header().Set("Content-Type", "image/svg+xml")
+		}
 		fsCovers.ServeHTTP(w, r)
 	}))
 
-	// Serve original files under /files/ (requires auth via header or ?token= query param)
 	fsFiles := http.StripPrefix("/files/", http.FileServer(http.Dir(storagePath)))
 	r.With(appMiddleware.AuthMiddleware).Get("/files/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Do not cache original files (could be large, user might delete)
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		fsFiles.ServeHTTP(w, r)
 	}))
 
