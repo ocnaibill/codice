@@ -14,6 +14,7 @@
 
 # Backend
 backend/uploads/
+backend/api
 .exe
 .exe~
 *.dll
