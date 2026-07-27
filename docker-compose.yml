@@ -7,6 +7,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-codice_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codice_secret}
       POSTGRES_DB: ${POSTGRES_DB:-codice_db}
+    ports:
+      - "5432:5432"
     volumes:
       - codice_pgdata:/var/lib/postgresql/data
     networks:
@@ -17,65 +19,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: codice_redis
-    networks:
-      - codice_network
-    restart: unless-stopped
-
-  # 3. Go API Backend
-  backend:
-    build: 
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: codice_backend
-    environment:
-      APP_ENV: ${APP_ENV:-production}
-      DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD:-codice_secret}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
-      CODICE_STORAGE_PATH: /app/storage
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
-      PORT: "8080"
     ports:
-      - "8080:8080"
-    volumes:
-      - ./uploads:/app/storage
-    depends_on:
-      - postgres
-      - redis
-    networks:
-      - codice_network
-    restart: unless-stopped
-
-  # 4. Asynchronous Python Worker
-  worker:
-    build:
-      context: ./worker
-      dockerfile: Dockerfile
-    container_name: codice_worker
-    environment:
-      APP_ENV: ${APP_ENV:-production}
-      DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD:-codice_secret}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
-      CODICE_STORAGE_PATH: /app/storage
-    volumes:
-      - ./uploads:/app/storage
-    depends_on:
-      - postgres
-      - redis
-    networks:
-      - codice_network
-    restart: unless-stopped
-
-  # 5. React Frontend App
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: codice_frontend
-    ports:
-      - "5173:80"
-    depends_on:
-      - backend
+      - "6379:6379"
     networks:
       - codice_network
     restart: unless-stopped
