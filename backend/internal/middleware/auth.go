@@ -9,7 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func getJWTSecret() []byte {
+func GetJWTSecret() []byte {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		if os.Getenv("APP_ENV") == "production" {
@@ -63,7 +63,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
 			}
-			return getJWTSecret(), nil
+			return GetJWTSecret(), nil
 		})
 
 		if err != nil || !token.Valid {
