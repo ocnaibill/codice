@@ -8,12 +8,13 @@ from dotenv import load_dotenv
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-from processor import CodiceExtractor
+from extractors import EpubExtractor, PdfExtractor, CbzExtractor, TxtExtractor
+from extractors.base import BaseExtractor
+from providers import ProviderRegistry
 from db import CodiceDatabase
-from scraper import MetadataScraper
+from analyzer import Analyzer, MediaStatus
 
 # 1. Loads variables from .env, trying multiple locations
-# The worker is inside /worker, so the .env is usually one level up
 env_paths = ["../.env", ".env"]
 loaded = False
 for p in env_paths:
@@ -30,15 +31,16 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 r = redis.from_url(
     REDIS_URL, 
     decode_responses=True,
-    socket_timeout=10.0,         # Must be strictly GREATER than 'block' time (5s)
-    socket_connect_timeout=5.0,  # Max time for first connection attempt
-    socket_keepalive=True,       # Prevent network drops on idle connection
-    retry_on_timeout=True        # Silently retry on transient timeout
+    socket_timeout=10.0,
+    socket_connect_timeout=5.0,
+    socket_keepalive=True,
+    retry_on_timeout=True
 )
 
 STREAM_NAME = 'ingestion_tasks'
 GROUP_NAME = 'python_workers'
 CONSUMER_NAME = 'worker_1'
+
 
 def setup_redis_stream():
     """Creates the Consumer Group in Redis, if it does not exist."""
@@ -54,22 +56,42 @@ def setup_redis_stream():
         print("❌ Could not connect to Redis. Is the container running?")
         exit(1)
 
+
+def register_extractors() -> list:
+    """Register all available format extractors."""
+    return [
+        EpubExtractor(),
+        PdfExtractor(),
+        CbzExtractor(),
+        TxtExtractor(),
+    ]
+
+
+def find_extractor(extractors: list, file_path: str) -> BaseExtractor:
+    """Find the first extractor that can handle the given file."""
+    for ext in extractors:
+        if ext.can_extract(file_path):
+            return ext
+    raise ValueError(f"Unsupported format: {file_path}")
+
+
 def listen_for_tasks():
     setup_redis_stream()
-    
-    extractor = CodiceExtractor()
+
     db = CodiceDatabase()
-    scraper = MetadataScraper()
-    
-    print("⏳ Python Worker waiting for PDFs in the queue...")
+    extractors = register_extractors()
+    provider_registry = ProviderRegistry()
+    analyzer = Analyzer(db)
+
+    print("⏳ Python Worker waiting for tasks in the queue...")
 
     while True:
         try:
             messages = r.xreadgroup(
-                groupname=GROUP_NAME, 
-                consumername=CONSUMER_NAME, 
-                streams={STREAM_NAME: '>'}, 
-                block=5000, 
+                groupname=GROUP_NAME,
+                consumername=CONSUMER_NAME,
+                streams={STREAM_NAME: '>'},
+                block=5000,
                 count=1
             )
 
@@ -80,60 +102,93 @@ def listen_for_tasks():
                 for message_id, data in message_list:
                     file_path = data.get('file_path')
                     work_id = data.get('work_id')
-                    
+
                     print(f"\n📥 New task received! ID: {message_id}")
                     print(f"   Work ID: {work_id}")
                     print(f"   File: {file_path}")
-                    
+
                     try:
-                        # 1. Local metadata and cover extraction (Fallback)
-                        metadata = extractor.process_file(file_path)
-                        print(f"📄 Local metadata: {metadata['title']} ({metadata['page_count']} pages)")
-                        
-                        # 2. Web enrichment via Google Books / OpenLibrary API
+                        # 1. Set status to ANALYZING
+                        analyzer.update_status(work_id, MediaStatus.ANALYZING)
+
+                        # 2. Find the right extractor
+                        extractor = find_extractor(extractors, file_path)
+                        print(f"   🔍 Using extractor: {extractor.__class__.__name__}")
+
+                        # 3. Extract local metadata
+                        covers_dir = os.path.join(
+                            os.getenv('CODICE_STORAGE_PATH', './uploads'),
+                            'covers'
+                        )
+                        os.makedirs(covers_dir, exist_ok=True)
+
+                        metadata = extractor.extract(file_path, covers_dir)
+                        print(f"   📄 Local metadata: {metadata.title} ({metadata.page_count} pages)")
+
+                        # 4. Enrich via external providers
                         original_filename = os.path.basename(file_path)
-                        enriched = scraper.fetch_metadata(metadata['title'])
+                        enriched = provider_registry.search(metadata.title, metadata.format)
                         if enriched:
-                            metadata['title'] = enriched.get('title') or metadata['title']
-                            metadata['author'] = enriched.get('author') or metadata['author']
-                            
-                            # Transfer web tags to work metadata
-                            if enriched.get('tags'):
-                                metadata['tags'] = enriched['tags']
+                            if enriched.title:
+                                metadata.title = enriched.title
+                            if enriched.author:
+                                metadata.author = enriched.author
+                            if enriched.series:
+                                metadata.series = enriched.series
+                            if enriched.series_index:
+                                metadata.series_index = enriched.series_index
+                            if enriched.isbn:
+                                metadata.isbn = enriched.isbn
+                            if enriched.description:
+                                metadata.description = enriched.description
+                            if enriched.tags:
+                                metadata.tags = enriched.tags
 
-                            # Cache web cover image locally for privacy and self-hosting performance
-                            if enriched.get('cover_url'):
-                                local_cover = scraper.download_cover(enriched['cover_url'], original_filename)
+                            # Download cover from provider
+                            if enriched.cover_url:
+                                local_cover = provider_registry._providers['default'][0].download_cover(
+                                    enriched.cover_url, file_path, covers_dir
+                                )
                                 if local_cover:
-                                    metadata['cover_url'] = local_cover
+                                    metadata.cover_path = local_cover
 
-                        # 3. Save enriched metadata to PostgreSQL database
-                        db.update_work_metadata(work_id, metadata)
-                        
-                        # 4. Broadcast WORK_READY event via Redis PubSub for real-time WebSocket updates
+                        # 5. Save to database
+                        analyzer.save_metadata(work_id, {
+                            'title': metadata.title,
+                            'author': metadata.author,
+                            'format': metadata.format,
+                            'page_count': metadata.page_count,
+                            'cover_path': metadata.cover_path,
+                        })
+
+                        # 6. Set status to READY
+                        analyzer.update_status(work_id, MediaStatus.READY)
+
+                        # 7. Broadcast WORK_READY event
                         event = {
                             "type": "WORK_READY",
                             "work_id": work_id,
-                            "title": metadata.get('title', 'Book')
+                            "title": metadata.title
                         }
                         r.publish('codice_updates', json.dumps(event))
                         print(f"📡 Broadcast WORK_READY event for Work ID: {work_id}")
 
-                        # 5. Acknowledge task in Redis
+                        # 8. Acknowledge task
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
                         print(f"✅ Task {message_id} completed successfully.")
-                        
+
                     except (ValueError, FileNotFoundError) as sec_err:
                         print(f"⚠️ Validation/security error: {sec_err}")
-                        # Acknowledge task to remove invalid/malicious item from queue
+                        analyzer.update_status(work_id, MediaStatus.ERROR, str(sec_err))
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
                     except Exception as err:
                         print(f"❌ Processing failure: {err}")
-                        # Temporary errors remain pending for future retry
+                        analyzer.update_status(work_id, MediaStatus.ERROR, str(err))
 
         except Exception as e:
             print(f"⚠️ Unexpected network error: {e}")
             time.sleep(2)
+
 
 if __name__ == "__main__":
     listen_for_tasks()

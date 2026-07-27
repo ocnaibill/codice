@@ -1,5 +1,6 @@
-PyMuPDF
-redis
-python-dotenv
-psycopg2-binary
-requests
+redis>=5.0
+psycopg2-binary>=2.9
+PyMuPDF>=1.23
+requests>=2.31
+python-dotenv>=1.0
+lxml>=5.0
