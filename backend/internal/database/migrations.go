@@ -65,6 +65,28 @@ func RunAutoMigrations(db *sql.DB) error {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (user_id, work_id)
 		);`,
+
+		// 6. Migration 008: Metadata columns for extraction pipeline
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS media_status VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN';`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS media_error TEXT;`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS media_analysis_started_at TIMESTAMP;`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS media_analysis_completed_at TIMESTAMP;`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS series VARCHAR(512);`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS series_index REAL DEFAULT 0;`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS isbn VARCHAR(32);`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS language VARCHAR(16);`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS publisher VARCHAR(256);`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS publication_date VARCHAR(32);`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS description TEXT;`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS page_count INTEGER DEFAULT 0;`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS title_lock BOOLEAN NOT NULL DEFAULT FALSE;`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS author_lock BOOLEAN NOT NULL DEFAULT FALSE;`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS series_lock BOOLEAN NOT NULL DEFAULT FALSE;`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS cover_lock BOOLEAN NOT NULL DEFAULT FALSE;`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS progress_type VARCHAR(16) DEFAULT 'page';`,
+		`ALTER TABLE works ADD COLUMN IF NOT EXISTS progress_percent REAL DEFAULT 0;`,
+		`CREATE INDEX IF NOT EXISTS idx_works_media_status ON works(media_status);`,
+		`CREATE INDEX IF NOT EXISTS idx_works_series ON works(series);`,
 	}
 
 	for _, stmt := range statements {
