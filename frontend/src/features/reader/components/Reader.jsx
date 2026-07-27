@@ -35,8 +35,8 @@ export function Reader() {
     );
   }
 
-  // Determine file extension from URL
-  const fileExtension = book.fileUrl.split('.').pop().toLowerCase();
+  // Determine file format from backend metadata, fallback to file extension
+  const format = (book.format || book.fileUrl.split('.').pop() || '').toLowerCase();
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-zinc-950">
@@ -61,21 +61,21 @@ export function Reader() {
       <div className="flex-1 overflow-y-auto px-4 py-8 bg-zinc-900/30">
         <Suspense fallback={<div className="flex justify-center p-10 text-zinc-500 animate-pulse">Initializing reading engine...</div>}>
           
-          {fileExtension === 'pdf' && (
+          {format === 'pdf' && (
             <PdfViewer 
               fileUrl={book.fileUrl} 
               bookId={book.id} 
               initialProgress={book.readingProgress} 
             />
           )}
-          {fileExtension === 'epub' && (
+          {format === 'epub' && (
             <EpubViewer 
               fileUrl={book.fileUrl} 
               bookId={book.id} 
               initialProgress={book.readingProgress} 
             />
           )}
-          {fileExtension === 'cbz' && (
+          {['cbz', 'cbr'].includes(format) && (
             <MangaViewer 
               fileUrl={book.fileUrl} 
               bookId={book.id} 
@@ -83,9 +83,9 @@ export function Reader() {
             />
           )}
           
-          {fileExtension !== 'pdf' && fileExtension !== 'epub' && fileExtension !== 'cbz' && (
+          {!['pdf', 'epub', 'cbz', 'cbr'].includes(format) && (
             <div className="text-zinc-400 text-center mt-10 font-medium">
-              File format (.{fileExtension}) is not supported yet by the reader.
+              File format (.{format}) is not supported yet by the reader.
             </div>
           )}
 
