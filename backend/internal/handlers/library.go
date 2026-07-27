@@ -61,16 +61,16 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error reading data", http.StatusInternalServerError)
 			return
 		}
-		
+
 		// Fallback cover if database returns empty string
 		if work.CoverURL == "" {
-			work.CoverURL = "https://via.placeholder.com/300x450/1f2937/d1d5db?text=No+Cover"
+			work.CoverURL = "/covers/placeholder.svg"
 		}
 
 		if work.Tags == nil {
 			work.Tags = []string{}
 		}
-		
+
 		works = append(works, work)
 	}
 
@@ -126,7 +126,7 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if work.CoverURL == "" {
-		work.CoverURL = "https://via.placeholder.com/300x450/1f2937/d1d5db?text=No+Cover"
+		work.CoverURL = "/covers/placeholder.svg"
 	}
 
 	if work.Tags == nil {
@@ -138,7 +138,7 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if filePath.Valid && filePath.String != "" {
-		work.FileURL = "http://localhost:8080/files/" + filePath.String
+		work.FileURL = "/files/" + filePath.String
 	}
 
 	w.Header().Set("Content-Type", "application/json")
