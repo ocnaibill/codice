@@ -7,7 +7,7 @@ import { useGlobalStore } from './store/useGlobalStore';
 import { UploadModal } from './features/upload/components/UploadModal';
 import { Auth } from './features/auth/components/Auth';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
-import { api } from './lib/api';
+import { api, wsUrl } from './lib/api';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -42,8 +42,8 @@ function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Establish WebSocket connection with Go backend when authenticated
-    const ws = new WebSocket('ws://localhost:8080/ws');
+    // Establish WebSocket connection with dynamic host/protocol
+    const ws = new WebSocket(wsUrl('/ws'));
 
     ws.onmessage = (event) => {
       try {
