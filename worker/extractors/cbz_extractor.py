@@ -53,7 +53,8 @@ class CbzExtractor(BaseExtractor):
         except Exception as e:
             print(f"   ⚠️ CBZ extraction error: {e}")
 
-        # Only apply fallback if extractor didn't find any metadata at all
+        # If ComicInfo.xml was parsed and provided a title, keep it
+        # Otherwise fallback to filename
         if not meta.title:
             meta.title = self._fallback_title(file_path)
         if not meta.author:
