@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { useWorks } from '../api/useWorks';
 import { EditBookModal } from './EditBookModal';
+import { authenticatedUrl } from '../../../lib/api';
 
 export function BookGrid() {
   const [activeFilter, setActiveFilter] = useState('All');
@@ -102,7 +103,7 @@ export function BookGrid() {
                     ✎
                   </button>
                   <img 
-                    src={work.coverUrl} 
+                    src={authenticatedUrl(work.coverUrl)} 
                     alt={work.title} 
                     className="h-full w-full object-cover transition-opacity duration-300 group-hover:opacity-90"
                   />
