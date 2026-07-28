@@ -20,17 +20,34 @@ api.interceptors.request.use((config) => {
  */
 export function authenticatedUrl(path) {
   const token = localStorage.getItem('codice_token');
-  if (!token) return path;
-  const separator = path.includes('?') ? '&' : '?';
-  return `${path}${separator}token=${encodeURIComponent(token)}`;
+  const baseUrl = import.meta.env.VITE_API_URL || '';
+  
+  // Se o path já tem http (ex: full URL) ignora o baseUrl, senão concatena
+  const fullUrl = path.startsWith('http') ? path : `${baseUrl}${path}`;
+  
+  if (!token) return fullUrl;
+  
+  const separator = fullUrl.includes('?') ? '&' : '?';
+  return `${fullUrl}${separator}token=${encodeURIComponent(token)}`;
 }
 
 /**
  * Returns a WebSocket URL for the given path, using the correct protocol and host
  */
 export function wsUrl(path) {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
+  const baseUrl = import.meta.env.VITE_API_URL || '';
   const token = localStorage.getItem('codice_token');
-  return `${protocol}//${host}${path}?token=${encodeURIComponent(token)}`;
+  let wsBase = '';
+
+  if (baseUrl) {
+    // Converte http:// para ws:// e https:// para wss:// baseando-se no VITE_API_URL
+    wsBase = baseUrl.replace(/^http/, 'ws');
+  } else {
+    // Fallback pra mesma origem do frontend se não tiver API_URL
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    wsBase = `${protocol}//${host}`;
+  }
+
+  return `${wsBase}${path}?token=${encodeURIComponent(token)}`;
 }
