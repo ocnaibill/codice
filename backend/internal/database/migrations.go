@@ -87,6 +87,33 @@ func RunAutoMigrations(db *sql.DB) error {
 		`ALTER TABLE works ADD COLUMN IF NOT EXISTS progress_percent REAL DEFAULT 0;`,
 		`CREATE INDEX IF NOT EXISTS idx_works_media_status ON works(media_status);`,
 		`CREATE INDEX IF NOT EXISTS idx_works_series ON works(series);`,
+
+		// 7. Migration 009: work_identifiers and media_pages tables
+		`CREATE TABLE IF NOT EXISTS work_identifiers (
+			id SERIAL PRIMARY KEY,
+			work_id INT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+			identifier_type VARCHAR(32) NOT NULL,
+			identifier_value VARCHAR(128) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(work_id, identifier_type, identifier_value)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_work_identifiers_work_id ON work_identifiers(work_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_work_identifiers_type_value ON work_identifiers(identifier_type, identifier_value);`,
+		`CREATE TABLE IF NOT EXISTS media_pages (
+			id SERIAL PRIMARY KEY,
+			work_id INT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+			page_number INT NOT NULL,
+			file_name VARCHAR(512),
+			media_type VARCHAR(16) DEFAULT 'image',
+			page_type VARCHAR(32) DEFAULT 'story',
+			width INT,
+			height INT,
+			file_size INT,
+			file_hash VARCHAR(64),
+			UNIQUE(work_id, page_number)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_media_pages_work_id ON media_pages(work_id);`,
+		`COMMENT ON COLUMN works.isbn IS 'Denormalized convenience field. Canonical identifiers are in work_identifiers table.';`,
 	}
 
 	for _, stmt := range statements {

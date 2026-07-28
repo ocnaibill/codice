@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -29,6 +30,9 @@ type PageInfo struct {
 type PageHandler struct {
 	DB *sql.DB
 }
+
+// validImageExts is the set of image extensions accepted for pages.
+var validImageExts = map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
 
 // GetPages returns the list of pages in a work's file
 func (h *PageHandler) GetPages(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +68,13 @@ func (h *PageHandler) GetPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pages, err := listCBZPages(fullPath)
+	var pages []PageInfo
+	switch ext {
+	case ".cbz":
+		pages, err = listCBZPages(fullPath)
+	case ".cbr":
+		pages, err = listCachedPages(fullPath, id, storagePath)
+	}
 	if err != nil {
 		log.Printf("Error listing pages in %s: %v", fullPath, err)
 		http.Error(w, "Error reading archive", http.StatusInternalServerError)
@@ -104,7 +114,16 @@ func (h *PageHandler) ServePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fullPath := filepath.Join(storagePath, filePath.String)
-	servePageFromZip(w, r, fullPath, pageNum)
+	ext := strings.ToLower(filepath.Ext(fullPath))
+
+	switch ext {
+	case ".cbz":
+		servePageFromZip(w, r, fullPath, pageNum)
+	case ".cbr":
+		servePageFromCache(w, r, id, storagePath, pageNum)
+	default:
+		http.Error(w, "Format does not support page serving", http.StatusBadRequest)
+	}
 }
 
 // ServePageThumbnail streams a reduced thumbnail for a page
@@ -137,8 +156,19 @@ func (h *PageHandler) ServePageThumbnail(w http.ResponseWriter, r *http.Request)
 	}
 
 	fullPath := filepath.Join(storagePath, filePath.String)
-	servePageFromZip(w, r, fullPath, pageNum)
+	ext := strings.ToLower(filepath.Ext(fullPath))
+
+	switch ext {
+	case ".cbz":
+		servePageFromZip(w, r, fullPath, pageNum)
+	case ".cbr":
+		servePageFromCache(w, r, id, storagePath, pageNum)
+	default:
+		http.Error(w, "Format does not support page serving", http.StatusBadRequest)
+	}
 }
+
+// --- CBZ: direct ZIP access ---
 
 func listCBZPages(zipPath string) ([]PageInfo, error) {
 	reader, err := zip.OpenReader(zipPath)
@@ -147,12 +177,11 @@ func listCBZPages(zipPath string) ([]PageInfo, error) {
 	}
 	defer reader.Close()
 
-	validExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
 	var images []string
 
 	for _, f := range reader.File {
 		ext := strings.ToLower(filepath.Ext(f.Name))
-		if validExts[ext] && !f.FileInfo().IsDir() {
+		if validImageExts[ext] && !f.FileInfo().IsDir() {
 			images = append(images, f.Name)
 		}
 	}
@@ -181,12 +210,11 @@ func servePageFromZip(w http.ResponseWriter, r *http.Request, zipPath string, pa
 	}
 	defer reader.Close()
 
-	validExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
 	var images []string
 
 	for _, f := range reader.File {
 		ext := strings.ToLower(filepath.Ext(f.Name))
-		if validExts[ext] && !f.FileInfo().IsDir() {
+		if validImageExts[ext] && !f.FileInfo().IsDir() {
 			images = append(images, f.Name)
 		}
 	}
@@ -235,4 +263,116 @@ func servePageFromZip(w http.ResponseWriter, r *http.Request, zipPath string, pa
 	}
 
 	http.Error(w, "Page not found", http.StatusNotFound)
+}
+
+// --- CBR: extract to cache on first access ---
+
+func listCachedPages(rarPath string, workID string, storagePath string) ([]PageInfo, error) {
+	cacheDir := filepath.Join(storagePath, "cache", "pages", workID)
+
+	// If cache doesn't exist, extract via external unrar command
+	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
+		if err := extractCBR(rarPath, cacheDir); err != nil {
+			return nil, fmt.Errorf("failed to extract CBR: %w", err)
+		}
+	}
+
+	// List images from cache directory
+	var images []string
+
+	filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(info.Name()))
+		if validImageExts[ext] {
+			images = append(images, info.Name())
+		}
+		return nil
+	})
+
+	sort.Strings(images)
+
+	pages := make([]PageInfo, 0, len(images))
+	for i, name := range images {
+		pages = append(pages, PageInfo{
+			Number:   i,
+			FileName: name,
+			URL:      fmt.Sprintf("/pages/%d", i),
+		})
+	}
+
+	return pages, nil
+}
+
+func extractCBR(rarPath string, cacheDir string) error {
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return fmt.Errorf("failed to create cache dir: %w", err)
+	}
+
+	// Use system unrar command (available in Docker images via apt/apk)
+	cmd := exec.Command("unrar", "e", "-o+", rarPath, cacheDir+string(os.PathSeparator))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("unrar failed: %s - %w", string(output), err)
+	}
+
+	// Remove non-image files that may have been extracted (ComicInfo.xml, etc.)
+	filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(info.Name()))
+		if !validImageExts[ext] {
+			os.Remove(path)
+		}
+		return nil
+	})
+
+	return nil
+}
+
+func servePageFromCache(w http.ResponseWriter, r *http.Request, workID string, storagePath string, pageNum int) {
+	cacheDir := filepath.Join(storagePath, "cache", "pages", workID)
+
+	// Ensure extracted
+	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
+		http.Error(w, "Pages not yet extracted. Call GetPages first.", http.StatusNotFound)
+		return
+	}
+
+	// List and sort images
+	var images []string
+	filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(info.Name()))
+		if validImageExts[ext] {
+			images = append(images, info.Name())
+		}
+		return nil
+	})
+	sort.Strings(images)
+
+	if pageNum < 0 || pageNum >= len(images) {
+		http.Error(w, "Page not found", http.StatusNotFound)
+		return
+	}
+
+	pagePath := filepath.Join(cacheDir, images[pageNum])
+
+	// Detect content type from extension
+	ext := strings.ToLower(filepath.Ext(images[pageNum]))
+	contentType := "image/jpeg"
+	switch ext {
+	case ".png":
+		contentType = "image/png"
+	case ".webp":
+		contentType = "image/webp"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=604800, must-revalidate")
+	http.ServeFile(w, r, pagePath)
 }
