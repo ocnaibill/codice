@@ -46,3 +46,13 @@ class ProviderRegistry:
 
         print("   ❌ No metadata found from any provider")
         return None
+
+    def download_cover(self, cover_url: str, file_path: str, covers_dir: str) -> str:
+        """Download cover image using the first available provider."""
+        for provider_list in self._providers.values():
+            for provider in provider_list:
+                if hasattr(provider, 'download_cover'):
+                    result = provider.download_cover(cover_url, file_path, covers_dir)
+                    if result:
+                        return result
+        return ""

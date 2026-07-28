@@ -24,15 +24,17 @@ class EpubExtractor(BaseExtractor):
                 if opf_path:
                     self._parse_opf(zf, opf_path, meta, file_path, covers_dir)
                 else:
-                    # Fallback: try to find container.xml
+                    # Fallback: try to find container.xml via XML parser
                     try:
-                        container_xml = zf.read('META-INF/container.xml').decode('utf-8')
-                        import re
-                        match = re.search(r'full-path="([^"]+)"', container_xml)
-                        if match:
-                            opf_path = match.group(1)
+                        from lxml import etree
+                        container_data = zf.read('META-INF/container.xml')
+                        container_root = etree.fromstring(container_data, parser=etree.XMLParser(recover=True))
+                        ns = {'c': 'urn:oasis:names:tc:opendocument:xmlns:container'}
+                        rootfile = container_root.find('.//c:rootfile', ns)
+                        if rootfile is not None:
+                            opf_path = rootfile.get('full-path')
                             self._parse_opf(zf, opf_path, meta, file_path, covers_dir)
-                    except (KeyError, UnicodeDecodeError):
+                    except (KeyError, Exception):
                         pass
 
                 # Count pages (xhtml files)
@@ -60,14 +62,14 @@ class EpubExtractor(BaseExtractor):
 
     def _parse_opf(self, zf, opf_path, meta, file_path, covers_dir):
         try:
-            import xml.etree.ElementTree as ET
+            from lxml import etree
             ns = {
                 'dc': 'http://purl.org/dc/elements/1.1/',
                 'opf': 'http://www.idpf.org/2007/opf',
             }
 
             opf_data = zf.read(opf_path)
-            root = ET.fromstring(opf_data)
+            root = etree.fromstring(opf_data, parser=etree.XMLParser(recover=True, encoding='utf-8'))
 
             # Dublin Core metadata
             for elem in root.iter():

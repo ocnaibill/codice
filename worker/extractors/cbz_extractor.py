@@ -33,13 +33,17 @@ class CbzExtractor(BaseExtractor):
                                 print(f"   ⚠️ ComicInfo.xml parse error: {e}")
                             break
 
-                # 2. Count image pages
+                # 2. Count image pages and store page metadata
                 valid_exts = ('.jpg', '.jpeg', '.png', '.webp')
                 images = sorted([
                     f for f in zf.namelist()
                     if f.lower().endswith(valid_exts) and not f.endswith('/')
                 ])
                 meta.page_count = len(images)
+                meta.raw['pages'] = [
+                    {'page_number': i, 'file_name': name}
+                    for i, name in enumerate(images)
+                ]
 
                 # 3. Extract cover from first image
                 if images and not meta.cover_path:
