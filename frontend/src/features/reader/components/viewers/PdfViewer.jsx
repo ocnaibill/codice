@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { api } from '../../../../lib/api';
+import { api, authenticatedUrl } from '../../../../lib/api';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -82,7 +82,7 @@ export default function PdfViewer({ fileUrl, bookId, initialProgress }) {
       {/* PDF Page Rendering Canvas */}
       <div className="shadow-2xl rounded-sm overflow-hidden border border-zinc-800 bg-white">
         <Document
-          file={fileUrl}
+          file={authenticatedUrl(fileUrl)}
           onLoadSuccess={onDocumentLoadSuccess}
           loading={<div className="p-20 text-zinc-500 animate-pulse">Rendering PDF...</div>}
         >
