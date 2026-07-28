@@ -11,7 +11,7 @@ from .base import BaseExtractor, ExtractedMetadata
 
 class CbzExtractor(BaseExtractor):
     def can_extract(self, file_path: str) -> bool:
-        return file_path.lower().endswith('.cbz') or file_path.lower().endswith('.cbr')
+        return file_path.lower().endswith('.cbz')
 
     def extract(self, file_path: str, covers_dir: str) -> ExtractedMetadata:
         meta = ExtractedMetadata(

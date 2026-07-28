@@ -37,7 +37,8 @@ class ComicVineProvider(BaseProvider):
                 'resources': 'issue',
                 'limit': 1,
             }
-            resp = requests.get(f'{self.base_url}/search', params=params, timeout=10)
+            headers = {'User-Agent': 'Codice/1.0'}
+            resp = requests.get(f'{self.base_url}/search', params=params, headers=headers, timeout=10)
             print(f"   🌐 ComicVine: HTTP {resp.status_code}")
             if resp.status_code != 200:
                 print(f"   ⚠️ ComicVine: non-200 response: {resp.text[:200]}")

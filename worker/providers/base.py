@@ -23,6 +23,7 @@ class MetadataRecord:
     tags: List[str] = field(default_factory=list)
     cover_url: Optional[str] = None
     source: str = ""
+    raw: dict = field(default_factory=dict)
 
 
 class BaseProvider(ABC):

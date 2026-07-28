@@ -66,13 +66,13 @@ export function UploadModal() {
             <div className="flex flex-col items-center justify-center pt-5 pb-6">
               <span className="text-2xl mb-2">📄</span>
               <p className="text-sm text-zinc-400">
-                <span className="font-semibold text-blue-400">Click to select</span> a PDF, EPUB, or CBZ
+                <span className="font-semibold text-blue-400">Click to select</span> a file (PDF, EPUB, CBZ, CBR, TXT, MOBI, audiobook)
               </p>
             </div>
             <input 
               type="file" 
               className="hidden" 
-              accept=".pdf,.epub,.cbz" 
+              accept=".pdf,.epub,.cbz,.cbr,.txt,.md,.mobi,.azw,.azw3,.mp3,.m4a,.m4b,.flac,.ogg,.wav" 
               onChange={handleFileChange} 
               disabled={isPending}
             />
