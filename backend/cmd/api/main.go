@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -153,6 +154,13 @@ func main() {
 	storagePath := os.Getenv("CODICE_STORAGE_PATH")
 	if storagePath == "" {
 		storagePath = "./uploads"
+	}
+
+	// If relative path, resolve from project root (two levels up from this file)
+	if !filepath.IsAbs(storagePath) {
+		_, b, _, _ := runtime.Caller(0)
+		basePath := filepath.Dir(filepath.Dir(filepath.Dir(b)))
+		storagePath = filepath.Join(basePath, storagePath)
 	}
 
 	// Ensure covers directory exists
