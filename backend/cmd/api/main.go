@@ -146,6 +146,9 @@ func main() {
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/recent", opdsHandler.RecentFeed)
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/search", opdsHandler.SearchFeed)
 
+	// Metadata search (proxies to worker HTTP server)
+	r.With(appMiddleware.AuthMiddleware).Get("/metadata/search", libHandler.SearchMetadata)
+
 	// WebSocket (auth handled inside handler for upgrade)
 	r.Get("/ws", wsHandler.HandleWS)
 

@@ -4,7 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -315,6 +318,67 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// SearchMetadataResponse represents results from a provider metadata search
+type SearchMetadataResponse struct {
+	Results []ProviderResult `json:"results"`
+	Query   string           `json:"query"`
+}
+
+// ProviderResult represents a single provider's metadata result
+type ProviderResult struct {
+	Source          string   `json:"source"`
+	Title           string   `json:"title"`
+	Author          string   `json:"author"`
+	Series          string   `json:"series"`
+	SeriesIndex     float64  `json:"series_index"`
+	Isbn            string   `json:"isbn"`
+	Language        string   `json:"language"`
+	Publisher       string   `json:"publisher"`
+	PublicationDate string   `json:"publication_date"`
+	Description     string   `json:"description"`
+	Tags            []string `json:"tags"`
+	CoverURL        string   `json:"cover_url"`
+}
+
+// SearchMetadata proxies a metadata search to the worker HTTP server
+func (h *LibraryHandler) SearchMetadata(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	format := r.URL.Query().Get("format")
+
+	if query == "" {
+		http.Error(w, "Missing 'q' parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Proxy to worker search server
+	workerURL := os.Getenv("WORKER_SEARCH_URL")
+	if workerURL == "" {
+		workerURL = "http://localhost:5000/search"
+	}
+
+	proxyURL := fmt.Sprintf("%s?q=%s", workerURL, url.QueryEscape(query))
+	if format != "" {
+		proxyURL += "&format=" + url.QueryEscape(format)
+	}
+
+	resp, err := http.Get(proxyURL)
+	if err != nil {
+		log.Printf("❌ Worker search proxy error: %v", err)
+		http.Error(w, "Search service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Error reading search response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(body)
 }
 
 // DeleteWork removes a work from PostgreSQL within a transaction and deletes its physical files from server disk
