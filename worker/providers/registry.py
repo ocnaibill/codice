@@ -31,8 +31,27 @@ class ProviderRegistry:
             ],
         }
 
+    @staticmethod
+    def _sanitize_query(raw_title: str) -> str:
+        """Clean up a title before sending to providers."""
+        # Remove parenthesized groups: (2025) (Digital) (Group-Name)
+        import re
+        cleaned = re.sub(r'\s*\([^)]*\)\s*', ' ', raw_title)
+        # Remove leading/trailing whitespace
+        cleaned = cleaned.strip()
+        # Remove issue numbers at the end: "Absolute Batman 006" → "Absolute Batman"
+        cleaned = re.sub(r'\s+\d{2,4}\s*$', '', cleaned)
+        # Collapse multiple spaces
+        cleaned = re.sub(r'\s+', ' ', cleaned)
+        return cleaned
+
     def search(self, query: str, format: str = 'default') -> Optional[MetadataRecord]:
         """Search for metadata using the best provider for the given format."""
+        sanitized = self._sanitize_query(query)
+        if sanitized != query:
+            print(f"   🧹 Sanitized query: '{query}' → '{sanitized}'")
+        query = sanitized
+
         providers = self._providers.get(format, self._providers['default'])
 
         for provider in providers:

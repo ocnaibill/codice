@@ -20,9 +20,14 @@ class ComicVineProvider(BaseProvider):
 
     def search(self, query: str) -> Optional[MetadataRecord]:
         if not self.api_key:
+            print(f"   ⚠️ ComicVine: no API key set (COMICVINE_API_KEY env var is empty)")
             return None
         if not query:
+            print(f"   ⚠️ ComicVine: empty query, skipping")
             return None
+
+        print(f"   🔎 ComicVine: searching for '{query}'")
+        print(f"   🔑 ComicVine: using API key {self.api_key[:8]}...{self.api_key[-4:]}")
 
         try:
             params = {
@@ -33,7 +38,9 @@ class ComicVineProvider(BaseProvider):
                 'limit': 1,
             }
             resp = requests.get(f'{self.base_url}/search', params=params, timeout=10)
+            print(f"   🌐 ComicVine: HTTP {resp.status_code}")
             if resp.status_code != 200:
+                print(f"   ⚠️ ComicVine: non-200 response: {resp.text[:200]}")
                 return None
 
             data = resp.json()

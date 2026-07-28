@@ -68,10 +68,14 @@ class CbzExtractor(BaseExtractor):
 
     def _parse_comicinfo(self, data: bytes, meta: ExtractedMetadata):
         """Parse ComicInfo.xml and populate metadata fields."""
+        print(f"   📄 ComicInfo.xml: {len(data)} bytes")
         root = ET.fromstring(data)
+        print(f"   🏷️ ComicInfo.xml root tag: {root.tag}")
 
         def text(tag):
             elem = root.find(tag)
+            if elem is not None:
+                print(f"   🔍 ComicInfo.xml found '{tag}': '{elem.text.strip() if elem.text else 'None'}'")
             return elem.text.strip() if elem is not None and elem.text else ''
 
         title = text('Title')
