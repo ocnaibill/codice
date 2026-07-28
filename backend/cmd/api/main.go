@@ -7,7 +7,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -150,18 +149,41 @@ func main() {
 	// WebSocket (auth handled inside handler for upgrade)
 	r.Get("/ws", wsHandler.HandleWS)
 
-	// Define base storage directory (fallback to ./uploads)
+	// Define base storage directory (fallback to ./uploads).
+	// Try to resolve relative paths from the project root by walking up from CWD.
 	storagePath := os.Getenv("CODICE_STORAGE_PATH")
 	if storagePath == "" {
 		storagePath = "./uploads"
 	}
 
-	// If relative path, resolve from project root (two levels up from this file)
+	// If the path is relative, resolve it relative to the project root.
+	// We find the project root by looking for a known marker file/dir.
 	if !filepath.IsAbs(storagePath) {
-		_, b, _, _ := runtime.Caller(0)
-		basePath := filepath.Dir(filepath.Dir(filepath.Dir(b)))
-		storagePath = filepath.Join(basePath, storagePath)
+		cwd, _ := os.Getwd()
+
+		// Walk up from CWD looking for the backend/ directory or go.mod
+		// The project root is the parent of backend/
+		candidate := cwd
+		for i := 0; i < 5; i++ {
+			// Check if we're in the backend directory
+			if filepath.Base(candidate) == "backend" {
+				candidate = filepath.Dir(candidate) // go up to project root
+				break
+			}
+			// Check if go.mod exists (project root)
+			if _, err := os.Stat(filepath.Join(candidate, "go.mod")); err == nil {
+				break
+			}
+			parent := filepath.Dir(candidate)
+			if parent == candidate {
+				break // reached root, stop
+			}
+			candidate = parent
+		}
+		storagePath = filepath.Join(candidate, storagePath)
 	}
+
+	log.Printf("📂 Storage path resolved to: %s", storagePath)
 
 	// Ensure covers directory exists
 	coversPath := filepath.Join(storagePath, "covers")
