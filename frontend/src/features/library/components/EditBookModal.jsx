@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../../lib/api';
+import { api, authenticatedUrl } from '../../../lib/api';
 
 export function EditBookModal({ book, onClose }) {
   const queryClient = useQueryClient();
@@ -18,6 +18,43 @@ export function EditBookModal({ book, onClose }) {
   const [authorLock, setAuthorLock] = useState(book.authorLock || false);
   const [coverLock, setCoverLock] = useState(book.coverLock || false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  // --- Metadata Search ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+
+  const handleSearch = async () => {
+    const q = searchQuery.trim() || book.title;
+    if (!q) return;
+    setIsSearching(true);
+    setSearchError('');
+    setSearchResults([]);
+    try {
+      const res = await api.get('/metadata/search', { params: { q, format: book.format } });
+      setSearchResults(res.data.results || []);
+      if (!res.data.results || res.data.results.length === 0) {
+        setSearchError('No results found from any provider.');
+      }
+    } catch (err) {
+      setSearchError('Search service unavailable. Is the worker search server running?');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const applySearchResult = (result) => {
+    if (result.title) setTitle(result.title);
+    if (result.author) setAuthor(result.author);
+    if (result.series) setSeries(result.series);
+    if (result.series_index != null) setSeriesIndex(String(result.series_index));
+    if (result.isbn) setIsbn(result.isbn);
+    if (result.publisher) setPublisher(result.publisher);
+    if (result.language) setLanguage(result.language);
+    if (result.description) setDescription(result.description);
+    if (result.tags && result.tags.length > 0) setTagsInput(result.tags.join(', '));
+  };
 
   const updateMutation = useMutation({
     mutationFn: async (updatedData) => {
@@ -99,6 +136,60 @@ export function EditBookModal({ book, onClose }) {
               ✕
             </button>
           </div>
+        </div>
+
+        {/* Manual Metadata Search Section */}
+        <div className="mb-4 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg">
+          <label className="block text-xs font-medium text-blue-300 mb-1">🔎 Search Internet</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSearch())}
+              placeholder={book.title || 'Search title...'}
+              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
+              disabled={isSearching}
+            />
+            <button
+              type="button"
+              onClick={handleSearch}
+              disabled={isSearching}
+              className="px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-500 disabled:opacity-50 transition-colors whitespace-nowrap"
+            >
+              {isSearching ? 'Searching...' : 'Search'}
+            </button>
+          </div>
+          {searchError && <p className="text-red-400 text-xs mt-1">{searchError}</p>}
+          {searchResults.length > 0 && (
+            <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+              {searchResults.map((result, idx) => (
+                <div key={idx} className="p-2 bg-zinc-950 rounded border border-zinc-800 text-xs">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-blue-300 truncate">[{result.source}] {result.title}</p>
+                      {result.author && <p className="text-zinc-400 truncate">by {result.author}</p>}
+                      {result.series && (
+                        <p className="text-zinc-500 truncate">
+                          {result.series}{result.series_index != null ? ` #${result.series_index}` : ''}
+                        </p>
+                      )}
+                      {result.description && (
+                        <p className="text-zinc-600 mt-1 line-clamp-2">{result.description}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => applySearchResult(result)}
+                      className="ml-2 px-2 py-1 bg-green-700 text-white text-xs rounded hover:bg-green-600 transition-colors whitespace-nowrap shrink-0"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
