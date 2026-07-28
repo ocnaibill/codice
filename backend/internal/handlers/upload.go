@@ -25,6 +25,34 @@ var SupportedFormats = map[string]bool{
 	".flac": true, ".ogg": true, ".wav": true,
 }
 
+// resolveStoragePath resolves a relative CODICE_STORAGE_PATH from the project root.
+func resolveStoragePath() string {
+	storagePath := os.Getenv("CODICE_STORAGE_PATH")
+	if storagePath == "" {
+		storagePath = "./uploads"
+	}
+	if !filepath.IsAbs(storagePath) {
+		cwd, _ := os.Getwd()
+		candidate := cwd
+		for i := 0; i < 5; i++ {
+			if filepath.Base(candidate) == "backend" {
+				candidate = filepath.Dir(candidate)
+				break
+			}
+			if _, err := os.Stat(filepath.Join(candidate, "go.mod")); err == nil {
+				break
+			}
+			parent := filepath.Dir(candidate)
+			if parent == candidate {
+				break
+			}
+			candidate = parent
+		}
+		storagePath = filepath.Join(candidate, storagePath)
+	}
+	return storagePath
+}
+
 // UploadHandler holds Redis and PostgreSQL connections
 type UploadHandler struct {
 	DB          *sql.DB
@@ -55,11 +83,8 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Prepare target directory using CODICE_STORAGE_PATH (fallback to ./uploads)
-	storagePath := os.Getenv("CODICE_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "./uploads"
-	}
+	// 4. Prepare target directory using resolved CODICE_STORAGE_PATH
+	storagePath := resolveStoragePath()
 
 	if err := os.MkdirAll(storagePath, 0755); err != nil {
 		http.Error(w, "Error preparing uploads directory", http.StatusInternalServerError)
@@ -143,10 +168,7 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 	var req BulkImportRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
-	storagePath := os.Getenv("CODICE_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "./uploads"
-	}
+	storagePath := resolveStoragePath()
 
 	targetDir := req.Directory
 	if targetDir == "" {
