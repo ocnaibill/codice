@@ -5,3 +5,4 @@ from .cbz_extractor import CbzExtractor
 from .cbr_extractor import CbrExtractor
 from .txt_extractor import TxtExtractor
 from .audio_extractor import AudiobookExtractor
+from .mobi_extractor import MobiExtractor
