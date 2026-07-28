@@ -149,11 +149,17 @@ def listen_for_tasks():
 
                             # Download cover from provider
                             if enriched.cover_url:
+                                print(f"   🖼️ Provider cover URL found, attempting download...")
                                 local_cover = provider_registry.download_cover(
                                     enriched.cover_url, file_path, covers_dir
                                 )
                                 if local_cover:
                                     metadata.cover_path = local_cover
+                                    print(f"   🖼️ Cover downloaded to: {metadata.cover_path}")
+                                else:
+                                    print(f"   ⚠️ Cover download returned empty path")
+                            else:
+                                print(f"   ⚠️ No cover_url returned by provider")
 
                         # 5. Save to database (all extracted + enriched fields)
                         save_meta = {

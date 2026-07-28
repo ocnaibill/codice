@@ -70,6 +70,30 @@ class ComicVineProvider(BaseProvider):
             if cover_date:
                 record.publication_date = cover_date
 
+            # Author from person_credits (role=writer/penciller/artist)
+            credits = issue.get('person_credits', []) or []
+            if credits:
+                # Prefer writer, then penciller, then artist
+                for role_priority in ('writer', 'penciller', 'artist'):
+                    for credit in credits:
+                        if credit.get('role', '').lower() == role_priority:
+                            record.author = credit.get('name', '')
+                            break
+                    if record.author:
+                        break
+
+            # Store raw JSON for debugging and identifier
+            record.raw = {
+                'issue_id': issue.get('id'),
+                'volume_id': volume.get('id') if volume else None,
+            }
+
+            print(f"   📋 ComicVine: title='{record.title}' author='{record.author}' series='{record.series}' #{record.series_index}")
+            if record.cover_url:
+                print(f"   🖼️ ComicVine: cover_url={record.cover_url[:80]}...")
+            if record.description:
+                print(f"   📝 ComicVine: description={record.description[:100]}...")
+
             return record
 
         except Exception as e:

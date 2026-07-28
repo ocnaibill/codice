@@ -68,10 +68,13 @@ class ProviderRegistry:
 
     def download_cover(self, cover_url: str, file_path: str, covers_dir: str) -> str:
         """Download cover image using the first available provider."""
+        print(f"   📥 Downloading cover from: {cover_url[:80]}...")
         for provider_list in self._providers.values():
             for provider in provider_list:
                 if hasattr(provider, 'download_cover'):
                     result = provider.download_cover(cover_url, file_path, covers_dir)
                     if result:
+                        print(f"   ✅ Cover saved to: {result}")
                         return result
+        print(f"   ⚠️ Cover download failed for: {cover_url[:80]}...")
         return ""
