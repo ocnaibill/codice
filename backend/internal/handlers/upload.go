@@ -15,6 +15,16 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// SupportedFormats is the set of file extensions accepted by upload and bulk import.
+var SupportedFormats = map[string]bool{
+	".pdf": true, ".epub": true,
+	".cbz": true, ".cbr": true,
+	".txt": true, ".md": true,
+	".mobi": true, ".azw": true, ".azw3": true,
+	".mp3": true, ".m4a": true, ".m4b": true,
+	".flac": true, ".ogg": true, ".wav": true,
+}
+
 // UploadHandler holds Redis and PostgreSQL connections
 type UploadHandler struct {
 	DB          *sql.DB
@@ -38,10 +48,10 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// 3. Validate file extension (PDF, EPUB, or CBZ)
+	// 3. Validate file extension against supported formats
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	if ext != ".pdf" && ext != ".epub" && ext != ".cbz" {
-		http.Error(w, "Unsupported file format. Please upload PDF, EPUB, or CBZ only.", http.StatusBadRequest)
+	if !SupportedFormats[ext] {
+		http.Error(w, "Unsupported file format", http.StatusBadRequest)
 		return
 	}
 
@@ -164,7 +174,7 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 		}
 
 		ext := strings.ToLower(filepath.Ext(info.Name()))
-		if ext != ".pdf" && ext != ".epub" && ext != ".cbz" {
+		if !SupportedFormats[ext] {
 			return nil
 		}
 

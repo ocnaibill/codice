@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { useWork } from '../api/useWork';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
+import { authenticatedUrl } from '../../../lib/api';
 
 // Dynamic imports (Lazy Loading) - Readers are loaded on demand
 const PdfViewer = lazy(() => import('./viewers/PdfViewer'));
@@ -62,6 +63,19 @@ export function Reader() {
       case 'wav':
       case 'flac':
         return <AudioViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+      case 'mobi':
+      case 'azw':
+      case 'azw3':
+        return (
+          <div className="flex flex-col items-center justify-center h-full gap-4 text-zinc-400">
+            <p>MOBI/AZW files cannot be viewed in the browser.</p>
+            <a href={authenticatedUrl(book.fileUrl)}
+               download
+               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500">
+              Download File
+            </a>
+          </div>
+        );
       default:
         return (
           <div className="text-zinc-400 text-center mt-10 font-medium">

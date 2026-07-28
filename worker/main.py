@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-from extractors import EpubExtractor, PdfExtractor, CbzExtractor, CbrExtractor, TxtExtractor, AudiobookExtractor
+from extractors import EpubExtractor, PdfExtractor, CbzExtractor, CbrExtractor, TxtExtractor, AudiobookExtractor, MobiExtractor
 from extractors.base import BaseExtractor
 from providers import ProviderRegistry
 from db import CodiceDatabase
@@ -66,6 +66,7 @@ def register_extractors() -> list:
         CbrExtractor(),
         TxtExtractor(),
         AudiobookExtractor(),
+        MobiExtractor(),
     ]
 
 
@@ -148,20 +149,39 @@ def listen_for_tasks():
 
                             # Download cover from provider
                             if enriched.cover_url:
-                                local_cover = provider_registry._providers['default'][0].download_cover(
+                                local_cover = provider_registry.download_cover(
                                     enriched.cover_url, file_path, covers_dir
                                 )
                                 if local_cover:
                                     metadata.cover_path = local_cover
 
-                        # 5. Save to database
-                        analyzer.save_metadata(work_id, {
+                        # 5. Save to database (all extracted + enriched fields)
+                        save_meta = {
                             'title': metadata.title,
                             'author': metadata.author,
                             'format': metadata.format,
                             'page_count': metadata.page_count,
                             'cover_path': metadata.cover_path,
-                        })
+                            'series': metadata.series,
+                            'series_index': metadata.series_index,
+                            'isbn': metadata.isbn,
+                            'language': metadata.language,
+                            'publisher': metadata.publisher,
+                            'publication_date': metadata.publication_date,
+                            'description': metadata.description,
+                            'tags': metadata.tags,
+                            'raw': metadata.raw,
+                        }
+
+                        # Track which provider enriched the metadata
+                        if enriched:
+                            save_meta['enriched_source'] = enriched.source if hasattr(enriched, 'source') else None
+                            if enriched.raw:
+                                save_meta['raw'].update(enriched.raw)
+
+                        analyzer.save_metadata(work_id, save_meta)
+                        analyzer.save_identifiers(work_id, save_meta)
+                        analyzer.save_media_pages(work_id, save_meta)
 
                         # 6. Set status to READY
                         analyzer.update_status(work_id, MediaStatus.READY)
