@@ -119,18 +119,20 @@ def listen_for_tasks():
                         print(f"   🔍 Using extractor: {extractor.__class__.__name__}")
 
                         # 3. Extract local metadata
-                        covers_dir = os.path.join(
-                            os.getenv('CODICE_STORAGE_PATH', './uploads'),
-                            'covers'
-                        )
+                        storage_path = os.getenv('CODICE_STORAGE_PATH', './uploads')
+                        # If relative, resolve from project root (two levels up from worker/)
+                        if not os.path.isabs(storage_path):
+                            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                            storage_path = os.path.join(project_root, storage_path)
+                        covers_dir = os.path.join(storage_path, 'covers')
                         os.makedirs(covers_dir, exist_ok=True)
 
                         metadata = extractor.extract(file_path, covers_dir)
                         print(f"   📄 Local metadata: {metadata.title} ({metadata.page_count} pages)")
 
-                        # 4. Enrich via external providers
+                        # 4. Enrich via external providers (search ALL providers, pick best)
                         original_filename = os.path.basename(file_path)
-                        enriched = provider_registry.search(metadata.title, metadata.format)
+                        enriched = provider_registry.search_best(metadata.title, metadata.format)
                         if enriched:
                             if enriched.title:
                                 metadata.title = enriched.title
