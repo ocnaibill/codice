@@ -106,13 +106,16 @@ export default function EpubViewer({ fileUrl, bookId, initialProgress }) {
         theme === 'dark' ? 'border-zinc-800 bg-zinc-950' : 'border-zinc-300 bg-zinc-100'
       }`}>
         <ReactReader
-          url={`${authenticatedUrl(fileUrl)}&dummy=.epub`}
+          url={authenticatedUrl(fileUrl)}
           location={location}
           locationChanged={handleLocationChange}
           title="Códice"
           getRendition={(rendition) => {
             renditionRef.current = rendition;
             rendition.themes.fontSize(`${size}%`);
+          }}
+          epubInitOptions={{
+            openAs: 'epub'
           }}
           epubOptions={{
             flow: 'paginated',
