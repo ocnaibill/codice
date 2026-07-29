@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { authenticatedUrl } from '../../../../lib/api';
 
 export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
   const audioRef = useRef(null);
@@ -61,7 +62,7 @@ export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
     <div className="flex flex-col items-center justify-center h-full gap-8 p-10">
       <audio
         ref={audioRef}
-        src={fileUrl}
+        src={authenticatedUrl(fileUrl)}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={() => setPlaying(false)}

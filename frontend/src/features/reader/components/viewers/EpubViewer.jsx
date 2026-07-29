@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ReactReader } from 'react-reader';
-import { api } from '../../../../lib/api';
+import { api, authenticatedUrl } from '../../../../lib/api';
 
 export default function EpubViewer({ fileUrl, bookId, initialProgress }) {
   const [location, setLocation] = useState(initialProgress || null);
@@ -106,7 +106,7 @@ export default function EpubViewer({ fileUrl, bookId, initialProgress }) {
         theme === 'dark' ? 'border-zinc-800 bg-zinc-950' : 'border-zinc-300 bg-zinc-100'
       }`}>
         <ReactReader
-          url={fileUrl}
+          url={authenticatedUrl(fileUrl)}
           location={location}
           locationChanged={handleLocationChange}
           title="Códice"

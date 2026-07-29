@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { api, authenticatedUrl } from '../../../../lib/api';
 
 export default function MarkdownViewer({ fileUrl, bookId, initialProgress }) {
   const [content, setContent] = useState('');
@@ -10,7 +11,7 @@ export default function MarkdownViewer({ fileUrl, bookId, initialProgress }) {
     let cancelled = false;
     const loadMd = async () => {
       try {
-        const resp = await fetch(fileUrl);
+        const resp = await fetch(authenticatedUrl(fileUrl));
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const text = await resp.text();
         if (!cancelled) {

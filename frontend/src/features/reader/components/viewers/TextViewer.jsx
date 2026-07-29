@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { authenticatedUrl } from '../../../../lib/api';
 
 export default function TextViewer({ fileUrl, bookId, initialProgress }) {
   const [content, setContent] = useState('');
@@ -10,7 +11,7 @@ export default function TextViewer({ fileUrl, bookId, initialProgress }) {
     let cancelled = false;
     const loadText = async () => {
       try {
-        const resp = await fetch(fileUrl);
+        const resp = await fetch(authenticatedUrl(fileUrl));
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const text = await resp.text();
         if (!cancelled) {
