@@ -314,6 +314,7 @@ func extractCBR(rarPath string, cacheDir string) error {
 	cmd := exec.Command("unrar", "e", "-o+", rarPath, cacheDir+string(os.PathSeparator))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		os.RemoveAll(cacheDir) // Clean up empty/partial directory on failure
 		return fmt.Errorf("unrar failed: %s - %w", string(output), err)
 	}
 

@@ -117,6 +117,7 @@ export default function EpubViewer({ fileUrl, bookId, initialProgress }) {
           epubOptions={{
             flow: 'paginated',
             manager: 'default',
+            type: 'epub'
           }}
         />
       </div>
