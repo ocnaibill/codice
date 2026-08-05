@@ -117,6 +117,12 @@ func RunAutoMigrations(db *sql.DB) error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_media_pages_work_id ON media_pages(work_id);`,
 		`COMMENT ON COLUMN works.isbn IS 'Denormalized convenience field. Canonical identifiers are in work_identifiers table.';`,
+
+		// 8. Migration 010: Widen isbn column — the extractor could
+		// previously store non-ISBN identifiers (UUIDs, URNs) that
+		// exceeded VARCHAR(32). The extractor is now fixed, but this
+		// migration protects against edge cases.
+		`ALTER TABLE works ALTER COLUMN isbn TYPE VARCHAR(64);`,
 	}
 
 	for _, stmt := range statements {

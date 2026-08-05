@@ -88,10 +88,15 @@ class EpubExtractor(BaseExtractor):
                     meta.language = text
                 elif tag == 'identifier':
                     value = text.lower()
-                    if 'isbn' in value:
-                        meta.isbn = text
-                    elif not meta.isbn:
-                        meta.isbn = text
+                    # Extract only real ISBNs (10 or 13 digits).
+                    # dc:identifier can contain UUIDs, URNs, URLs etc.
+                    # that would overflow the isbn VARCHAR column.
+                    import re as _re
+                    digits = _re.sub(r'[^0-9xX]', '', text)
+                    if 'isbn' in value and len(digits) in (10, 13):
+                        meta.isbn = digits
+                    elif not meta.isbn and len(digits) in (10, 13):
+                        meta.isbn = digits
                 elif tag == 'description' and not meta.description:
                     meta.description = text
                 elif tag == 'date' and not meta.publication_date:
