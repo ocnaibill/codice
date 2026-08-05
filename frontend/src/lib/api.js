@@ -49,5 +49,10 @@ export function wsUrl(path) {
     wsBase = `${protocol}//${host}`;
   }
 
-  return `${wsBase}${path}?token=${encodeURIComponent(token)}`;
+  if (token && token !== 'null' && token !== 'undefined') {
+    const separator = path.includes('?') ? '&' : '?';
+    return `${wsBase}${path}${separator}token=${encodeURIComponent(token)}`;
+  }
+
+  return `${wsBase}${path}`;
 }

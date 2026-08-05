@@ -111,8 +111,12 @@ def listen_for_tasks():
                     print(f"   File: {file_path}")
 
                     try:
-                        # 1. Set status to ANALYZING
+                        # 1. Set status to ANALYZING and broadcast event
                         analyzer.update_status(work_id, MediaStatus.ANALYZING)
+                        r.publish('codice_updates', json.dumps({
+                            "type": "WORK_ANALYZING",
+                            "work_id": work_id
+                        }))
 
                         # 2. Find the right extractor
                         extractor = find_extractor(extractors, file_path)
@@ -210,10 +214,20 @@ def listen_for_tasks():
                     except (ValueError, FileNotFoundError) as sec_err:
                         print(f"⚠️ Validation/security error: {sec_err}")
                         analyzer.update_status(work_id, MediaStatus.ERROR, str(sec_err))
+                        r.publish('codice_updates', json.dumps({
+                            "type": "WORK_ERROR",
+                            "work_id": work_id,
+                            "error": str(sec_err)
+                        }))
                         r.xack(STREAM_NAME, GROUP_NAME, message_id)
                     except Exception as err:
                         print(f"❌ Processing failure: {err}")
                         analyzer.update_status(work_id, MediaStatus.ERROR, str(err))
+                        r.publish('codice_updates', json.dumps({
+                            "type": "WORK_ERROR",
+                            "work_id": work_id,
+                            "error": str(err)
+                        }))
 
         except Exception as e:
             print(f"⚠️ Unexpected network error: {e}")

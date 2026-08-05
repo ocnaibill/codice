@@ -26,6 +26,7 @@ type Work struct {
 	CoverURL        string   `json:"coverUrl"`
 	FileURL         string   `json:"fileUrl,omitempty"`
 	Format          string   `json:"format,omitempty"`
+	MediaStatus     string   `json:"mediaStatus,omitempty"`
 	Tags            []string `json:"tags"`
 	ReadingProgress string   `json:"readingProgress,omitempty"`
 }
@@ -66,6 +67,7 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 			w.original_title, 
 			COALESCE(p.name, 'Unknown Author') as author, 
 			COALESCE(e.cover_url, '') as cover_url,
+			COALESCE(w.media_status, 'READY') as media_status,
 			COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags
 		FROM works w
 		LEFT JOIN person p ON w.author_id = p.id
@@ -83,7 +85,7 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 
-	query += ` GROUP BY w.id, w.original_title, p.name, e.cover_url ORDER BY w.id DESC`
+	query += ` GROUP BY w.id, w.original_title, p.name, e.cover_url, w.media_status ORDER BY w.id DESC`
 
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
 	args = append(args, limit, offset)
@@ -98,9 +100,10 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	var works []Work
 	for rows.Next() {
 		var work Work
-		if err := rows.Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, pq.Array(&work.Tags)); err != nil {
-			http.Error(w, "Error reading data", http.StatusInternalServerError)
-			return
+		err := rows.Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &work.MediaStatus, pq.Array(&work.Tags))
+		if err != nil {
+			log.Println("Error scanning work:", err)
+			continue
 		}
 
 		if work.CoverURL == "" {
@@ -149,6 +152,7 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 			COALESCE(e.cover_url, '') as cover_url,
 			w.file_path,
 			w.format,
+			COALESCE(w.media_status, 'READY') as media_status,
 			up.progress,
 			COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags
 		FROM works w
@@ -158,10 +162,10 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN work_tags wt ON w.id = wt.work_id
 		LEFT JOIN tags t ON wt.tag_id = t.id
 		WHERE w.id = $1
-		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, w.format, up.progress
+		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, w.format, w.media_status, up.progress
 	`
 
-	err := h.DB.QueryRow(query, id, userID).Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format, &progress, pq.Array(&work.Tags))
+	err := h.DB.QueryRow(query, id, userID).Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format, &work.MediaStatus, &progress, pq.Array(&work.Tags))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Book not found", http.StatusNotFound)

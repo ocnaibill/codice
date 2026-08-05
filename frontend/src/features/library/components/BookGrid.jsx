@@ -92,6 +92,12 @@ export function BookGrid() {
                 onClick={() => openBook(work.id)} 
               >
                 <div className="relative aspect-[2/3] w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-900 transition-all duration-300 group-hover:border-zinc-600 group-hover:shadow-lg group-hover:shadow-blue-900/20 group-hover:-translate-y-1">
+                  {(work.mediaStatus === 'ANALYZING' || work.mediaStatus === 'QUEUED') && (
+                    <div className="absolute top-2 left-2 z-10 bg-amber-500/90 text-zinc-950 font-semibold text-[10px] px-2 py-0.5 rounded-full backdrop-blur-sm shadow-md animate-pulse flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-zinc-950 animate-ping" />
+                      Analyzing...
+                    </div>
+                  )}
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
