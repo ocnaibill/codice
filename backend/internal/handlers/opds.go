@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -60,7 +62,6 @@ func (h *OPDSHandler) baseURL(r *http.Request) string {
 	return fmt.Sprintf("%s://%s", scheme, r.Host)
 }
 
-
 func (h *OPDSHandler) RootCatalog(w http.ResponseWriter, r *http.Request) {
 	base := h.baseURL(r)
 	now := time.Now().Format(time.RFC3339)
@@ -94,7 +95,7 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.DB.Query(`
 		SELECT w.id, w.original_title, COALESCE(p.name, 'Unknown Author'), COALESCE(e.cover_url, ''),
-		       COALESCE(w.format, ''), w.created_at
+		       COALESCE(w.format, ''), COALESCE(w.file_path, ''), w.created_at
 		FROM works w
 		LEFT JOIN person p ON w.author_id = p.id
 		LEFT JOIN editions e ON w.id = e.work_id
@@ -109,9 +110,9 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 	var entries strings.Builder
 	for rows.Next() {
 		var id int
-		var title, author, coverURL, format string
+		var title, author, coverURL, format, filePath string
 		var createdAt sql.NullTime
-		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &createdAt); err != nil {
+		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &filePath, &createdAt); err != nil {
 			continue
 		}
 		updated := now
@@ -131,13 +132,21 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 		case "mp3", "m4a", "m4b", "ogg", "wav", "flac":
 			acqType = "audio/mpeg"
 		}
+
+		filename := filepath.Base(filePath)
+		escapedFilename := url.PathEscape(filename)
+
+		if coverURL == "" {
+			coverURL = "/covers/placeholder.svg"
+		}
+
 		entries.WriteString(fmt.Sprintf("  <entry>\n"))
 		entries.WriteString(fmt.Sprintf("    <title>%s</title>\n", html.EscapeString(title)))
 		entries.WriteString(fmt.Sprintf("    <id>urn:uuid:codice-work-%d</id>\n", id))
 		entries.WriteString(fmt.Sprintf("    <updated>%s</updated>\n", updated))
 		entries.WriteString(fmt.Sprintf("    <author><name>%s</name></author>\n", html.EscapeString(author)))
 		entries.WriteString(fmt.Sprintf("    <dc:identifier>%d</dc:identifier>\n", id))
-		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s/files/%%s\" type=\"%s\"/>\n", base, acqType))
+		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s/files/%s\" type=\"%s\"/>\n", base, escapedFilename, acqType))
 		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/image\" href=\"%s%s\" type=\"image/jpeg\"/>\n", base, coverURL))
 		entries.WriteString(fmt.Sprintf("  </entry>\n"))
 	}
@@ -170,7 +179,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.DB.Query(`
 		SELECT w.id, w.original_title, COALESCE(p.name, 'Unknown Author'), COALESCE(e.cover_url, ''),
-		       COALESCE(w.format, ''), w.created_at
+		       COALESCE(w.format, ''), COALESCE(w.file_path, ''), w.created_at
 		FROM works w
 		LEFT JOIN person p ON w.author_id = p.id
 		LEFT JOIN editions e ON w.id = e.work_id
@@ -187,9 +196,9 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 	count := 0
 	for rows.Next() {
 		var id int
-		var title, author, coverURL, format string
+		var title, author, coverURL, format, filePath string
 		var createdAt sql.NullTime
-		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &createdAt); err != nil {
+		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &filePath, &createdAt); err != nil {
 			continue
 		}
 		count++
@@ -208,13 +217,21 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 		case "md":
 			acqType = "text/markdown"
 		}
+
+		filename := filepath.Base(filePath)
+		escapedFilename := url.PathEscape(filename)
+
+		if coverURL == "" {
+			coverURL = "/covers/placeholder.svg"
+		}
+
 		entries.WriteString(fmt.Sprintf("  <entry>\n"))
 		entries.WriteString(fmt.Sprintf("    <title>%s</title>\n", html.EscapeString(title)))
 		entries.WriteString(fmt.Sprintf("    <id>urn:uuid:codice-work-%d</id>\n", id))
 		entries.WriteString(fmt.Sprintf("    <updated>%s</updated>\n", updated))
 		entries.WriteString(fmt.Sprintf("    <author><name>%s</name></author>\n", html.EscapeString(author)))
 		entries.WriteString(fmt.Sprintf("    <dc:identifier>%d</dc:identifier>\n", id))
-		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s/files/%%s\" type=\"%s\"/>\n", base, acqType))
+		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s/files/%s\" type=\"%s\"/>\n", base, escapedFilename, acqType))
 		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/image\" href=\"%s%s\" type=\"image/jpeg\"/>\n", base, coverURL))
 		entries.WriteString(fmt.Sprintf("  </entry>\n"))
 	}
@@ -227,7 +244,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(fmt.Sprintf("  <id>urn:uuid:codice-search</id>\n"))
 	b.WriteString(fmt.Sprintf("  <title>Search Results</title>\n"))
 	b.WriteString(fmt.Sprintf("  <updated>%s</updated>\n", now))
-	b.WriteString(fmt.Sprintf("  <link rel=\"self\" href=\"%s/opds/v1.2/search?q=%s\" type=\"application/atom+xml;profile=opds-catalog;kind=acquisition\"/>\n", base, query))
+	b.WriteString(fmt.Sprintf("  <link rel=\"self\" href=\"%s/opds/v1.2/search?q=%s\" type=\"application/atom+xml;profile=opds-catalog;kind=acquisition\"/>\n", base, url.QueryEscape(query)))
 	b.WriteString(fmt.Sprintf("  <link rel=\"start\" href=\"%s/opds/v1.2/catalog\" type=\"application/atom+xml;profile=opds-catalog;kind=navigation\"/>\n", base))
 	b.WriteString(fmt.Sprintf("  <opensearch:totalResults>%d</opensearch:totalResults>\n", count))
 	b.WriteString(entries.String())

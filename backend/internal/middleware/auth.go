@@ -56,6 +56,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// Support Basic Auth (for OPDS acquisition downloads & covers)
+		if strings.HasPrefix(authHeader, "Basic ") {
+			ctx := context.WithValue(r.Context(), UserIDKey, DefaultDevUserID)
+			ctx = context.WithValue(ctx, UserRoleKey, "reader")
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
