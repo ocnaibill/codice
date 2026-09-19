@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
+	"github.com/ocnaibill/codice/backend/internal/ldapauth"
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"github.com/ocnaibill/codice/backend/internal/storage"
@@ -26,6 +27,10 @@ type routerDeps struct {
 	WS          *handlers.WsHandler
 	StoragePath string
 	Mover       *storage.Mover
+	// Directory is the LDAP directory, nil when it is not configured.
+	Directory     ldapauth.Directory
+	DirectoryHost string
+	DirectoryBase string
 	// Optional overrides, so route tests can run without a database.
 	FileLookup  handlers.FileLookup
 	CoverLookup handlers.FileLookup
@@ -38,7 +43,8 @@ func newRouter(d routerDeps) http.Handler {
 
 	libHandler := &handlers.LibraryHandler{DB: db, Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
-	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions}
+	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions, Directory: d.Directory}
+	ldapAdmin := &handlers.LDAPAdminHandler{DB: db, Directory: d.Directory, Host: d.DirectoryHost, BaseDN: d.DirectoryBase}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
 	invitesHandler := &handlers.InvitationsHandler{DB: db, Sessions: d.Sessions}
 	resetsHandler := &handlers.PasswordResetsHandler{DB: db, Disconnect: d.WS.DisconnectUser}
@@ -82,6 +88,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(authRateLimit).Post("/auth/setup", authHandler.SetupMasterAdmin)
 	r.With(authRateLimit).Post("/auth/register", authHandler.Register)
 	r.With(authRateLimit).Post("/auth/login", authHandler.Login)
+	r.With(authRateLimit).Post("/auth/link", authHandler.Link)
 	// Invitations are the way in while public registration is off (DEC-050).
 	r.With(authRateLimit).Get("/auth/invitation", invitesHandler.Check)
 	r.With(authRateLimit).Post("/auth/redeem", invitesHandler.Redeem)
@@ -182,6 +189,9 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/users/{id}/unblock", usersHandler.Unblock)
 	r.With(staff).Delete("/users/{id}", usersHandler.Delete)
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)
+	r.With(owner).Get("/admin/ldap", ldapAdmin.Get)
+	r.With(owner).Put("/admin/ldap/policy", ldapAdmin.SetPolicy)
+	r.With(owner).Post("/admin/ldap/check", ldapAdmin.Check)
 	r.With(staff).Get("/invitations", invitesHandler.List)
 	r.With(staff).Post("/invitations", invitesHandler.Create)
 	r.With(staff).Delete("/invitations/{id}", invitesHandler.Revoke)

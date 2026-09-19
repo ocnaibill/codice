@@ -24,7 +24,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const url = error?.config?.url || '';
-    const isCredentialCall = url.startsWith('/auth/login') || url.startsWith('/auth/setup');
+    const isCredentialCall = url.startsWith('/auth/login') || url.startsWith('/auth/setup') || url.startsWith('/auth/link');
     if (error?.response?.status === 401 && !isCredentialCall) {
       localStorage.removeItem(TOKEN_KEY);
       clearAssetToken();

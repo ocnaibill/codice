@@ -38,6 +38,9 @@ export function AccountsTab({ isOwner }) {
               <p className="text-[14px] text-ink">
                 {account.username}
                 {account.isSelf && <span className="text-ink-faint"> (você)</span>}
+                {account.external && (
+                  <span className="ml-2 rounded bg-surface-alt px-2 py-0.5 text-[11px] text-ink-soft" title="Entra com a senha do diretório (LDAP)">Diretório</span>
+                )}
                 {account.blockedAt && (
                   <span className="ml-2 rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Bloqueada</span>
                 )}

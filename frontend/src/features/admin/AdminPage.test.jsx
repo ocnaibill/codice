@@ -19,6 +19,7 @@ beforeEach(() => {
     if (url === '/admin/storage/roots') return { data: { roots: [], managed: '/data' } };
     if (url === '/admin/storage/cleanups' || url === '/admin/storage/orphans') return { data: { data: [] } };
     if (url === '/admin/duplicates' || url === '/admin/ocr' || url === '/users') return { data: { data: [] } };
+    if (url === '/admin/ldap') return { data: { configured: false, host: '', baseDN: '', linkedAccounts: 0, policy: { allowCreate: false, revalidateHours: 24 } } };
     throw new Error(`unexpected GET ${url}`);
   });
 });
@@ -41,6 +42,17 @@ describe('AdminPage', () => {
 
     await view.click(view.button('Contas'));
     expect(view.text()).toContain('Nenhuma conta');
+  });
+
+  it('offers the external login settings to the owner only', async () => {
+    view = await mount(<AdminPage isOwner />);
+    expect(view.button('Login externo')).toBeTruthy();
+    await view.click(view.button('Login externo'));
+    expect(view.text()).toContain('Login pelo diretório');
+    view.unmount();
+
+    view = await mount(<AdminPage isOwner={false} />);
+    expect(view.button('Login externo')).toBeUndefined();
   });
 
   it('has a way back to the library, also on narrow screens', async () => {

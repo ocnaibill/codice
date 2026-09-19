@@ -14,6 +14,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/database"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
+	"github.com/ocnaibill/codice/backend/internal/ldapauth"
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"github.com/ocnaibill/codice/backend/internal/storage"
@@ -66,6 +67,19 @@ func main() {
 		log.Fatal(err)
 	}
 	defer redisClient.Close()
+
+	// LDAP is optional. A configuration that would be unsafe or unusable stops the
+	// API at startup, with the reason, rather than silently disabling sign-in.
+	var directory ldapauth.Directory
+	var directoryHost, directoryBase string
+	if cfg, on := ldapauth.ConfigFromEnv(); on {
+		client, err := ldapauth.New(cfg)
+		if err != nil {
+			log.Fatalf("LDAP configuration: %v", err)
+		}
+		directory, directoryHost, directoryBase = client, client.Host(), client.BaseDN()
+		log.Printf("LDAP sign-in enabled: %s", directoryHost)
+	}
 
 	sessionStore := &sessions.Store{DB: db}
 	authenticator := appMiddleware.Authenticator{
@@ -126,6 +140,8 @@ func main() {
 		DB: db, Owner: jobs.NewOwnerName("api"), Types: types, MaxRunning: 1, LeaseSeconds: 300, Handlers: handlers,
 	}, mover, &storage.Trash{DB: db, Root: storagePath})
 
+	startIdentitySweep(context.Background(), db, directory)
+
 	// 4. Configure Router
 	r := newRouter(routerDeps{
 		DB:          db,
@@ -135,6 +151,10 @@ func main() {
 		WS:          wsHandler,
 		StoragePath: storagePath,
 		Mover:       mover,
+
+		Directory:     directory,
+		DirectoryHost: directoryHost,
+		DirectoryBase: directoryBase,
 	})
 
 	// 5. Start HTTP Server

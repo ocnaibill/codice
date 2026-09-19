@@ -107,9 +107,11 @@ type accountView struct {
 	CreatedAt *time.Time `json:"createdAt"`
 	// CanBlock says whether the caller may block or unblock this account, so the
 	// interface never has to repeat the policy.
-	CanBlock  bool `json:"canBlock"`
-	CanRemove bool `json:"canRemove"`
-	IsSelf    bool `json:"isSelf"`
+	// External names the directory the account signs in through, if any.
+	External  string `json:"external,omitempty"`
+	CanBlock  bool   `json:"canBlock"`
+	CanRemove bool   `json:"canRemove"`
+	IsSelf    bool   `json:"isSelf"`
 }
 
 // List shows the accounts to the owner and admins. The caller's role comes from
@@ -122,7 +124,8 @@ func (h *UsersHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := h.DB.QueryContext(r.Context(), `
-		SELECT id, username, email, COALESCE(role, 'reader'), blocked_at, created_at
+		SELECT id, username, email, COALESCE(role, 'reader'), blocked_at, created_at,
+		       COALESCE((SELECT e.provider FROM external_identities e WHERE e.user_id = users.id ORDER BY e.id LIMIT 1), '')
 		FROM users ORDER BY (role = 'owner') DESC, (role = 'admin') DESC, username`)
 	if err != nil {
 		http.Error(w, "Error listing accounts", http.StatusInternalServerError)
@@ -133,7 +136,7 @@ func (h *UsersHandler) List(w http.ResponseWriter, r *http.Request) {
 	out := []accountView{}
 	for rows.Next() {
 		var a accountView
-		if err := rows.Scan(&a.ID, &a.Username, &a.Email, &a.Role, &a.BlockedAt, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Username, &a.Email, &a.Role, &a.BlockedAt, &a.CreatedAt, &a.External); err != nil {
 			http.Error(w, "Error reading accounts", http.StatusInternalServerError)
 			return
 		}
