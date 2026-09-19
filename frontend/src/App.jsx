@@ -6,6 +6,8 @@ import { Reader } from './features/reader/components/Reader';
 import { useGlobalStore } from './store/useGlobalStore';
 import { UploadModal } from './features/upload/components/UploadModal';
 import { Auth } from './features/auth/components/Auth';
+import { useMe, isStaff } from './features/auth/api/useMe';
+import { AdminPage } from './features/admin/AdminPage';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
 
@@ -20,6 +22,10 @@ function App() {
   const closeBook = useGlobalStore((state) => state.closeBook);
   const searchQuery = useGlobalStore((state) => state.searchQuery);
   const setSearchQuery = useGlobalStore((state) => state.setSearchQuery);
+  const adminOpen = useGlobalStore((state) => state.adminOpen);
+  const openAdmin = useGlobalStore((state) => state.openAdmin);
+  const { data: me } = useMe(isAuthenticated);
+  const staff = isStaff(me);
 
   useEffect(() => {
     const checkStatusAndToken = async () => {
@@ -155,6 +161,9 @@ function App() {
     }
     localStorage.removeItem('codice_token');
     clearAssetToken();
+    queryClient.removeQueries({ queryKey: ['me'] });
+    queryClient.removeQueries({ queryKey: ['admin'] });
+    closeBook();
     setIsAuthenticated(false);
   };
 
@@ -216,8 +225,10 @@ function App() {
           onSearchChange={setSearchQuery}
           onGoHome={closeBook}
           onLogout={handleLogout}
+          canAdmin={staff}
+          onOpenAdmin={openAdmin}
         >
-          <HomePage />
+          {adminOpen && staff ? <AdminPage isOwner={me.role === 'owner'} /> : <HomePage />}
         </AppShell>
       )}
     </div>

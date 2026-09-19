@@ -4,7 +4,7 @@ import iconBell from '../../assets/icons/header-bell.svg';
 import iconAvatar from '../../assets/icons/header-avatar.svg';
 import { useGlobalStore } from '../../store/useGlobalStore';
 
-export function Header({ searchQuery, onSearchChange, onAvatarClick }) {
+export function Header({ searchQuery, onSearchChange, onAvatarClick, canAdmin = false, onOpenAdmin }) {
   const openUploadModal = useGlobalStore((state) => state.openUploadModal);
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 bg-[rgba(249,249,253,0.85)] px-4 sm:px-6 shadow-[0px_1px_8px_0px_rgba(0,0,0,0.04)] backdrop-blur-md">
@@ -28,6 +28,15 @@ export function Header({ searchQuery, onSearchChange, onAvatarClick }) {
           <span className="font-body text-[13px] leading-none">+</span>
           <span className="hidden sm:inline font-body text-[11px] tracking-[0.44px]">Adicionar</span>
         </button>
+        {canAdmin && (
+          <button
+            onClick={onOpenAdmin}
+            className="rounded bg-surface-alt px-3 py-2 font-body text-[11px] tracking-[0.44px] text-ink shadow-[0px_1px_1.5px_rgba(0,0,0,0.04)] hover:brightness-95"
+            title="Administração do acervo"
+          >
+            Administração
+          </button>
+        )}
         <button className="hidden sm:flex items-center gap-2 rounded bg-surface-alt px-3 py-2 shadow-[0px_1px_1.5px_rgba(0,0,0,0.04)] hover:brightness-95">
           <img src={iconSync} alt="" className="size-3" />
           <span className="font-body text-[11px] tracking-[0.44px] text-ink">Sincronizar</span>

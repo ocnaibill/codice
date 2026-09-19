@@ -41,6 +41,7 @@ func newAuthStack(t *testing.T) *authStack {
 
 	r := chi.NewRouter()
 	r.Post("/auth/login", s.authH.Login)
+	r.With(a.Middleware).Get("/auth/me", s.authH.Me)
 	r.With(a.Middleware).Post("/auth/logout", s.authH.Logout)
 	r.With(a.Middleware).Post("/auth/resource-token", s.authH.ResourceToken)
 	r.With(a.Middleware).Post("/auth/app-tokens", tokens.Create)
@@ -368,5 +369,32 @@ func TestNewAccountsUseTheCurrentBcryptCost(t *testing.T) {
 	}
 	if bcryptCost < 12 {
 		t.Errorf("bcryptCost = %d; the minimum accepted by this project is 12", bcryptCost)
+	}
+}
+
+func TestSessions_MeReportsTheCurrentRole(t *testing.T) {
+	s := newAuthStack(t)
+	id := s.addUserWithPassword(t, "ana", "reader", "s3cret")
+	token := s.login(t, "ana", "s3cret")
+
+	if rec := s.req("GET", "/auth/me", "", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("without a session: %d, want 401", rec.Code)
+	}
+	me := func() map[string]string {
+		rec := s.req("GET", "/auth/me", token, "")
+		if rec.Code != 200 {
+			t.Fatalf("me: %d", rec.Code)
+		}
+		var out map[string]string
+		json.Unmarshal(rec.Body.Bytes(), &out)
+		return out
+	}
+	if got := me(); got["username"] != "ana" || got["role"] != "reader" || got["id"] != id {
+		t.Errorf("me = %v", got)
+	}
+	// A promotion shows at once, without a new login.
+	s.db.Exec(`UPDATE users SET role = 'admin' WHERE id = $1`, id)
+	if got := me(); got["role"] != "admin" {
+		t.Errorf("role after promotion = %q", got["role"])
 	}
 }

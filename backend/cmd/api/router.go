@@ -110,6 +110,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/works/bulk-import", uploadHandler.HandleBulkImport)
 
 	// Session, resource tokens and app tokens
+	r.With(auth).Get("/auth/me", authHandler.Me)
 	r.With(auth).Post("/auth/logout", authHandler.Logout)
 	r.With(auth).Post("/auth/resource-token", authHandler.ResourceToken)
 	r.With(auth).Post("/auth/app-tokens", appTokensHandler.Create)

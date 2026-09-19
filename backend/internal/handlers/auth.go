@@ -226,6 +226,20 @@ func (h *AuthHandler) ResourceToken(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resourceTokenResponse{Token: token, ExpiresAt: expires})
 }
 
+// Me tells the client who is signed in and with which role, so it can show only
+// what that role may use. The role is the one in the database right now.
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	role, _ := r.Context().Value(middleware.UserRoleKey).(string)
+	var username string
+	if err := h.DB.QueryRowContext(r.Context(), `SELECT username FROM users WHERE id = $1`, userID).Scan(&username); err != nil {
+		http.Error(w, "Error reading the account", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"id": userID, "username": username, "role": role})
+}
+
 // SetupStatusResponse indicates whether the system needs first-run wizard initialization
 type SetupStatusResponse struct {
 	IsFirstRun bool `json:"isFirstRun"`

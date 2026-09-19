@@ -157,6 +157,7 @@ func TestOwnerRoutes_OnlyOwnerPasses(t *testing.T) {
 func TestAuthRoutes_RequireASession(t *testing.T) {
 	h := testRouter(t)
 	for _, rt := range []route{
+		{"GET", "/auth/me"},
 		{"POST", "/auth/logout"},
 		{"POST", "/auth/resource-token"},
 		{"POST", "/auth/app-tokens"},
