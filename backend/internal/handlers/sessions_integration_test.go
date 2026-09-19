@@ -18,15 +18,16 @@ import (
 // authStack wires the real store, handlers and middleware over a live database,
 // the way the router does, with a few probe routes.
 type authStack struct {
-	db       *sql.DB
-	store    *sessions.Store
-	router   http.Handler
-	authH    *AuthHandler
-	lastRole string
-	users    *UsersHandler
-	invites  *InvitationsHandler
-	resets   *PasswordResetsHandler
-	owner    *OwnershipHandler
+	db        *sql.DB
+	store     *sessions.Store
+	router    http.Handler
+	authH     *AuthHandler
+	lastRole  string
+	users     *UsersHandler
+	invites   *InvitationsHandler
+	resets    *PasswordResetsHandler
+	owner     *OwnershipHandler
+	ldapAdmin *LDAPAdminHandler
 }
 
 func newAuthStack(t *testing.T) *authStack {
@@ -41,6 +42,7 @@ func newAuthStack(t *testing.T) *authStack {
 	s.invites = &InvitationsHandler{DB: db, Sessions: st}
 	s.resets = &PasswordResetsHandler{DB: db}
 	s.owner = &OwnershipHandler{DB: db}
+	s.ldapAdmin = &LDAPAdminHandler{DB: db}
 
 	probe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.lastRole, _ = r.Context().Value(middleware.UserRoleKey).(string)
@@ -61,6 +63,10 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Post("/ownership/transfer/accept", s.owner.Accept)
 	r.With(a.Middleware).Post("/ownership/transfer/decline", s.owner.Decline)
 	r.With(a.Middleware).Post("/auth/notices/{id}/ack", AckNotice(db))
+	r.Post("/auth/link", s.authH.Link)
+	r.With(a.Middleware).Get("/admin/ldap", s.ldapAdmin.Get)
+	r.With(a.Middleware).Put("/admin/ldap/policy", s.ldapAdmin.SetPolicy)
+	r.With(a.Middleware).Post("/admin/ldap/check", s.ldapAdmin.Check)
 	r.Post("/auth/reset-request", s.resets.Request)
 	r.Get("/auth/reset", s.resets.Check)
 	r.Post("/auth/reset", s.resets.Redeem)

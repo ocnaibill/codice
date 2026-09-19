@@ -76,3 +76,6 @@ ehthumbs_vista.db
 *.iml
 *.ipr
 uploads/
+
+# LDAP secrets and certificates (bind password, Authentik outpost token, CA file)
+ldap/

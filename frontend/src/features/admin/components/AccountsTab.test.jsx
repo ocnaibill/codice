@@ -10,7 +10,7 @@ import { AccountsTab } from './AccountsTab';
 
 const accounts = [
   { id: 'o1', username: 'boss', email: 'b@x', role: 'owner', blockedAt: null, canBlock: false, canRemove: false, isSelf: true },
-  { id: 'r1', username: 'ana', email: 'a@x', role: 'reader', blockedAt: null, canBlock: true, canRemove: true, isSelf: false },
+  { id: 'r1', username: 'ana', email: 'a@x', role: 'reader', external: 'ldap', blockedAt: null, canBlock: true, canRemove: true, isSelf: false },
   { id: 'r2', username: 'bob', email: 'bo@x', role: 'reader', blockedAt: '2026-09-01T10:00:00Z', canBlock: true, canRemove: true, isSelf: false },
   { id: 'a2', username: 'adm', email: 'ad@x', role: 'admin', blockedAt: null, canBlock: false, canRemove: false, isSelf: false },
 ];
@@ -30,6 +30,11 @@ describe('AccountsTab', () => {
     expect(view.text()).toContain('(você)');
     expect(view.text()).toContain('Dono');
     expect(view.text()).toContain('Bloqueada');
+  });
+
+  it('marks the accounts that sign in through the directory', async () => {
+    expect(view.text()).toContain('Diretório');
+    expect([...document.querySelectorAll('span')].filter((s) => s.textContent === 'Diretório')).toHaveLength(1);
   });
 
   it('offers block or unblock only where the server allows it', async () => {

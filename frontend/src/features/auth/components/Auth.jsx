@@ -3,6 +3,7 @@ import { api } from '../../../lib/api';
 import { AuthCard } from './AuthCard';
 import { FormField } from './FormField';
 import { ForgotPassword } from './ForgotPassword';
+import { LinkAccount } from './LinkAccount';
 
 export function Auth({ onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -13,6 +14,7 @@ export function Auth({ onLoginSuccess }) {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [forgot, setForgot] = useState(false);
+  const [linking, setLinking] = useState(null); // { ticket, username } after the directory password was proven
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,19 +25,36 @@ export function Auth({ onLoginSuccess }) {
     try {
       if (isLogin) {
         const res = await api.post('/auth/login', { username, password });
-        localStorage.setItem('codice_token', res.data.token);
-        onLoginSuccess();
+        if (res.status === 202 && res.data?.linkRequired) {
+          setLinking({ ticket: res.data.ticket, username: res.data.username });
+        } else {
+          localStorage.setItem('codice_token', res.data.token);
+          onLoginSuccess();
+        }
       } else {
         await api.post('/auth/register', { username, email, password });
         setIsLogin(true);
         setSuccess('Conta criada com sucesso! Faça login para continuar.');
       }
     } catch (err) {
-      setError(err.response?.data || 'Falha na autenticação. Verifique suas credenciais.');
+      setError(err.response?.status === 503
+        ? 'O servidor de login (diretório) não respondeu. Tente de novo em instantes.'
+        : err.response?.data || 'Falha na autenticação. Verifique suas credenciais.');
     } finally {
       setLoading(false);
     }
   };
+
+  if (linking) {
+    return (
+      <LinkAccount
+        ticket={linking.ticket}
+        username={linking.username}
+        onLinked={onLoginSuccess}
+        onBack={() => { setLinking(null); setPassword(''); }}
+      />
+    );
+  }
 
   if (forgot) {
     return <ForgotPassword initialUsername={username} onBack={() => setForgot(false)} />;

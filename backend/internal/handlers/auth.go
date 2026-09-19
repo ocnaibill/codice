@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/ocnaibill/codice/backend/internal/audit"
+	"github.com/ocnaibill/codice/backend/internal/authz"
+	"github.com/ocnaibill/codice/backend/internal/identity"
+	"github.com/ocnaibill/codice/backend/internal/ldapauth"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -19,6 +23,9 @@ import (
 type AuthHandler struct {
 	DB       *sql.DB
 	Sessions *sessions.Store
+	// Directory is the LDAP directory, or nil when LDAP is not configured. It never
+	// takes part for the owner, whose sign-in is always local (DEC-073).
+	Directory ldapauth.Directory
 }
 
 type AuthRequest struct {
@@ -117,7 +124,14 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-// Login authenticates user credentials, records a session and returns its token.
+// Login authenticates a person from the single login form. The backend picks the
+// method from the ACCOUNT, deterministically (DEC-072): a local account checks its
+// local password; an account linked to the directory checks the directory; an
+// unknown name reaches the directory only if the owner allowed first-login
+// creation. There is no cascade: a wrong local password is not sent to the
+// directory except when the directory has an entry of that very name (DEC-075),
+// and the owner never leaves local sign-in. Every credential failure has the same
+// public answer; an unreachable directory is the one distinct, operational answer.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req AuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -125,37 +139,235 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var id, passwordHash string
+	var id, passwordHash, role string
 	var blockedAt sql.NullTime
 	err := h.DB.QueryRow(
-		"SELECT id, COALESCE(password_hash, ''), blocked_at FROM users WHERE username = $1", req.Username,
-	).Scan(&id, &passwordHash, &blockedAt)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		"SELECT id, COALESCE(password_hash, ''), blocked_at, COALESCE(role, 'reader') FROM users WHERE username = $1", req.Username,
+	).Scan(&id, &passwordHash, &blockedAt, &role)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.loginUnknown(w, r, req)
+		return
+	}
+	if err != nil {
 		http.Error(w, "Error querying database", http.StatusInternalServerError)
 		return
 	}
 
-	if errors.Is(err, sql.ErrNoRows) || passwordHash == "" {
+	// An account tied to the directory checks its password there, never locally.
+	if role != authz.RoleOwner {
+		if subject, linked, err := identity.SubjectOf(r.Context(), h.DB, id); err != nil {
+			http.Error(w, "Error querying database", http.StatusInternalServerError)
+			return
+		} else if linked {
+			h.loginLinked(w, r, id, subject, blockedAt.Valid, req.Password)
+			return
+		}
+	}
+
+	if passwordHash != "" && bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)) == nil && !blockedAt.Valid {
+		h.upgradePasswordHash(id, passwordHash, req.Password)
+		h.finishLogin(w, r, id)
+		return
+	}
+	if passwordHash == "" {
 		burnPasswordCheck(req.Password)
-		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
-		return
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)) != nil || blockedAt.Valid {
-		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
-		return
+	// The local password did not match. If the directory has someone with this very
+	// name, the typed password may be theirs, and proving both is how the two are
+	// joined (DEC-075). The directory is asked about the name first, without any password.
+	if h.Directory != nil && role != authz.RoleOwner && !blockedAt.Valid && passwordHash != "" {
+		if h.offerLink(w, r, id, req) {
+			return
+		}
 	}
+	http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
+}
 
-	h.upgradePasswordHash(id, passwordHash, req.Password)
-
-	tokenString, err := h.newSessionToken(r, id)
+// finishLogin opens a session and answers with its token.
+func (h *AuthHandler) finishLogin(w http.ResponseWriter, r *http.Request, userID string) {
+	tokenString, err := h.newSessionToken(r, userID)
 	if err != nil {
 		http.Error(w, "Error generating authentication token", http.StatusInternalServerError)
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(AuthResponse{Token: tokenString})
+}
+
+const directoryUnavailableMessage = "The sign-in directory is not answering. Try again shortly."
+
+func unavailable(w http.ResponseWriter) {
+	http.Error(w, directoryUnavailableMessage, http.StatusServiceUnavailable)
+}
+
+// loginLinked signs in an account that is tied to the directory. The entry is
+// found by its stable identifier, so a rename in the directory changes nothing.
+func (h *AuthHandler) loginLinked(w http.ResponseWriter, r *http.Request, userID, subject string, blocked bool, password string) {
+	if blocked {
+		// Blocking is immediate and local: the directory is not even asked.
+		burnPasswordCheck(password)
+		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
+		return
+	}
+	if h.Directory == nil {
+		unavailable(w) // linked, but the directory is not configured: operational, not a wrong password
+		return
+	}
+	entry, err := h.Directory.LookupBySubject(r.Context(), subject)
+	switch {
+	case errors.Is(err, ldapauth.ErrNotFound):
+		burnPasswordCheck(password)
+		http.Error(w, invalidLoginMessage, http.StatusUnauthorized) // removed or disabled in the directory
+		return
+	case err != nil:
+		unavailable(w)
+		return
+	}
+	switch err := h.Directory.Authenticate(r.Context(), entry, password); {
+	case errors.Is(err, ldapauth.ErrInvalidCredentials):
+		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
+		return
+	case err != nil:
+		unavailable(w)
+		return
+	}
+	identity.Touch(r.Context(), h.DB, subject)
+	h.finishLogin(w, r, userID)
+}
+
+// offerLink handles a local account whose typed password did not match. It reports
+// whether it answered. It answers with a link ticket only when the directory has an
+// entry with this name, the typed password is that entry's, and the entry is not
+// already tied to another account. No session is opened yet.
+func (h *AuthHandler) offerLink(w http.ResponseWriter, r *http.Request, userID string, req AuthRequest) bool {
+	entry, err := h.Directory.Lookup(r.Context(), req.Username)
+	if err != nil {
+		return false
+	}
+	if l, _ := identity.FindLinked(r.Context(), h.DB, entry.Subject); l != nil {
+		return false
+	}
+	if h.Directory.Authenticate(r.Context(), entry, req.Password) != nil {
+		return false
+	}
+	h.sendTicket(w, r, userID, req.Username, entry.Subject)
+	return true
+}
+
+func (h *AuthHandler) sendTicket(w http.ResponseWriter, r *http.Request, userID, username, subject string) {
+	ticket, err := identity.NewTicket(r.Context(), h.DB, userID, subject)
+	if err != nil {
+		http.Error(w, "Error starting the link", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]any{"linkRequired": true, "ticket": ticket, "username": username})
+}
+
+// loginUnknown handles a name with no account. It reaches the directory only when
+// the owner allowed creating accounts at first sign-in (DEC-051); otherwise it is
+// an ordinary failed login.
+func (h *AuthHandler) loginUnknown(w http.ResponseWriter, r *http.Request, req AuthRequest) {
+	deny := func() {
+		burnPasswordCheck(req.Password)
+		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
+	}
+	if h.Directory == nil {
+		deny()
+		return
+	}
+	if policy, err := identity.GetPolicy(r.Context(), h.DB); err != nil || !policy.AllowCreate {
+		deny()
+		return
+	}
+	entry, err := h.Directory.Lookup(r.Context(), req.Username)
+	switch {
+	case errors.Is(err, ldapauth.ErrNotFound):
+		deny()
+		return
+	case err != nil:
+		unavailable(w)
+		return
+	}
+	switch err := h.Directory.Authenticate(r.Context(), entry, req.Password); {
+	case errors.Is(err, ldapauth.ErrInvalidCredentials):
+		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
+		return
+	case err != nil:
+		unavailable(w)
+		return
+	}
+
+	// Already tied to an account (renamed in the directory): that account signs in.
+	if l, _ := identity.FindLinked(r.Context(), h.DB, entry.Subject); l != nil {
+		if l.Blocked || l.Role == authz.RoleOwner {
+			http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
+			return
+		}
+		identity.Touch(r.Context(), h.DB, entry.Subject)
+		h.finishLogin(w, r, l.UserID)
+		return
+	}
+	// The same e-mail as a local account is a reason to ask, not a proof: the person
+	// must also give the local password before anything is joined (DEC-053).
+	if uid, ok, _ := identity.LocalCandidateByEmail(r.Context(), h.DB, entry.Email); ok {
+		h.sendTicket(w, r, uid, req.Username, entry.Subject)
+		return
+	}
+
+	name := entry.Username
+	if name == "" || len(name) > 50 {
+		name = req.Username
+	}
+	id, err := identity.CreateAccount(r.Context(), h.DB, name, entry)
+	if errors.Is(err, identity.ErrExists) || errors.Is(err, identity.ErrNameTaken) {
+		// Either a concurrent first login for this same person just created the
+		// account (the unique name or identity stopped this one), or the name belongs
+		// to someone else. Only the first is a sign-in: the entry is tied to that account.
+		if l, _ := identity.FindLinked(r.Context(), h.DB, entry.Subject); l != nil && !l.Blocked && l.Role != authz.RoleOwner {
+			identity.Touch(r.Context(), h.DB, entry.Subject)
+			h.finishLogin(w, r, l.UserID)
+			return
+		}
+		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
+		return
+	}
+	if err != nil {
+		log.Println("Error creating the directory account:", err)
+		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
+		return
+	}
+	h.finishLogin(w, r, id)
+}
+
+type linkRequest struct {
+	Ticket   string `json:"ticket"`
+	Password string `json:"password"`
+}
+
+// Link completes joining a directory identity to a local account: the person has
+// proven the directory password (that is what the ticket says) and now proves the
+// local one. Any failure gets the same answer as a wrong password at login.
+func (h *AuthHandler) Link(w http.ResponseWriter, r *http.Request) {
+	var req linkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+	userID, err := identity.LinkWithTicket(r.Context(), h.DB, req.Ticket, req.Password)
+	if err != nil {
+		if !errors.Is(err, identity.ErrTicketInvalid) && !errors.Is(err, identity.ErrBadPassword) &&
+			!errors.Is(err, identity.ErrNotEligible) && !errors.Is(err, identity.ErrExists) {
+			log.Println("Error linking the identity:", err)
+			http.Error(w, "Error linking the account", http.StatusInternalServerError)
+			return
+		}
+		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
+		return
+	}
+	h.finishLogin(w, r, userID)
 }
 
 // upgradePasswordHash re-hashes a correct password at the current cost when the

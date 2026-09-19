@@ -41,13 +41,42 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       PORT: "8080"
+      # LDAP sign-in (optional). Leave LDAP_URL empty to keep it off; see the README.
+      # The service account's password is read from a file, never from the environment.
+      LDAP_URL: ${LDAP_URL:-}
+      LDAP_BIND_DN: ${LDAP_BIND_DN:-}
+      LDAP_BIND_PASSWORD_FILE: ${LDAP_BIND_PASSWORD_FILE:-}
+      LDAP_BASE_DN: ${LDAP_BASE_DN:-}
+      LDAP_USER_FILTER: ${LDAP_USER_FILTER:-}
+      LDAP_USERNAME_ATTR: ${LDAP_USERNAME_ATTR:-}
+      LDAP_ID_ATTR: ${LDAP_ID_ATTR:-}
+      LDAP_EMAIL_ATTR: ${LDAP_EMAIL_ATTR:-}
+      LDAP_START_TLS: ${LDAP_START_TLS:-}
+      LDAP_CA_FILE: ${LDAP_CA_FILE:-}
     ports:
       - "8080:8080"
     volumes:
       - ./uploads:/app/storage
+      # Secrets and the CA certificate for LDAP live in ./ldap (not in git).
+      - ./ldap:/app/ldap:ro
     depends_on:
       - postgres
       - redis
+    networks:
+      - codice_network
+    restart: unless-stopped
+
+  # Optional: the Authentik LDAP outpost, on the same private network as the API.
+  # Start it with `docker compose -f docker-compose.full.yml --profile ldap up -d`.
+  # It publishes no port: only the backend can reach it, as ldap-outpost:6636.
+  ldap-outpost:
+    # AUTHENTIK_TAG must be your Authentik version. It is only needed with the ldap profile,
+    # and compose reads it even when the profile is off, so it has a self-explaining placeholder
+    # instead of being required: pulling the placeholder fails and names the variable.
+    image: ghcr.io/goauthentik/ldap:${AUTHENTIK_TAG:-set-AUTHENTIK_TAG}
+    profiles: ["ldap"]
+    container_name: codice_ldap_outpost
+    env_file: ./ldap/outpost.env
     networks:
       - codice_network
     restart: unless-stopped
