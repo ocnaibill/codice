@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
+import { refreshLibrary } from '../../../lib/refreshLibrary';
 
 /**
  * Turns an upload error into something a person can act on. The server answers
@@ -50,7 +51,7 @@ export const useUploadBook = () => {
     mutationFn: uploadBook,
     onSuccess: () => {
       // Invalidate works cache upon upload success to trigger refetch
-      queryClient.invalidateQueries({ queryKey: ['works'] });
+      refreshLibrary(queryClient);
     },
   });
 };

@@ -69,11 +69,11 @@ Para voltar: `docker exec -i codice_db pg_restore -U codice_user -d codice_db --
 **Pendências:**
 - Rodar o OCR de fato (a detecção já indica onde) e a fila `ocr`.
 - Tela para listar arquivos referenciados e usar "mover para o gerenciado" (a API existe: `POST /admin/library/move-to-managed`).
-- Tela para criar e revogar tokens de aplicativo (UI-21); sem ela o OPDS só funciona pela API. O leitor ainda vê botões de upload e edição (recebe 403); esconder por papel é ajuste de interface, agora que `/auth/me` existe.
+- Tela para criar e revogar tokens de aplicativo (UI-21); sem ela o OPDS só funciona pela API. O botão de adicionar livros já fica escondido do leitor; o modal de edição ainda não é aberto por nenhuma tela.
 - Ensaio básico da aplicação inteira realizado após o merge, inclusive com Redis ausente na inicialização. Permanecem os ensaios de falhas operacionais e os ajustes de interface descritos no relatório de validação.
 - Da Fase 1: `rt` e `ticket` aparecem no log de acesso do chi (risco baixo); `POSTGRES_PASSWORD` ainda tem valor padrão em `docker-compose.full.yml`; CORS aceita uma única origem; não há MFA.
 
-**Próximo passo:** revisar as correções da validação e seguir para a **Fase 4**, em fatias pequenas, começando por listagem e bloqueio/desbloqueio de contas. Convites, exclusão, transferência, redefinição e LDAP vêm depois. Só a troca de papel existe hoje; o leitor usado no ensaio foi semeado no banco isolado.
+**Próximo passo:** revisar as correções da validação e seguir para a **Fase 4**, em fatias pequenas, começando por listagem e bloqueio/desbloqueio de contas. Convites, exclusão, transferência, redefinição e LDAP vêm depois. Só a troca de papel existe hoje; o leitor usado no ensaio foi semeado no banco isolado. A Fase 4 deve ir em branch e PR próprios.
 
 ## Como rodar
 
@@ -97,7 +97,7 @@ export TEST_DATABASE_URL='postgres://postgres:test@127.0.0.1:55432/codice_test?s
 cd backend && go vet ./... && go test ./...
 ```
 
-O worker: `cd worker && venv/bin/python -m pytest` (82 testes). O frontend: `cd frontend && npm test` (54 testes). `make test` executa as três suítes e agora propaga falhas. Não use o banco de desenvolvimento como `TEST_DATABASE_URL`. Sem essa variável, os testes Go de integração continuam sendo ignorados: sucesso de `make test` sozinho não comprova integração.
+O worker: `cd worker && venv/bin/python -m pytest` (82 testes). O frontend: `cd frontend && npm test` (59 testes). `make test` executa as três suítes e agora propaga falhas. Não use o banco de desenvolvimento como `TEST_DATABASE_URL`. Sem essa variável, os testes Go de integração continuam sendo ignorados: sucesso de `make test` sozinho não comprova integração.
 
 Os testes semeiam obras com `testdb.AddWork` (`backend/internal/testdb`), que grava obra, edição, arquivo, local e autor como a aplicação faz.
 

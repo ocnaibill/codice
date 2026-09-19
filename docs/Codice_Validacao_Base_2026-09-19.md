@@ -63,8 +63,8 @@ A consulta a provedores de metadados para o corpus sintético retornou sem resul
 
 ## Pendências e limites
 
-- **Interface:** `HomePage.jsx` ainda passa o nome fixo “Bianco”; contadores do hub ficaram desatualizados após operações até recarregar a página. Na largura de aproximadamente 694 px usada no ensaio, não havia retorno evidente da administração ao catálogo. Tratar numa fatia de consistência da navegação e dados da sessão.
-- **Papéis na interface:** esconder ações administrativas dos leitores continua pendente, embora a API recuse as operações. A tela de tokens de aplicativo também continua pendente.
+- **Interface (resolvida na sequência):** a saudação usa o nome da conta (`GET /auth/me`), e os contadores, favoritos e a grade são atualizados juntos após envio, edição, favorito e ao fechar o leitor. A administração tem "Voltar ao acervo", que também vale em tela estreita. O botão "Adicionar" só aparece para owner e admin.
+- **Ainda pendente na interface:** a tela de tokens de aplicativo (UI-21). Estatísticas de outros clientes só atualizam ao recarregar ou ao interagir.
 - **Operação:** migração de um banco real já preenchido e restauração de backup não foram ensaiadas nesta rodada. Não executar a migração `00011` no banco de desenvolvimento sem o backup recomendado no README.
 - **Segurança já registrada:** logs de acesso com `rt`/`ticket`, senha padrão de PostgreSQL no Compose completo e política de CORS permanecem itens separados; esta rodada não é auditoria de segurança completa.
 - **Leitura:** abrir e navegar não homologa retomada após reinício, conflitos entre dispositivos, variantes de EPUB/PDF ou todas as posições por edição/arquivo. Esses critérios pertencem à validação detalhada da Fase 5.
