@@ -5,6 +5,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 import { Invitations } from './Invitations';
 import { PasswordResets } from './PasswordResets';
+import { TransferOwnership } from './TransferOwnership';
 
 const ROLE = { owner: 'Dono', admin: 'Administrador', reader: 'Leitor' };
 
@@ -89,6 +90,7 @@ export function AccountsTab({ isOwner }) {
     </Section>
     <PasswordResets />
     <Invitations isOwner={isOwner} />
+    {isOwner && <TransferOwnership />}
     </div>
   );
 }

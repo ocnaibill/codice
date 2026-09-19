@@ -2,11 +2,7 @@ package handlers
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log"
@@ -19,6 +15,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/audit"
 	"github.com/ocnaibill/codice/backend/internal/authz"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/secrets"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -37,18 +34,9 @@ type InvitationsHandler struct {
 	}
 }
 
-func hashInvitation(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
-}
+func hashInvitation(token string) string { return secrets.Hash(token) }
 
-func newInvitationToken() (string, error) {
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
-}
+func newInvitationToken() (string, error) { return secrets.NewToken() }
 
 func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
 

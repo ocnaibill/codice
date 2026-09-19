@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 )
@@ -111,6 +112,7 @@ var staffRoutes = []route{
 
 // Routes reserved to the owner alone (DEC-056).
 var ownerRoutes = []route{
+	{"POST", "/ownership/transfer"},
 	{"PUT", "/admin/trash/policy"},
 	{"POST", "/admin/trash/policy/apply"},
 	{"POST", "/admin/storage/roots"},
@@ -168,6 +170,10 @@ func TestAuthRoutes_RequireASession(t *testing.T) {
 	h := testRouter(t)
 	for _, rt := range []route{
 		{"GET", "/auth/me"},
+		{"GET", "/ownership/transfer"},
+		{"POST", "/ownership/transfer/accept"},
+		{"POST", "/ownership/transfer/decline"},
+		{"POST", "/auth/notices/1/ack"},
 		{"POST", "/auth/password"},
 		{"POST", "/auth/logout"},
 		{"POST", "/auth/resource-token"},
@@ -258,7 +264,7 @@ func TestOwnerOnlyRoutes_ThatNeedTheDatabaseAreStillGuarded(t *testing.T) {
 	// Removing an authorised directory reaches the database once past the guard,
 	// so only the guard itself is checked here.
 	h := testRouter(t)
-	for _, rt := range []route{{"DELETE", "/admin/storage/roots/1"}, {"GET", "/admin/trash/policy/preview"}} {
+	for _, rt := range []route{{"DELETE", "/admin/storage/roots/1"}, {"GET", "/admin/trash/policy/preview"}, {"DELETE", "/ownership/transfer"}} {
 		for _, role := range []string{"admin", "reader"} {
 			if rec := do(h, rt.method, rt.path, tokenFor(t, role), ""); rec.Code != http.StatusForbidden {
 				t.Errorf("%s %s as %s: got %d, want 403", rt.method, rt.path, role, rec.Code)
@@ -268,4 +274,19 @@ func TestOwnerOnlyRoutes_ThatNeedTheDatabaseAreStillGuarded(t *testing.T) {
 			t.Errorf("%s %s anonymous: got %d, want 401", rt.method, rt.path, rec.Code)
 		}
 	}
+}
+
+// Recovery of the owner exists only as a command on the server (DEC-057, RF-038):
+// no route may offer it, remotely or to an admin.
+func TestOwnerRecoveryIsNotReachableOverHTTP(t *testing.T) {
+	routes, ok := testRouter(t).(chi.Routes)
+	if !ok {
+		t.Fatal("the router cannot be walked")
+	}
+	chi.Walk(routes, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if strings.Contains(strings.ToLower(route), "recover") {
+			t.Errorf("%s %s exposes recovery over HTTP", method, route)
+		}
+		return nil
+	})
 }

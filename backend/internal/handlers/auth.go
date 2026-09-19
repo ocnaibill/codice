@@ -237,8 +237,27 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error reading the account", http.StatusInternalServerError)
 		return
 	}
+	// Things the person must see now, such as a recovery done on the server.
+	type notice struct {
+		ID        int64           `json:"id"`
+		Kind      string          `json:"kind"`
+		Details   json.RawMessage `json:"details"`
+		CreatedAt time.Time       `json:"createdAt"`
+	}
+	notices := []notice{}
+	rows, err := h.DB.QueryContext(r.Context(), `SELECT id, kind, details, created_at FROM security_notices
+		WHERE user_id = $1 AND acknowledged_at IS NULL ORDER BY id`, userID)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var n notice
+			if rows.Scan(&n.ID, &n.Kind, &n.Details, &n.CreatedAt) == nil {
+				notices = append(notices, n)
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"id": userID, "username": username, "role": role})
+	json.NewEncoder(w).Encode(map[string]any{"id": userID, "username": username, "role": role, "notices": notices})
 }
 
 // SetupStatusResponse indicates whether the system needs first-run wizard initialization

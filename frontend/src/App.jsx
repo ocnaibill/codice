@@ -9,6 +9,7 @@ import { Auth } from './features/auth/components/Auth';
 import { useMe, isStaff } from './features/auth/api/useMe';
 import { AdminPage } from './features/admin/AdminPage';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
+import { OwnershipBanner } from './features/ownership/OwnershipBanner';
 import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
 import { ResetPassword } from './features/auth/components/ResetPassword';
 import { AcceptInvite } from './features/auth/components/AcceptInvite';
@@ -259,6 +260,7 @@ function App() {
         </div>
       )}
       <UploadModal />
+      <OwnershipBanner me={me} />
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
       {activeBookId ? (
         <Reader />

@@ -42,6 +42,7 @@ func newRouter(d routerDeps) http.Handler {
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
 	invitesHandler := &handlers.InvitationsHandler{DB: db, Sessions: d.Sessions}
 	resetsHandler := &handlers.PasswordResetsHandler{DB: db, Disconnect: d.WS.DisconnectUser}
+	ownershipHandler := &handlers.OwnershipHandler{DB: db}
 	usersHandler := &handlers.UsersHandler{DB: db, Disconnect: d.WS.DisconnectUser}
 	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
 	dupesHandler := &handlers.DuplicatesHandler{DB: db}
@@ -121,6 +122,15 @@ func newRouter(d routerDeps) http.Handler {
 	// Session, resource tokens and app tokens
 	r.With(auth).Get("/auth/me", authHandler.Me)
 	r.With(auth, authRateLimit).Post("/auth/password", authHandler.ChangePassword)
+	r.With(auth).Post("/auth/notices/{id}/ack", handlers.AckNotice(db))
+
+	// Ownership changes hands in two steps (RF-038). Recovery when the owner is
+	// unavailable is not a route: it is a command run on the server (DEC-057).
+	r.With(auth).Get("/ownership/transfer", ownershipHandler.Get)
+	r.With(owner, authRateLimit).Post("/ownership/transfer", ownershipHandler.Start)
+	r.With(owner).Delete("/ownership/transfer", ownershipHandler.Cancel)
+	r.With(auth, authRateLimit).Post("/ownership/transfer/accept", ownershipHandler.Accept)
+	r.With(auth).Post("/ownership/transfer/decline", ownershipHandler.Decline)
 	r.With(auth).Post("/auth/logout", authHandler.Logout)
 	r.With(auth).Post("/auth/resource-token", authHandler.ResourceToken)
 	r.With(auth).Post("/auth/app-tokens", appTokensHandler.Create)

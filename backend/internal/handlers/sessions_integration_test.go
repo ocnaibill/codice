@@ -26,6 +26,7 @@ type authStack struct {
 	users    *UsersHandler
 	invites  *InvitationsHandler
 	resets   *PasswordResetsHandler
+	owner    *OwnershipHandler
 }
 
 func newAuthStack(t *testing.T) *authStack {
@@ -39,6 +40,7 @@ func newAuthStack(t *testing.T) *authStack {
 	s.users = &UsersHandler{DB: db}
 	s.invites = &InvitationsHandler{DB: db, Sessions: st}
 	s.resets = &PasswordResetsHandler{DB: db}
+	s.owner = &OwnershipHandler{DB: db}
 
 	probe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.lastRole, _ = r.Context().Value(middleware.UserRoleKey).(string)
@@ -53,6 +55,12 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Post("/auth/app-tokens", tokens.Create)
 	r.With(a.Middleware).Get("/auth/app-tokens", tokens.List)
 	r.With(a.Middleware).Delete("/auth/app-tokens/{id}", tokens.Revoke)
+	r.With(a.Middleware).Get("/ownership/transfer", s.owner.Get)
+	r.With(a.Middleware).Post("/ownership/transfer", s.owner.Start)
+	r.With(a.Middleware).Delete("/ownership/transfer", s.owner.Cancel)
+	r.With(a.Middleware).Post("/ownership/transfer/accept", s.owner.Accept)
+	r.With(a.Middleware).Post("/ownership/transfer/decline", s.owner.Decline)
+	r.With(a.Middleware).Post("/auth/notices/{id}/ack", AckNotice(db))
 	r.Post("/auth/reset-request", s.resets.Request)
 	r.Get("/auth/reset", s.resets.Check)
 	r.Post("/auth/reset", s.resets.Redeem)
