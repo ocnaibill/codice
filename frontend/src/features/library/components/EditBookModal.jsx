@@ -118,6 +118,7 @@ export function EditBookModal({ book, onClose }) {
           <div className="flex items-center gap-3">
             <button 
               type="button"
+              title="Hides the book from the library. Files, notes and progress are kept and it can be restored."
               onClick={handleDelete}
               disabled={isPending}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
@@ -126,7 +127,7 @@ export function EditBookModal({ book, onClose }) {
                   : 'bg-zinc-950 text-red-400 border border-red-900/50 hover:bg-red-950 hover:border-red-800'
               }`}
             >
-              {deleteMutation.isPending ? 'Deleting...' : (isConfirmingDelete ? 'Are you sure?' : 'Delete Book')}
+              {deleteMutation.isPending ? 'Retiring...' : (isConfirmingDelete ? 'Are you sure?' : 'Retire from Library')}
             </button>
             <button 
               onClick={onClose} 

@@ -21,6 +21,7 @@ export function NotesQuotes({ notes, isLoading }) {
               <p className="font-body text-xl italic leading-[29px] tracking-[-0.12px] text-ink">“{note.quote}”</p>
               <p className="mt-1 text-right font-body text-[11px] italic tracking-[-0.12px] text-ink">
                 — {note.workTitle}, {note.workAuthor}
+                {note.sourceAvailable === false && <span className="not-italic text-ink-faint"> (fonte indisponível)</span>}
               </p>
             </blockquote>
           ))}
