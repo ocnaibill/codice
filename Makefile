@@ -3,6 +3,10 @@
 
 .PHONY: test test-backend test-worker test-frontend test-all watch
 
+GO ?= go
+NPM ?= npm
+PYTHON ?= $(shell if [ -f worker/venv/bin/python ]; then echo venv/bin/python; elif [ -f worker/.venv/bin/python ]; then echo .venv/bin/python; else echo python3; fi)
+
 # Default: run all tests
 test: test-backend test-worker test-frontend
 
@@ -11,9 +15,9 @@ test-backend:
 	@echo "=============================================="
 	@echo "  Running Backend Go Tests"
 	@echo "=============================================="
-	cd backend && go test ./... -v -count=1 2>&1 | tail -30
+	cd backend && $(GO) test ./... -count=1
 	@echo ""
-	@echo "✅ Backend tests complete (exit code: $$?)"
+	@echo "✅ Backend tests complete"
 
 # Worker Python tests — discovers all test_*.py recursively
 # Uses venv if available, falls back to system python
@@ -21,13 +25,7 @@ test-worker:
 	@echo "=============================================="
 	@echo "  Running Worker Python Tests"
 	@echo "=============================================="
-	@if [ -f worker/venv/bin/python ]; then \
-		cd worker && venv/bin/python -m pytest tests/ -v --tb=short 2>&1; \
-	elif [ -f worker/.venv/bin/python ]; then \
-		cd worker && .venv/bin/python -m pytest tests/ -v --tb=short 2>&1; \
-	else \
-		cd worker && python -m pytest tests/ -v --tb=short 2>&1 || echo "⚠️  pytest not found in any venv. Run: cd worker && pip install pytest"; \
-	fi
+	cd worker && $(PYTHON) -m pytest tests/ -v --tb=short
 	@echo ""
 	@echo "✅ Worker tests complete"
 
@@ -36,7 +34,7 @@ test-frontend:
 	@echo "=============================================="
 	@echo "  Running Frontend JS Tests"
 	@echo "=============================================="
-	cd frontend && npx vitest run --reporter=verbose 2>&1 || echo "⚠️  vitest not found. Run: npm install -D vitest"
+	cd frontend && $(NPM) test -- --reporter=verbose
 	@echo ""
 	@echo "✅ Frontend tests complete"
 
@@ -45,4 +43,4 @@ test-all: test
 
 # Watch mode for frontend dev
 watch:
-	cd frontend && npx vitest --reporter=verbose
+	cd frontend && $(NPM) exec -- vitest --reporter=verbose

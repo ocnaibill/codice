@@ -39,7 +39,8 @@ MAX_RUNNING = int(os.getenv("JOBS_MAX_CONCURRENT", "1"))
 
 
 def connect_redis():
-    """Returns a Redis client, or None: the worker works without it."""
+    """Keep a reconnectable client even when Redis starts after the worker."""
+    client = None
     try:
         client = redis.from_url(
             REDIS_URL, decode_responses=True, socket_timeout=10.0, socket_connect_timeout=5.0,
@@ -49,7 +50,7 @@ def connect_redis():
         return client
     except Exception as err:
         print(f"⚠️ Redis unavailable ({err}); polling the database instead")
-        return None
+        return client
 
 
 def publish(client, event: dict):
