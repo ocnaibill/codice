@@ -1,0 +1,7 @@
+# Keep secrets, local data and tooling out of the build context.
+.env
+.env.*
+uploads/
+*.md
+**/*_test.go
+tests/
