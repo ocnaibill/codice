@@ -7,17 +7,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/ocnaibill/codice/backend/internal/config"
 	"github.com/ocnaibill/codice/backend/internal/database"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/redis/go-redis/v9"
-	"github.com/go-chi/chi/v5"
-	chiMiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
-	"github.com/go-chi/httprate"
 	_ "github.com/lib/pq" // Underscore initializes the driver anonymously
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 )
@@ -75,103 +70,10 @@ func main() {
 	}
 	log.Println("✅ Successfully connected to Redis!")
 
-	// 3. Instantiate Handlers
-	libHandler := &handlers.LibraryHandler{DB: db}
-	uploadHandler := &handlers.UploadHandler{
-		DB:          db,
-		RedisClient: redisClient,
-	}
-	wsHandler := &handlers.WsHandler{
-		RedisClient: redisClient,
-	}
-	authHandler := &handlers.AuthHandler{
-		DB: db,
-	}
-	favoritesHandler := &handlers.FavoritesHandler{DB: db}
-	notesHandler := &handlers.NotesHandler{DB: db}
-	statsHandler := &handlers.StatsHandler{DB: db}
+	wsHandler := &handlers.WsHandler{RedisClient: redisClient}
 
 	// Start Redis PubSub listener in background goroutine
 	go wsHandler.ListenToRedis()
-
-	// 4. Configure Router
-	r := chi.NewRouter()
-	r.Use(chiMiddleware.Logger)
-	r.Use(chiMiddleware.Recoverer)
-
-	// PERF-03: Gzip compression middleware
-	r.Use(chiMiddleware.Compress(5, "text/html", "text/css", "text/javascript", "application/json", "application/javascript", "image/svg+xml"))
-
-	allowedOrigin := os.Getenv("CORS_ALLOWED_ORIGINS")
-	if allowedOrigin == "" {
-		allowedOrigin = "http://localhost:5173"
-	}
-
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{allowedOrigin},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-	}))
-
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("📚 Códice API is online!"))
-	})
-
-	// Rate limiting for auth endpoints (SEC-09): 10 requests per minute per IP
-	authRateLimit := httprate.LimitByIP(10, 1*time.Minute)
-
-	// Public Auth & Setup Endpoints
-	r.With(authRateLimit).Get("/auth/setup-status", authHandler.GetSetupStatus)
-	r.With(authRateLimit).Post("/auth/setup", authHandler.SetupMasterAdmin)
-	r.With(authRateLimit).Post("/auth/register", authHandler.Register)
-	r.With(authRateLimit).Post("/auth/login", authHandler.Login)
-
-	// Protected Application Endpoints
-	r.With(appMiddleware.AuthMiddleware).Get("/works", libHandler.GetWorks)
-	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}", libHandler.GetWorkByID)
-	r.With(appMiddleware.AuthMiddleware).Put("/works/{id}", libHandler.UpdateWork)
-	r.With(appMiddleware.AuthMiddleware).Patch("/works/{id}/progress", libHandler.UpdateProgress)
-	r.With(appMiddleware.AuthMiddleware).Post("/works/{id}/reading-heartbeat", libHandler.ReadingHeartbeat)
-	r.With(appMiddleware.AuthMiddleware).Delete("/works/{id}", libHandler.DeleteWork)
-	r.With(appMiddleware.AuthMiddleware).Post("/upload", uploadHandler.HandleUpload)
-	r.With(appMiddleware.AuthMiddleware).Post("/works/bulk-import", uploadHandler.HandleBulkImport)
-
-	// Favorites, notes/quotes, and dashboard stats
-	r.With(appMiddleware.AuthMiddleware).Post("/works/{id}/favorite", favoritesHandler.AddFavorite)
-	r.With(appMiddleware.AuthMiddleware).Delete("/works/{id}/favorite", favoritesHandler.RemoveFavorite)
-	r.With(appMiddleware.AuthMiddleware).Get("/favorites", favoritesHandler.GetFavorites)
-	r.With(appMiddleware.AuthMiddleware).Post("/works/{id}/notes", notesHandler.CreateNote)
-	r.With(appMiddleware.AuthMiddleware).Get("/notes", notesHandler.ListNotes)
-	r.With(appMiddleware.AuthMiddleware).Delete("/notes/{id}", notesHandler.DeleteNote)
-	r.With(appMiddleware.AuthMiddleware).Get("/stats", statsHandler.GetStats)
-
-	// Page streaming endpoints (CBZ/CBR)
-	pageHandler := &handlers.PageHandler{DB: db}
-	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/pages", pageHandler.GetPages)
-	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/pages/{page}", pageHandler.ServePage)
-	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/pages/{page}/thumbnail", pageHandler.ServePageThumbnail)
-
-	// Text file serving (TXT, MD)
-	mediaHandler := &handlers.MediaHandler{DB: db}
-	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/text", mediaHandler.ServeText)
-	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/audio", mediaHandler.ServeAudio)
-
-	// OPDS 1.2 Catalog (Basic Auth for mobile apps like KOReader, Moon+ Reader)
-	basicVerifier := handlers.NewBasicVerifier(db)
-	opdsHandler := &handlers.OPDSHandler{DB: db, Verify: basicVerifier}
-	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/catalog", opdsHandler.RootCatalog)
-	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/recent", opdsHandler.RecentFeed)
-	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/search", opdsHandler.SearchFeed)
-
-	// Metadata search (proxies to worker HTTP server)
-	r.With(appMiddleware.AuthMiddleware).Get("/metadata/search", libHandler.SearchMetadata)
-
-	// WebSocket (auth handled inside handler for upgrade)
-	r.Get("/ws", wsHandler.HandleWS)
-
-	// Covers and files also accept Basic credentials (verified against the
-	// account password) because OPDS clients cannot send a bearer token.
-	authWithBasic := appMiddleware.AuthMiddlewareWithBasic(basicVerifier)
 
 	// Define base storage directory (fallback to ./uploads).
 	// Try to resolve relative paths from the project root by walking up from CWD.
@@ -209,27 +111,13 @@ func main() {
 
 	log.Printf("📂 Storage path resolved to: %s", storagePath)
 
-	// Ensure covers directory exists
-	coversPath := filepath.Join(storagePath, "covers")
-	os.MkdirAll(coversPath, 0755)
-
-	// Helper to serve static files with Cache-Control headers (PERF-04)
-	fsCovers := http.StripPrefix("/covers/", http.FileServer(http.Dir(coversPath)))
-	r.With(authWithBasic).Get("/covers/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Cache images for 7 days, revalidate
-		w.Header().Set("Cache-Control", "public, max-age=604800, must-revalidate")
-		if strings.HasSuffix(r.URL.Path, ".svg") {
-			w.Header().Set("Content-Type", "image/svg+xml")
-		}
-		fsCovers.ServeHTTP(w, r)
-	}))
-
-	fsFiles := http.StripPrefix("/files/", http.FileServer(http.Dir(storagePath)))
-	r.With(authWithBasic).Get("/files/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Do not cache original files (could be large, user might delete)
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		fsFiles.ServeHTTP(w, r)
-	}))
+	// 4. Configure Router
+	r := newRouter(routerDeps{
+		DB:          db,
+		RedisClient: redisClient,
+		WS:          wsHandler,
+		StoragePath: storagePath,
+	})
 
 	// 5. Start HTTP Server
 	port := os.Getenv("PORT")
