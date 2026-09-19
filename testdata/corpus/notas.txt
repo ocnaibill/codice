@@ -1,0 +1,2 @@
+Arquivo de texto simples para testes.
+Segunda linha com acentuação: coração.

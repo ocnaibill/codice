@@ -1,0 +1,136 @@
+{
+  "generated_by": "testdata/generate_corpus.py",
+  "files": [
+    {
+      "file": "epub_acentos.epub",
+      "expect": "valid",
+      "note": "EPUB refluível com acentos (título, autor, capítulos)",
+      "sha256": "fc60826425f6e427a5c3fc5218814e596eb424554f882bf037e17cda3427aef1",
+      "bytes": 1917,
+      "format": "epub",
+      "language": "pt-BR"
+    },
+    {
+      "file": "epub_fixed_layout.epub",
+      "expect": "valid",
+      "note": "EPUB fixed-layout (rendition:layout pre-paginated) para avaliar escopo",
+      "sha256": "ea13f0982df799020f845a30f250cd7187f6c3f74cbac02ebf90839c0693da79",
+      "bytes": 1816,
+      "format": "epub"
+    },
+    {
+      "file": "epub_duplicata.epub",
+      "expect": "duplicate",
+      "note": "Bytes idênticos a epub_acentos.epub com outro nome (hash igual)",
+      "sha256": "fc60826425f6e427a5c3fc5218814e596eb424554f882bf037e17cda3427aef1",
+      "bytes": 1917,
+      "duplicate_of": "epub_acentos.epub"
+    },
+    {
+      "file": "epub_alterado.epub",
+      "expect": "valid",
+      "note": "Mesma obra e mesmos metadados com conteúdo diferente (hash diferente): nova versão, não duplicata",
+      "sha256": "e083fa05708da736806c89118d65f169499bdad9ce1225d0edd797ea4be26723",
+      "bytes": 1917,
+      "format": "epub",
+      "same_work_as": "epub_acentos.epub"
+    },
+    {
+      "file": "epub_outra_edicao_en.epub",
+      "expect": "valid",
+      "note": "Outro idioma e ISBN, autor com grafia parecida: candidato à revisão de vínculo, sem fusão automática",
+      "sha256": "7d0f42f911e3557ff9b781a65be59f9ccc76134fccb4f5820c6136390be44b29",
+      "bytes": 1522,
+      "format": "epub",
+      "language": "en",
+      "candidate_of": "epub_acentos.epub"
+    },
+    {
+      "file": "epub_corrompido.epub",
+      "expect": "invalid",
+      "note": "EPUB truncado ao meio (zip inválido)",
+      "sha256": "904a513068cda01f9c61d6dfaad3cf1c3ccf7abac31ae46921306c60bab147ba",
+      "bytes": 958
+    },
+    {
+      "file": "falso.pdf",
+      "expect": "invalid",
+      "note": "Extensão .pdf com conteúdo de texto: valida conteúdo, não só extensão",
+      "sha256": "07f05eaafae91049602614315a865453def98ba90ce024ff700defd5fd2fa45c",
+      "bytes": 35
+    },
+    {
+      "file": "pdf_digital.pdf",
+      "expect": "valid",
+      "note": "PDF com texto nativo em todas as páginas",
+      "sha256": "432804cd633a16c687470de6597bd67cf52e8e37d63b99f6f4ca3341f20bd0b1",
+      "bytes": 1025,
+      "format": "pdf",
+      "pages": 2,
+      "text_pages": [
+        1,
+        2
+      ]
+    },
+    {
+      "file": "pdf_escaneado.pdf",
+      "expect": "valid",
+      "note": "PDF só de imagens, sem camada de texto (candidato a OCR)",
+      "sha256": "3af61b3bd46b42c0fca8796ec64b5e979a2d814073a597b646262213487d64f3",
+      "bytes": 1864,
+      "format": "pdf",
+      "pages": 2,
+      "text_pages": []
+    },
+    {
+      "file": "pdf_misto.pdf",
+      "expect": "valid",
+      "note": "PDF misto: página 1 com texto, página 2 escaneada (OCR só na 2)",
+      "sha256": "eadcdb74ad205df8f6a5f8fe4886c7be916bea12588e81f9de58f479910ba0a5",
+      "bytes": 1427,
+      "format": "pdf",
+      "pages": 2,
+      "text_pages": [
+        1
+      ]
+    },
+    {
+      "file": "cbz_ltr.cbz",
+      "expect": "valid",
+      "note": "CBZ esquerda para direita, série com posição 1",
+      "sha256": "afcc31fd1dbd8104c5126afaa1107df710b92ac2483fbf1c797f00e514911c61",
+      "bytes": 2539,
+      "format": "cbz",
+      "direction": "ltr",
+      "series": "Série Sintética",
+      "series_index": 1
+    },
+    {
+      "file": "cbz_rtl.cbz",
+      "expect": "valid",
+      "note": "CBZ direita para esquerda (ComicInfo Manga=YesAndRightToLeft)",
+      "sha256": "f79b693440ebe03c74ad8c91a1c003cad96fa8496dd9fd3e42ba152d15c1ae90",
+      "bytes": 2561,
+      "format": "cbz",
+      "direction": "rtl",
+      "series": "Mangá Sintético",
+      "series_index": 2
+    },
+    {
+      "file": "cbz_webtoon_imagem_longa.cbz",
+      "expect": "valid",
+      "note": "CBZ com uma imagem muito alta (400x6000), estilo webtoon",
+      "sha256": "7bf08659d50786aa679eac603e3c5dd87202d29791dfbb47057a4b9d3f370b5b",
+      "bytes": 9447,
+      "format": "cbz"
+    },
+    {
+      "file": "notas.txt",
+      "expect": "valid",
+      "note": "Texto simples UTF-8",
+      "sha256": "a7b0c01c19ad453a2017f7bfc50ce3b90f5803997f141c3942f50768fbccfeca",
+      "bytes": 83,
+      "format": "txt"
+    }
+  ]
+}
