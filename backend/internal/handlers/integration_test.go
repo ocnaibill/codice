@@ -7,48 +7,27 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	_ "github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/database"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
+	"github.com/ocnaibill/codice/backend/internal/testdb"
 )
 
-// Integration tests need a real PostgreSQL. Set TEST_DATABASE_URL to a
-// database whose name ends in "_test"; its public schema is dropped and
-// recreated for every test.
+// Integration tests need a real PostgreSQL: see testdb.Open.
 func testDB(t *testing.T) *sql.DB {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL not set")
-	}
-	u, err := url.Parse(dsn)
-	if err != nil || !strings.HasSuffix(strings.TrimPrefix(u.Path, "/"), "_test") {
-		t.Fatalf("refusing to run: TEST_DATABASE_URL database name must end in _test")
-	}
-	db, err := sql.Open("postgres", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	db.SetMaxOpenConns(20)
-	if _, err := db.Exec(`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`); err != nil {
-		t.Fatal(err)
-	}
-	return db
+	return testdb.Open(t)
 }
 
 func migratedDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db := testDB(t)
-	if err := database.RunAutoMigrations(db); err != nil {
+	if err := database.Migrate(db); err != nil {
 		t.Fatalf("migrations: %v", err)
 	}
 	return db
@@ -76,7 +55,7 @@ func TestMigrations_LegacyAdminBecomesOwner_AndIsIdempotent(t *testing.T) {
 	}
 
 	for run := 1; run <= 2; run++ {
-		if err := database.RunAutoMigrations(db); err != nil {
+		if err := database.Migrate(db); err != nil {
 			t.Fatalf("migration run %d: %v", run, err)
 		}
 		roles := map[string]string{}

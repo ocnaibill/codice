@@ -50,7 +50,7 @@ func main() {
 	log.Println("✅ Successfully connected to PostgreSQL!")
 
 	// Run automatic database migrations on startup
-	if err := database.RunAutoMigrations(db); err != nil {
+	if err := database.Migrate(db); err != nil {
 		log.Fatalf("❌ Database auto-migrations failed: %v", err)
 	}
 
