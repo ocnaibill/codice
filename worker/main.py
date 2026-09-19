@@ -13,6 +13,7 @@ from extractors.base import BaseExtractor
 from providers import ProviderRegistry
 from db import CodiceDatabase
 from analyzer import Analyzer, MediaStatus
+from pipeline import analyze_file
 
 # 1. Loads variables from .env, trying multiple locations
 env_paths = ["../.env", ".env"]
@@ -122,7 +123,7 @@ def listen_for_tasks():
                         extractor = find_extractor(extractors, file_path)
                         print(f"   🔍 Using extractor: {extractor.__class__.__name__}")
 
-                        # 3. Extract local metadata
+                        # 3. Extract what the file says, then collect provider suggestions
                         storage_path = os.getenv('CODICE_STORAGE_PATH', './uploads')
                         # If relative, resolve from project root (two levels up from worker/)
                         if not os.path.isabs(storage_path):
@@ -131,69 +132,8 @@ def listen_for_tasks():
                         covers_dir = os.path.join(storage_path, 'covers')
                         os.makedirs(covers_dir, exist_ok=True)
 
-                        metadata = extractor.extract(file_path, covers_dir)
-                        print(f"   📄 Local metadata: {metadata.title} ({metadata.page_count} pages)")
-
-                        # 4. Enrich via external providers (search ALL providers, pick best)
-                        original_filename = os.path.basename(file_path)
-                        enriched = provider_registry.search_best(metadata.title, metadata.format)
-                        if enriched:
-                            if enriched.title:
-                                metadata.title = enriched.title
-                            if enriched.author:
-                                metadata.author = enriched.author
-                            if enriched.series:
-                                metadata.series = enriched.series
-                            if enriched.series_index:
-                                metadata.series_index = enriched.series_index
-                            if enriched.isbn:
-                                metadata.isbn = enriched.isbn
-                            if enriched.description:
-                                metadata.description = enriched.description
-                            if enriched.tags:
-                                metadata.tags = enriched.tags
-
-                            # Download cover from provider
-                            if enriched.cover_url:
-                                print(f"   🖼️ Provider cover URL found, attempting download...")
-                                local_cover = provider_registry.download_cover(
-                                    enriched.cover_url, file_path, covers_dir
-                                )
-                                if local_cover:
-                                    metadata.cover_path = local_cover
-                                    print(f"   🖼️ Cover downloaded to: {metadata.cover_path}")
-                                else:
-                                    print(f"   ⚠️ Cover download returned empty path")
-                            else:
-                                print(f"   ⚠️ No cover_url returned by provider")
-
-                        # 5. Save to database (all extracted + enriched fields)
-                        save_meta = {
-                            'title': metadata.title,
-                            'author': metadata.author,
-                            'format': metadata.format,
-                            'page_count': metadata.page_count,
-                            'cover_path': metadata.cover_path,
-                            'series': metadata.series,
-                            'series_index': metadata.series_index,
-                            'isbn': metadata.isbn,
-                            'language': metadata.language,
-                            'publisher': metadata.publisher,
-                            'publication_date': metadata.publication_date,
-                            'description': metadata.description,
-                            'tags': metadata.tags,
-                            'raw': metadata.raw,
-                        }
-
-                        # Track which provider enriched the metadata
-                        if enriched:
-                            save_meta['enriched_source'] = enriched.source if hasattr(enriched, 'source') else None
-                            if enriched.raw:
-                                save_meta['raw'].update(enriched.raw)
-
-                        analyzer.save_metadata(work_id, save_meta)
-                        analyzer.save_identifiers(work_id, save_meta)
-                        analyzer.save_media_pages(work_id, save_meta)
+                        metadata = analyze_file(work_id, file_path, extractor, analyzer,
+                                                provider_registry, covers_dir)
 
                         # 6. Set status to READY
                         analyzer.update_status(work_id, MediaStatus.READY)

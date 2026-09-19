@@ -259,6 +259,9 @@ func (h *LibraryHandler) ListCandidates(w http.ResponseWriter, r *http.Request) 
 		         WHEN 'series' THEN COALESCE(w.series, '')
 		         WHEN 'series_index' THEN COALESCE(w.series_index, 0)::text
 		         WHEN 'isbn' THEN COALESCE(w.isbn, '')
+		         WHEN 'language' THEN COALESCE(w.language, '')
+		         WHEN 'publisher' THEN COALESCE(w.publisher, '')
+		         WHEN 'publication_date' THEN COALESCE(w.publication_date, '')
 		         WHEN 'description' THEN COALESCE(w.description, '')
 		         ELSE '' END
 		FROM metadata_candidates c
@@ -356,6 +359,12 @@ func (h *LibraryHandler) decideCandidate(w http.ResponseWriter, r *http.Request,
 			next.SeriesIndex = v
 		case "isbn":
 			next.ISBN = value
+		case "language":
+			next.Language = value
+		case "publisher":
+			next.Publisher = value
+		case "publication_date":
+			next.PublicationDate = value
 		case "description":
 			next.Description = value
 		case "tags":
