@@ -2,7 +2,7 @@
 ## Plano de implementação
 
 **Versão:** 0.1 • **Data:** 19 de setembro de 2026 • **Idioma:** português brasileiro
-**Base:** Especificação mestre v0.4 (DEC-001 a DEC-071) e análise inicial do backend
+**Base:** Especificação mestre v0.4 (DEC-001 a DEC-075) e análise inicial do backend
 **Estado:** proposta para revisão. Nada aqui foi implementado, e o repositório não foi alterado.
 
 Este plano ordena o trabalho pelo risco e pelas dependências que a análise apontou. Ele reaproveita a base existente (Go/Chi, PostgreSQL, Redis Streams, workers Python, React) e não propõe reescrita. As referências RF, RN, DEC e QA remetem à especificação. Estimativas de tamanho (P, M, G) são palpites relativos, sem prazo.
@@ -53,7 +53,7 @@ Tamanho: G. É o núcleo estrutural. Cobre os achados 4.3, 4.4 e 4.5 e as decis�
 
 **Tarefas**
 - Adotar migrações versionadas (ferramenta a escolher, como goose ou golang-migrate) no lugar da rotina atual em `migrations.go` (RNF-014).
-- Esquema alvo: Work, Edition, File, StorageLocation, Contributor com vínculo N para N e papéis, Series com posição, Category em hierarquia sem ciclos, Tag global e pessoal, Collection privada, Progress por usuário e arquivo com Locator versionado, Note com referência bibliográfica persistente e sem exclusão em cascata, Favorite, AuditLog, Job, Invite, ResetRequest e Session.
+- Esquema alvo: Work, Edition, File, StorageLocation, Contributor com vínculo N para N e papéis, Series com posição, Category em hierarquia sem ciclos, Tag global e pessoal, Collection privada, Progress por usuário e arquivo com Locator versionado, Note com referência bibliográfica persistente e sem exclusão em cascata, Favorite, AuditLog, Job, Invite, ResetRequest e ExternalIdentity (provedor, identificador estável e conta, no lugar do `users.sso_id`, preparando o LDAP de DEC-072 a 075). Session e AppToken já existem desde a Fase 1.
 - Restrições que garantem invariantes: um owner, hash único de arquivo, nota sobrevive à retirada da obra (RN-019), progresso pertence ao par usuário e arquivo.
 - Migração de teste: como o acervo é de teste, a migração cria o esquema novo e você decide, no momento, se os dados atuais são descartados ou reimportados. Não fundir obras apenas por título.
 - Adaptar as rotas existentes (biblioteca, notas, favoritos, estatísticas) ao esquema novo, mantendo os contratos que o frontend usa ou versionando-os.
@@ -93,7 +93,7 @@ Tamanho: M a G. Cobre RF-002 a 004, 038, 047 a 049 e DEC-050 a 063. Depende das 
 - Transferência de titularidade em duas etapas e comando local de recuperação (DEC-057, DEC-058, RF-038).
 - Pedidos de redefinição de senha aprovados por owner ou admin, sem SMTP (DEC-063, RF-049).
 - Auditoria administrativa (formato ainda a definir, ver §9).
-- **OIDC e LDAP:** depois do login local, como a especificação permite (§23). Inclui criação no primeiro login por provedor, vínculo assistido por e-mail coincidente e revalidação com teto de 24 horas (DEC-051, 053, 061).
+- **LDAP e OIDC:** depois do login local, como a especificação permite (§23). O LDAP vem primeiro, no mesmo formulário de login, com roteamento pela conta e o owner sempre local; o OIDC entra depois como botão separado (DEC-072 a 075). Inclui criação no primeiro login por provedor, vínculo assistido por e-mail coincidente e revalidação com teto de 24 horas (DEC-051, 053, 061).
 
 **Testes:** convite expirado, usado ou revogado não cria conta; resgate concorrente cria uma só; conta bloqueada perde sessões e tokens na hora; comando de recuperação sem acesso local não tem efeito.
 

@@ -6,7 +6,7 @@ Idioma: português brasileiro. Estes documentos foram elaborados em 18 e 19 de s
 
 | Arquivo | Para que serve |
 | --- | --- |
-| [Codice_Especificacao_Mestre_v0.4.md](Codice_Especificacao_Mestre_v0.4.md) | Regras, decisões (DEC-001 a DEC-071), requisitos (RF/RNF/RN), modelo, arquitetura e questões em aberto. **Comece por aqui.** |
+| [Codice_Especificacao_Mestre_v0.4.md](Codice_Especificacao_Mestre_v0.4.md) | Regras, decisões (DEC-001 a DEC-075), requisitos (RF/RNF/RN), modelo, arquitetura e questões em aberto. **Comece por aqui.** |
 | [Codice_Analise_Inicial_Backend.md](Codice_Analise_Inicial_Backend.md) | Análise do backend existente contra a especificação: achados de segurança e de modelo de dados (§4), matriz por requisito (§5) e verificação de código da Fase 0 (§9). |
 | [Codice_Plano_Implementacao_v0.1.md](Codice_Plano_Implementacao_v0.1.md) | Plano em fases (0 a 6), com tarefas, testes e dependências. |
 
@@ -60,6 +60,7 @@ No frontend, `cd frontend && npx vitest run`. Não use o banco de desenvolviment
 
 - Owner único, papel admin gerido só pelo owner, transferência em duas etapas, recuperação por comando local no servidor.
 - Cadastro público desligado; convites de uso único e 7 dias; SMTP opcional; redefinição de senha sem SMTP aprovada por owner ou admin.
+- Login por um formulário único: o backend escolhe o provedor pela conta, sem tentar um após o outro. O owner autentica sempre por senha local. O LDAP vem primeiro; o OIDC depois, como botão separado. Se uma entrada do LDAP tem o mesmo nome de uma conta local, ela é vinculada automaticamente só se a pessoa provar as duas senhas (DEC-072 a 075).
 - Sem cotas por usuário. Backup diário via comando do Códice, com ferramentas externas a cargo do operador.
 - PostgreSQL como fonte da verdade dos jobs; Redis só como entrega.
 - Nomes no armazenamento: `Autor/Obra/Idioma — Editora — Ano/Arquivo`; a obra aparece sob cada autor no catálogo.
