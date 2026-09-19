@@ -10,6 +10,18 @@ from dataclasses import dataclass
 from datetime import datetime
 
 
+# The cover is stored on the work's primary edition. Since the data model allows
+# several editions per work, the conflict target is the "one primary edition per
+# work" index (migration 00002); `ON CONFLICT (work_id)` alone no longer matches
+# any constraint and would fail.
+UPSERT_PRIMARY_EDITION_COVER = """
+    INSERT INTO editions (work_id, title, cover_url)
+    VALUES (%s, %s, %s)
+    ON CONFLICT (work_id) WHERE is_primary
+    DO UPDATE SET cover_url = EXCLUDED.cover_url
+"""
+
+
 class MediaStatus(str, Enum):
     UNKNOWN = 'UNKNOWN'
     QUEUED = 'QUEUED'
@@ -134,10 +146,7 @@ class Analyzer:
         cover_path = metadata.get('cover_path')
         if cover_path and not cover_lock:
             self.db.execute(
-                """INSERT INTO editions (work_id, title, cover_url)
-                   VALUES (%s, %s, %s)
-                   ON CONFLICT (work_id)
-                   DO UPDATE SET cover_url = EXCLUDED.cover_url""",
+                UPSERT_PRIMARY_EDITION_COVER,
                 (work_id, metadata.get('title', ''), cover_path)
             )
 
