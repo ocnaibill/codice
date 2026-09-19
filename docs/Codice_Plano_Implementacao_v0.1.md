@@ -158,6 +158,8 @@ Tamanho: M. Cobre RF-021, 034, RNF-010, 014 e DEC-064.
 - Docker Compose com volumes persistentes e a ordem de inicialização de §10.4 da especificação.
 - Documentação de implantação, incluindo o limite de privacidade (o operador do servidor acessa banco e discos) e o aviso de que o backup precisa ser agendado por quem opera a instância.
 
+**Estado em 19 de setembro de 2026: em andamento.** Feitos: Dockerfiles e Docker Compose completos com healthchecks e ordem de partida (§10.4), `GET /healthz` por componente com falha isolada do Redis (RF-021), confiança explícita em proxies para o limite de login e a documentação de implantação no README. Faltam: o comando de backup com verificação de restauração e o ensaio de restauração medindo o tempo (RF-034, RNF-010, DEC-064), o healthcheck do worker e a criptografia opcional do backup.
+
 ## 9 Depois do núcleo
 
 Sem detalhamento agora, na ordem sugerida pela especificação: busca textual e OCR configurável (E2), OPDS e sincronização com matriz de clientes homologados e exportação PKM (E3), grafo, trilhas e embeddings (E4), e geração, RAG, áudio e novos formatos (E5). Perfis de hardware serão medidos nessa etapa (QA-016). Sobre IA local ou externa, já está decidido: local por padrão, com serviços externos só mediante autorização do owner por área, e IA sem influência no funcionamento do núcleo (DEC-044 a 047).
