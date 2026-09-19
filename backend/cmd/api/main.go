@@ -1,21 +1,23 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
-	"context"
 	"os"
 	"path/filepath"
 	"time"
 
+	_ "github.com/lib/pq" // Underscore initializes the driver anonymously
 	"github.com/ocnaibill/codice/backend/internal/config"
 	"github.com/ocnaibill/codice/backend/internal/database"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
-	"github.com/redis/go-redis/v9"
-	_ "github.com/lib/pq" // Underscore initializes the driver anonymously
+	"github.com/ocnaibill/codice/backend/internal/jobs"
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
+	"github.com/ocnaibill/codice/backend/internal/storage"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -118,6 +120,18 @@ func main() {
 
 	log.Printf("📂 Storage path resolved to: %s", storagePath)
 
+	// File jobs (organizing, and later scanning and transferring) run in this
+	// process; the Python worker only takes ingestion.
+	mover := &storage.Mover{DB: db, Root: storagePath}
+	handlers := fileJobHandlers(mover)
+	types := make([]string, 0, len(handlers))
+	for t := range handlers {
+		types = append(types, t)
+	}
+	startFileJobs(context.Background(), &jobs.Runner{
+		DB: db, Owner: jobs.NewOwnerName("api"), Types: types, MaxRunning: 1, LeaseSeconds: 300, Handlers: handlers,
+	}, mover)
+
 	// 4. Configure Router
 	r := newRouter(routerDeps{
 		DB:          db,
@@ -126,6 +140,7 @@ func main() {
 		Auth:        authenticator,
 		WS:          wsHandler,
 		StoragePath: storagePath,
+		Mover:       mover,
 	})
 
 	// 5. Start HTTP Server

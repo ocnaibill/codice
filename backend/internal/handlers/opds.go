@@ -104,7 +104,7 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 		}
 
 		filename := filepath.Base(filePath)
-		escapedFilename := url.PathEscape(filename)
+		escapedFilename := strings.TrimPrefix(filesURL(filename), "/files/")
 
 		if coverURL == "" {
 			coverURL = "/covers/placeholder.svg"
@@ -188,7 +188,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 		}
 
 		filename := filepath.Base(filePath)
-		escapedFilename := url.PathEscape(filename)
+		escapedFilename := strings.TrimPrefix(filesURL(filename), "/files/")
 
 		if coverURL == "" {
 			coverURL = "/covers/placeholder.svg"

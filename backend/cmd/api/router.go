@@ -14,6 +14,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
+	"github.com/ocnaibill/codice/backend/internal/storage"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -24,6 +25,7 @@ type routerDeps struct {
 	Auth        appMiddleware.Authenticator
 	WS          *handlers.WsHandler
 	StoragePath string
+	Mover       *storage.Mover
 	// Optional overrides, so route tests can run without a database.
 	FileLookup  handlers.FileLookup
 	CoverLookup handlers.FileLookup
@@ -39,7 +41,8 @@ func newRouter(d routerDeps) http.Handler {
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
 	usersHandler := &handlers.UsersHandler{DB: db}
-	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient}
+	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
+	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
 	statsHandler := &handlers.StatsHandler{DB: db}
@@ -115,6 +118,10 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Get("/admin/jobs", jobsHandler.List)
 	r.With(staff).Post("/admin/jobs/{id}/rerun", jobsHandler.Rerun)
 	r.With(staff).Post("/admin/jobs/{id}/cancel", jobsHandler.Cancel)
+
+	// Storage administration (RF-044): preview, then confirm that exact preview
+	r.With(staff).Get("/admin/storage/reorganize", storageHandler.PreviewReorganize)
+	r.With(staff).Post("/admin/storage/reorganize", storageHandler.Reorganize)
 
 	// Account roles
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)

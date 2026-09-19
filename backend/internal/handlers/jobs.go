@@ -20,6 +20,7 @@ import (
 type JobsHandler struct {
 	DB          *sql.DB
 	RedisClient *redis.Client
+	StoragePath string // root of the managed storage, to rebuild a file's absolute path
 }
 
 // List returns jobs newest first, optionally of one state (?state=failed), with
@@ -36,9 +37,21 @@ func (h *JobsHandler) List(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{"data": list, "counts": counts})
 }
 
-// Rerun puts a failed or cancelled job back in the queue.
+// Rerun puts a failed or cancelled job back in the queue. An ingestion job keeps
+// the absolute path the file had when the job was created, and the file may have
+// been moved since, so the path is refreshed from where the file is now.
 func (h *JobsHandler) Rerun(w http.ResponseWriter, r *http.Request) {
-	h.act(w, r, "job.rerun", jobs.Rerun)
+	h.act(w, r, "job.rerun", func(ctx context.Context, db *sql.DB, id int64) error {
+		if _, err := db.ExecContext(ctx, `
+			UPDATE jobs j SET payload = jsonb_set(j.payload, '{file_path}', to_jsonb(
+			       CASE WHEN l.mode = 'managed' THEN $2::text || '/' || l.path ELSE l.root || '/' || l.path END))
+			FROM work_primary wp JOIN storage_locations l ON l.file_id = wp.file_id
+			WHERE j.id = $1 AND j.type = 'ingest' AND wp.work_id = j.work_id AND j.state IN ('failed', 'cancelled')`,
+			id, h.StoragePath); err != nil {
+			return err
+		}
+		return jobs.Rerun(ctx, db, id)
+	})
 }
 
 // Cancel stops a pending job and asks a running one to stop.

@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/storage"
 )
 
 const (
@@ -42,8 +43,8 @@ type catalogStack struct {
 func newCatalogStack(t *testing.T) *catalogStack {
 	t.Helper()
 	db := migratedDB(t)
-	storage := t.TempDir()
-	t.Setenv("CODICE_STORAGE_PATH", storage)
+	storageDir := t.TempDir()
+	t.Setenv("CODICE_STORAGE_PATH", storageDir)
 
 	for _, u := range []actor{ana, bob, admin} {
 		name := map[string]string{idAna: "ana", idBob: "bob", idAdmin: "adm"}[u.id]
@@ -60,12 +61,15 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	opds := &OPDSHandler{DB: db}
 	media := &MediaHandler{DB: db}
 	upload := &UploadHandler{DB: db}
-	jobsAdmin := &JobsHandler{DB: db}
+	jobsAdmin := &JobsHandler{DB: db, StoragePath: storageDir}
+	storageAdmin := &StorageHandler{Mover: &storage.Mover{DB: db, Root: storageDir}, DB: db}
 
 	r := chi.NewRouter()
 	r.Use(identityFromHeaders)
 	r.Post("/upload", upload.HandleUpload)
 	r.Get("/admin/jobs", jobsAdmin.List)
+	r.Get("/admin/storage/reorganize", storageAdmin.PreviewReorganize)
+	r.Post("/admin/storage/reorganize", storageAdmin.Reorganize)
 	r.Post("/admin/jobs/{id}/rerun", jobsAdmin.Rerun)
 	r.Post("/admin/jobs/{id}/cancel", jobsAdmin.Cancel)
 	r.Post("/works/bulk-import", upload.HandleBulkImport)
@@ -90,7 +94,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/opds/recent", opds.RecentFeed)
 	r.Get("/opds/search", opds.SearchFeed)
 
-	return &catalogStack{t: t, db: db, router: r, storage: storage}
+	return &catalogStack{t: t, db: db, router: r, storage: storageDir}
 }
 
 // identityFromHeaders stands in for the authentication middleware in tests.

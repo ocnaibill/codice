@@ -77,6 +77,8 @@ var staffRoutes = []route{
 	{"DELETE", "/works/1"},
 	{"POST", "/works/1/restore"},
 	{"GET", "/admin/jobs"},
+	{"GET", "/admin/storage/reorganize"},
+	{"POST", "/admin/storage/reorganize"},
 	{"POST", "/admin/jobs/1/rerun"},
 	{"POST", "/admin/jobs/1/cancel"},
 	{"GET", "/works/1/candidates"},

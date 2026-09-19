@@ -3,7 +3,9 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/ocnaibill/codice/backend/internal/authz"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
@@ -50,4 +52,15 @@ func workFilePath(db *sql.DB, id string) (sql.NullString, error) {
 		SELECT wp.file_path FROM works w JOIN work_primary wp ON wp.work_id = w.id
 		WHERE w.id = $1 AND w.retired_at IS NULL`, id).Scan(&p)
 	return p, err
+}
+
+// filesURL is the URL of a managed file. Paths now have folders, spaces and
+// accents, so each segment is escaped on its own; escaping the whole path would
+// turn the folder separators into %2F.
+func filesURL(rel string) string {
+	segments := strings.Split(rel, "/")
+	for i, s := range segments {
+		segments[i] = url.PathEscape(s)
+	}
+	return "/files/" + strings.Join(segments, "/")
 }

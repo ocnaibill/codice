@@ -133,7 +133,7 @@ func scanWork(row rowScanner) (Work, error) {
 		return work, err
 	}
 	if filePath.Valid && filePath.String != "" {
-		work.FileURL = "/files/" + filePath.String
+		work.FileURL = filesURL(filePath.String)
 	}
 	if fileID.Valid {
 		work.FileID = &fileID.Int64
@@ -336,7 +336,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 				fi.SizeBytes = &size.Int64
 			}
 			if filePath.Valid && filePath.String != "" {
-				fi.URL = "/files/" + filePath.String
+				fi.URL = filesURL(filePath.String)
 			}
 			editions[i].Files = append(editions[i].Files, fi)
 		}
