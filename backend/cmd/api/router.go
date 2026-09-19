@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"time"
@@ -27,6 +28,9 @@ type routerDeps struct {
 	WS          *handlers.WsHandler
 	StoragePath string
 	Mover       *storage.Mover
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For is believed when
+	// telling clients apart for rate limits (CODICE_TRUSTED_PROXIES).
+	TrustedProxies []netip.Prefix
 	// Directory is the LDAP directory, nil when it is not configured.
 	Directory     ldapauth.Directory
 	DirectoryHost string
@@ -43,6 +47,7 @@ func newRouter(d routerDeps) http.Handler {
 
 	libHandler := &handlers.LibraryHandler{DB: db, Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
+	healthHandler := &handlers.HealthHandler{DB: db, Redis: d.RedisClient}
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions, Directory: d.Directory}
 	ldapAdmin := &handlers.LDAPAdminHandler{DB: db, Directory: d.Directory, Host: d.DirectoryHost, BaseDN: d.DirectoryBase}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
@@ -81,9 +86,12 @@ func newRouter(d routerDeps) http.Handler {
 	})
 
 	// Rate limiting for auth endpoints (SEC-09): 10 requests per minute per IP
-	authRateLimit := httprate.LimitByIP(10, 1*time.Minute)
+	authRateLimit := authRateLimiter(d.TrustedProxies)
 
 	// Public Auth & Setup Endpoints
+	// Public, and answers only ok/down per component: for containers and load balancers.
+	r.Get("/healthz", healthHandler.Get)
+
 	r.With(authRateLimit).Get("/auth/setup-status", authHandler.GetSetupStatus)
 	r.With(authRateLimit).Post("/auth/setup", authHandler.SetupMasterAdmin)
 	r.With(authRateLimit).Post("/auth/register", authHandler.Register)
@@ -260,4 +268,12 @@ func newRouter(d routerDeps) http.Handler {
 	})
 
 	return r
+}
+
+// authRateLimiter is the limit on login and the other unauthenticated auth calls
+// (SEC-09): 10 requests per minute per client. "Client" is the connection's address
+// unless the connection comes from a trusted proxy, in which case it is the address
+// that proxy reports (see middleware.ClientIP).
+func authRateLimiter(trusted []netip.Prefix) func(http.Handler) http.Handler {
+	return httprate.LimitBy(10, 1*time.Minute, appMiddleware.RateLimitKey(trusted))
 }

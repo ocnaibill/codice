@@ -20,6 +20,11 @@ func GetJWTSecret() []byte {
 	if secret == "" {
 		panic("JWT_SECRET must be set")
 	}
+	// The example file ships a placeholder. It is public, so tokens signed with it could
+	// be forged by anyone who has read the repository.
+	if strings.HasPrefix(secret, "CHANGE_THIS") {
+		panic("JWT_SECRET is still the placeholder from .env.example: generate one with `openssl rand -hex 32`")
+	}
 	return []byte(secret)
 }
 
