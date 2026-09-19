@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
@@ -26,9 +27,14 @@ type Work struct {
 	CoverURL        string   `json:"coverUrl"`
 	FileURL         string   `json:"fileUrl,omitempty"`
 	Format          string   `json:"format,omitempty"`
+	Series          string   `json:"series,omitempty"`
+	SeriesIndex     float64  `json:"seriesIndex,omitempty"`
 	MediaStatus     string   `json:"mediaStatus,omitempty"`
 	Tags            []string `json:"tags"`
 	ReadingProgress string   `json:"readingProgress,omitempty"`
+	PercentComplete float64  `json:"percentComplete"`
+	Completed       bool     `json:"completed"`
+	IsFavorite      bool     `json:"isFavorite"`
 }
 
 // LibraryHandler stores the database connection
@@ -36,11 +42,29 @@ type LibraryHandler struct {
 	DB *sql.DB
 }
 
-// GetWorks fetches works from PostgreSQL with aggregated tags, server-side pagination and search
+// currentUserID extracts the authenticated user id from context, falling back
+// to the dev user (AuthMiddleware already applies the same fallback when no
+// token is present, so this only matters for handlers that read context
+// directly without a guaranteed non-empty value).
+func currentUserID(r *http.Request) string {
+	if userID, ok := r.Context().Value(middleware.UserIDKey).(string); ok && userID != "" {
+		return userID
+	}
+	return middleware.DefaultDevUserID
+}
+
+// GetWorks fetches works from PostgreSQL with aggregated tags, server-side
+// pagination, search, and optional filters: inProgress=true (has unfinished
+// reading progress) and favorite=true (marked as favorite by the caller).
 func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
+	userID := currentUserID(r)
+
 	page := 1
 	limit := 50
 	search := r.URL.Query().Get("search")
+	inProgressOnly := r.URL.Query().Get("inProgress") == "true"
+	favoriteOnly := r.URL.Query().Get("favorite") == "true"
+	formatGroup := r.URL.Query().Get("formatGroup") // "ebooks" | "comics" | "audio"
 
 	if p := r.URL.Query().Get("page"); p != "" {
 		if v, err := strconv.Atoi(p); err == nil && v > 0 {
@@ -54,44 +78,85 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := (page - 1) * limit
 
+	var whereClauses []string
+	var args []interface{}
+	args = append(args, userID) // $1 always the current user, used by both joins
+	argIdx := 2
+
+	if search != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("(LOWER(w.original_title) LIKE LOWER($%d) OR LOWER(COALESCE(p.name, '')) LIKE LOWER($%d))", argIdx, argIdx))
+		args = append(args, "%"+search+"%")
+		argIdx++
+	}
+	if inProgressOnly {
+		whereClauses = append(whereClauses, "(up.progress IS NOT NULL AND up.completed_at IS NULL)")
+	}
+	if favoriteOnly {
+		whereClauses = append(whereClauses, "f.user_id IS NOT NULL")
+	}
+	switch formatGroup {
+	case "ebooks":
+		whereClauses = append(whereClauses, "LOWER(w.format) IN "+bookFormats)
+	case "comics":
+		whereClauses = append(whereClauses, "LOWER(w.format) IN "+comicFormats)
+	case "audio":
+		whereClauses = append(whereClauses, "LOWER(w.format) IN "+audioFormats)
+	}
+
+	whereSQL := ""
+	if len(whereClauses) > 0 {
+		whereSQL = " WHERE " + strings.Join(whereClauses, " AND ")
+	}
+
+	countQuery := `
+		SELECT COUNT(DISTINCT w.id)
+		FROM works w
+		LEFT JOIN person p ON w.author_id = p.id
+		LEFT JOIN user_progress up ON w.id = up.work_id AND up.user_id = $1
+		LEFT JOIN favorites f ON w.id = f.work_id AND f.user_id = $1
+	` + whereSQL
+
 	var totalCount int
-	err := h.DB.QueryRow("SELECT COUNT(*) FROM works").Scan(&totalCount)
-	if err != nil {
+	if err := h.DB.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
+		log.Println("Error counting works:", err)
 		http.Error(w, "Error counting works", http.StatusInternalServerError)
 		return
 	}
 
 	query := `
-		SELECT 
-			w.id, 
-			w.original_title, 
-			COALESCE(p.name, 'Unknown Author') as author, 
+		SELECT
+			w.id,
+			w.original_title,
+			COALESCE(p.name, 'Unknown Author') as author,
 			COALESCE(e.cover_url, '') as cover_url,
+			w.file_path,
+			COALESCE(w.format, '') as format,
+			COALESCE(w.series, '') as series,
+			COALESCE(w.series_index, 0) as series_index,
 			COALESCE(w.media_status, 'READY') as media_status,
-			COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags
+			COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags,
+			COALESCE(up.progress, '') as reading_progress,
+			COALESCE(up.percent_complete, 0) as percent_complete,
+			(up.completed_at IS NOT NULL) as completed,
+			(f.user_id IS NOT NULL) as is_favorite
 		FROM works w
 		LEFT JOIN person p ON w.author_id = p.id
 		LEFT JOIN editions e ON w.id = e.work_id
 		LEFT JOIN work_tags wt ON w.id = wt.work_id
 		LEFT JOIN tags t ON wt.tag_id = t.id
+		LEFT JOIN user_progress up ON w.id = up.work_id AND up.user_id = $1
+		LEFT JOIN favorites f ON w.id = f.work_id AND f.user_id = $1
+	` + whereSQL + `
+		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, w.format, w.series, w.series_index, w.media_status, up.progress, up.percent_complete, up.completed_at, f.user_id
+		ORDER BY w.id DESC
 	`
-
-	var args []interface{}
-	argIdx := 1
-
-	if search != "" {
-		query += fmt.Sprintf(" WHERE (LOWER(w.original_title) LIKE LOWER($%d) OR LOWER(COALESCE(p.name, '')) LIKE LOWER($%d))", argIdx, argIdx)
-		args = append(args, "%"+search+"%")
-		argIdx++
-	}
-
-	query += ` GROUP BY w.id, w.original_title, p.name, e.cover_url, w.media_status ORDER BY w.id DESC`
 
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
 	args = append(args, limit, offset)
 
 	rows, err := h.DB.Query(query, args...)
 	if err != nil {
+		log.Println("Error fetching works:", err)
 		http.Error(w, "Error fetching works", http.StatusInternalServerError)
 		return
 	}
@@ -100,10 +165,19 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	var works []Work
 	for rows.Next() {
 		var work Work
-		err := rows.Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &work.MediaStatus, pq.Array(&work.Tags))
+		var filePath sql.NullString
+		err := rows.Scan(
+			&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format,
+			&work.Series, &work.SeriesIndex, &work.MediaStatus, pq.Array(&work.Tags),
+			&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
+		)
 		if err != nil {
 			log.Println("Error scanning work:", err)
 			continue
+		}
+
+		if filePath.Valid && filePath.String != "" {
+			work.FileURL = "/files/" + filePath.String
 		}
 
 		if work.CoverURL == "" {
@@ -134,38 +208,44 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 // GetWorkByID fetches a single work by its ID along with tags and per-user reading progress
 func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-
-	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
-	if userID == "" {
-		userID = middleware.DefaultDevUserID
-	}
+	userID := currentUserID(r)
 
 	var filePath sql.NullString
 	var progress sql.NullString
 	var work Work
 
 	query := `
-		SELECT 
-			w.id, 
-			w.original_title, 
-			COALESCE(p.name, 'Unknown Author') as author, 
+		SELECT
+			w.id,
+			w.original_title,
+			COALESCE(p.name, 'Unknown Author') as author,
 			COALESCE(e.cover_url, '') as cover_url,
 			w.file_path,
-			w.format,
+			COALESCE(w.format, '') as format,
+			COALESCE(w.series, '') as series,
+			COALESCE(w.series_index, 0) as series_index,
 			COALESCE(w.media_status, 'READY') as media_status,
 			up.progress,
+			COALESCE(up.percent_complete, 0) as percent_complete,
+			(up.completed_at IS NOT NULL) as completed,
+			(f.user_id IS NOT NULL) as is_favorite,
 			COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags
 		FROM works w
 		LEFT JOIN person p ON w.author_id = p.id
 		LEFT JOIN editions e ON w.id = e.work_id
 		LEFT JOIN user_progress up ON w.id = up.work_id AND up.user_id = $2
+		LEFT JOIN favorites f ON w.id = f.work_id AND f.user_id = $2
 		LEFT JOIN work_tags wt ON w.id = wt.work_id
 		LEFT JOIN tags t ON wt.tag_id = t.id
 		WHERE w.id = $1
-		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, w.format, w.media_status, up.progress
+		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, w.format, w.series, w.series_index, w.media_status, up.progress, up.percent_complete, up.completed_at, f.user_id
 	`
 
-	err := h.DB.QueryRow(query, id, userID).Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format, &work.MediaStatus, &progress, pq.Array(&work.Tags))
+	err := h.DB.QueryRow(query, id, userID).Scan(
+		&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format,
+		&work.Series, &work.SeriesIndex, &work.MediaStatus, &progress, &work.PercentComplete,
+		&work.Completed, &work.IsFavorite, pq.Array(&work.Tags),
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Book not found", http.StatusNotFound)
@@ -288,19 +368,21 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// ProgressRequest represents the payload for updating reading progress
+// ProgressRequest represents the payload for updating reading progress.
+// Percent and Completed are pointers so we can tell "not sent" apart from
+// "sent as zero/false" — a viewer that doesn't know percent yet (e.g. a
+// text file with no pagination) shouldn't overwrite a previously saved one.
 type ProgressRequest struct {
-	Progress string `json:"progress"`
+	Progress  string   `json:"progress"`
+	Percent   *float64 `json:"percent,omitempty"`
+	Completed *bool    `json:"completed,omitempty"`
 }
 
-// UpdateProgress updates the reading progress location for a work isolated by user_id
+// UpdateProgress updates the reading progress location (and optionally
+// percent/completion) for a work, isolated by user_id.
 func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) {
 	workID := chi.URLParam(r, "id")
-
-	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
-	if !ok || userID == "" {
-		userID = middleware.DefaultDevUserID
-	}
+	userID := currentUserID(r)
 
 	var req ProgressRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -308,16 +390,89 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	percent := 0.0
+	if req.Percent != nil {
+		percent = *req.Percent
+		if percent < 0 {
+			percent = 0
+		}
+		if percent > 100 {
+			percent = 100
+		}
+	}
+
+	completed := req.Completed != nil && *req.Completed
+
 	query := `
-		INSERT INTO user_progress (user_id, work_id, progress, updated_at)
-		VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-		ON CONFLICT (user_id, work_id) 
-		DO UPDATE SET progress = EXCLUDED.progress, updated_at = CURRENT_TIMESTAMP;
+		INSERT INTO user_progress (user_id, work_id, progress, percent_complete, completed_at, updated_at)
+		VALUES ($1, $2, $3, $4, CASE WHEN $5 THEN CURRENT_TIMESTAMP ELSE NULL END, CURRENT_TIMESTAMP)
+		ON CONFLICT (user_id, work_id)
+		DO UPDATE SET
+			progress = EXCLUDED.progress,
+			percent_complete = CASE WHEN $6 THEN EXCLUDED.percent_complete ELSE user_progress.percent_complete END,
+			completed_at = CASE
+				WHEN $5 THEN CURRENT_TIMESTAMP
+				WHEN $7 THEN NULL
+				ELSE user_progress.completed_at
+			END,
+			updated_at = CURRENT_TIMESTAMP;
 	`
 
-	_, err := h.DB.Exec(query, userID, workID, req.Progress)
+	percentProvided := req.Percent != nil
+	completedExplicitlyFalse := req.Completed != nil && !*req.Completed
+
+	_, err := h.DB.Exec(query, userID, workID, req.Progress, percent, completed, percentProvided, completedExplicitlyFalse)
 	if err != nil {
+		log.Println("Error saving reading progress:", err)
 		http.Error(w, "Error saving isolated user reading progress", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// HeartbeatRequest reports how many seconds of active reading happened
+// since the reader's last heartbeat tick.
+type HeartbeatRequest struct {
+	Seconds float64 `json:"seconds"`
+}
+
+// ReadingHeartbeat accumulates real reading time for a work. Seconds are
+// clamped to a small window so a stalled tab or clock skew can't inflate
+// the total — the reader is expected to call this roughly every 20-30s
+// while the document is open and the tab is visible.
+func (h *LibraryHandler) ReadingHeartbeat(w http.ResponseWriter, r *http.Request) {
+	workID := chi.URLParam(r, "id")
+	userID := currentUserID(r)
+
+	var req HeartbeatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	seconds := int(req.Seconds)
+	if seconds < 0 {
+		seconds = 0
+	}
+	if seconds > 120 {
+		seconds = 120
+	}
+	if seconds == 0 {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	query := `
+		INSERT INTO user_progress (user_id, work_id, progress, reading_seconds, updated_at)
+		VALUES ($1, $2, '', $3, CURRENT_TIMESTAMP)
+		ON CONFLICT (user_id, work_id)
+		DO UPDATE SET reading_seconds = user_progress.reading_seconds + $3, updated_at = CURRENT_TIMESTAMP;
+	`
+
+	if _, err := h.DB.Exec(query, userID, workID, seconds); err != nil {
+		log.Println("Error saving reading heartbeat:", err)
+		http.Error(w, "Error saving reading heartbeat", http.StatusInternalServerError)
 		return
 	}
 

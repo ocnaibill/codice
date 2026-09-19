@@ -84,6 +84,9 @@ func main() {
 	authHandler := &handlers.AuthHandler{
 		DB: db,
 	}
+	favoritesHandler := &handlers.FavoritesHandler{DB: db}
+	notesHandler := &handlers.NotesHandler{DB: db}
+	statsHandler := &handlers.StatsHandler{DB: db}
 
 	// Start Redis PubSub listener in background goroutine
 	go wsHandler.ListenToRedis()
@@ -125,9 +128,19 @@ func main() {
 	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}", libHandler.GetWorkByID)
 	r.With(appMiddleware.AuthMiddleware).Put("/works/{id}", libHandler.UpdateWork)
 	r.With(appMiddleware.AuthMiddleware).Patch("/works/{id}/progress", libHandler.UpdateProgress)
+	r.With(appMiddleware.AuthMiddleware).Post("/works/{id}/reading-heartbeat", libHandler.ReadingHeartbeat)
 	r.With(appMiddleware.AuthMiddleware).Delete("/works/{id}", libHandler.DeleteWork)
 	r.With(appMiddleware.AuthMiddleware).Post("/upload", uploadHandler.HandleUpload)
 	r.With(appMiddleware.AuthMiddleware).Post("/works/bulk-import", uploadHandler.HandleBulkImport)
+
+	// Favorites, notes/quotes, and dashboard stats
+	r.With(appMiddleware.AuthMiddleware).Post("/works/{id}/favorite", favoritesHandler.AddFavorite)
+	r.With(appMiddleware.AuthMiddleware).Delete("/works/{id}/favorite", favoritesHandler.RemoveFavorite)
+	r.With(appMiddleware.AuthMiddleware).Get("/favorites", favoritesHandler.GetFavorites)
+	r.With(appMiddleware.AuthMiddleware).Post("/works/{id}/notes", notesHandler.CreateNote)
+	r.With(appMiddleware.AuthMiddleware).Get("/notes", notesHandler.ListNotes)
+	r.With(appMiddleware.AuthMiddleware).Delete("/notes/{id}", notesHandler.DeleteNote)
+	r.With(appMiddleware.AuthMiddleware).Get("/stats", statsHandler.GetStats)
 
 	// Page streaming endpoints (CBZ/CBR)
 	pageHandler := &handlers.PageHandler{DB: db}

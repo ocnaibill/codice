@@ -123,6 +123,33 @@ func RunAutoMigrations(db *sql.DB) error {
 		// exceeded VARCHAR(32). The extractor is now fixed, but this
 		// migration protects against edge cases.
 		`ALTER TABLE works ALTER COLUMN isbn TYPE VARCHAR(64);`,
+
+		// 9. Migration 011: Reading progress detail, favorites, and notes.
+		// percent_complete/completed_at let the dashboard show real
+		// progress bars and "completed this month" counts.
+		// reading_seconds accumulates active reading time reported by
+		// the reader's heartbeat, so "time spent reading" is real
+		// instead of invented.
+		`ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS percent_complete REAL NOT NULL DEFAULT 0;`,
+		`ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;`,
+		`ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS reading_seconds INTEGER NOT NULL DEFAULT 0;`,
+
+		`CREATE TABLE IF NOT EXISTS favorites (
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			work_id INTEGER REFERENCES works(id) ON DELETE CASCADE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, work_id)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);`,
+
+		`CREATE TABLE IF NOT EXISTS notes (
+			id SERIAL PRIMARY KEY,
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			work_id INTEGER REFERENCES works(id) ON DELETE CASCADE,
+			quote TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_notes_user_id_created_at ON notes(user_id, created_at DESC);`,
 	}
 
 	for _, stmt := range statements {
