@@ -45,7 +45,7 @@ Tamanho: M. Cobre os achados 4.1, 4.2 e 4.8, além de RN-015 e RN-022.
 
 **Decisões confirmadas em 19 de setembro de 2026:** sessões são registros no banco, revogáveis de imediato (DEC-070), e clientes OPDS usam tokens de aplicativo revogáveis, não a senha da conta (DEC-071). A Fase 1 inclui as tabelas de sessão e de tokens e a revogação por bloqueio ou redefinição de senha.
 
-**Estado da Fase 1 em 19 de setembro de 2026: concluída na parte técnica**, no branch `feat/fase1-seguranca` (sem merge). Todas as tarefas acima foram feitas, com estas diferenças em relação ao plano: a importação em lote usa raízes lidas de `CODICE_IMPORT_ROOTS` (a interface do owner fica para depois) e não segue symlinks; `JWT_EXPIRATION_HOURS` passou a valer; o bcrypt subiu para custo 12 com re-hash no login; e o token de URL foi substituído por um token de recurso de 15 minutos (`?rt=`) e um ticket de WebSocket de 60 segundos. A gestão de contas além da troca de papel (`PUT /users/{id}/role`) continua na Fase 4. As pendências que sobraram estão no `README.md` desta pasta.
+**Estado da Fase 1 em 19 de setembro de 2026: concluída na parte técnica**, no branch `feat/fase1-seguranca` (PR #6). Todas as tarefas acima foram feitas, com estas diferenças em relação ao plano: a importação em lote usa raízes lidas de `CODICE_IMPORT_ROOTS` (a interface do owner fica para depois) e não segue symlinks; `JWT_EXPIRATION_HOURS` passou a valer; o bcrypt subiu para custo 12 com re-hash no login; e o token de URL foi substituído por um token de recurso de 15 minutos (`?rt=`) e um ticket de WebSocket de 60 segundos. A gestão de contas além da troca de papel (`PUT /users/{id}/role`) continua na Fase 4. As pendências que sobraram estão no `README.md` desta pasta.
 
 ## 4 Fase 2: modelo de dados alvo
 
@@ -62,9 +62,9 @@ Tamanho: G. É o núcleo estrutural. Cobre os achados 4.3, 4.4 e 4.5 e as decis�
 
 **Risco principal:** o frontend depende dos contratos atuais. Mitigar mantendo os endpoints existentes como camada de compatibilidade até cada tela ser migrada.
 
-**Estado da Fase 2 em 19 de setembro de 2026: concluída na parte técnica**, no branch `feat/fase1-seguranca` (sem merge). Decisões tomadas na execução:
+**Estado da Fase 2 em 19 de setembro de 2026: concluída na parte técnica**, no branch `feat/fase1-seguranca` (PR #6). Decisões tomadas na execução:
 - **Ferramenta de migração: goose**, com SQL embutido no binário e trava de sessão contra instâncias simultâneas. `00001_baseline.sql` é o esquema antigo, idempotente, de modo que um banco criado pela rotina anterior é adotado sem erro nem perda.
-- **Estratégia "expandir" e não "trocar":** `00002_model_target.sql` cria o modelo novo ao lado do antigo e copia os dados existentes. Nada foi apagado: as colunas antigas de `works` e a tabela `user_progress` continuam no banco, e **o acervo de teste não foi descartado nem reimportado**. Gatilhos projetam as escritas nas colunas antigas (feitas pelo worker e pelos uploads) sobre as tabelas novas, e a visão `work_primary` define "a edição e o arquivo de uma obra" para o código que ainda pensa em um arquivo por obra. Os gatilhos e as colunas antigas saem na Fase 3, quando o worker passar a escrever o modelo novo (etapa "contrair").
+- **Estratégia "expandir" e não "trocar":** `00002_model_target.sql` cria o modelo novo ao lado do antigo e copia os dados existentes. Nada foi apagado: as colunas antigas de `works` e a tabela `user_progress` continuam no banco, e **o acervo de teste não foi descartado nem reimportado**. Gatilhos projetam as escritas nas colunas antigas (feitas pelo worker e pelos uploads) sobre as tabelas novas, e a visão `work_primary` define "a edição e o arquivo de uma obra" para o código que ainda pensa em um arquivo por obra. Os gatilhos e as colunas antigas saíram na Fase 3, quando o worker passou a escrever o modelo novo (migração `00011`, a etapa "contrair").
 - **Tabelas criadas agora:** `editions` (várias por obra, uma primária), `files` (hash único), `storage_locations`, `work_contributors`, `reading_progress` (por usuário e arquivo, com coluna de Locator versionado e contador de revisão), `audit_log` e `external_identities` (o owner não pode ter identidade externa, imposto no banco). `notes` ganhou a referência bibliográfica e deixou de ser apagada em cascata.
 - **Adiadas de propósito para a fase que usa cada uma**, porque acrescentar uma tabela depois é barato e mudar uma existente não é: jobs (Fase 3a), convites e pedidos de redefinição (Fase 4), e séries, categorias, tags pessoais e coleções (Fase 5, junto das telas de organização; a hierarquia de categorias precisará rejeitar ciclos, RF-040).
 - **Rotas:** `DELETE /works/{id}` agora retira a obra (reversível, DEC-038); `POST /works/{id}/restore` a devolve; a exclusão física exige `?purge=true` numa obra já retirada e só apaga arquivos gerenciados. O progresso e o tempo de leitura são por arquivo (`fileId` opcional, padrão o arquivo primário). `GET /works/{id}` lista todas as edições e arquivos, com o progresso de quem consulta em cada um.
@@ -93,7 +93,7 @@ Tamanho: G. Cobre os achados 4.5, 4.6 e 4.7, RF-007 a 011, 019/020, 041, 044 e 0
 
 **Testes:** arquivo corrompido é bloqueado; duplicata devolve o registro existente; falha no meio da transferência preserva uma cópia válida; retirar obra preserva arquivos e notas.
 
-**Estado da Fase 3 em 19 de setembro de 2026: parcial.** Entregue, no mesmo branch:
+**Estado da Fase 3 em 19 de setembro de 2026: concluída.** Entregue, no mesmo branch (PR #6):
 
 - *As três pendências da Fase 2*: edição completa de metadados (todos os campos, nove travas, proveniência por campo), arquivos servidos só quando o catálogo os possui e a auditoria somente de acréscimo.
 - *Fluxo de sugestões (DEC-019, DEC-026, RF-009)*: o worker preenche só campos vazios ou vindos do próprio arquivo, nunca sobrescreve o que foi confirmado, e os provedores externos passam a gerar **candidatos** que o admin aceita ou rejeita.
@@ -109,12 +109,17 @@ Tamanho: G. Cobre os achados 4.5, 4.6 e 4.7, RF-007 a 011, 019/020, 041, 044 e 0
 - *Mover para o gerenciado (DEC-033, DEC-034, RF-011)*: um job que confere o hash da origem, copia para o staging calculando o hash, publica, troca a localização e registra a origem como pendente na mesma transação, e só então remove a origem se ela não mudou. O arquivo mantém o id, então notas e progresso continuam. Origem alterada ou impossível de remover fica listada com o motivo (`GET /admin/storage/cleanups`, com nova tentativa).
 - *Duas decisões que divergem do texto*: (1) a importação em lote **não** remove as originais por padrão; a remoção é opt-in (`removeOriginals`), porque uma importação sempre só copiou e apagar arquivos de alguém não deve começar sozinho. A DEC-033 faz da remoção o padrão; vale você decidir. (2) A quantidade máxima de arquivos por pedido de transferência é 500.
 
-**Ainda não feito na Fase 3:**
-- Lixeira recuperável e limpeza automática opcional (DEC-041 a 043, RF-045): hoje a exclusão física de uma obra retirada é imediata.
-- Candidatos a duplicidade por título, autor ou ISBN para revisão administrativa (DEC-029).
-- Detecção de páginas sem texto para OCR (RF-019).
-- A etapa "contrair": remover os gatilhos de compatibilidade e as colunas antigas de `works`.
-- Telas de administração de jobs, de raízes e de reorganização (as APIs existem), e a limpeza de arquivos órfãos deixados por uma queda entre gravar o arquivo e confirmar a transação.
+**Etapa final da Fase 3 (também em 19 de setembro de 2026), antes do PR: concluída.**
+
+- *Lixeira recuperável (DEC-041 a 043, RF-045)*: a exclusão física de uma obra retirada move os arquivos gerenciados para `.trash/`; recuperar nunca sobrescreve; apagar de vez e esvaziar exigem confirmação; a limpeza automática vem desligada e a regra (dias) é do owner, com prévia do efeito. Os arquivos referenciados não são movidos. A obra só é apagada do catálogo quando não resta nenhum arquivo gerenciado dela.
+- *Órfãos*: arquivos do armazenamento que o catálogo não conhece (com mais de 24 h, fora de `covers/` e `cache/`) são listados e podem ir para a lixeira.
+- *Duplicatas (DEC-029)*: um job `dedupe` roda depois de cada análise e sob pedido para o acervo todo. Só sugere: ISBN igual, ou título normalizado igual com autor em comum (título sozinho não basta). Dispensar é lembrado; unir move edições, notas, favoritos, etiquetas e identificadores para a obra escolhida, com confirmação, e é auditado.
+- *OCR (RF-019), só a detecção*: o worker registra em `text_layers` as páginas de PDF com menos de 20 caracteres não brancos. Executar o OCR fica para depois.
+- *Contração do modelo*: migração `00011` remove os gatilhos `works_project_*` e as colunas antigas de `works`; o `Down` as recria a partir das tabelas novas. Todo escritor (upload, varredura, importação em lote, worker) grava o modelo novo diretamente.
+- *Telas de administração*: trabalhos, armazenamento (pastas, varredura, importação, reorganização, remoções pendentes, órfãos), lixeira, duplicatas e PDFs sem texto, só para owner e admin (`GET /auth/me`).
+- *Importação de pasta*: a tela **sempre** pergunta se os originais devem ser apagados depois de copiar (manter, apagar, cancelar), sem padrão e sem lembrar a resposta. A API continua exigindo `removeOriginals: true`.
+
+**Ainda não feito, e que não bloqueia a Fase 4:** executar o OCR; tela para escolher arquivos referenciados e movê-los para o gerenciado; uma passada de uso real (API, worker e navegador) sobre esta versão.
 
 ## 6 Fase 4: contas e governança
 

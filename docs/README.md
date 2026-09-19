@@ -16,17 +16,17 @@ Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz
 
 - **C** confirmado pelo mantenedor, **P** proposto, **A** em aberto. Uma proposta não é decisão aprovada nem prova de implementação.
 - Os IDs (RF, RNF, RN, DEC, QA, UI, FL) são estáveis: não reutilizar, marcar como substituído.
-- Nada foi implementado por causa da especificação. O estado do código está na análise.
+- O estado do código está em "Estado" abaixo e na análise.
 
 ## Estado em 19 de setembro de 2026
 
 **Fase 0 (preparar o terreno): concluída.** Corpus sintético em `testdata/`, script `scripts/reset-dev-db.sh` (simulação por padrão) e trabalho local salvo em `chore/salvar-trabalho-local`.
 
-**Fase 1 (segurança e autorização): concluída na parte técnica**, no branch `feat/fase1-seguranca`, ainda sem merge. Os cinco testes que abriam a fase passam, e cada um foi confirmado falhando quando a proteção correspondente é removida.
+**Fase 1 (segurança e autorização): concluída na parte técnica**, no branch `feat/fase1-seguranca` (PR #6). Os cinco testes que abriam a fase passam, e cada um foi confirmado falhando quando a proteção correspondente é removida.
 
 - Sem credencial: 401 em qualquer `APP_ENV`. O fallback que dava admin a requisições anônimas (HTTP e WebSocket) e o segredo JWT padrão foram removidos; a API não sobe sem `JWT_SECRET`.
 - Papéis owner, admin e leitor, com política em `backend/internal/authz` (DEC-056, RN-022). Upload, importação em lote, edição e exclusão exigem owner ou admin. `PUT /users/{id}/role` (só owner) promove e rebaixa admins, lendo o papel do banco.
-- Setup atômico: transação com trava, mais um índice único parcial que permite um único owner (RF-001). A conta criada no setup é owner; se já havia admins, a migração 012 promove o mais antigo.
+- Setup atômico: transação com trava, mais um índice único parcial que permite um único owner (RF-001). A conta criada no setup é owner; se já havia admins, a migração de papéis (dentro de `00001_baseline`) promove o mais antigo.
 - Sessões no banco (DEC-070): o token carrega um id de sessão, e o servidor confere sessão, expiração e bloqueio a cada requisição, lendo o papel do banco. Existe logout, e `RevokeAllForUser` está pronto para o bloqueio e a redefinição de senha da Fase 4.
 - Nada de token em URL: capas, arquivos, páginas e áudio usam um token de recurso de 15 minutos (`?rt=`, só GET/HEAD), e o WebSocket usa um ticket de 60 segundos.
 - Tokens de aplicativo (DEC-071): `POST/GET/DELETE /auth/app-tokens`. OPDS e downloads por Basic usam o token como senha; **a senha da conta não vale mais ali**.
@@ -34,39 +34,55 @@ Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz
 - Login com uma única mensagem de falha; bcrypt com custo 12 e re-hash das contas antigas no login; `JWT_EXPIRATION_HOURS` agora define a duração da sessão.
 - Compose: em `docker-compose.yml`, PostgreSQL e Redis presos a `127.0.0.1` e senha do Redis opcional; em `docker-compose.full.yml`, nenhum dos dois publica porta e `REDIS_PASSWORD` é obrigatória.
 
-**Pendências da Fase 1**, que não bloqueiam a Fase 2:
-- Tela para criar e revogar tokens de aplicativo (UI-21). Até existir, use a API: sem ela o OPDS fica inutilizável.
-- O frontend ainda mostra upload e edição ao leitor, que agora recebe 403. Esconder por papel é ajuste de interface.
-- `rt` e `ticket` aparecem no log de acesso do chi. Como são curtos e de escopo restrito o risco é baixo; dá para censurá-los.
-- Em `docker-compose.full.yml`, `POSTGRES_PASSWORD` ainda tem valor padrão. O banco deixou de ser exposto, mas convém exigir a variável.
-- Bloquear, excluir e convidar contas, transferência de titularidade e redefinição de senha pertencem à Fase 4. Só a troca de papel existe.
-- CORS aceita uma única origem, e MFA não existe. `worker/bulk_import.py` é uma ferramenta de linha de comando do operador e não foi alterada.
+As pendências que restaram da Fase 1 estão na lista de pendências mais abaixo.
 
-**Fase 2 (modelo de dados alvo): concluída na parte técnica**, no mesmo branch. Detalhes e decisões no plano (§4).
+**Fase 2 (modelo de dados alvo): concluída.** Detalhes e decisões no plano (§4).
 
-- Migrações versionadas com goose. Ao subir, a API aplica `00001_baseline` (o esquema antigo, idempotente) e `00002_model_target`. **Antes de rodar no seu banco de desenvolvimento, faça um backup** (`pg_dump`): a migração copia dados e não apaga nada, mas é o primeiro uso real.
-- Obra com várias edições e vários arquivos (formato e idioma distintos), com hash único por arquivo; progresso por usuário e arquivo; autores múltiplos; notas que sobrevivem à obra e guardam título e autor; registro de auditoria.
-- Retirada reversível no lugar da exclusão: o botão do frontend agora diz "Retire from Library". A exclusão física é um passo extra (`?purge=true`), só para obra já retirada.
-- O worker continua escrevendo nas colunas antigas de `works`; gatilhos no banco projetam essas escritas no modelo novo. Isso sai na Fase 3.
+- Migrações versionadas com goose, aplicadas ao subir a API (`backend/internal/database/migrations`, `00001` a `00011`, cada uma com `Down`).
+- Obra com várias edições e vários arquivos (formato e idioma distintos), com hash único por arquivo; progresso por usuário e arquivo; autores múltiplos; notas que sobrevivem à obra e guardam título e autor; registro de auditoria só de acréscimo.
+- Retirada reversível no lugar da exclusão. A exclusão física é um passo extra (`?purge=true`), só para obra já retirada, e agora vai para a lixeira (abaixo).
 
-**Fase 3 (jobs, ingestão e armazenamento): parcial.** As três pendências da Fase 2 foram resolvidas (edição completa de metadados com travas e proveniência, arquivos servidos só quando o catálogo os possui, auditoria somente de acréscimo), e entraram a fila de jobs no PostgreSQL e a ingestão endurecida. Detalhes e o que falta no plano (§5).
+**Fase 3 (jobs, ingestão, metadados, armazenamento): concluída.** PR: https://github.com/ocnaibill/codice/pull/6 (`feat/fase1-seguranca` → `main`). Detalhes no plano (§5).
 
-- **Jobs:** PostgreSQL é a fonte da verdade e o Redis só acorda o worker, então reiniciar ou esvaziar o Redis, ou subir sem ele, não perde nada. Erros temporários repetem até 3 vezes (30 s, 2 min, 10 min), os permanentes não repetem, e um job cujo worker sumiu é retomado por outro. `GET /admin/jobs`, `POST /admin/jobs/{id}/rerun` e `/cancel`, para owner e admin.
-- **Upload e importação em lote:** limite real de tamanho (`CODICE_MAX_UPLOAD_MB`), validação do conteúdo, bytes idênticos recusados com a indicação do registro existente, e obra, hash e job numa só transação. O frontend agora explica a recusa.
-- **Metadados:** o worker só preenche o que está vazio; o que os provedores externos encontram vira **sugestão** para aceitar ou rejeitar no modal de edição. Campos que você altera ficam confirmados e travados.
-- **Worker:** rode o worker e a API. O worker sozinho já consome a fila pelo banco; o Redis é opcional.
+- **Jobs:** PostgreSQL é a fonte da verdade e o Redis só acorda o worker. Erros temporários repetem até 3 vezes (30 s, 2 min, 10 min), os permanentes não repetem, e um job cujo worker sumiu é retomado por outro. O worker Python só pega `ingest`; o processo da API roda `organize`, `scan`, `transfer` e `dedupe`. `GET /admin/jobs`, `POST /admin/jobs/{id}/rerun` e `/cancel`.
+- **Upload e importação em lote:** limite de tamanho (`CODICE_MAX_UPLOAD_MB`), validação do conteúdo, bytes idênticos recusados, e obra, hash e job numa só transação.
+- **Metadados:** o worker só preenche o que está vazio; o que os provedores externos encontram vira **sugestão** para aceitar ou rejeitar. Campos que você altera ficam confirmados e travados. ISBN, editora, idioma e data ficam na edição principal; o autor, em `work_contributors`.
+- **Armazenamento:** layout `Autor/Obra/Idioma — Editora — Ano/Arquivo` (quadrinhos em série: `Série/NN - Título`), reorganização **explícita** com prévia e confirmação do plano por hash (`/admin/storage/reorganize`), modo referenciado (o owner autoriza pastas em `/admin/storage/roots`, `POST /admin/library/scan`) e "mover para o gerenciado" (copia, confere o hash e só remove a origem se ela não mudou; o que sobrar fica em `/admin/storage/cleanups`).
+- **Lixeira recuperável:** a exclusão física de uma obra retirada move os arquivos para `.trash/` (`/admin/trash`, com recuperar, apagar de vez e esvaziar, esses dois exigindo `confirm=true`). A limpeza automática vem **desligada**; o owner liga a regra (dias) em `/admin/trash/policy`, com prévia. Arquivos órfãos do armazenamento (`/admin/storage/orphans`) também vão para a lixeira.
+- **Duplicatas (DEC-029):** depois de cada análise, um job `dedupe` sugere pares por ISBN igual, ou título normalizado igual com autor em comum (título sozinho não conta). `GET /admin/duplicates`; dispensar, ou unir escolhendo a obra que fica, com confirmação (a união não se desfaz). `POST /admin/duplicates/scan` compara o acervo todo.
+- **OCR (RF-019), só a detecção:** o worker marca as páginas de PDF com menos de 20 caracteres úteis (`text_layers`); o detalhe da obra traz `needsOcr` e `pagesWithoutText`, e `GET /admin/ocr` lista os arquivos. **Rodar o OCR não está feito.**
+- **Contração do modelo:** os gatilhos `works_project_*` e as colunas `file_path`, `format`, `language`, `publisher`, `publication_date`, `isbn` e `author_id` de `works` foram removidos (migração `00011`). Toda escrita grava edição, arquivo, local e colaboradores diretamente. O `Down` recria as colunas a partir das tabelas novas.
+- **Telas de administração** (`frontend/src/features/admin`, botão "Administração" no cabeçalho, só para owner e admin, via `GET /auth/me`): trabalhos, armazenamento (pastas, varredura, importação de pasta, reorganização, remoções pendentes, órfãos), lixeira com a regra do owner, duplicatas e PDFs sem texto.
+- **Importação de pasta pede confirmação sempre:** antes de copiar, a tela pergunta "Apagar os originais depois de copiar?" (manter, apagar ou cancelar) e nunca lembra a resposta. Sem a tela, a API só apaga com `removeOriginals: true`. Isso difere da DEC-033, que faz da remoção o padrão.
 
-**Fase 3, segunda etapa: organização em disco e modo referenciado, concluídos** (plano §5).
+**Antes de rodar no seu banco de desenvolvimento, faça um backup.** A migração `00011` apaga colunas de `works` (o que faltar é copiado para as tabelas novas antes, mas é o primeiro uso real). O `pg_dump` **não foi feito nesta sessão** (o banco de desenvolvimento não estava no ar e a ferramenta recusou abrir o volume dos seus dados). Com o Compose no ar, e ajustando usuário e banco se o seu `.env` for diferente:
 
-- **Layout:** cada arquivo gerenciado vai para `Autor/Obra/Idioma — Editora — Ano/Arquivo` assim que a análise termina; quadrinhos em série vão para `Série/NN - Título`. Corrigir metadados não move nada: uma reorganização é **explícita**, com prévia e confirmação do plano exato (`GET` e `POST /admin/storage/reorganize`).
-- **Modo referenciado:** o owner autoriza diretórios (`/admin/storage/roots`), owner e admin varrem (`POST /admin/library/scan`) e os arquivos ficam onde estão, sem serem tocados. Os que somem ficam marcados como ausentes com notas e progresso preservados.
-- **Mover para o gerenciado** (`POST /admin/library/move-to-managed`): copia, confere o hash e só então remove a origem, e só se ela não mudou. O que não puder ser removido fica em `GET /admin/storage/cleanups`.
-- **Atenção:** a importação em lote continua **só copiando**; para movê-los é preciso pedir `removeOriginals: true`. A DEC-033 faz da remoção o padrão, e a decisão é sua.
-- **Antes de rodar:** faça um `pg_dump`. São oito migrações. Depois da atualização, os arquivos já existentes continuam no caminho plano até você pedir uma reorganização.
+```bash
+docker exec codice_db pg_dump -U codice_user -Fc codice_db > ~/codice-antes-da-00011-$(date +%F).dump
+```
 
-**Pendências da Fase 3:** lixeira recuperável, candidatos a duplicidade por título/autor/ISBN, detecção de páginas sem texto para OCR, remoção dos gatilhos de compatibilidade e das colunas antigas, telas de jobs, raízes e reorganização, e limpeza de arquivos órfãos.
+Para voltar: `docker exec -i codice_db pg_restore -U codice_user -d codice_db --clean --if-exists < arquivo.dump`. Os arquivos que já existem continuam no caminho plano até você pedir uma reorganização.
 
-**Próximo passo:** abrir o PR do branch (fases 1 a 3) e, depois, a Fase 4 (contas e governança, com o LDAP). Os itens acima podem entrar antes ou depois.
+**Pendências:**
+- Rodar o OCR de fato (a detecção já indica onde) e a fila `ocr`.
+- Tela para listar arquivos referenciados e usar "mover para o gerenciado" (a API existe: `POST /admin/library/move-to-managed`).
+- Tela para criar e revogar tokens de aplicativo (UI-21); sem ela o OPDS só funciona pela API. O leitor ainda vê botões de upload e edição (recebe 403); esconder por papel é ajuste de interface, agora que `/auth/me` existe.
+- Rodar a aplicação inteira (API, worker, Redis, frontend) uma vez nesta versão do código e olhar as telas novas num navegador; os testes cobrem os componentes com a API simulada.
+- Da Fase 1: `rt` e `ticket` aparecem no log de acesso do chi (risco baixo); `POSTGRES_PASSWORD` ainda tem valor padrão em `docker-compose.full.yml`; CORS aceita uma única origem; não há MFA.
+
+**Próximo passo:** revisar e integrar o PR, e então a **Fase 4** (contas e governança, com o LDAP): bloquear, excluir e convidar contas, transferência de titularidade, redefinição de senha e o login unificado (DEC-072 a 075). Só a troca de papel existe hoje.
+
+## Como rodar
+
+Suba PostgreSQL e Redis (`docker compose up -d`), defina `JWT_SECRET` (a API não sobe sem ele) e use um `.env` local, que nunca deve ser lido nem commitado por ferramentas.
+
+```bash
+cd backend && go run ./cmd/api          # aplica as migrações ao subir
+cd worker && python -m venv venv && venv/bin/pip install -r requirements.txt && venv/bin/python main.py
+cd frontend && npm install && npm run dev
+```
+
+O Redis é opcional para os jobs; sem ele o worker consulta o banco. O worker sozinho não organiza nem varre pastas: isso é da API.
 
 ## Como rodar os testes
 
@@ -75,10 +91,12 @@ Os testes do backend que usam PostgreSQL só rodam com `TEST_DATABASE_URL`, e re
 ```bash
 docker run -d --name codice-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=codice_test -p 127.0.0.1:55432:5432 postgres:16-alpine
 export TEST_DATABASE_URL='postgres://postgres:test@127.0.0.1:55432/codice_test?sslmode=disable'
-cd backend && go test ./...
+cd backend && go vet ./... && go test ./...
 ```
 
-No frontend, `cd frontend && npx vitest run`. Não use o banco de desenvolvimento como `TEST_DATABASE_URL`.
+O worker: `cd worker && venv/bin/python -m pytest` (81 testes). O frontend: `cd frontend && npx vitest run` (53 testes). Não use o banco de desenvolvimento como `TEST_DATABASE_URL`. Ao testar, capture o código de saída do `go test`: um `| tail` esconde a falha.
+
+Os testes semeiam obras com `testdb.AddWork` (`backend/internal/testdb`), que grava obra, edição, arquivo, local e autor como a aplicação faz.
 
 ## Decisões do mantenedor que valem lembrar
 
@@ -90,7 +108,7 @@ No frontend, `cd frontend && npx vitest run`. Não use o banco de desenvolviment
 - Nomes no armazenamento: `Autor/Obra/Idioma — Editora — Ano/Arquivo`; a obra aparece sob cada autor no catálogo.
 - Hardware mínimo não é único: será medido por perfil de uso (QA-016).
 
-## Pendências que não bloqueiam a Fase 1
+## Questões em aberto que não bloqueiam a Fase 4
 
 Fronteira da pasta de série (quadrinhos e mangá versus livros), formato da auditoria administrativa, definição de "tempo de leitura" e "conclusão", padrão do papel do antigo owner na recuperação de emergência (proposto: leitor), QA-018 (clientes OPDS), QA-022 (licenças), QA-023 (variantes de EPUB/PDF).
 
