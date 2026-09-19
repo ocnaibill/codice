@@ -71,6 +71,7 @@ Para voltar: `docker exec -i codice_db pg_restore -U codice_user -d codice_db --
 - Tela para listar arquivos referenciados e usar "mover para o gerenciado" (a API existe: `POST /admin/library/move-to-managed`).
 - Tela para criar e revogar tokens de aplicativo (UI-21); sem ela o OPDS só funciona pela API. O botão de adicionar livros já fica escondido do leitor; o modal de edição ainda não é aberto por nenhuma tela.
 - Ensaio básico da aplicação inteira realizado após o merge, inclusive com Redis ausente na inicialização. Permanecem os ensaios de falhas operacionais e os ajustes de interface descritos no relatório de validação.
+- **Instalação por contêiner:** o `docker-compose.full.yml` referencia `backend/Dockerfile`, `worker/Dockerfile` e `frontend/Dockerfile`, que nunca existiram no repositório, então a pilha completa em contêineres não constrói. Hoje o Códice roda com a API, o worker e o frontend direto na máquina, e só o PostgreSQL, o Redis (e o outpost LDAP) em contêiner. O compose já repassa as variáveis `LDAP_*` e tem o outpost como perfil opcional, mas isso **não foi testado** por falta das imagens.
 - Da Fase 1: `rt` e `ticket` aparecem no log de acesso do chi (risco baixo); `POSTGRES_PASSWORD` ainda tem valor padrão em `docker-compose.full.yml`; CORS aceita uma única origem; não há MFA.
 
 **Fase 4 (contas e governança): em andamento**, no branch `feat/fase4-contas`, em fatias pequenas.
