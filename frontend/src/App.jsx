@@ -9,6 +9,10 @@ import { Auth } from './features/auth/components/Auth';
 import { useMe, isStaff } from './features/auth/api/useMe';
 import { AdminPage } from './features/admin/AdminPage';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
+import { OwnershipBanner } from './features/ownership/OwnershipBanner';
+import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
+import { ResetPassword } from './features/auth/components/ResetPassword';
+import { AcceptInvite } from './features/auth/components/AcceptInvite';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
 import { refreshLibrary } from './lib/refreshLibrary';
 
@@ -17,6 +21,19 @@ function App() {
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [assetsReady, setAssetsReady] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  // A link like /?invite=<secret> opens the sign-up page for that invitation.
+  const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset'));
+  const leaveLink = () => {
+    window.history.replaceState(null, '', window.location.pathname);
+    setInviteToken(null);
+    setResetToken(null);
+  };
+  const leaveInvite = () => {
+    window.history.replaceState(null, '', window.location.pathname);
+    setInviteToken(null);
+  };
 
   const queryClient = useQueryClient();
   const activeBookId = useGlobalStore((state) => state.activeBookId);
@@ -198,6 +215,20 @@ function App() {
     );
   }
 
+  if (!isAuthenticated && resetToken) {
+    return <ResetPassword token={resetToken} onDone={leaveLink} />;
+  }
+
+  if (!isAuthenticated && inviteToken) {
+    return (
+      <AcceptInvite
+        token={inviteToken}
+        onAccepted={() => { leaveInvite(); setIsAuthenticated(true); }}
+        onCancel={leaveInvite}
+      />
+    );
+  }
+
   if (!isAuthenticated) {
     return <Auth onLoginSuccess={() => setIsAuthenticated(true)} />;
   }
@@ -229,6 +260,8 @@ function App() {
         </div>
       )}
       <UploadModal />
+      <OwnershipBanner me={me} />
+      {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
       {activeBookId ? (
         <Reader />
       ) : (
@@ -237,6 +270,7 @@ function App() {
           onSearchChange={setSearchQuery}
           onGoHome={closeBook}
           onLogout={handleLogout}
+          onChangePassword={() => setChangingPassword(true)}
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >

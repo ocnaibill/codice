@@ -18,7 +18,7 @@ beforeEach(() => {
     if (url === '/admin/trash') return { data: { items: [], totalBytes: 0, policy: { enabled: false, days: 30 } } };
     if (url === '/admin/storage/roots') return { data: { roots: [], managed: '/data' } };
     if (url === '/admin/storage/cleanups' || url === '/admin/storage/orphans') return { data: { data: [] } };
-    if (url === '/admin/duplicates' || url === '/admin/ocr') return { data: { data: [] } };
+    if (url === '/admin/duplicates' || url === '/admin/ocr' || url === '/users') return { data: { data: [] } };
     throw new Error(`unexpected GET ${url}`);
   });
 });
@@ -38,6 +38,9 @@ describe('AdminPage', () => {
 
     await view.click(view.button('Duplicatas e OCR'));
     expect(view.text()).toContain('Nenhuma sugestão pendente');
+
+    await view.click(view.button('Contas'));
+    expect(view.text()).toContain('Nenhuma conta');
   });
 
   it('has a way back to the library, also on narrow screens', async () => {

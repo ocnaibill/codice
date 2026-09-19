@@ -42,7 +42,27 @@ type WsHandler struct {
 	RedisClient *redis.Client
 	Auth        middleware.Authenticator
 	Clients     map[*websocket.Conn]bool
+	owners      map[*websocket.Conn]string // connection -> account id
 	mu          sync.Mutex
+}
+
+// DisconnectUser closes every open connection of an account. Blocking an account
+// ends its access at once, and a socket opened earlier must not outlive that.
+func (h *WsHandler) DisconnectUser(userID string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	var doomed []*websocket.Conn
+	for conn, owner := range h.owners {
+		if owner == userID {
+			doomed = append(doomed, conn)
+		}
+	}
+	h.mu.Unlock()
+	for _, conn := range doomed {
+		conn.Close() // the read loop ends and unregisters the connection
+	}
 }
 
 // HandleWS upgrades HTTP connection to WebSocket and registers active client.
@@ -50,7 +70,8 @@ type WsHandler struct {
 // "ws" ticket (?ticket=, from POST /auth/resource-token); session tokens never
 // travel in the query string.
 func (h *WsHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
-	if _, _, err := h.Auth.AuthenticateWS(r); err != nil {
+	userID, _, err := h.Auth.AuthenticateWS(r)
+	if err != nil {
 		if errors.Is(err, middleware.ErrInvalidSession) {
 			http.Error(w, "Access denied: Authentication required", http.StatusUnauthorized)
 		} else {
@@ -69,12 +90,17 @@ func (h *WsHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 	if h.Clients == nil {
 		h.Clients = make(map[*websocket.Conn]bool)
 	}
+	if h.owners == nil {
+		h.owners = make(map[*websocket.Conn]string)
+	}
 	h.Clients[conn] = true
+	h.owners[conn] = userID
 	h.mu.Unlock()
 
 	defer func() {
 		h.mu.Lock()
 		delete(h.Clients, conn)
+		delete(h.owners, conn)
 		h.mu.Unlock()
 		conn.Close()
 	}()

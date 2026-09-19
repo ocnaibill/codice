@@ -23,6 +23,10 @@ type authStack struct {
 	router   http.Handler
 	authH    *AuthHandler
 	lastRole string
+	users    *UsersHandler
+	invites  *InvitationsHandler
+	resets   *PasswordResetsHandler
+	owner    *OwnershipHandler
 }
 
 func newAuthStack(t *testing.T) *authStack {
@@ -33,6 +37,10 @@ func newAuthStack(t *testing.T) *authStack {
 	a := middleware.Authenticator{Sessions: st.CheckSession, Basic: st.VerifyAppToken}
 	s := &authStack{db: db, store: st, authH: &AuthHandler{DB: db, Sessions: st}}
 	tokens := &AppTokensHandler{Sessions: st}
+	s.users = &UsersHandler{DB: db}
+	s.invites = &InvitationsHandler{DB: db, Sessions: st}
+	s.resets = &PasswordResetsHandler{DB: db}
+	s.owner = &OwnershipHandler{DB: db}
 
 	probe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.lastRole, _ = r.Context().Value(middleware.UserRoleKey).(string)
@@ -47,6 +55,28 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Post("/auth/app-tokens", tokens.Create)
 	r.With(a.Middleware).Get("/auth/app-tokens", tokens.List)
 	r.With(a.Middleware).Delete("/auth/app-tokens/{id}", tokens.Revoke)
+	r.With(a.Middleware).Get("/ownership/transfer", s.owner.Get)
+	r.With(a.Middleware).Post("/ownership/transfer", s.owner.Start)
+	r.With(a.Middleware).Delete("/ownership/transfer", s.owner.Cancel)
+	r.With(a.Middleware).Post("/ownership/transfer/accept", s.owner.Accept)
+	r.With(a.Middleware).Post("/ownership/transfer/decline", s.owner.Decline)
+	r.With(a.Middleware).Post("/auth/notices/{id}/ack", AckNotice(db))
+	r.Post("/auth/reset-request", s.resets.Request)
+	r.Get("/auth/reset", s.resets.Check)
+	r.Post("/auth/reset", s.resets.Redeem)
+	r.With(a.Middleware).Get("/password-resets", s.resets.List)
+	r.With(a.Middleware).Post("/password-resets/{id}/approve", s.resets.Approve)
+	r.With(a.Middleware).Post("/password-resets/{id}/reject", s.resets.Reject)
+	r.Get("/auth/invitation", s.invites.Check)
+	r.Post("/auth/redeem", s.invites.Redeem)
+	r.With(a.Middleware).Get("/invitations", s.invites.List)
+	r.With(a.Middleware).Post("/invitations", s.invites.Create)
+	r.With(a.Middleware).Delete("/invitations/{id}", s.invites.Revoke)
+	r.With(a.Middleware).Get("/users", s.users.List)
+	r.With(a.Middleware).Post("/users/{id}/block", s.users.Block)
+	r.With(a.Middleware).Post("/users/{id}/unblock", s.users.Unblock)
+	r.With(a.Middleware).Delete("/users/{id}", s.users.Delete)
+	r.With(a.Middleware).Post("/auth/password", s.authH.ChangePassword)
 	r.With(a.Middleware).Get("/probe", probe)
 	r.With(a.AssetsWithBasic).Get("/files/probe", probe)
 	s.router = r

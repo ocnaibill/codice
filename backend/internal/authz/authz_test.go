@@ -31,6 +31,15 @@ func TestCanManageAccount(t *testing.T) {
 		{"admin may block reader", RoleAdmin, RoleReader, ActionBlock, true},
 		{"admin may remove reader", RoleAdmin, RoleReader, ActionRemove, true},
 
+		// Approving a password reset follows the same reach (RF-049).
+		{"owner approves a reset for a reader", RoleOwner, RoleReader, ActionReset, true},
+		{"owner approves a reset for an admin", RoleOwner, RoleAdmin, ActionReset, true},
+		{"owner is never reset from here", RoleOwner, RoleOwner, ActionReset, false},
+		{"admin approves a reset for a reader", RoleAdmin, RoleReader, ActionReset, true},
+		{"admin cannot approve a reset for an admin", RoleAdmin, RoleAdmin, ActionReset, false},
+		{"admin cannot approve a reset for the owner", RoleAdmin, RoleOwner, ActionReset, false},
+		{"reader approves nothing", RoleReader, RoleReader, ActionReset, false},
+
 		// Readers manage nobody.
 		{"reader cannot block reader", RoleReader, RoleReader, ActionBlock, false},
 		{"reader cannot promote", RoleReader, RoleReader, ActionPromote, false},
@@ -68,6 +77,29 @@ func TestValidAssignableRole(t *testing.T) {
 	} {
 		if got := IsAssignableRole(role); got != want {
 			t.Errorf("IsAssignableRole(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+func TestCanInvite(t *testing.T) {
+	cases := []struct {
+		actor, role string
+		want        bool
+	}{
+		{RoleOwner, RoleReader, true},
+		{RoleOwner, RoleAdmin, true},
+		{RoleAdmin, RoleReader, true},
+		{RoleAdmin, RoleAdmin, false}, // only the owner makes admins (DEC-056)
+		{RoleReader, RoleReader, false},
+		{RoleReader, RoleAdmin, false},
+		{RoleOwner, RoleOwner, false}, // no invitation grants owner
+		{RoleAdmin, RoleOwner, false},
+		{"", RoleReader, false},
+		{RoleOwner, "root", false},
+	}
+	for _, c := range cases {
+		if got := CanInvite(c.actor, c.role); got != c.want {
+			t.Errorf("CanInvite(%q, %q) = %v, want %v", c.actor, c.role, got, c.want)
 		}
 	}
 }

@@ -40,7 +40,10 @@ func newRouter(d routerDeps) http.Handler {
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
-	usersHandler := &handlers.UsersHandler{DB: db}
+	invitesHandler := &handlers.InvitationsHandler{DB: db, Sessions: d.Sessions}
+	resetsHandler := &handlers.PasswordResetsHandler{DB: db, Disconnect: d.WS.DisconnectUser}
+	ownershipHandler := &handlers.OwnershipHandler{DB: db}
+	usersHandler := &handlers.UsersHandler{DB: db, Disconnect: d.WS.DisconnectUser}
 	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
 	dupesHandler := &handlers.DuplicatesHandler{DB: db}
 	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
@@ -79,6 +82,13 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(authRateLimit).Post("/auth/setup", authHandler.SetupMasterAdmin)
 	r.With(authRateLimit).Post("/auth/register", authHandler.Register)
 	r.With(authRateLimit).Post("/auth/login", authHandler.Login)
+	// Invitations are the way in while public registration is off (DEC-050).
+	r.With(authRateLimit).Get("/auth/invitation", invitesHandler.Check)
+	r.With(authRateLimit).Post("/auth/redeem", invitesHandler.Redeem)
+	// Forgotten password without e-mail (DEC-063): ask, get approved, use the link.
+	r.With(authRateLimit).Post("/auth/reset-request", resetsHandler.Request)
+	r.With(authRateLimit).Get("/auth/reset", resetsHandler.Check)
+	r.With(authRateLimit).Post("/auth/reset", resetsHandler.Redeem)
 
 	// Session-backed authentication: a bearer token is only good while its
 	// session row is live and the account is not blocked.
@@ -111,6 +121,16 @@ func newRouter(d routerDeps) http.Handler {
 
 	// Session, resource tokens and app tokens
 	r.With(auth).Get("/auth/me", authHandler.Me)
+	r.With(auth, authRateLimit).Post("/auth/password", authHandler.ChangePassword)
+	r.With(auth).Post("/auth/notices/{id}/ack", handlers.AckNotice(db))
+
+	// Ownership changes hands in two steps (RF-038). Recovery when the owner is
+	// unavailable is not a route: it is a command run on the server (DEC-057).
+	r.With(auth).Get("/ownership/transfer", ownershipHandler.Get)
+	r.With(owner, authRateLimit).Post("/ownership/transfer", ownershipHandler.Start)
+	r.With(owner).Delete("/ownership/transfer", ownershipHandler.Cancel)
+	r.With(auth, authRateLimit).Post("/ownership/transfer/accept", ownershipHandler.Accept)
+	r.With(auth).Post("/ownership/transfer/decline", ownershipHandler.Decline)
 	r.With(auth).Post("/auth/logout", authHandler.Logout)
 	r.With(auth).Post("/auth/resource-token", authHandler.ResourceToken)
 	r.With(auth).Post("/auth/app-tokens", appTokensHandler.Create)
@@ -155,8 +175,19 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/admin/duplicates/{id}/dismiss", dupesHandler.Dismiss)
 	r.With(staff).Post("/admin/duplicates/{id}/link", dupesHandler.Link)
 
-	// Account roles
+	// Accounts: owner and admins list and block (the policy decides who may act on
+	// whom); only the owner changes roles.
+	r.With(staff).Get("/users", usersHandler.List)
+	r.With(staff).Post("/users/{id}/block", usersHandler.Block)
+	r.With(staff).Post("/users/{id}/unblock", usersHandler.Unblock)
+	r.With(staff).Delete("/users/{id}", usersHandler.Delete)
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)
+	r.With(staff).Get("/invitations", invitesHandler.List)
+	r.With(staff).Post("/invitations", invitesHandler.Create)
+	r.With(staff).Delete("/invitations/{id}", invitesHandler.Revoke)
+	r.With(staff).Get("/password-resets", resetsHandler.List)
+	r.With(staff).Post("/password-resets/{id}/approve", resetsHandler.Approve)
+	r.With(staff).Post("/password-resets/{id}/reject", resetsHandler.Reject)
 
 	// Favorites, notes/quotes, and dashboard stats
 	r.With(auth).Post("/works/{id}/favorite", favoritesHandler.AddFavorite)

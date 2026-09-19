@@ -94,15 +94,22 @@ func (s *Store) RevokeAllForUser(ctx context.Context, userID string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := RevokeAllForUserTx(ctx, tx, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// RevokeAllForUserTx is RevokeAllForUser inside a transaction the caller owns, so
+// blocking an account and ending its access commit together or not at all.
+func RevokeAllForUserTx(ctx context.Context, tx *sql.Tx, userID string) error {
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, userID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE app_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, userID); err != nil {
-		return err
-	}
-	return tx.Commit()
+	_, err := tx.ExecContext(ctx,
+		`UPDATE app_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, userID)
+	return err
 }
 
 // AppToken is the public view of an app token; the secret is never stored.
