@@ -365,9 +365,24 @@ func TestModel_Invariants(t *testing.T) {
 		mustExec(t, db, `INSERT INTO users (id, username, email, role) VALUES ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'temp', 't@x', 'admin')`)
 		mustExec(t, db, `INSERT INTO audit_log (actor_id, actor_username, action, target_type, target_id, details)
 			VALUES ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'temp', 'work.retire', 'work', '1', '{"reason":"teste"}')`)
+		// Deleting the account must work (no UPDATE of audit rows is needed)
+		// and the entry keeps who did it.
 		mustExec(t, db, `DELETE FROM users WHERE username = 'temp'`)
-		if n := count(t, db, `SELECT COUNT(*) FROM audit_log WHERE actor_id IS NULL AND actor_username = 'temp'`); n != 1 {
+		if n := count(t, db, `SELECT COUNT(*) FROM audit_log WHERE actor_username = 'temp'`); n != 1 {
 			t.Error("the audit entry must remain after its actor is deleted, with the username snapshot")
+		}
+	})
+
+	t.Run("the audit log is append-only", func(t *testing.T) {
+		mustExec(t, db, `INSERT INTO audit_log (action) VALUES ('probe')`)
+		_, err := db.Exec(`UPDATE audit_log SET action = 'forged' WHERE action = 'probe'`)
+		expectCode(t, err, "23001", "updating an audit entry")
+		_, err = db.Exec(`DELETE FROM audit_log WHERE action = 'probe'`)
+		expectCode(t, err, "23001", "deleting an audit entry")
+		_, err = db.Exec(`TRUNCATE audit_log`)
+		expectCode(t, err, "23001", "truncating the audit log")
+		if n := count(t, db, `SELECT COUNT(*) FROM audit_log WHERE action = 'probe'`); n != 1 {
+			t.Error("the probe entry did not survive")
 		}
 	})
 }
@@ -378,6 +393,9 @@ func TestExpand_CanBeRolledBackAndReapplied(t *testing.T) {
 
 	if err := database.RollbackTo(db, 1); err != nil {
 		t.Fatalf("rollback: %v", err)
+	}
+	if v, _ := database.Version(db); v != 1 {
+		t.Fatalf("version after rollback = %d, want 1", v)
 	}
 	for _, tbl := range []string{"files", "storage_locations", "work_contributors", "reading_progress", "audit_log", "external_identities"} {
 		if tableExists(t, db, tbl) {
