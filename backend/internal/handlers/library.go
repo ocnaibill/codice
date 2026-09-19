@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/audit"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/storage"
 )
 
 // Work represents the structure sent to the frontend. In the catalog a work is
@@ -72,7 +72,8 @@ type FileInfo struct {
 
 // LibraryHandler stores the database connection
 type LibraryHandler struct {
-	DB *sql.DB
+	DB    *sql.DB
+	Trash *storage.Trash // optional: built from the storage path when nil
 }
 
 // currentUserID extracts the authenticated user id from context. AuthMiddleware
@@ -800,24 +801,20 @@ func (h *LibraryHandler) RestoreWork(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// purgeWork deletes a retired work and the files the server manages for it.
-// Files that are only referenced from elsewhere are never touched (RN-004).
+// purgeWork is "delete for good" for a retired work. Its managed files go to the
+// trash, where they can still be restored, and are destroyed only when the trash
+// is emptied (or by the optional automatic cleanup). If the server stores none of
+// the work's bytes the record is deleted at once. Files that are only referenced
+// from elsewhere are never touched (RN-004). Notes survive either way.
 func (h *LibraryHandler) purgeWork(w http.ResponseWriter, r *http.Request, id int) {
-	tx, err := h.DB.BeginTx(r.Context(), nil)
-	if err != nil {
-		http.Error(w, "Error starting transaction", http.StatusInternalServerError)
-		return
-	}
-	defer tx.Rollback()
-
 	var title string
 	var retired bool
-	err = tx.QueryRow(`SELECT original_title, retired_at IS NOT NULL FROM works WHERE id = $1 FOR UPDATE`, id).Scan(&title, &retired)
+	err := h.DB.QueryRowContext(r.Context(), `SELECT original_title, retired_at IS NOT NULL FROM works WHERE id = $1`, id).Scan(&title, &retired)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "Book not found", http.StatusNotFound)
-			return
-		}
 		http.Error(w, "Error fetching book", http.StatusInternalServerError)
 		return
 	}
@@ -826,71 +823,22 @@ func (h *LibraryHandler) purgeWork(w http.ResponseWriter, r *http.Request, id in
 		return
 	}
 
-	// Collect what to remove from disk before the rows are gone.
-	var managed []string
-	locRows, err := tx.Query(`
-		SELECT l.path FROM storage_locations l
-		JOIN files f ON f.id = l.file_id
-		JOIN editions e ON e.id = f.edition_id
-		WHERE e.work_id = $1 AND l.mode = 'managed'`, id)
+	trash := h.Trash
+	if trash == nil {
+		trash = &storage.Trash{DB: h.DB, Root: resolveStoragePath()}
+	}
+	trashed, deleted, err := trash.PurgeWork(r.Context(), id, currentUserID(r))
 	if err != nil {
-		http.Error(w, "Error fetching book files", http.StatusInternalServerError)
+		log.Println("Error deleting work:", err)
+		http.Error(w, "Error deleting the book", http.StatusInternalServerError)
 		return
 	}
-	for locRows.Next() {
-		var p string
-		if locRows.Scan(&p) == nil {
-			managed = append(managed, p)
-		}
+	if err := audit.Record(r.Context(), h.DB, currentUserID(r), "work.purge", "work", strconv.Itoa(id),
+		map[string]any{"title": title, "trashed": trashed, "deleted": deleted}); err != nil {
+		log.Println("Could not audit the deletion:", err)
 	}
-	locRows.Close()
-
-	var covers []string
-	coverRows, err := tx.Query(`SELECT cover_url FROM editions WHERE work_id = $1 AND COALESCE(cover_url, '') <> ''`, id)
-	if err != nil {
-		http.Error(w, "Error fetching book covers", http.StatusInternalServerError)
-		return
-	}
-	for coverRows.Next() {
-		var c string
-		if coverRows.Scan(&c) == nil {
-			covers = append(covers, c)
-		}
-	}
-	coverRows.Close()
-
-	if err := audit.Record(r.Context(), tx, currentUserID(r), "work.purge", "work", strconv.Itoa(id),
-		map[string]any{"title": title, "files": len(managed)}); err != nil {
-		http.Error(w, "Error recording audit entry", http.StatusInternalServerError)
-		return
-	}
-	// Editions, files, locations, progress and favorites go with the work; notes
-	// stay (their link is cleared and their reference kept).
-	if _, err := tx.Exec("DELETE FROM works WHERE id = $1", id); err != nil {
-		http.Error(w, "Error deleting work from database", http.StatusInternalServerError)
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		http.Error(w, "Error committing deletion transaction", http.StatusInternalServerError)
-		return
-	}
-
-	// Physical cleanup only after the commit, and only inside the storage root.
-	storagePath := resolveStoragePath()
-	for _, p := range managed {
-		if full, ok := insideStorage(storagePath, p); ok {
-			os.Remove(full)
-		}
-	}
-	for _, c := range covers {
-		if base := path.Base(c); base != "placeholder.svg" {
-			if full, ok := insideStorage(storagePath, filepath.Join("covers", base)); ok {
-				os.Remove(full)
-			}
-		}
-	}
-
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"trashed": trashed, "deleted": deleted})
 }
 
 // insideStorage joins a stored relative path to the storage root and refuses

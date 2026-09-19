@@ -82,11 +82,27 @@ func fileJobHandlers(db *sql.DB, mover *storage.Mover) map[string]jobs.Handler {
 
 // startFileJobs settles moves interrupted by a previous crash, then runs the file
 // jobs in the background until ctx is cancelled.
-func startFileJobs(ctx context.Context, runner *jobs.Runner, mover *storage.Mover) {
+func startFileJobs(ctx context.Context, runner *jobs.Runner, mover *storage.Mover, trash *storage.Trash) {
 	if res, err := mover.Recover(ctx); err != nil {
 		log.Printf("storage: could not settle interrupted moves: %v", err)
 	} else if res != (storage.RecoverResult{}) {
 		log.Printf("storage: settled interrupted moves: %+v", res)
 	}
 	go runner.Loop(ctx, 5*time.Second)
+	// The automatic cleanup of the trash, when the owner turns it on. Each pass
+	// deletes only what has reached its own date; with the policy off nothing has one.
+	go func() {
+		for {
+			if n, err := trash.PurgeExpired(ctx); err != nil {
+				log.Printf("trash: automatic cleanup failed: %v", err)
+			} else if n > 0 {
+				log.Printf("trash: automatic cleanup removed %d item(s)", n)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Hour):
+			}
+		}
+	}()
 }

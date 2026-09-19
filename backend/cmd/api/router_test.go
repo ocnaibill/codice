@@ -77,6 +77,10 @@ var staffRoutes = []route{
 	{"DELETE", "/works/1"},
 	{"POST", "/works/1/restore"},
 	{"GET", "/admin/jobs"},
+	{"GET", "/admin/trash"},
+	{"POST", "/admin/trash/empty"},
+	{"GET", "/admin/trash/policy"},
+	{"GET", "/admin/storage/orphans"},
 	{"GET", "/admin/storage/reorganize"},
 	{"GET", "/admin/storage/roots"},
 	{"POST", "/admin/library/scan"},
@@ -93,6 +97,8 @@ var staffRoutes = []route{
 
 // Routes reserved to the owner alone (DEC-056).
 var ownerRoutes = []route{
+	{"PUT", "/admin/trash/policy"},
+	{"POST", "/admin/trash/policy/apply"},
 	{"POST", "/admin/storage/roots"},
 	{"PUT", "/users/" + someUUID + "/role"},
 }
@@ -236,12 +242,14 @@ func TestOwnerOnlyRoutes_ThatNeedTheDatabaseAreStillGuarded(t *testing.T) {
 	// Removing an authorised directory reaches the database once past the guard,
 	// so only the guard itself is checked here.
 	h := testRouter(t)
-	for _, role := range []string{"admin", "reader"} {
-		if rec := do(h, "DELETE", "/admin/storage/roots/1", tokenFor(t, role), ""); rec.Code != http.StatusForbidden {
-			t.Errorf("DELETE /admin/storage/roots/1 as %s: got %d, want 403", role, rec.Code)
+	for _, rt := range []route{{"DELETE", "/admin/storage/roots/1"}, {"GET", "/admin/trash/policy/preview"}} {
+		for _, role := range []string{"admin", "reader"} {
+			if rec := do(h, rt.method, rt.path, tokenFor(t, role), ""); rec.Code != http.StatusForbidden {
+				t.Errorf("%s %s as %s: got %d, want 403", rt.method, rt.path, role, rec.Code)
+			}
 		}
-	}
-	if rec := do(h, "DELETE", "/admin/storage/roots/1", "", ""); rec.Code != http.StatusUnauthorized {
-		t.Errorf("anonymous: got %d, want 401", rec.Code)
+		if rec := do(h, rt.method, rt.path, "", ""); rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s anonymous: got %d, want 401", rt.method, rt.path, rec.Code)
+		}
 	}
 }

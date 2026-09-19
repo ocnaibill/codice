@@ -36,12 +36,13 @@ type routerDeps struct {
 func newRouter(d routerDeps) http.Handler {
 	db := d.DB
 
-	libHandler := &handlers.LibraryHandler{DB: db}
+	libHandler := &handlers.LibraryHandler{DB: db, Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
 	usersHandler := &handlers.UsersHandler{DB: db}
 	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
+	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
@@ -132,6 +133,19 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/admin/library/move-to-managed", storageHandler.MoveToManaged)
 	r.With(staff).Get("/admin/storage/cleanups", storageHandler.ListCleanups)
 	r.With(staff).Post("/admin/storage/cleanups/retry", storageHandler.RetryCleanups)
+
+	// Trash (RF-045): staff can look, restore and empty; only the owner sets the
+	// automatic cleanup. Anything that destroys bytes asks for confirm=true.
+	r.With(staff).Get("/admin/trash", trashHandler.List)
+	r.With(staff).Post("/admin/trash/{id}/restore", trashHandler.Restore)
+	r.With(staff).Delete("/admin/trash/{id}", trashHandler.Delete)
+	r.With(staff).Post("/admin/trash/empty", trashHandler.Empty)
+	r.With(staff).Get("/admin/trash/policy", trashHandler.GetPolicy)
+	r.With(owner).Put("/admin/trash/policy", trashHandler.SetPolicy)
+	r.With(owner).Get("/admin/trash/policy/preview", trashHandler.PreviewPolicy)
+	r.With(owner).Post("/admin/trash/policy/apply", trashHandler.ApplyPolicy)
+	r.With(staff).Get("/admin/storage/orphans", trashHandler.Orphans)
+	r.With(staff).Post("/admin/storage/orphans/trash", trashHandler.TrashOrphans)
 
 	// Account roles
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)

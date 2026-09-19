@@ -54,7 +54,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 		}
 	}
 
-	lib := &LibraryHandler{DB: db}
+	lib := &LibraryHandler{DB: db, Trash: &storage.Trash{DB: db, Root: storageDir}}
 	notes := &NotesHandler{DB: db}
 	fav := &FavoritesHandler{DB: db}
 	stats := &StatsHandler{DB: db}
@@ -63,6 +63,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	upload := &UploadHandler{DB: db}
 	jobsAdmin := &JobsHandler{DB: db, StoragePath: storageDir}
 	storageAdmin := &StorageHandler{Mover: &storage.Mover{DB: db, Root: storageDir}, DB: db, StoragePath: storageDir}
+	trashAdmin := &TrashHandler{Trash: &storage.Trash{DB: db, Root: storageDir}}
 	byID := &FileByIDHandler{DB: db, StorageRoot: storageDir}
 	pages := &PageHandler{DB: db}
 
@@ -79,6 +80,16 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/admin/storage/cleanups", storageAdmin.ListCleanups)
 	r.Post("/admin/storage/cleanups/retry", storageAdmin.RetryCleanups)
 	r.Get("/file/{id}", byID.ServeHTTP)
+	r.Get("/admin/trash", trashAdmin.List)
+	r.Post("/admin/trash/{id}/restore", trashAdmin.Restore)
+	r.Delete("/admin/trash/{id}", trashAdmin.Delete)
+	r.Post("/admin/trash/empty", trashAdmin.Empty)
+	r.Get("/admin/trash/policy", trashAdmin.GetPolicy)
+	r.Put("/admin/trash/policy", trashAdmin.SetPolicy)
+	r.Get("/admin/trash/policy/preview", trashAdmin.PreviewPolicy)
+	r.Post("/admin/trash/policy/apply", trashAdmin.ApplyPolicy)
+	r.Get("/admin/storage/orphans", trashAdmin.Orphans)
+	r.Post("/admin/storage/orphans/trash", trashAdmin.TrashOrphans)
 	r.Get("/works/{id}/pages", pages.GetPages)
 	r.Post("/admin/storage/reorganize", storageAdmin.Reorganize)
 	r.Post("/admin/jobs/{id}/rerun", jobsAdmin.Rerun)
@@ -542,17 +553,51 @@ func TestRetireRestorePurge(t *testing.T) {
 		t.Fatalf("purge: %d", rec.Code)
 	}
 
+	// "Delete for good" sends the managed files to the trash: nothing is destroyed yet.
+	if _, err := os.Stat(managed); !os.IsNotExist(err) {
+		t.Error("the managed file should have left its place")
+	}
+	if got := s.scalar(`SELECT count(*) FROM trash_items`); got != "1" {
+		t.Errorf("trash items = %s, want 1", got)
+	}
+	trashed := filepath.Join(s.storage, ".trash", s.scalar(`SELECT file_id::text FROM trash_items`), "duna.epub")
+	if b, err := os.ReadFile(trashed); err != nil || string(b) != "managed" {
+		t.Errorf("the bytes are not recoverable in the trash: %v", err)
+	}
+	if n := s.scalar(`SELECT COUNT(*) FROM works WHERE id = $1`, duna); n != "1" {
+		t.Error("the work must stay until the trash is emptied, so the file can be restored")
+	}
+	if _, err := os.Stat(external); err != nil {
+		t.Error("a referenced file must never be deleted, even when it lies under the storage directory")
+	}
+	// A file of a retired work can be restored, and then the work can be restored too.
+	var list struct{ Items []struct{ ID int64 } }
+	json.Unmarshal(s.do(admin, "GET", "/admin/trash", "").Body.Bytes(), &list)
+	if rec := s.do(admin, "POST", fmt.Sprintf("/admin/trash/%d/restore", list.Items[0].ID), ""); rec.Code != 200 {
+		t.Fatalf("restore from the trash: %d", rec.Code)
+	}
+	if _, err := os.Stat(managed); err != nil {
+		t.Error("the file did not come back")
+	}
+	// Delete for good again, and now really destroy it by emptying the trash.
+	s.do(admin, "DELETE", fmt.Sprintf("/works/%d?purge=true", duna), "")
+	if rec := s.do(admin, "POST", "/admin/trash/empty", "{}"); rec.Code != 400 {
+		t.Errorf("emptying without confirming: %d, want 400", rec.Code)
+	}
+	if rec := s.do(admin, "POST", "/admin/trash/empty", `{"confirm":true}`); rec.Code != 200 {
+		t.Fatalf("empty: %d", rec.Code)
+	}
 	if n := s.scalar(`SELECT COUNT(*) FROM works WHERE id = $1`, duna); n != "0" {
-		t.Error("work still in the database")
+		t.Error("work still in the database after the trash was emptied")
 	}
 	if n := s.scalar(`SELECT COUNT(*) FROM editions WHERE work_id = $1`, duna); n != "0" {
 		t.Error("editions still in the database")
 	}
-	if _, err := os.Stat(managed); !os.IsNotExist(err) {
-		t.Error("the managed file must be deleted on purge")
+	if _, err := os.Stat(trashed); !os.IsNotExist(err) {
+		t.Error("the bytes must be destroyed when the trash is emptied")
 	}
 	if _, err := os.Stat(external); err != nil {
-		t.Error("a referenced file must never be deleted, even when it lies under the storage directory")
+		t.Error("emptying the trash deleted a referenced file")
 	}
 
 	// The note survives with its reference, and now points to nothing.
@@ -566,8 +611,11 @@ func TestRetireRestorePurge(t *testing.T) {
 	}
 
 	// The audit trail names the actor.
-	if got := s.scalar(`SELECT string_agg(action, ',' ORDER BY id) FROM audit_log WHERE target_type = 'work' AND target_id = $1`, fmt.Sprint(duna)); got != "work.retire,work.restore,work.retire,work.purge" {
+	if got := s.scalar(`SELECT string_agg(action, ',' ORDER BY id) FROM audit_log WHERE target_type = 'work' AND target_id = $1`, fmt.Sprint(duna)); got != "work.retire,work.restore,work.retire,work.purge,work.purge" {
 		t.Errorf("audit trail = %q", got)
+	}
+	if got := s.scalar(`SELECT string_agg(action, ',' ORDER BY id) FROM audit_log WHERE action LIKE 'trash.%'`); got != "trash.restore,trash.empty" {
+		t.Errorf("trash audit = %q", got)
 	}
 	if got := s.scalar(`SELECT DISTINCT actor_username FROM audit_log WHERE action = 'work.purge'`); got != "adm" {
 		t.Errorf("audit actor = %q", got)

@@ -130,7 +130,7 @@ func main() {
 	}
 	startFileJobs(context.Background(), &jobs.Runner{
 		DB: db, Owner: jobs.NewOwnerName("api"), Types: types, MaxRunning: 1, LeaseSeconds: 300, Handlers: handlers,
-	}, mover)
+	}, mover, &storage.Trash{DB: db, Root: storagePath})
 
 	// 4. Configure Router
 	r := newRouter(routerDeps{
