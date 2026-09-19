@@ -20,8 +20,7 @@ type MediaHandler struct {
 func (h *MediaHandler) ServeText(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	var filePath sql.NullString
-	err := h.DB.QueryRow("SELECT file_path FROM works WHERE id = $1", id).Scan(&filePath)
+	filePath, err := workFilePath(h.DB, id)
 	if err != nil || !filePath.Valid || filePath.String == "" {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
@@ -69,8 +68,7 @@ func (h *MediaHandler) ServeText(w http.ResponseWriter, r *http.Request) {
 func (h *MediaHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	var filePath sql.NullString
-	err := h.DB.QueryRow("SELECT file_path FROM works WHERE id = $1", id).Scan(&filePath)
+	filePath, err := workFilePath(h.DB, id)
 	if err != nil || !filePath.Valid || filePath.String == "" {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return

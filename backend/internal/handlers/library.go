@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,25 +17,56 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
+	"github.com/ocnaibill/codice/backend/internal/audit"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 )
 
-// Work represents the structure sent to the frontend
+// Work represents the structure sent to the frontend. In the catalog a work is
+// shown through its primary edition and file; GET /works/{id} also lists every
+// edition and file.
 type Work struct {
-	ID              int      `json:"id"`
-	Title           string   `json:"title"`
-	Author          string   `json:"author"`
-	CoverURL        string   `json:"coverUrl"`
-	FileURL         string   `json:"fileUrl,omitempty"`
-	Format          string   `json:"format,omitempty"`
-	Series          string   `json:"series,omitempty"`
-	SeriesIndex     float64  `json:"seriesIndex,omitempty"`
-	MediaStatus     string   `json:"mediaStatus,omitempty"`
-	Tags            []string `json:"tags"`
-	ReadingProgress string   `json:"readingProgress,omitempty"`
-	PercentComplete float64  `json:"percentComplete"`
-	Completed       bool     `json:"completed"`
-	IsFavorite      bool     `json:"isFavorite"`
+	ID              int       `json:"id"`
+	Title           string    `json:"title"`
+	Author          string    `json:"author"`
+	CoverURL        string    `json:"coverUrl"`
+	FileURL         string    `json:"fileUrl,omitempty"`
+	FileID          *int64    `json:"fileId,omitempty"`
+	Format          string    `json:"format,omitempty"`
+	Series          string    `json:"series,omitempty"`
+	SeriesIndex     float64   `json:"seriesIndex,omitempty"`
+	MediaStatus     string    `json:"mediaStatus,omitempty"`
+	Tags            []string  `json:"tags"`
+	ReadingProgress string    `json:"readingProgress,omitempty"`
+	PercentComplete float64   `json:"percentComplete"`
+	Completed       bool      `json:"completed"`
+	IsFavorite      bool      `json:"isFavorite"`
+	Retired         bool      `json:"retired,omitempty"`
+	Editions        []Edition `json:"editions,omitempty"`
+}
+
+// Edition is one publication of a work: its language, publisher and date, and
+// the files (formats) available for it.
+type Edition struct {
+	ID              int        `json:"id"`
+	Title           string     `json:"title"`
+	Language        string     `json:"language,omitempty"`
+	Publisher       string     `json:"publisher,omitempty"`
+	PublicationDate string     `json:"publicationDate,omitempty"`
+	ISBN            string     `json:"isbn,omitempty"`
+	IsPrimary       bool       `json:"isPrimary"`
+	Files           []FileInfo `json:"files"`
+}
+
+// FileInfo is one digital manifestation of an edition. Progress is the calling
+// user's, per file: the EPUB and the PDF of a book keep separate positions.
+type FileInfo struct {
+	ID              int64   `json:"id"`
+	Format          string  `json:"format,omitempty"`
+	SizeBytes       *int64  `json:"sizeBytes,omitempty"`
+	Availability    string  `json:"availability"`
+	URL             string  `json:"url,omitempty"`
+	PercentComplete float64 `json:"percentComplete"`
+	Completed       bool    `json:"completed"`
 }
 
 // LibraryHandler stores the database connection
@@ -51,9 +83,73 @@ func currentUserID(r *http.Request) string {
 	return userID
 }
 
-// GetWorks fetches works from PostgreSQL with aggregated tags, server-side
-// pagination, search, and optional filters: inProgress=true (has unfinished
-// reading progress) and favorite=true (marked as favorite by the caller).
+// workIDParam reads the {id} URL parameter as a work id.
+func workIDParam(r *http.Request) (int, bool) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	return id, err == nil && id > 0
+}
+
+// cardColumns are the columns of a Work as the catalog shows it. $1 is the
+// calling user, for progress and favorites.
+const cardColumns = `
+	w.id,
+	w.original_title,
+	` + authorLabel + `,
+	COALESCE(wp.cover_url, ''),
+	wp.file_path,
+	COALESCE(wp.file_format, ''),
+	COALESCE(w.series, ''),
+	COALESCE(w.series_index, 0),
+	COALESCE(w.media_status, 'READY'),
+	COALESCE((SELECT array_agg(t.name ORDER BY t.name) FROM work_tags wt JOIN tags t ON t.id = wt.tag_id WHERE wt.work_id = w.id), '{}'),
+	COALESCE(rp.position, ''),
+	COALESCE(rp.percent_complete, 0),
+	(rp.completed_at IS NOT NULL),
+	(f.user_id IS NOT NULL),
+	wp.file_id,
+	(w.retired_at IS NOT NULL)`
+
+// cardJoins add the calling user's progress on the primary file and favorite flag.
+const cardJoins = `
+	LEFT JOIN reading_progress rp ON rp.file_id = wp.file_id AND rp.user_id = $1
+	LEFT JOIN favorites f ON f.work_id = w.id AND f.user_id = $1`
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanWork(row rowScanner) (Work, error) {
+	var work Work
+	var filePath sql.NullString
+	var fileID sql.NullInt64
+	err := row.Scan(
+		&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format,
+		&work.Series, &work.SeriesIndex, &work.MediaStatus, pq.Array(&work.Tags),
+		&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
+		&fileID, &work.Retired,
+	)
+	if err != nil {
+		return work, err
+	}
+	if filePath.Valid && filePath.String != "" {
+		work.FileURL = "/files/" + filePath.String
+	}
+	if fileID.Valid {
+		work.FileID = &fileID.Int64
+	}
+	if work.CoverURL == "" {
+		work.CoverURL = "/covers/placeholder.svg"
+	}
+	if work.Tags == nil {
+		work.Tags = []string{}
+	}
+	return work, nil
+}
+
+// GetWorks fetches works from PostgreSQL with server-side pagination, search,
+// and optional filters: inProgress=true (has unfinished reading progress) and
+// favorite=true (marked as favorite by the caller). Retired works are hidden;
+// owner and admin can list them with retired=true.
 func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	userID := currentUserID(r)
 
@@ -63,6 +159,7 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	inProgressOnly := r.URL.Query().Get("inProgress") == "true"
 	favoriteOnly := r.URL.Query().Get("favorite") == "true"
 	formatGroup := r.URL.Query().Get("formatGroup") // "ebooks" | "comics" | "audio"
+	retiredOnly := isStaffRequest(r) && r.URL.Query().Get("retired") == "true"
 
 	if p := r.URL.Query().Get("page"); p != "" {
 		if v, err := strconv.Atoi(p); err == nil && v > 0 {
@@ -78,78 +175,45 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 
 	var whereClauses []string
 	var args []interface{}
-	args = append(args, userID) // $1 always the current user, used by both joins
+	args = append(args, userID) // $1 always the current user, used by the joins
 	argIdx := 2
 
+	if retiredOnly {
+		whereClauses = append(whereClauses, "w.retired_at IS NOT NULL")
+	} else {
+		whereClauses = append(whereClauses, "w.retired_at IS NULL")
+	}
 	if search != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf("(LOWER(w.original_title) LIKE LOWER($%d) OR LOWER(COALESCE(p.name, '')) LIKE LOWER($%d))", argIdx, argIdx))
+		placeholder := fmt.Sprintf("$%d", argIdx)
+		whereClauses = append(whereClauses, "(LOWER(w.original_title) LIKE LOWER("+placeholder+") OR "+authorMatches(placeholder)+")")
 		args = append(args, "%"+search+"%")
 		argIdx++
 	}
 	if inProgressOnly {
-		whereClauses = append(whereClauses, "(up.progress IS NOT NULL AND up.completed_at IS NULL)")
+		whereClauses = append(whereClauses, "(rp.position IS NOT NULL AND rp.completed_at IS NULL)")
 	}
 	if favoriteOnly {
 		whereClauses = append(whereClauses, "f.user_id IS NOT NULL")
 	}
 	switch formatGroup {
 	case "ebooks":
-		whereClauses = append(whereClauses, "LOWER(w.format) IN "+bookFormats)
+		whereClauses = append(whereClauses, "LOWER(wp.file_format) IN "+bookFormats)
 	case "comics":
-		whereClauses = append(whereClauses, "LOWER(w.format) IN "+comicFormats)
+		whereClauses = append(whereClauses, "LOWER(wp.file_format) IN "+comicFormats)
 	case "audio":
-		whereClauses = append(whereClauses, "LOWER(w.format) IN "+audioFormats)
+		whereClauses = append(whereClauses, "LOWER(wp.file_format) IN "+audioFormats)
 	}
-
-	whereSQL := ""
-	if len(whereClauses) > 0 {
-		whereSQL = " WHERE " + strings.Join(whereClauses, " AND ")
-	}
-
-	countQuery := `
-		SELECT COUNT(DISTINCT w.id)
-		FROM works w
-		LEFT JOIN person p ON w.author_id = p.id
-		LEFT JOIN user_progress up ON w.id = up.work_id AND up.user_id = $1
-		LEFT JOIN favorites f ON w.id = f.work_id AND f.user_id = $1
-	` + whereSQL
+	whereSQL := " WHERE " + strings.Join(whereClauses, " AND ")
 
 	var totalCount int
-	if err := h.DB.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
+	if err := h.DB.QueryRow("SELECT COUNT(*) "+catalogFrom+cardJoins+whereSQL, args...).Scan(&totalCount); err != nil {
 		log.Println("Error counting works:", err)
 		http.Error(w, "Error counting works", http.StatusInternalServerError)
 		return
 	}
 
-	query := `
-		SELECT
-			w.id,
-			w.original_title,
-			COALESCE(p.name, 'Unknown Author') as author,
-			COALESCE(e.cover_url, '') as cover_url,
-			w.file_path,
-			COALESCE(w.format, '') as format,
-			COALESCE(w.series, '') as series,
-			COALESCE(w.series_index, 0) as series_index,
-			COALESCE(w.media_status, 'READY') as media_status,
-			COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags,
-			COALESCE(up.progress, '') as reading_progress,
-			COALESCE(up.percent_complete, 0) as percent_complete,
-			(up.completed_at IS NOT NULL) as completed,
-			(f.user_id IS NOT NULL) as is_favorite
-		FROM works w
-		LEFT JOIN person p ON w.author_id = p.id
-		LEFT JOIN editions e ON w.id = e.work_id
-		LEFT JOIN work_tags wt ON w.id = wt.work_id
-		LEFT JOIN tags t ON wt.tag_id = t.id
-		LEFT JOIN user_progress up ON w.id = up.work_id AND up.user_id = $1
-		LEFT JOIN favorites f ON w.id = f.work_id AND f.user_id = $1
-	` + whereSQL + `
-		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, w.format, w.series, w.series_index, w.media_status, up.progress, up.percent_complete, up.completed_at, f.user_id
-		ORDER BY w.id DESC
-	`
-
-	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	query := "SELECT " + cardColumns + catalogFrom + cardJoins + whereSQL +
+		fmt.Sprintf(" ORDER BY w.id DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
 	args = append(args, limit, offset)
 
 	rows, err := h.DB.Query(query, args...)
@@ -160,37 +224,14 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var works []Work
+	works := []Work{}
 	for rows.Next() {
-		var work Work
-		var filePath sql.NullString
-		err := rows.Scan(
-			&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format,
-			&work.Series, &work.SeriesIndex, &work.MediaStatus, pq.Array(&work.Tags),
-			&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
-		)
+		work, err := scanWork(rows)
 		if err != nil {
 			log.Println("Error scanning work:", err)
 			continue
 		}
-
-		if filePath.Valid && filePath.String != "" {
-			work.FileURL = "/files/" + filePath.String
-		}
-
-		if work.CoverURL == "" {
-			work.CoverURL = "/covers/placeholder.svg"
-		}
-
-		if work.Tags == nil {
-			work.Tags = []string{}
-		}
-
 		works = append(works, work)
-	}
-
-	if works == nil {
-		works = []Work{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -203,74 +244,95 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetWorkByID fetches a single work by its ID along with tags and per-user reading progress
+// GetWorkByID fetches a single work with all its editions and files, and the
+// caller's progress on each file. A retired work is visible to owner and admin only.
 func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
 	userID := currentUserID(r)
 
-	var filePath sql.NullString
-	var progress sql.NullString
-	var work Work
-
-	query := `
-		SELECT
-			w.id,
-			w.original_title,
-			COALESCE(p.name, 'Unknown Author') as author,
-			COALESCE(e.cover_url, '') as cover_url,
-			w.file_path,
-			COALESCE(w.format, '') as format,
-			COALESCE(w.series, '') as series,
-			COALESCE(w.series_index, 0) as series_index,
-			COALESCE(w.media_status, 'READY') as media_status,
-			up.progress,
-			COALESCE(up.percent_complete, 0) as percent_complete,
-			(up.completed_at IS NOT NULL) as completed,
-			(f.user_id IS NOT NULL) as is_favorite,
-			COALESCE(array_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '{}') as tags
-		FROM works w
-		LEFT JOIN person p ON w.author_id = p.id
-		LEFT JOIN editions e ON w.id = e.work_id
-		LEFT JOIN user_progress up ON w.id = up.work_id AND up.user_id = $2
-		LEFT JOIN favorites f ON w.id = f.work_id AND f.user_id = $2
-		LEFT JOIN work_tags wt ON w.id = wt.work_id
-		LEFT JOIN tags t ON wt.tag_id = t.id
-		WHERE w.id = $1
-		GROUP BY w.id, w.original_title, p.name, e.cover_url, w.file_path, w.format, w.series, w.series_index, w.media_status, up.progress, up.percent_complete, up.completed_at, f.user_id
-	`
-
-	err := h.DB.QueryRow(query, id, userID).Scan(
-		&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format,
-		&work.Series, &work.SeriesIndex, &work.MediaStatus, &progress, &work.PercentComplete,
-		&work.Completed, &work.IsFavorite, pq.Array(&work.Tags),
-	)
+	work, err := scanWork(h.DB.QueryRow("SELECT "+cardColumns+catalogFrom+cardJoins+" WHERE w.id = $2", userID, id))
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Book not found", http.StatusNotFound)
 			return
 		}
 		http.Error(w, "Error fetching book", http.StatusInternalServerError)
 		return
 	}
-
-	if work.CoverURL == "" {
-		work.CoverURL = "/covers/placeholder.svg"
+	if work.Retired && !isStaffRequest(r) {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
 	}
 
-	if work.Tags == nil {
-		work.Tags = []string{}
+	editions, err := h.loadEditions(id, userID)
+	if err != nil {
+		log.Println("Error fetching editions:", err)
+		http.Error(w, "Error fetching book", http.StatusInternalServerError)
+		return
 	}
-
-	if progress.Valid {
-		work.ReadingProgress = progress.String
-	}
-
-	if filePath.Valid && filePath.String != "" {
-		work.FileURL = "/files/" + filePath.String
-	}
+	work.Editions = editions
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(work)
+}
+
+// loadEditions returns every edition of a work with its files, primary first.
+func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, error) {
+	rows, err := h.DB.Query(`
+		SELECT e.id, COALESCE(e.title, ''), COALESCE(e.language, ''), COALESCE(e.publisher, ''),
+		       COALESCE(e.publication_date, ''), COALESCE(e.isbn, ''), e.is_primary,
+		       f.id, COALESCE(f.format, ''), f.size_bytes, f.availability, l.path,
+		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL)
+		FROM editions e
+		LEFT JOIN files f ON f.edition_id = e.id
+		LEFT JOIN LATERAL (
+			SELECT path FROM storage_locations WHERE file_id = f.id ORDER BY id LIMIT 1
+		) l ON TRUE
+		LEFT JOIN reading_progress rp ON rp.file_id = f.id AND rp.user_id = $2
+		WHERE e.work_id = $1
+		ORDER BY e.is_primary DESC, e.id, f.id`, workID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	editions := []Edition{}
+	index := map[int]int{}
+	for rows.Next() {
+		var e Edition
+		var fileID sql.NullInt64
+		var size sql.NullInt64
+		var format, availability, filePath sql.NullString
+		var percent float64
+		var completed sql.NullBool
+		if err := rows.Scan(&e.ID, &e.Title, &e.Language, &e.Publisher, &e.PublicationDate, &e.ISBN, &e.IsPrimary,
+			&fileID, &format, &size, &availability, &filePath, &percent, &completed); err != nil {
+			return nil, err
+		}
+		i, seen := index[e.ID]
+		if !seen {
+			e.Files = []FileInfo{}
+			editions = append(editions, e)
+			i = len(editions) - 1
+			index[e.ID] = i
+		}
+		if fileID.Valid {
+			fi := FileInfo{ID: fileID.Int64, Format: format.String, Availability: availability.String,
+				PercentComplete: percent, Completed: completed.Bool}
+			if size.Valid {
+				fi.SizeBytes = &size.Int64
+			}
+			if filePath.Valid && filePath.String != "" {
+				fi.URL = "/files/" + filePath.String
+			}
+			editions[i].Files = append(editions[i].Files, fi)
+		}
+	}
+	return editions, rows.Err()
 }
 
 // UpdateWorkRequest represents the payload for updating work metadata
@@ -280,33 +342,60 @@ type UpdateWorkRequest struct {
 	Tags   []string `json:"tags"`
 }
 
-// UpdateWork updates title, resolves author, and syncs tags within an atomic database transaction
+// UpdateWork updates title, resolves author, and syncs tags in one transaction.
+// A field the admin actually changes becomes confirmed: it is locked against
+// automatic enrichment (RN-008), and the bibliographic reference kept on the
+// user's notes follows it while the work is available (DEC-040).
 func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
 
 	var req UpdateWorkRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
 		return
 	}
+	req.Title = strings.TrimSpace(req.Title)
+	if req.Title == "" {
+		http.Error(w, "Title is required", http.StatusBadRequest)
+		return
+	}
 
-	tx, err := h.DB.Begin()
+	tx, err := h.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		http.Error(w, "Error starting database transaction", http.StatusInternalServerError)
 		return
 	}
 	defer tx.Rollback()
 
+	// Current values, and the row locked for the rest of the transaction.
+	var oldTitle, oldAuthor string
+	var retired bool
+	err = tx.QueryRow(`
+		SELECT w.original_title, COALESCE(p.name, 'Unknown Author'), w.retired_at IS NOT NULL
+		FROM works w LEFT JOIN person p ON p.id = w.author_id
+		WHERE w.id = $1 FOR UPDATE OF w`, id).Scan(&oldTitle, &oldAuthor, &retired)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Book not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Error querying work", http.StatusInternalServerError)
+		return
+	}
+
 	// 1. Resolve Author
-	var authorID int
-	authorName := req.Author
+	authorName := strings.TrimSpace(req.Author)
 	if authorName == "" {
 		authorName = "Unknown Author"
 	}
-
+	var authorID int
 	err = tx.QueryRow("SELECT id FROM person WHERE name = $1", authorName).Scan(&authorID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			err = tx.QueryRow("INSERT INTO person (name) VALUES ($1) RETURNING id", authorName).Scan(&authorID)
 			if err != nil {
 				http.Error(w, "Error creating author record", http.StatusInternalServerError)
@@ -318,20 +407,38 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 2. Update Work record with new Title and Author ID
-	_, err = tx.Exec("UPDATE works SET original_title = $1, author_id = $2 WHERE id = $3", req.Title, authorID, id)
+	titleChanged := req.Title != oldTitle
+	authorChanged := authorName != oldAuthor
+
+	// 2. Update the work; a changed field is confirmed, hence locked.
+	_, err = tx.Exec(`
+		UPDATE works
+		SET original_title = $1, author_id = $2,
+		    title_lock = title_lock OR $4, author_lock = author_lock OR $5,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $3`, req.Title, authorID, id, titleChanged, authorChanged)
 	if err != nil {
 		http.Error(w, "Error updating work record", http.StatusInternalServerError)
 		return
 	}
 
-	// 3. Sync Tags (delete existing relations and re-insert new ones)
-	_, err = tx.Exec("DELETE FROM work_tags WHERE work_id = $1", id)
-	if err != nil {
+	// 3. Notes keep a bibliographic reference that follows confirmed corrections
+	// while the work is available; a retired work keeps the last confirmed values.
+	if (titleChanged || authorChanged) && !retired {
+		_, err = tx.Exec(`
+			UPDATE notes SET source_title = $1, source_author = NULLIF($2, 'Unknown Author')
+			WHERE work_id = $3`, req.Title, authorName, id)
+		if err != nil {
+			http.Error(w, "Error updating note references", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// 4. Sync Tags (delete existing relations and re-insert new ones)
+	if _, err = tx.Exec("DELETE FROM work_tags WHERE work_id = $1", id); err != nil {
 		http.Error(w, "Error resetting work tags", http.StatusInternalServerError)
 		return
 	}
-
 	for _, tagName := range req.Tags {
 		if tagName == "" {
 			continue
@@ -339,7 +446,7 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 		var tagID int
 		err = tx.QueryRow("SELECT id FROM tags WHERE name = $1", tagName).Scan(&tagID)
 		if err != nil {
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				err = tx.QueryRow("INSERT INTO tags (name) VALUES ($1) RETURNING id", tagName).Scan(&tagID)
 				if err != nil {
 					http.Error(w, "Error creating tag record", http.StatusInternalServerError)
@@ -350,10 +457,22 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-
-		_, err = tx.Exec("INSERT INTO work_tags (work_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", id, tagID)
-		if err != nil {
+		if _, err = tx.Exec("INSERT INTO work_tags (work_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", id, tagID); err != nil {
 			http.Error(w, "Error linking work tag", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if titleChanged || authorChanged {
+		details := map[string]any{}
+		if titleChanged {
+			details["title"] = map[string]string{"from": oldTitle, "to": req.Title}
+		}
+		if authorChanged {
+			details["author"] = map[string]string{"from": oldAuthor, "to": authorName}
+		}
+		if err := audit.Record(r.Context(), tx, currentUserID(r), "work.update", "work", strconv.Itoa(id), details); err != nil {
+			http.Error(w, "Error recording audit entry", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -370,21 +489,70 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 // Percent and Completed are pointers so we can tell "not sent" apart from
 // "sent as zero/false" — a viewer that doesn't know percent yet (e.g. a
 // text file with no pagination) shouldn't overwrite a previously saved one.
+// FileID selects which file of the work the position belongs to; without it
+// the work's primary file is used.
 type ProgressRequest struct {
 	Progress  string   `json:"progress"`
 	Percent   *float64 `json:"percent,omitempty"`
 	Completed *bool    `json:"completed,omitempty"`
+	FileID    *int64   `json:"fileId,omitempty"`
 }
 
-// UpdateProgress updates the reading progress location (and optionally
-// percent/completion) for a work, isolated by user_id.
+var errNoReadableFile = errors.New("work has no readable file")
+
+// resolveProgressFile returns the file a progress write applies to: the one
+// named, if it belongs to the (available) work, otherwise the work's primary file.
+func (h *LibraryHandler) resolveProgressFile(workID int, fileID *int64) (int64, error) {
+	var id sql.NullInt64
+	var err error
+	if fileID != nil {
+		err = h.DB.QueryRow(`
+			SELECT f.id FROM files f
+			JOIN editions e ON e.id = f.edition_id
+			JOIN works w ON w.id = e.work_id
+			WHERE f.id = $1 AND w.id = $2 AND w.retired_at IS NULL`, *fileID, workID).Scan(&id)
+	} else {
+		err = h.DB.QueryRow(`
+			SELECT wp.file_id FROM works w JOIN work_primary wp ON wp.work_id = w.id
+			WHERE w.id = $1 AND w.retired_at IS NULL`, workID).Scan(&id)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !id.Valid {
+		return 0, errNoReadableFile
+	}
+	return id.Int64, nil
+}
+
+func progressError(w http.ResponseWriter, err error) {
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, errNoReadableFile) {
+		http.Error(w, "Book or file not found", http.StatusNotFound)
+		return
+	}
+	log.Println("Error resolving file for progress:", err)
+	http.Error(w, "Error saving reading progress", http.StatusInternalServerError)
+}
+
+// UpdateProgress updates the reading position (and optionally percent and
+// completion) of one file of a work, isolated by user.
 func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) {
-	workID := chi.URLParam(r, "id")
+	workID, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
 	userID := currentUserID(r)
 
 	var req ProgressRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	fileID, err := h.resolveProgressFile(workID, req.FileID)
+	if err != nil {
+		progressError(w, err)
 		return
 	}
 
@@ -400,27 +568,25 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 	}
 
 	completed := req.Completed != nil && *req.Completed
-
-	query := `
-		INSERT INTO user_progress (user_id, work_id, progress, percent_complete, completed_at, updated_at)
-		VALUES ($1, $2, $3, $4, CASE WHEN $5 THEN CURRENT_TIMESTAMP ELSE NULL END, CURRENT_TIMESTAMP)
-		ON CONFLICT (user_id, work_id)
-		DO UPDATE SET
-			progress = EXCLUDED.progress,
-			percent_complete = CASE WHEN $6 THEN EXCLUDED.percent_complete ELSE user_progress.percent_complete END,
-			completed_at = CASE
-				WHEN $5 THEN CURRENT_TIMESTAMP
-				WHEN $7 THEN NULL
-				ELSE user_progress.completed_at
-			END,
-			updated_at = CURRENT_TIMESTAMP;
-	`
-
 	percentProvided := req.Percent != nil
 	completedExplicitlyFalse := req.Completed != nil && !*req.Completed
 
-	_, err := h.DB.Exec(query, userID, workID, req.Progress, percent, completed, percentProvided, completedExplicitlyFalse)
-	if err != nil {
+	query := `
+		INSERT INTO reading_progress (user_id, file_id, position, percent_complete, completed_at, updated_at)
+		VALUES ($1, $2, $3, $4, CASE WHEN $5 THEN now() ELSE NULL END, now())
+		ON CONFLICT (user_id, file_id)
+		DO UPDATE SET
+			position = EXCLUDED.position,
+			percent_complete = CASE WHEN $6 THEN EXCLUDED.percent_complete ELSE reading_progress.percent_complete END,
+			completed_at = CASE
+				WHEN $5 THEN now()
+				WHEN $7 THEN NULL
+				ELSE reading_progress.completed_at
+			END,
+			revision = reading_progress.revision + 1,
+			updated_at = now();
+	`
+	if _, err := h.DB.Exec(query, userID, fileID, req.Progress, percent, completed, percentProvided, completedExplicitlyFalse); err != nil {
 		log.Println("Error saving reading progress:", err)
 		http.Error(w, "Error saving isolated user reading progress", http.StatusInternalServerError)
 		return
@@ -433,14 +599,19 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 // since the reader's last heartbeat tick.
 type HeartbeatRequest struct {
 	Seconds float64 `json:"seconds"`
+	FileID  *int64  `json:"fileId,omitempty"`
 }
 
-// ReadingHeartbeat accumulates real reading time for a work. Seconds are
+// ReadingHeartbeat accumulates real reading time for a file. Seconds are
 // clamped to a small window so a stalled tab or clock skew can't inflate
 // the total — the reader is expected to call this roughly every 20-30s
 // while the document is open and the tab is visible.
 func (h *LibraryHandler) ReadingHeartbeat(w http.ResponseWriter, r *http.Request) {
-	workID := chi.URLParam(r, "id")
+	workID, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
 	userID := currentUserID(r)
 
 	var req HeartbeatRequest
@@ -461,14 +632,19 @@ func (h *LibraryHandler) ReadingHeartbeat(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	query := `
-		INSERT INTO user_progress (user_id, work_id, progress, reading_seconds, updated_at)
-		VALUES ($1, $2, '', $3, CURRENT_TIMESTAMP)
-		ON CONFLICT (user_id, work_id)
-		DO UPDATE SET reading_seconds = user_progress.reading_seconds + $3, updated_at = CURRENT_TIMESTAMP;
-	`
+	fileID, err := h.resolveProgressFile(workID, req.FileID)
+	if err != nil {
+		progressError(w, err)
+		return
+	}
 
-	if _, err := h.DB.Exec(query, userID, workID, seconds); err != nil {
+	query := `
+		INSERT INTO reading_progress (user_id, file_id, position, reading_seconds, updated_at)
+		VALUES ($1, $2, '', $3, now())
+		ON CONFLICT (user_id, file_id)
+		DO UPDATE SET reading_seconds = reading_progress.reading_seconds + $3, updated_at = now();
+	`
+	if _, err := h.DB.Exec(query, userID, fileID, seconds); err != nil {
 		log.Println("Error saving reading heartbeat:", err)
 		http.Error(w, "Error saving reading heartbeat", http.StatusInternalServerError)
 		return
@@ -538,76 +714,198 @@ func (h *LibraryHandler) SearchMetadata(w http.ResponseWriter, r *http.Request) 
 	w.Write(body)
 }
 
-// DeleteWork removes a work from PostgreSQL within a transaction and deletes its physical files from server disk
+// DeleteWork retires a work from the catalog (DEC-038): it disappears for
+// readers but its files, notes and history stay, and it can be restored. With
+// ?purge=true a work that is already retired is deleted for good, files included
+// (an extra, explicit step). Notes survive both: they keep their bibliographic
+// reference and show the source as unavailable.
 func (h *LibraryHandler) DeleteWork(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-
-	// 1. Retrieve file_path and cover_url before database deletion
-	var filePath sql.NullString
-	var coverURL sql.NullString
-
-	query := `
-		SELECT w.file_path, e.cover_url
-		FROM works w
-		LEFT JOIN editions e ON w.id = e.work_id
-		WHERE w.id = $1
-	`
-	err := h.DB.QueryRow(query, id).Scan(&filePath, &coverURL)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "Book not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "Error fetching book files", http.StatusInternalServerError)
+	id, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
+	if r.URL.Query().Get("purge") == "true" {
+		h.purgeWork(w, r, id)
 		return
 	}
 
-	// 2. Atomic Database Transaction Cleanup
-	tx, err := h.DB.Begin()
+	tx, err := h.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		http.Error(w, "Error starting transaction", http.StatusInternalServerError)
 		return
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec("DELETE FROM work_tags WHERE work_id = $1", id); err != nil {
-		http.Error(w, "Error deleting work tags", http.StatusInternalServerError)
-		return
-	}
-	if _, err = tx.Exec("DELETE FROM user_progress WHERE work_id = $1", id); err != nil {
-		http.Error(w, "Error deleting user progress", http.StatusInternalServerError)
-		return
-	}
-	if _, err = tx.Exec("DELETE FROM editions WHERE work_id = $1", id); err != nil {
-		http.Error(w, "Error deleting editions", http.StatusInternalServerError)
+	var title string
+	var alreadyRetired bool
+	err = tx.QueryRow(`SELECT original_title, retired_at IS NOT NULL FROM works WHERE id = $1 FOR UPDATE`, id).Scan(&title, &alreadyRetired)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Book not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Error fetching book", http.StatusInternalServerError)
 		return
 	}
 
-	_, err = tx.Exec("DELETE FROM works WHERE id = $1", id)
+	if !alreadyRetired {
+		actor := currentUserID(r)
+		if _, err := tx.Exec(`UPDATE works SET retired_at = now(), retired_by = NULLIF($2, '')::uuid WHERE id = $1`, id, actor); err != nil {
+			http.Error(w, "Error retiring book", http.StatusInternalServerError)
+			return
+		}
+		if err := audit.Record(r.Context(), tx, actor, "work.retire", "work", strconv.Itoa(id), map[string]any{"title": title}); err != nil {
+			http.Error(w, "Error recording audit entry", http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Error committing retirement", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// RestoreWork brings a retired work back to the catalog.
+func (h *LibraryHandler) RestoreWork(w http.ResponseWriter, r *http.Request) {
+	id, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
+
+	tx, err := h.DB.BeginTx(r.Context(), nil)
 	if err != nil {
+		http.Error(w, "Error starting transaction", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	var title string
+	var retired bool
+	err = tx.QueryRow(`SELECT original_title, retired_at IS NOT NULL FROM works WHERE id = $1 FOR UPDATE`, id).Scan(&title, &retired)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Book not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Error fetching book", http.StatusInternalServerError)
+		return
+	}
+	if retired {
+		if _, err := tx.Exec(`UPDATE works SET retired_at = NULL, retired_by = NULL WHERE id = $1`, id); err != nil {
+			http.Error(w, "Error restoring book", http.StatusInternalServerError)
+			return
+		}
+		if err := audit.Record(r.Context(), tx, currentUserID(r), "work.restore", "work", strconv.Itoa(id), map[string]any{"title": title}); err != nil {
+			http.Error(w, "Error recording audit entry", http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Error committing restore", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// purgeWork deletes a retired work and the files the server manages for it.
+// Files that are only referenced from elsewhere are never touched (RN-004).
+func (h *LibraryHandler) purgeWork(w http.ResponseWriter, r *http.Request, id int) {
+	tx, err := h.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		http.Error(w, "Error starting transaction", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	var title string
+	var retired bool
+	err = tx.QueryRow(`SELECT original_title, retired_at IS NOT NULL FROM works WHERE id = $1 FOR UPDATE`, id).Scan(&title, &retired)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Book not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Error fetching book", http.StatusInternalServerError)
+		return
+	}
+	if !retired {
+		http.Error(w, "Retire the book before deleting it permanently", http.StatusConflict)
+		return
+	}
+
+	// Collect what to remove from disk before the rows are gone.
+	var managed []string
+	locRows, err := tx.Query(`
+		SELECT l.path FROM storage_locations l
+		JOIN files f ON f.id = l.file_id
+		JOIN editions e ON e.id = f.edition_id
+		WHERE e.work_id = $1 AND l.mode = 'managed'`, id)
+	if err != nil {
+		http.Error(w, "Error fetching book files", http.StatusInternalServerError)
+		return
+	}
+	for locRows.Next() {
+		var p string
+		if locRows.Scan(&p) == nil {
+			managed = append(managed, p)
+		}
+	}
+	locRows.Close()
+
+	var covers []string
+	coverRows, err := tx.Query(`SELECT cover_url FROM editions WHERE work_id = $1 AND COALESCE(cover_url, '') <> ''`, id)
+	if err != nil {
+		http.Error(w, "Error fetching book covers", http.StatusInternalServerError)
+		return
+	}
+	for coverRows.Next() {
+		var c string
+		if coverRows.Scan(&c) == nil {
+			covers = append(covers, c)
+		}
+	}
+	coverRows.Close()
+
+	if err := audit.Record(r.Context(), tx, currentUserID(r), "work.purge", "work", strconv.Itoa(id),
+		map[string]any{"title": title, "files": len(managed)}); err != nil {
+		http.Error(w, "Error recording audit entry", http.StatusInternalServerError)
+		return
+	}
+	// Editions, files, locations, progress and favorites go with the work; notes
+	// stay (their link is cleared and their reference kept).
+	if _, err := tx.Exec("DELETE FROM works WHERE id = $1", id); err != nil {
 		http.Error(w, "Error deleting work from database", http.StatusInternalServerError)
 		return
 	}
-
-	if err = tx.Commit(); err != nil {
+	if err := tx.Commit(); err != nil {
 		http.Error(w, "Error committing deletion transaction", http.StatusInternalServerError)
 		return
 	}
 
-	// 3. Physical Server Disk Cleanup
-	storagePath := os.Getenv("CODICE_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "./uploads"
+	// Physical cleanup only after the commit, and only inside the storage root.
+	storagePath := resolveStoragePath()
+	for _, p := range managed {
+		if full, ok := insideStorage(storagePath, p); ok {
+			os.Remove(full)
+		}
 	}
-
-	if filePath.Valid && filePath.String != "" {
-		os.Remove(filepath.Join(storagePath, filePath.String))
-	}
-
-	if coverURL.Valid && coverURL.String != "" {
-		coverFilename := path.Base(coverURL.String)
-		os.Remove(filepath.Join(storagePath, "covers", coverFilename))
+	for _, c := range covers {
+		if base := path.Base(c); base != "placeholder.svg" {
+			if full, ok := insideStorage(storagePath, filepath.Join("covers", base)); ok {
+				os.Remove(full)
+			}
+		}
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// insideStorage joins a stored relative path to the storage root and refuses
+// anything that would leave it.
+func insideStorage(root, rel string) (string, bool) {
+	full := filepath.Join(root, rel)
+	return full, full != filepath.Clean(root) && isWithin(full, filepath.Clean(root))
 }

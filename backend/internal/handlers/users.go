@@ -7,6 +7,7 @@ import (
 	"regexp"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ocnaibill/codice/backend/internal/audit"
 	"github.com/ocnaibill/codice/backend/internal/authz"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 )
@@ -75,6 +76,11 @@ func (h *UsersHandler) UpdateRole(w http.ResponseWriter, r *http.Request) {
 	if targetRole != req.Role {
 		if _, err := tx.Exec(`UPDATE users SET role = $1 WHERE id = $2`, req.Role, targetID); err != nil {
 			http.Error(w, "Error updating role", http.StatusInternalServerError)
+			return
+		}
+		if err := audit.Record(r.Context(), tx, actorID, "user.role_change", "user", targetID,
+			map[string]any{"from": targetRole, "to": req.Role}); err != nil {
+			http.Error(w, "Error recording audit entry", http.StatusInternalServerError)
 			return
 		}
 	}

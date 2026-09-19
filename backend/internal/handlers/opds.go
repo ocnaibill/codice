@@ -65,11 +65,10 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Format(time.RFC3339)
 
 	rows, err := h.DB.Query(`
-		SELECT w.id, w.original_title, COALESCE(p.name, 'Unknown Author'), COALESCE(e.cover_url, ''),
-		       COALESCE(w.format, ''), COALESCE(w.file_path, ''), w.created_at
-		FROM works w
-		LEFT JOIN person p ON w.author_id = p.id
-		LEFT JOIN editions e ON w.id = e.work_id
+		SELECT w.id, w.original_title, ` + authorLabel + `, COALESCE(wp.cover_url, ''),
+		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at
+		` + catalogFrom + `
+		WHERE w.retired_at IS NULL
 		ORDER BY w.id DESC LIMIT 50
 	`)
 	if err != nil {
@@ -149,12 +148,11 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Format(time.RFC3339)
 
 	rows, err := h.DB.Query(`
-		SELECT w.id, w.original_title, COALESCE(p.name, 'Unknown Author'), COALESCE(e.cover_url, ''),
-		       COALESCE(w.format, ''), COALESCE(w.file_path, ''), w.created_at
-		FROM works w
-		LEFT JOIN person p ON w.author_id = p.id
-		LEFT JOIN editions e ON w.id = e.work_id
-		WHERE LOWER(w.original_title) LIKE LOWER($1) OR LOWER(COALESCE(p.name, '')) LIKE LOWER($1)
+		SELECT w.id, w.original_title, ` + authorLabel + `, COALESCE(wp.cover_url, ''),
+		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at
+		` + catalogFrom + `
+		WHERE w.retired_at IS NULL
+		  AND (LOWER(w.original_title) LIKE LOWER($1) OR ` + authorMatches("$1") + `)
 		ORDER BY w.id DESC LIMIT 50
 	`, "%"+query+"%")
 	if err != nil {

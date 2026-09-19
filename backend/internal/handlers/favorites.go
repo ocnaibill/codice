@@ -3,10 +3,10 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 )
 
 // FavoritesHandler stores the database connection
@@ -16,7 +16,11 @@ type FavoritesHandler struct {
 
 // AddFavorite marks a work as favorite for the current user
 func (h *FavoritesHandler) AddFavorite(w http.ResponseWriter, r *http.Request) {
-	workID := chi.URLParam(r, "id")
+	workID, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
 	userID := currentUserID(r)
 
 	_, err := h.DB.Exec(
@@ -34,7 +38,11 @@ func (h *FavoritesHandler) AddFavorite(w http.ResponseWriter, r *http.Request) {
 
 // RemoveFavorite unmarks a work as favorite for the current user
 func (h *FavoritesHandler) RemoveFavorite(w http.ResponseWriter, r *http.Request) {
-	workID := chi.URLParam(r, "id")
+	workID, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
 	userID := currentUserID(r)
 
 	_, err := h.DB.Exec(`DELETE FROM favorites WHERE user_id = $1 AND work_id = $2`, userID, workID)
@@ -66,27 +74,35 @@ type FavoriteSeriesItem struct {
 func (h *FavoritesHandler) GetFavorites(w http.ResponseWriter, r *http.Request) {
 	userID := currentUserID(r)
 
+	const seriesLabel = `COALESCE(NULLIF(%s.series, ''), %s.original_title::text)`
+	label := func(alias string) string { return fmt.Sprintf(seriesLabel, alias, alias) }
+
 	query := `
 		SELECT
 			w.id,
 			w.original_title,
-			COALESCE(p.name, 'Unknown Author') as author,
-			COALESCE(e.cover_url, '') as cover_url,
-			COALESCE(NULLIF(w.series, ''), w.original_title::text) as series_label,
+			` + authorLabel + `,
+			COALESCE(wp.cover_url, '') as cover_url,
+			` + label("w") + ` as series_label,
 			(
 				SELECT COUNT(*) FROM works w2
-				WHERE COALESCE(NULLIF(w2.series, ''), w2.original_title::text) = COALESCE(NULLIF(w.series, ''), w.original_title::text)
+				WHERE w2.retired_at IS NULL AND ` + label("w2") + ` = ` + label("w") + `
 			) as series_total,
 			(
 				SELECT COUNT(*) FROM works w3
-				JOIN user_progress up3 ON up3.work_id = w3.id AND up3.user_id = $1 AND up3.completed_at IS NOT NULL
-				WHERE COALESCE(NULLIF(w3.series, ''), w3.original_title::text) = COALESCE(NULLIF(w.series, ''), w.original_title::text)
+				JOIN work_primary wp3 ON wp3.work_id = w3.id
+				JOIN reading_progress rp3 ON rp3.file_id = wp3.file_id AND rp3.user_id = $1 AND rp3.completed_at IS NOT NULL
+				WHERE w3.retired_at IS NULL AND ` + label("w3") + ` = ` + label("w") + `
 			) as series_completed
 		FROM favorites f
 		JOIN works w ON w.id = f.work_id
-		LEFT JOIN person p ON w.author_id = p.id
-		LEFT JOIN editions e ON w.id = e.work_id
-		WHERE f.user_id = $1
+		LEFT JOIN work_primary wp ON wp.work_id = w.id
+		LEFT JOIN LATERAL (
+			SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name) AS names
+			FROM work_contributors c JOIN person p ON p.id = c.person_id
+			WHERE c.work_id = w.id AND c.role = 'author'
+		) au ON TRUE
+		WHERE f.user_id = $1 AND w.retired_at IS NULL
 		ORDER BY f.created_at DESC
 	`
 

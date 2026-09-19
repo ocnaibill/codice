@@ -37,16 +37,20 @@ const bookFormats = "('epub','pdf','txt','md')"
 const comicFormats = "('cbz','cbr')"
 const audioFormats = "('mp3','m4a','m4b','ogg','wav','flac')"
 
-func scanFormatBreakdown(db *sql.DB, whereSQL string, args ...interface{}) (FormatBreakdown, int, error) {
+// scanFormatBreakdown counts available (not retired) works by the format of
+// their primary file. joinSQL adds joins, such as the caller's progress.
+func scanFormatBreakdown(db *sql.DB, joinSQL string, args ...interface{}) (FormatBreakdown, int, error) {
 	var b FormatBreakdown
 	query := `
 		SELECT
-			COUNT(*) FILTER (WHERE LOWER(w.format) IN ` + bookFormats + `),
-			COUNT(*) FILTER (WHERE LOWER(w.format) IN ` + comicFormats + `),
-			COUNT(*) FILTER (WHERE LOWER(w.format) IN ` + audioFormats + `),
+			COUNT(*) FILTER (WHERE LOWER(wp.file_format) IN ` + bookFormats + `),
+			COUNT(*) FILTER (WHERE LOWER(wp.file_format) IN ` + comicFormats + `),
+			COUNT(*) FILTER (WHERE LOWER(wp.file_format) IN ` + audioFormats + `),
 			COUNT(*)
 		FROM works w
-		` + whereSQL
+		LEFT JOIN work_primary wp ON wp.work_id = w.id
+		` + joinSQL + `
+		WHERE w.retired_at IS NULL`
 	var total int
 	err := db.QueryRow(query, args...).Scan(&b.Livros, &b.Mangas, &b.Audio, &total)
 	return b, total, err
@@ -74,8 +78,10 @@ func (h *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 		err := h.DB.QueryRow(`
 			SELECT COUNT(*)
 			FROM works w
-			LEFT JOIN editions e ON w.id = e.work_id
-			WHERE w.author_id IS NOT NULL AND COALESCE(e.cover_url, '') <> ''
+			LEFT JOIN work_primary wp ON wp.work_id = w.id
+			WHERE w.retired_at IS NULL
+			  AND EXISTS (SELECT 1 FROM work_contributors c WHERE c.work_id = w.id AND c.role = 'author')
+			  AND COALESCE(wp.cover_url, '') <> ''
 		`).Scan(&catalogedCount)
 		if err != nil {
 			log.Println("Error computing cataloged percent:", err)
@@ -87,7 +93,7 @@ func (h *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	inProgressBreakdown, inProgressTotal, err := scanFormatBreakdown(
 		h.DB,
-		`JOIN user_progress up ON up.work_id = w.id AND up.user_id = $1 AND up.progress <> '' AND up.completed_at IS NULL`,
+		`JOIN reading_progress up ON up.file_id = wp.file_id AND up.user_id = $1 AND up.position <> '' AND up.completed_at IS NULL`,
 		userID,
 	)
 	if err != nil {
@@ -100,7 +106,7 @@ func (h *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	completedBreakdown, completedTotal, err := scanFormatBreakdown(
 		h.DB,
-		`JOIN user_progress up ON up.work_id = w.id AND up.user_id = $1
+		`JOIN reading_progress up ON up.file_id = wp.file_id AND up.user_id = $1
 		 AND up.completed_at IS NOT NULL
 		 AND date_trunc('month', up.completed_at) = date_trunc('month', CURRENT_TIMESTAMP)`,
 		userID,
@@ -114,7 +120,7 @@ func (h *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	stats.CompletedThisMonth = completedTotal
 
 	var totalSeconds sql.NullInt64
-	err = h.DB.QueryRow(`SELECT SUM(reading_seconds) FROM user_progress WHERE user_id = $1`, userID).Scan(&totalSeconds)
+	err = h.DB.QueryRow(`SELECT SUM(reading_seconds) FROM reading_progress WHERE user_id = $1`, userID).Scan(&totalSeconds)
 	if err != nil {
 		log.Println("Error computing total reading seconds:", err)
 		http.Error(w, "Error computing stats", http.StatusInternalServerError)

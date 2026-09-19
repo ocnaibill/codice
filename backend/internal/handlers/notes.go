@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -15,14 +16,18 @@ type NotesHandler struct {
 	DB *sql.DB
 }
 
-// Note represents a quote/annotation a user saved against a work
+// Note represents a quote/annotation a user saved against a work. Its title and
+// author come from the reference stored on the note, so it stays complete when
+// the work is retired or deleted; SourceAvailable then turns false and WorkID
+// is null (RF-039).
 type Note struct {
-	ID         int    `json:"id"`
-	WorkID     int    `json:"workId"`
-	WorkTitle  string `json:"workTitle"`
-	WorkAuthor string `json:"workAuthor"`
-	Quote      string `json:"quote"`
-	CreatedAt  string `json:"createdAt"`
+	ID              int    `json:"id"`
+	WorkID          *int   `json:"workId"`
+	WorkTitle       string `json:"workTitle"`
+	WorkAuthor      string `json:"workAuthor"`
+	Quote           string `json:"quote"`
+	CreatedAt       string `json:"createdAt"`
+	SourceAvailable bool   `json:"sourceAvailable"`
 }
 
 // CreateNoteRequest is the payload for saving a new quote/annotation
@@ -32,7 +37,11 @@ type CreateNoteRequest struct {
 
 // CreateNote saves a quote/annotation against a work for the current user
 func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
-	workID := chi.URLParam(r, "id")
+	workID, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
 	userID := currentUserID(r)
 
 	var req CreateNoteRequest
@@ -49,11 +58,19 @@ func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 		req.Quote = req.Quote[:2000]
 	}
 
+	// The bibliographic reference is copied from the work by the database when
+	// the note is created. Notes can only be added to works the caller can see.
 	var id int
 	err := h.DB.QueryRow(
-		`INSERT INTO notes (user_id, work_id, quote) VALUES ($1, $2, $3) RETURNING id`,
+		`INSERT INTO notes (user_id, work_id, quote)
+		 SELECT $1, w.id, $3 FROM works w WHERE w.id = $2 AND w.retired_at IS NULL
+		 RETURNING id`,
 		userID, workID, req.Quote,
 	).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		log.Println("Error creating note:", err)
 		http.Error(w, "Error creating note", http.StatusInternalServerError)
@@ -77,11 +94,12 @@ func (h *NotesHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// LEFT JOIN: a note is listed whether or not its work still exists.
 	query := `
-		SELECT n.id, n.work_id, w.original_title, COALESCE(p.name, 'Unknown Author'), n.quote, n.created_at
+		SELECT n.id, n.work_id, n.source_title, COALESCE(n.source_author, 'Unknown Author'),
+		       n.quote, n.created_at, (w.id IS NOT NULL AND w.retired_at IS NULL)
 		FROM notes n
-		JOIN works w ON w.id = n.work_id
-		LEFT JOIN person p ON w.author_id = p.id
+		LEFT JOIN works w ON w.id = n.work_id
 		WHERE n.user_id = $1
 		ORDER BY n.created_at DESC
 		LIMIT $2
@@ -98,9 +116,14 @@ func (h *NotesHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
 	notes := []Note{}
 	for rows.Next() {
 		var n Note
-		if err := rows.Scan(&n.ID, &n.WorkID, &n.WorkTitle, &n.WorkAuthor, &n.Quote, &n.CreatedAt); err != nil {
+		var workID sql.NullInt64
+		if err := rows.Scan(&n.ID, &workID, &n.WorkTitle, &n.WorkAuthor, &n.Quote, &n.CreatedAt, &n.SourceAvailable); err != nil {
 			log.Println("Error scanning note:", err)
 			continue
+		}
+		if workID.Valid {
+			id := int(workID.Int64)
+			n.WorkID = &id
 		}
 		notes = append(notes, n)
 	}

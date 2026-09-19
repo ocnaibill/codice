@@ -38,8 +38,7 @@ var validImageExts = map[string]bool{".jpg": true, ".jpeg": true, ".png": true, 
 func (h *PageHandler) GetPages(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	var filePath sql.NullString
-	err := h.DB.QueryRow("SELECT file_path FROM works WHERE id = $1", id).Scan(&filePath)
+	filePath, err := workFilePath(h.DB, id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Work not found", http.StatusNotFound)
@@ -96,8 +95,7 @@ func (h *PageHandler) ServePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var filePath sql.NullString
-	err = h.DB.QueryRow("SELECT file_path FROM works WHERE id = $1", id).Scan(&filePath)
+	filePath, err := workFilePath(h.DB, id)
 	if err != nil {
 		http.Error(w, "Work not found", http.StatusNotFound)
 		return
@@ -138,8 +136,7 @@ func (h *PageHandler) ServePageThumbnail(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var filePath sql.NullString
-	err = h.DB.QueryRow("SELECT file_path FROM works WHERE id = $1", id).Scan(&filePath)
+	filePath, err := workFilePath(h.DB, id)
 	if err != nil {
 		http.Error(w, "Work not found", http.StatusNotFound)
 		return

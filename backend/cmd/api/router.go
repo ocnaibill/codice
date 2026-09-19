@@ -94,6 +94,7 @@ func newRouter(d routerDeps) http.Handler {
 	// Catalog administration
 	r.With(staff).Put("/works/{id}", libHandler.UpdateWork)
 	r.With(staff).Delete("/works/{id}", libHandler.DeleteWork)
+	r.With(staff).Post("/works/{id}/restore", libHandler.RestoreWork)
 	r.With(staff).Post("/upload", uploadHandler.HandleUpload)
 	r.With(staff).Post("/works/bulk-import", uploadHandler.HandleBulkImport)
 
