@@ -17,6 +17,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/database"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/sessions"
 )
 
 // Integration tests need a real PostgreSQL. Set TEST_DATABASE_URL to a
@@ -106,7 +107,7 @@ func TestMigrations_LegacyAdminBecomesOwner_AndIsIdempotent(t *testing.T) {
 func TestSetup_ConcurrentRequestsCreateExactlyOneOwner(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test_secret_key_for_testing_12345678")
 	db := migratedDB(t)
-	h := &AuthHandler{DB: db}
+	h := &AuthHandler{DB: db, Sessions: &sessions.Store{DB: db}}
 
 	const n = 12
 	codes := make([]int, n)
@@ -150,7 +151,7 @@ func TestSetup_ConcurrentRequestsCreateExactlyOneOwner(t *testing.T) {
 func TestSetup_CreatesOwnerRoleInToken(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test_secret_key_for_testing_12345678")
 	db := migratedDB(t)
-	h := &AuthHandler{DB: db}
+	h := &AuthHandler{DB: db, Sessions: &sessions.Store{DB: db}}
 
 	req := httptest.NewRequest("POST", "/auth/setup", strings.NewReader(`{"username":"boss","password":"pw"}`))
 	rec := httptest.NewRecorder()

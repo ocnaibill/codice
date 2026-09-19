@@ -14,15 +14,15 @@ import (
 )
 
 type OPDSHandler struct {
-	DB *sql.DB
-	// Verify confirms Basic credentials. Without it, Basic is refused.
-	Verify appMiddleware.BasicVerifier
+	DB   *sql.DB
+	Auth appMiddleware.Authenticator
 }
 
-// OpdsAuth authenticates OPDS clients with Bearer tokens or with Basic
-// credentials whose password is verified.
+// OpdsAuth authenticates OPDS clients with an app token (HTTP Basic, the token
+// as the password) or a session bearer token. The account password is not
+// accepted (DEC-071).
 func (h *OPDSHandler) OpdsAuth(next http.Handler) http.Handler {
-	return appMiddleware.AuthMiddlewareWithBasic(h.Verify)(next)
+	return h.Auth.WithBasic(next)
 }
 
 func (h *OPDSHandler) baseURL(r *http.Request) string {

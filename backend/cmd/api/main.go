@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	_ "github.com/lib/pq" // Underscore initializes the driver anonymously
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/sessions"
 )
 
 func main() {
@@ -70,7 +71,13 @@ func main() {
 	}
 	log.Println("✅ Successfully connected to Redis!")
 
-	wsHandler := &handlers.WsHandler{RedisClient: redisClient}
+	sessionStore := &sessions.Store{DB: db}
+	authenticator := appMiddleware.Authenticator{
+		Sessions: sessionStore.CheckSession,
+		Basic:    sessionStore.VerifyAppToken,
+	}
+
+	wsHandler := &handlers.WsHandler{RedisClient: redisClient, Auth: authenticator}
 
 	// Start Redis PubSub listener in background goroutine
 	go wsHandler.ListenToRedis()
@@ -115,6 +122,8 @@ func main() {
 	r := newRouter(routerDeps{
 		DB:          db,
 		RedisClient: redisClient,
+		Sessions:    sessionStore,
+		Auth:        authenticator,
 		WS:          wsHandler,
 		StoragePath: storagePath,
 	})

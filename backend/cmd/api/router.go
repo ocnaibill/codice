@@ -14,12 +14,15 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"github.com/redis/go-redis/v9"
 )
 
 type routerDeps struct {
 	DB          *sql.DB
 	RedisClient *redis.Client
+	Sessions    *sessions.Store
+	Auth        appMiddleware.Authenticator
 	WS          *handlers.WsHandler
 	StoragePath string
 }
@@ -31,7 +34,8 @@ func newRouter(d routerDeps) http.Handler {
 
 	libHandler := &handlers.LibraryHandler{DB: db}
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
-	authHandler := &handlers.AuthHandler{DB: db}
+	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions}
+	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
 	usersHandler := &handlers.UsersHandler{DB: db}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
@@ -68,7 +72,10 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(authRateLimit).Post("/auth/register", authHandler.Register)
 	r.With(authRateLimit).Post("/auth/login", authHandler.Login)
 
-	auth := appMiddleware.AuthMiddleware
+	// Session-backed authentication: a bearer token is only good while its
+	// session row is live and the account is not blocked.
+	auth := d.Auth.Middleware
+	assets := d.Auth.Assets // also accepts a short-lived ?rt= token, GET/HEAD only
 	// Catalog administration: owner and admin only (DEC-003, RF-007).
 	staff := func(next http.Handler) http.Handler {
 		return auth(appMiddleware.RequireStaff(next))
@@ -90,6 +97,13 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/upload", uploadHandler.HandleUpload)
 	r.With(staff).Post("/works/bulk-import", uploadHandler.HandleBulkImport)
 
+	// Session, resource tokens and app tokens
+	r.With(auth).Post("/auth/logout", authHandler.Logout)
+	r.With(auth).Post("/auth/resource-token", authHandler.ResourceToken)
+	r.With(auth).Post("/auth/app-tokens", appTokensHandler.Create)
+	r.With(auth).Get("/auth/app-tokens", appTokensHandler.List)
+	r.With(auth).Delete("/auth/app-tokens/{id}", appTokensHandler.Revoke)
+
 	// Account roles
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)
 
@@ -104,18 +118,17 @@ func newRouter(d routerDeps) http.Handler {
 
 	// Page streaming endpoints (CBZ/CBR)
 	pageHandler := &handlers.PageHandler{DB: db}
-	r.With(auth).Get("/works/{id}/pages", pageHandler.GetPages)
-	r.With(auth).Get("/works/{id}/pages/{page}", pageHandler.ServePage)
-	r.With(auth).Get("/works/{id}/pages/{page}/thumbnail", pageHandler.ServePageThumbnail)
+	r.With(assets).Get("/works/{id}/pages", pageHandler.GetPages)
+	r.With(assets).Get("/works/{id}/pages/{page}", pageHandler.ServePage)
+	r.With(assets).Get("/works/{id}/pages/{page}/thumbnail", pageHandler.ServePageThumbnail)
 
 	// Text file serving (TXT, MD)
 	mediaHandler := &handlers.MediaHandler{DB: db}
-	r.With(auth).Get("/works/{id}/text", mediaHandler.ServeText)
-	r.With(auth).Get("/works/{id}/audio", mediaHandler.ServeAudio)
+	r.With(assets).Get("/works/{id}/text", mediaHandler.ServeText)
+	r.With(assets).Get("/works/{id}/audio", mediaHandler.ServeAudio)
 
 	// OPDS 1.2 Catalog (Basic Auth for mobile apps like KOReader, Moon+ Reader)
-	basicVerifier := handlers.NewBasicVerifier(db)
-	opdsHandler := &handlers.OPDSHandler{DB: db, Verify: basicVerifier}
+	opdsHandler := &handlers.OPDSHandler{DB: db, Auth: d.Auth}
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/catalog", opdsHandler.RootCatalog)
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/recent", opdsHandler.RecentFeed)
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/search", opdsHandler.SearchFeed)
@@ -130,9 +143,9 @@ func newRouter(d routerDeps) http.Handler {
 	coversPath := filepath.Join(d.StoragePath, "covers")
 	os.MkdirAll(coversPath, 0755)
 
-	// Covers and files also accept Basic credentials (verified against the
-	// account password) because OPDS clients cannot send a bearer token.
-	authWithBasic := appMiddleware.AuthMiddlewareWithBasic(basicVerifier)
+	// Covers and files also accept an app token over Basic (OPDS clients cannot
+	// send a bearer token) and the short-lived ?rt= token used by <img>/<a>.
+	authWithBasic := d.Auth.AssetsWithBasic
 
 	// Helper to serve static files with Cache-Control headers (PERF-04)
 	fsCovers := http.StripPrefix("/covers/", http.FileServer(http.Dir(coversPath)))

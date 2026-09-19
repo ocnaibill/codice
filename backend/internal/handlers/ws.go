@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/redis/go-redis/v9"
@@ -40,33 +40,22 @@ var upgrader = websocket.Upgrader{
 // WsHandler manages active WebSocket client connections and listens for Redis PubSub events
 type WsHandler struct {
 	RedisClient *redis.Client
+	Auth        middleware.Authenticator
 	Clients     map[*websocket.Conn]bool
 	mu          sync.Mutex
 }
 
-// HandleWS upgrades HTTP connection to WebSocket and registers active client
+// HandleWS upgrades HTTP connection to WebSocket and registers active client.
+// Browsers cannot set headers on a WebSocket, so they present a short-lived
+// "ws" ticket (?ticket=, from POST /auth/resource-token); session tokens never
+// travel in the query string.
 func (h *WsHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
-	// Extract token from query param (WebSocket cannot set Authorization header easily)
-	tokenString := r.URL.Query().Get("token")
-	if tokenString == "" {
-		// Fallback to Authorization header
-		authHeader := r.Header.Get("Authorization")
-		tokenString = strings.TrimPrefix(authHeader, "Bearer ")
-	}
-
-	if tokenString == "" {
-		http.Error(w, "Access denied: Authentication required", http.StatusUnauthorized)
-		return
-	}
-
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, jwt.ErrSignatureInvalid
+	if _, _, err := h.Auth.AuthenticateWS(r); err != nil {
+		if errors.Is(err, middleware.ErrInvalidSession) {
+			http.Error(w, "Access denied: Authentication required", http.StatusUnauthorized)
+		} else {
+			http.Error(w, "Authentication unavailable", http.StatusInternalServerError)
 		}
-		return middleware.GetJWTSecret(), nil
-	})
-	if err != nil || !token.Valid {
-		http.Error(w, "Access denied: Invalid or expired token", http.StatusUnauthorized)
 		return
 	}
 

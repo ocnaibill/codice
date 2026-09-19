@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -10,14 +9,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/lib/pq"
-	"golang.org/x/crypto/bcrypt"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/sessions"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
-	DB *sql.DB
+	DB       *sql.DB
+	Sessions *sessions.Store
 }
 
 type AuthRequest struct {
@@ -35,33 +35,30 @@ var (
 	dummyHash     []byte
 )
 
-// NewBasicVerifier returns a BasicVerifier that checks the account password
-// against its bcrypt hash. An unknown user costs the same bcrypt comparison as
-// a wrong password, so response time does not reveal which usernames exist.
-func NewBasicVerifier(db *sql.DB) middleware.BasicVerifier {
-	return func(ctx context.Context, username, password string) (string, string, error) {
-		dummyHashOnce.Do(func() {
-			dummyHash, _ = bcrypt.GenerateFromPassword([]byte("codice-dummy-password"), 10)
-		})
-
-		var id, role, hash string
-		err := db.QueryRowContext(ctx,
-			"SELECT id, role, COALESCE(password_hash, '') FROM users WHERE username = $1", username,
-		).Scan(&id, &role, &hash)
-		if errors.Is(err, sql.ErrNoRows) || (err == nil && hash == "") {
-			bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
-			return "", "", middleware.ErrInvalidCredentials
-		}
-		if err != nil {
-			return "", "", err
-		}
-		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
-			return "", "", middleware.ErrInvalidCredentials
-		}
-		return id, role, nil
-	}
+// burnPasswordCheck spends the same bcrypt time as a real comparison, so a
+// login for an unknown user is not measurably faster than one for a real user.
+func burnPasswordCheck(password string) {
+	dummyHashOnce.Do(func() {
+		dummyHash, _ = bcrypt.GenerateFromPassword([]byte("codice-dummy-password"), bcryptCost)
+	})
+	bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 }
 
+const bcryptCost = 10
+
+// invalidLoginMessage is the single answer for an unknown user, a wrong
+// password, an account without a local password, and a blocked account, so the
+// response does not reveal which usernames exist.
+const invalidLoginMessage = "Invalid username or password"
+
+// newSessionToken records a session and returns its bearer token.
+func (h *AuthHandler) newSessionToken(r *http.Request, userID string) (string, error) {
+	sid, expires, err := h.Sessions.CreateSession(r.Context(), userID, r.UserAgent())
+	if err != nil {
+		return "", err
+	}
+	return middleware.IssueSessionToken(sid, userID, expires)
+}
 
 // Register creates a new user account with hashed password
 // Registration can be disabled via ALLOW_REGISTRATION=false or APP_ENV=production without explicit ALLOW_REGISTRATION=true
@@ -96,7 +93,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		email = req.Username + "@codice.local"
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), 10)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
 	if err != nil {
 		http.Error(w, "Error processing password hash", http.StatusInternalServerError)
 		return
@@ -115,7 +112,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-// Login authenticates user credentials and returns a signed JWT token
+// Login authenticates user credentials, records a session and returns its token.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req AuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -123,36 +120,28 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var id, role, passwordHash string
-	err := h.DB.QueryRow("SELECT id, role, COALESCE(password_hash, '') FROM users WHERE username = $1", req.Username).Scan(&id, &role, &passwordHash)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "User not found", http.StatusUnauthorized)
-			return
-		}
+	var id, passwordHash string
+	var blockedAt sql.NullTime
+	err := h.DB.QueryRow(
+		"SELECT id, COALESCE(password_hash, ''), blocked_at FROM users WHERE username = $1", req.Username,
+	).Scan(&id, &passwordHash, &blockedAt)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Error querying database", http.StatusInternalServerError)
 		return
 	}
 
-	if passwordHash == "" {
-		http.Error(w, "User has no password set (SSO login required)", http.StatusUnauthorized)
+	if errors.Is(err, sql.ErrNoRows) || passwordHash == "" {
+		burnPasswordCheck(req.Password)
+		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
 		return
 	}
 
-	if err = bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		http.Error(w, "Incorrect password", http.StatusUnauthorized)
+	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)) != nil || blockedAt.Valid {
+		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
 		return
 	}
 
-	expirationTime := time.Now().Add(7 * 24 * time.Hour)
-	claims := jwt.MapClaims{
-		"sub":  id,
-		"role": role,
-		"exp":  expirationTime.Unix(),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(middleware.GetJWTSecret())
+	tokenString, err := h.newSessionToken(r, id)
 	if err != nil {
 		http.Error(w, "Error generating authentication token", http.StatusInternalServerError)
 		return
@@ -160,6 +149,60 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(AuthResponse{Token: tokenString})
+}
+
+// Logout revokes the current session.
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	sid, _ := r.Context().Value(middleware.SessionIDKey).(string)
+	if err := h.Sessions.RevokeSession(r.Context(), sid); err != nil {
+		http.Error(w, "Error ending session", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type resourceTokenRequest struct {
+	Scope string `json:"scope"`
+}
+
+type resourceTokenResponse struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// Lifetimes of resource tokens: long enough for a reading session's images and
+// downloads while the page refreshes them, short enough to limit exposure of a
+// URL that leaks into a log or history.
+const (
+	assetTokenTTL = 15 * time.Minute
+	wsTicketTTL   = 60 * time.Second
+)
+
+// ResourceToken issues a short-lived token tied to the caller's session, for
+// URLs the browser loads without an Authorization header (?rt=) and for the
+// WebSocket handshake (?ticket=).
+func (h *AuthHandler) ResourceToken(w http.ResponseWriter, r *http.Request) {
+	var req resourceTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+	ttl := map[string]time.Duration{middleware.ScopeAssets: assetTokenTTL, middleware.ScopeWS: wsTicketTTL}[req.Scope]
+	if ttl == 0 {
+		http.Error(w, "scope must be 'assets' or 'ws'", http.StatusBadRequest)
+		return
+	}
+
+	sid, _ := r.Context().Value(middleware.SessionIDKey).(string)
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	token, expires, err := middleware.IssueResourceToken(sid, userID, req.Scope, ttl)
+	if err != nil {
+		http.Error(w, "Error generating token", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resourceTokenResponse{Token: token, ExpiresAt: expires})
 }
 
 // SetupStatusResponse indicates whether the system needs first-run wizard initialization
@@ -206,7 +249,7 @@ func (h *AuthHandler) SetupMasterAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Hash before taking the lock: bcrypt is slow and must not hold it.
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), 10)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
 	if err != nil {
 		http.Error(w, "Error processing password hash", http.StatusInternalServerError)
 		return
@@ -250,15 +293,7 @@ func (h *AuthHandler) SetupMasterAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expirationTime := time.Now().Add(7 * 24 * time.Hour)
-	claims := jwt.MapClaims{
-		"sub":  id,
-		"role": "owner",
-		"exp":  expirationTime.Unix(),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(middleware.GetJWTSecret())
+	tokenString, err := h.newSessionToken(r, id)
 	if err != nil {
 		http.Error(w, "Error generating authentication token", http.StatusInternalServerError)
 		return

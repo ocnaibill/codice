@@ -165,6 +165,31 @@ func RunAutoMigrations(db *sql.DB) error {
 		`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('owner', 'admin', 'reader'));`,
 		// At most one owner: a partial unique index on a constant expression.
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_owner ON users ((role)) WHERE role = 'owner';`,
+
+		// 11. Migration 013: server-side sessions and app tokens (DEC-070, DEC-071).
+		// blocked_at is set by account blocking (DEC-060); sessions and app tokens
+		// of a blocked account stop working immediately.
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;`,
+		`CREATE TABLE IF NOT EXISTS sessions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			expires_at TIMESTAMPTZ NOT NULL,
+			revoked_at TIMESTAMPTZ,
+			user_agent VARCHAR(255)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);`,
+		// Only a SHA-256 of the token is stored; the token itself is shown once.
+		`CREATE TABLE IF NOT EXISTS app_tokens (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name VARCHAR(100) NOT NULL,
+			token_hash CHAR(64) NOT NULL UNIQUE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			last_used_at TIMESTAMPTZ,
+			revoked_at TIMESTAMPTZ
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_app_tokens_user_id ON app_tokens(user_id);`,
 	}
 
 	for _, stmt := range statements {
