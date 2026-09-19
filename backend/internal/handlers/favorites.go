@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-
 )
 
 // FavoritesHandler stores the database connection

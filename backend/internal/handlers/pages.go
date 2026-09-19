@@ -53,7 +53,7 @@ func (h *PageHandler) GetPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fullPath := filePath.String // absolute, resolved from the database
+	fullPath := filePath.String         // absolute, resolved from the database
 	storagePath := resolveStoragePath() // where the CBR page cache lives
 
 	// Only CBZ/CBR support page listing for now
@@ -102,7 +102,7 @@ func (h *PageHandler) ServePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fullPath := filePath.String // absolute, resolved from the database
+	fullPath := filePath.String         // absolute, resolved from the database
 	storagePath := resolveStoragePath() // where the CBR page cache lives
 	ext := strings.ToLower(filepath.Ext(fullPath))
 
@@ -139,7 +139,7 @@ func (h *PageHandler) ServePageThumbnail(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	fullPath := filePath.String // absolute, resolved from the database
+	fullPath := filePath.String         // absolute, resolved from the database
 	storagePath := resolveStoragePath() // where the CBR page cache lives
 	ext := strings.ToLower(filepath.Ext(fullPath))
 

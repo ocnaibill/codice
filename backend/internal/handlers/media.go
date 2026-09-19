@@ -28,7 +28,6 @@ func (h *MediaHandler) ServeText(w http.ResponseWriter, r *http.Request) {
 
 	fullPath := filePath.String // absolute, resolved from the database
 
-
 	f, err := os.Open(fullPath)
 	if err != nil {
 		http.Error(w, "Error opening file", http.StatusInternalServerError)
@@ -65,7 +64,6 @@ func (h *MediaHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fullPath := filePath.String // absolute, resolved from the database
-
 
 	f, err := os.Open(fullPath)
 	if err != nil {

@@ -27,7 +27,6 @@ func TestRegister_DisabledByDefault(t *testing.T) {
 	}
 }
 
-
 func TestRegister_DisabledInProduction(t *testing.T) {
 	os.Setenv("APP_ENV", "production")
 	os.Unsetenv("ALLOW_REGISTRATION")

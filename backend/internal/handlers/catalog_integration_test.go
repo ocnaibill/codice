@@ -80,6 +80,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/admin/storage/cleanups", storageAdmin.ListCleanups)
 	r.Post("/admin/storage/cleanups/retry", storageAdmin.RetryCleanups)
 	r.Get("/file/{id}", byID.ServeHTTP)
+	r.Get("/admin/ocr", (&OCRHandler{DB: db}).List)
 	dup := &DuplicatesHandler{DB: db}
 	r.Get("/admin/duplicates", dup.List)
 	r.Post("/admin/duplicates/scan", dup.Scan)

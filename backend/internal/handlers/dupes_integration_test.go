@@ -84,3 +84,34 @@ func TestDuplicatesAPI_ReviewDismissAndLink(t *testing.T) {
 		t.Errorf("a dismissed pair is still listed")
 	}
 }
+
+func TestOCRListing_ReportsPagesWithoutText(t *testing.T) {
+	s := newCatalogStack(t)
+	scanned := s.addWork("Escaneado", "Ana", "e.pdf", "pdf")
+	digital := s.addWork("Digital", "Ana", "d.pdf", "pdf")
+	fileOf := func(work int) string {
+		return s.scalar(fmt.Sprintf(`SELECT file_id FROM work_primary WHERE work_id = %d`, work))
+	}
+	s.exec(`INSERT INTO text_layers (file_id, page_count, pages_without_text, needs_ocr) VALUES ($1, 5, '{2,3}', TRUE)`, fileOf(scanned))
+	s.exec(`INSERT INTO text_layers (file_id, page_count, pages_without_text, needs_ocr) VALUES ($1, 5, '{}', FALSE)`, fileOf(digital))
+
+	var list struct {
+		Data []struct {
+			WorkID           int
+			PagesWithoutText []int
+		}
+	}
+	json.Unmarshal(s.do(admin, "GET", "/admin/ocr", "").Body.Bytes(), &list)
+	if len(list.Data) != 1 || list.Data[0].WorkID != scanned || len(list.Data[0].PagesWithoutText) != 2 {
+		t.Fatalf("listing = %+v", list)
+	}
+
+	w, _ := s.detail(ana, scanned)
+	f := w.Editions[0].Files[0]
+	if !f.NeedsOCR || len(f.PagesWithoutText) != 2 || f.PagesWithoutText[0] != 2 {
+		t.Errorf("work detail file = %+v", f)
+	}
+	if d, _ := s.detail(ana, digital); d.Editions[0].Files[0].NeedsOCR {
+		t.Errorf("a PDF with a text layer is flagged")
+	}
+}

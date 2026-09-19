@@ -4,6 +4,7 @@ and reused by whatever runs the jobs."""
 import os
 
 from analyzer import Analyzer
+from ocr_detect import detect_text_layer
 
 
 def ensure_file(file_path):
@@ -86,4 +87,9 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
     checkpoint()
     analyzer.save_identifiers(work_id, identifiers)
     analyzer.save_media_pages(work_id, native)
+    if metadata.format == 'pdf':
+        page_count, missing = detect_text_layer(file_path)
+        analyzer.save_text_layer(work_id, page_count, missing)
+        if missing:
+            print(f"   🔎 {len(missing)} of {page_count} page(s) have no text (OCR needed)")
     return metadata

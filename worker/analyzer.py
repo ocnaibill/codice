@@ -288,6 +288,17 @@ class Analyzer:
                 ON CONFLICT (work_id, identifier_type, identifier_value) DO NOTHING;
             """, (work_id, id_type, id_value))
 
+    def save_text_layer(self, work_id: int, page_count: int, pages_without_text: list):
+        """Record which pages of the work's file have no text (RF-019). The file is
+        the work's primary one; a PDF is the only format this applies to."""
+        self.db.execute(
+            """INSERT INTO text_layers (file_id, page_count, pages_without_text, needs_ocr)
+               SELECT file_id, %s, %s, %s FROM work_primary WHERE work_id = %s AND file_id IS NOT NULL
+               ON CONFLICT (file_id) DO UPDATE SET page_count = EXCLUDED.page_count,
+                   pages_without_text = EXCLUDED.pages_without_text,
+                   needs_ocr = EXCLUDED.needs_ocr, detected_at = now()""",
+            (page_count, list(pages_without_text), bool(pages_without_text), work_id))
+
     def save_media_pages(self, work_id: int, metadata: dict):
         """Save per-page metadata to media_pages table."""
         pages = metadata.get('raw', {}).get('pages', [])

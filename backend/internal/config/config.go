@@ -12,8 +12,8 @@ import (
 // Searches multiple paths to be resilient regardless of working directory.
 func Load() {
 	paths := []string{
-		"../.env",       // Running from backend/ (go run ./cmd/api)
-		".env",          // Running from project root
+		"../.env", // Running from backend/ (go run ./cmd/api)
+		".env",    // Running from project root
 		filepath.Join(os.Getenv("CODICE_STORAGE_PATH"), "..", ".env"), // Relative to storage
 	}
 

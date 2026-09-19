@@ -113,3 +113,18 @@ class TestEnsureFile:
         f = tmp_path / "ok.epub"
         f.write_bytes(b"x")
         ensure_file(str(f))
+
+
+class TestTextLayer:
+    def test_a_pdf_is_checked_for_pages_without_text(self):
+        import os
+        scanned = os.path.join(os.path.dirname(__file__), '..', '..', 'testdata', 'corpus', 'pdf_escaneado.pdf')
+        db = FakeDB()
+        analyze_file(7, scanned, FakeExtractor(meta(format='pdf')), Analyzer(db), FakeProviders(), '/covers')
+        (_, params), = db.matching("INSERT INTO text_layers")
+        assert params[2] is True and params[1]
+
+    def test_other_formats_are_not(self):
+        db = FakeDB()
+        run(db, meta(), FakeProviders())
+        assert not db.matching("text_layers")

@@ -68,6 +68,10 @@ type FileInfo struct {
 	URL             string  `json:"url,omitempty"`
 	PercentComplete float64 `json:"percentComplete"`
 	Completed       bool    `json:"completed"`
+	// NeedsOCR is set for a PDF with pages that carry no text (RF-019);
+	// PagesWithoutText lists them, numbered from 1.
+	NeedsOCR         bool  `json:"needsOcr,omitempty"`
+	PagesWithoutText []int `json:"pagesWithoutText,omitempty"`
 }
 
 // LibraryHandler stores the database connection
@@ -296,9 +300,11 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		SELECT e.id, COALESCE(e.title, ''), COALESCE(e.language, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.publication_date, ''), COALESCE(e.isbn, ''), e.is_primary,
 		       f.id, COALESCE(f.format, ''), f.size_bytes, f.availability, l.path, l.mode,
-		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL)
+		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL),
+		       COALESCE(tl.needs_ocr, FALSE), tl.pages_without_text
 		FROM editions e
 		LEFT JOIN files f ON f.edition_id = e.id
+		LEFT JOIN text_layers tl ON tl.file_id = f.id
 		LEFT JOIN LATERAL (
 			SELECT path, mode FROM storage_locations WHERE file_id = f.id ORDER BY id LIMIT 1
 		) l ON TRUE
@@ -319,8 +325,10 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		var format, availability, filePath, mode sql.NullString
 		var percent float64
 		var completed sql.NullBool
+		var needsOCR bool
+		var missing pq.Int64Array
 		if err := rows.Scan(&e.ID, &e.Title, &e.Language, &e.Publisher, &e.PublicationDate, &e.ISBN, &e.IsPrimary,
-			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed); err != nil {
+			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &needsOCR, &missing); err != nil {
 			return nil, err
 		}
 		i, seen := index[e.ID]
@@ -337,6 +345,12 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 				fi.SizeBytes = &size.Int64
 			}
 			fi.URL = fileHref(fileID, mode.String, filePath.String)
+			if needsOCR {
+				fi.NeedsOCR = true
+				for _, n := range missing {
+					fi.PagesWithoutText = append(fi.PagesWithoutText, int(n))
+				}
+			}
 			editions[i].Files = append(editions[i].Files, fi)
 		}
 	}
