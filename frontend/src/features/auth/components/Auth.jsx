@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../../../lib/api';
+import { AuthCard } from './AuthCard';
+import { FormField } from './FormField';
 
 export function Auth({ onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -7,11 +9,13 @@ export function Auth({ onLoginSuccess }) {
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
 
     try {
@@ -22,88 +26,81 @@ export function Auth({ onLoginSuccess }) {
       } else {
         await api.post('/auth/register', { username, email, password });
         setIsLogin(true);
-        setError('Account created successfully! Please log in.');
+        setSuccess('Conta criada com sucesso! Faça login para continuar.');
       }
     } catch (err) {
-      setError(err.response?.data || 'Authentication failed. Please check credentials.');
+      setError(err.response?.data || 'Falha na autenticação. Verifique suas credenciais.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex h-screen items-center justify-center bg-zinc-950 p-4">
-      <div className="w-full max-w-md p-8 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl">
-        <h1 className="text-3xl font-semibold text-zinc-100 text-center mb-2 tracking-tight">Códice</h1>
-        <p className="text-zinc-400 text-center text-sm mb-8">
-          {isLogin ? 'Sign in to your library' : 'Create your account'}
-        </p>
+    <AuthCard title={isLogin ? 'Bem-vindo de volta' : 'Crie sua conta'} subtitle={isLogin ? 'Entre para acessar seu acervo' : 'Comece a organizar sua biblioteca'}>
+      {error && (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 font-body text-[13px] text-red-700">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="mb-4 rounded-md border border-success/30 bg-success/10 p-3 font-body text-[13px] text-success">
+          {success}
+        </div>
+      )}
 
-        {error && (
-          <div className="p-3 mb-4 text-xs font-medium text-red-400 bg-red-950/40 border border-red-900/60 rounded-md">
-            {error}
-          </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <FormField
+          label="Usuário"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="Seu usuário"
+          required
+          autoFocus
+        />
+
+        {!isLogin && (
+          <FormField
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="voce@exemplo.com"
+            required
+          />
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">Username</label>
-            <input
-              type="text"
-              placeholder="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-4 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-blue-500 transition-colors"
-              required
-            />
-          </div>
+        <FormField
+          label="Senha"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+          required
+        />
 
-          {!isLogin && (
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Email</label>
-              <input
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-4 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-blue-500 transition-colors"
-                required
-              />
-            </div>
-          )}
+        <button
+          type="submit"
+          disabled={loading}
+          className="mt-2 w-full rounded-md bg-brand py-2.5 font-body text-sm font-medium text-white shadow-[0px_1px_1.5px_rgba(0,0,0,0.1)] transition-all hover:brightness-110 disabled:opacity-50"
+        >
+          {loading ? 'Processando...' : isLogin ? 'Entrar' : 'Criar conta'}
+        </button>
+      </form>
 
-          <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">Password</label>
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-4 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-blue-500 transition-colors"
-              required
-            />
-          </div>
-
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full py-2.5 mt-2 bg-blue-600 text-white font-medium text-sm rounded-md hover:bg-blue-500 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Register')}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-xs text-zinc-500">
-          {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
-          <button 
-            type="button"
-            onClick={() => { setIsLogin(!isLogin); setError(''); }}
-            className="text-blue-400 hover:underline font-medium ml-1"
-          >
-            {isLogin ? "Register" : "Sign In"}
-          </button>
-        </p>
-      </div>
-    </div>
+      <p className="mt-6 text-center font-body text-[13px] text-ink-soft">
+        {isLogin ? 'Ainda não tem uma conta?' : 'Já tem uma conta?'}{' '}
+        <button
+          type="button"
+          onClick={() => {
+            setIsLogin(!isLogin);
+            setError('');
+            setSuccess('');
+          }}
+          className="ml-1 font-medium text-brand hover:underline"
+        >
+          {isLogin ? 'Criar conta' : 'Entrar'}
+        </button>
+      </p>
+    </AuthCard>
   );
 }

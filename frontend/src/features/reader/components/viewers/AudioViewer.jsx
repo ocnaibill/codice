@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { authenticatedUrl } from '../../../../lib/api';
+import React, { useRef, useState, useEffect } from 'react';
+import { api, authenticatedUrl } from '../../../../lib/api';
 
 export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
   const audioRef = useRef(null);
@@ -7,6 +7,24 @@ export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState(1);
+  const timeoutRef = useRef(null);
+
+  const saveProgress = (time, total, completed = false) => {
+    if (!bookId) return;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      const percent = total ? (time / total) * 100 : undefined;
+      api
+        .patch(`/works/${bookId}/progress`, { progress: time.toString(), percent, completed })
+        .catch((err) => console.error('Failed to save audio reading progress:', err));
+    }, 1500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   const togglePlay = () => {
     if (audioRef.current) {
@@ -21,7 +39,16 @@ export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
 
   const handleTimeUpdate = () => {
     if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
+      const time = audioRef.current.currentTime;
+      setCurrentTime(time);
+      saveProgress(time, audioRef.current.duration);
+    }
+  };
+
+  const handleEnded = () => {
+    setPlaying(false);
+    if (audioRef.current) {
+      saveProgress(audioRef.current.duration, audioRef.current.duration, true);
     }
   };
 
@@ -38,6 +65,7 @@ export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
     const seekTime = parseFloat(e.target.value);
     if (audioRef.current) {
       audioRef.current.currentTime = seekTime;
+      saveProgress(seekTime, audioRef.current.duration);
     }
     setCurrentTime(seekTime);
   };
@@ -65,7 +93,7 @@ export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
         src={authenticatedUrl(fileUrl)}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
-        onEnded={() => setPlaying(false)}
+        onEnded={handleEnded}
         preload="metadata"
       />
 

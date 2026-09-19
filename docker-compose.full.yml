@@ -7,8 +7,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-codice_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codice_secret}
       POSTGRES_DB: ${POSTGRES_DB:-codice_db}
-    ports:
-      - "5432:5432"
+    # No published ports: only the backend and worker, on this Compose network,
+    # reach the database.
     volumes:
       - codice_pgdata:/var/lib/postgresql/data
     networks:
@@ -19,8 +19,10 @@ services:
   redis:
     image: redis:7-alpine
     container_name: codice_redis
-    ports:
-      - "6379:6379"
+    # Authentication is mandatory. Use a URL-safe value (for example
+    # `openssl rand -hex 24`), because it is embedded in REDIS_URL below.
+    # No published ports: only the backend and worker reach the queue.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
     networks:
       - codice_network
     restart: unless-stopped
@@ -34,7 +36,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-production}
       DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD:-codice_secret}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
       CODICE_STORAGE_PATH: /app/storage
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
@@ -59,7 +61,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-production}
       DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD:-codice_secret}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
       CODICE_STORAGE_PATH: /app/storage
     volumes:
       - ./uploads:/app/storage

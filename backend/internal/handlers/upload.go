@@ -4,26 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"time"
 
+	"github.com/ocnaibill/codice/backend/internal/filecheck"
+	"github.com/ocnaibill/codice/backend/internal/jobs"
+	"github.com/ocnaibill/codice/backend/internal/storage"
 	"github.com/redis/go-redis/v9"
 )
 
 // SupportedFormats is the set of file extensions accepted by upload and bulk import.
-var SupportedFormats = map[string]bool{
-	".pdf": true, ".epub": true,
-	".cbz": true, ".cbr": true,
-	".txt": true, ".md": true,
-	".mobi": true, ".azw": true, ".azw3": true,
-	".mp3": true, ".m4a": true, ".m4b": true,
-	".flac": true, ".ogg": true, ".wav": true,
-}
+var SupportedFormats = filecheck.Supported
 
 // resolveStoragePath resolves a relative CODICE_STORAGE_PATH from the project root.
 func resolveStoragePath() string {
@@ -53,114 +50,196 @@ func resolveStoragePath() string {
 	return storagePath
 }
 
+var errOutsideImportRoots = errors.New("directory is outside the allowed import roots")
+
+// importRoots lists the directories bulk import may read: the default
+// <storage>/import first, then absolute paths from CODICE_IMPORT_ROOTS
+// (separated like PATH). The owner will manage these from the interface later
+// (DEC-035); until then they come from configuration.
+func importRoots(storagePath string) []string {
+	roots := []string{filepath.Join(storagePath, "import")}
+	for _, r := range filepath.SplitList(os.Getenv("CODICE_IMPORT_ROOTS")) {
+		if r = strings.TrimSpace(r); r != "" && filepath.IsAbs(r) {
+			roots = append(roots, filepath.Clean(r))
+		}
+	}
+	return roots
+}
+
+// resolveImportDir returns the real path of the requested directory if it is
+// inside one of the roots. An empty request means the default root and a
+// relative one is taken relative to it. Symlinks are resolved on both sides, so
+// a link inside a root cannot lead outside it.
+func resolveImportDir(requested string, roots []string) (string, error) {
+	if requested == "" {
+		requested = roots[0]
+	} else if !filepath.IsAbs(requested) {
+		requested = filepath.Join(roots[0], requested)
+	}
+	real, err := filepath.EvalSymlinks(filepath.Clean(requested))
+	if err != nil {
+		if os.IsNotExist(err) {
+			// A path that does not exist yet can still be refused for where it points.
+			if !lexicallyInside(filepath.Clean(requested), roots) {
+				return "", errOutsideImportRoots
+			}
+			return "", os.ErrNotExist
+		}
+		return "", err
+	}
+	for _, root := range roots {
+		realRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			continue
+		}
+		if isWithin(real, realRoot) {
+			return real, nil
+		}
+	}
+	return "", errOutsideImportRoots
+}
+
+func lexicallyInside(path string, roots []string) bool {
+	for _, root := range roots {
+		if isWithin(path, root) {
+			return true
+		}
+	}
+	return false
+}
+
+// isWithin reports whether path is root or below it (not a sibling that merely
+// shares a name prefix).
+func isWithin(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// authorisedRoots are the directories the owner authorised in the database
+// (DEC-035). They are valid sources for importing into the managed storage too.
+func (h *UploadHandler) authorisedRoots(ctx context.Context) []string {
+	if h.DB == nil {
+		return nil
+	}
+	rows, err := h.DB.QueryContext(ctx, `SELECT path FROM storage_roots ORDER BY id`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if rows.Scan(&p) == nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // UploadHandler holds Redis and PostgreSQL connections
 type UploadHandler struct {
 	DB          *sql.DB
 	RedisClient *redis.Client
 }
 
-// HandleUpload processes form-data, saves the PDF/EPUB and enqueues the task
-func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
-	// 1. Limit upload size (e.g., 50MB)
-	err := r.ParseMultipartForm(50 << 20)
-	if err != nil {
-		http.Error(w, "File too large", http.StatusBadRequest)
-		return
+// maxUploadBytes is the largest file the server accepts. It is a real limit on
+// the request body, not just on memory (RF-008). CODICE_MAX_UPLOAD_MB overrides
+// the default of 1 GiB.
+func maxUploadBytes() int64 {
+	if mb, err := strconv.ParseInt(os.Getenv("CODICE_MAX_UPLOAD_MB"), 10, 64); err == nil && mb > 0 {
+		return mb << 20
 	}
+	return 1 << 30
+}
 
-	// 2. Extract file with key 'document'
-	file, header, err := r.FormFile("document")
-	if err != nil {
-		http.Error(w, "Error reading uploaded file", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	// 3. Validate file extension against supported formats
-	ext := strings.ToLower(filepath.Ext(header.Filename))
-	if !SupportedFormats[ext] {
+// ingestStatus maps an ingestion error to an HTTP answer.
+func ingestStatus(w http.ResponseWriter, err error) {
+	var dup *errDuplicate
+	var bad *errBadContent
+	switch {
+	case errors.As(err, &dup):
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": "duplicate", "message": dup.Error(),
+			"work_id": dup.WorkID, "file_id": dup.FileID, "title": dup.Title, "retired": dup.Retired,
+		})
+	case errors.Is(err, errUnsupportedFormat):
 		http.Error(w, "Unsupported file format", http.StatusBadRequest)
-		return
+	case errors.Is(err, errTooLarge):
+		http.Error(w, "File is too large", http.StatusRequestEntityTooLarge)
+	case errors.As(err, &bad):
+		http.Error(w, bad.Error(), http.StatusUnsupportedMediaType)
+	default:
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "File is too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		log.Println("Ingestion failed:", err)
+		http.Error(w, "Error saving file", http.StatusInternalServerError)
 	}
+}
 
-	// 4. Prepare target directory using resolved CODICE_STORAGE_PATH
-	storagePath := resolveStoragePath()
+// HandleUpload receives one file (form field "document"), streams it to a
+// staging file with a hash, validates it, and hands it to the ingestion path.
+func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
+	limit := maxUploadBytes()
+	// The whole body is capped: multipart framing adds a little to the file.
+	r.Body = http.MaxBytesReader(w, r.Body, limit+(1<<20))
 
-	if err := os.MkdirAll(storagePath, 0755); err != nil {
-		http.Error(w, "Error preparing uploads directory", http.StatusInternalServerError)
-		return
-	}
-
-	// Isolate base filename to prevent directory traversal attacks
-	safeFilename := filepath.Base(header.Filename)
-	fileName := fmt.Sprintf("%d_%s", time.Now().Unix(), safeFilename)
-	filePath := filepath.Join(storagePath, fileName)
-
-	// 5. Save file to disk
-	dst, err := os.Create(filePath)
+	mr, err := r.MultipartReader()
 	if err != nil {
-		http.Error(w, "Error saving file to disk", http.StatusInternalServerError)
+		http.Error(w, "Expected a multipart form", http.StatusBadRequest)
 		return
 	}
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			http.Error(w, "Error reading uploaded file", http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			ingestStatus(w, err)
+			return
+		}
+		if part.FormName() != "document" || part.FileName() == "" {
+			continue
+		}
 
-	if _, err := io.Copy(dst, file); err != nil {
-		dst.Close()
-		os.Remove(filePath)
-		http.Error(w, "Error writing file content", http.StatusInternalServerError)
+		res, err := h.ingest(r.Context(), part, part.FileName(), ingestOptions{
+			Actor: currentUserID(r), Priority: jobs.PriorityManual, MaxBytes: limit,
+		})
+		if err != nil {
+			ingestStatus(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Upload completed and enqueued",
+			"work_id": res.WorkID,
+			"job_id":  res.JobID,
+		})
 		return
 	}
-	dst.Close()
-
-	var workID int
-	query := `INSERT INTO works (original_title, file_path) VALUES ($1, $2) RETURNING id`
-
-	err = h.DB.QueryRow(query, safeFilename, fileName).Scan(&workID)
-	if err != nil {
-		os.Remove(filePath)
-		http.Error(w, "Error creating database record", http.StatusInternalServerError)
-		return
-	}
-
-	absPath, err := filepath.Abs(filePath)
-	if err != nil {
-		os.Remove(filePath)
-		http.Error(w, "Error resolving file path", http.StatusInternalServerError)
-		return
-	}
-
-	// Enqueue task in Redis
-	ctx := context.Background()
-	err = h.RedisClient.XAdd(ctx, &redis.XAddArgs{
-		Stream: "ingestion_tasks",
-		Values: map[string]interface{}{
-			"file_path": absPath,
-			"work_id":   workID,
-		},
-	}).Err()
-
-	if err != nil {
-		os.Remove(filePath)
-		http.Error(w, "File saved, but error enqueuing task", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "Upload completed and enqueued",
-		"work_id": workID,
-	})
 }
 
 type BulkImportRequest struct {
 	Directory string `json:"directory"`
+	// RemoveOriginals makes the import a move: each original is deleted once its
+	// copy is safely in the library and the original is still exactly what was
+	// copied. Off by default, so an import never deletes anything on its own.
+	RemoveOriginals bool `json:"removeOriginals"`
 }
 
 type BulkImportResponse struct {
-	Message  string `json:"message"`
-	Scanned  int    `json:"scanned"`
-	Enqueued int    `json:"enqueued"`
-	Errors   int    `json:"errors"`
+	Message          string `json:"message"`
+	Scanned          int    `json:"scanned"`
+	Enqueued         int    `json:"enqueued"`
+	Duplicates       int    `json:"duplicates"`
+	OriginalsRemoved int    `json:"originalsRemoved"`
+	CleanupPending   int    `json:"cleanupPending"`
+	Errors           int    `json:"errors"`
 }
 
 // HandleBulkImport scans a directory recursively and enqueues all discovered PDF/EPUB/CBZ documents
@@ -169,92 +248,79 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 	json.NewDecoder(r.Body).Decode(&req)
 
 	storagePath := resolveStoragePath()
+	roots := importRoots(storagePath)
+	roots = append(roots, h.authorisedRoots(r.Context())...)
 
-	targetDir := req.Directory
-	if targetDir == "" {
-		targetDir = filepath.Join(storagePath, "import")
+	// The default import directory is created on first use; directories named in
+	// a request never are.
+	if req.Directory == "" {
+		if err := os.MkdirAll(roots[0], 0755); err != nil {
+			http.Error(w, "Error preparing import directory", http.StatusInternalServerError)
+			return
+		}
 	}
 
-	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
-		os.MkdirAll(targetDir, 0755)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(BulkImportResponse{
-			Message:  fmt.Sprintf("Import directory created at '%s'. Place files there and run bulk import again.", targetDir),
-			Scanned:  0,
-			Enqueued: 0,
-			Errors:   0,
-		})
+	targetDir, err := resolveImportDir(req.Directory, roots)
+	switch {
+	case errors.Is(err, errOutsideImportRoots):
+		http.Error(w, "Forbidden: directory is outside the allowed import roots", http.StatusForbidden)
+		return
+	case errors.Is(err, os.ErrNotExist):
+		http.Error(w, "Directory not found", http.StatusNotFound)
+		return
+	case err != nil:
+		http.Error(w, "Error resolving import directory", http.StatusInternalServerError)
 		return
 	}
 
-	var scannedCount, enqueuedCount, errorCount int
-	ctx := context.Background()
+	var scannedCount, enqueuedCount, duplicateCount, errorCount, removedCount, pendingCount int
+	removeOriginals := req.RemoveOriginals
+	ctx := r.Context()
+	actor := currentUserID(r)
+	limit := maxUploadBytes()
 
-	err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
-
-		ext := strings.ToLower(filepath.Ext(info.Name()))
-		if !SupportedFormats[ext] {
+		// A symlink named like a book could expose any file the server can
+		// read; only regular files are imported.
+		if !info.Mode().IsRegular() {
 			return nil
 		}
-
+		if !SupportedFormats[strings.ToLower(filepath.Ext(info.Name()))] {
+			return nil
+		}
 		scannedCount++
 
-		safeFilename := filepath.Base(info.Name())
-		fileName := fmt.Sprintf("%d_%d_%s", time.Now().Unix(), scannedCount, safeFilename)
-		dstPath := filepath.Join(storagePath, fileName)
-
-		srcFile, err := os.Open(path)
+		src, err := os.Open(path)
 		if err != nil {
 			errorCount++
 			return nil
 		}
-		defer srcFile.Close()
+		defer src.Close()
 
-		dstFile, err := os.Create(dstPath)
-		if err != nil {
+		// Same path as an upload (hash, validation, one transaction), at batch
+		// priority so manual imports are served first (DEC-069).
+		res, err := h.ingest(ctx, src, info.Name(), ingestOptions{Actor: actor, Priority: jobs.PriorityBatch, MaxBytes: limit})
+		var dup *errDuplicate
+		switch {
+		case err == nil:
+			enqueuedCount++
+			if removeOriginals {
+				// A move: the original goes only if it is still what was copied.
+				if storage.RemoveVerifiedOrigin(ctx, h.DB, path, res.SHA, info) {
+					removedCount++
+				} else {
+					pendingCount++
+				}
+			}
+		case errors.As(err, &dup):
+			duplicateCount++
+		default:
+			log.Printf("bulk import: %s: %v", info.Name(), err)
 			errorCount++
-			return nil
 		}
-
-		if _, err := io.Copy(dstFile, srcFile); err != nil {
-			dstFile.Close()
-			os.Remove(dstPath)
-			errorCount++
-			return nil
-		}
-		dstFile.Close()
-
-		var workID int
-		query := `INSERT INTO works (original_title, file_path) VALUES ($1, $2) RETURNING id`
-		if err := h.DB.QueryRow(query, safeFilename, fileName).Scan(&workID); err != nil {
-			os.Remove(dstPath)
-			errorCount++
-			return nil
-		}
-
-		absDstPath, err := filepath.Abs(dstPath)
-		if err != nil {
-			os.Remove(dstPath)
-			errorCount++
-			return nil
-		}
-
-		if err := h.RedisClient.XAdd(ctx, &redis.XAddArgs{
-			Stream: "ingestion_tasks",
-			Values: map[string]interface{}{
-				"file_path": absDstPath,
-				"work_id":   workID,
-			},
-		}).Err(); err != nil {
-			os.Remove(dstPath)
-			errorCount++
-			return nil
-		}
-
-		enqueuedCount++
 		return nil
 	})
 
@@ -266,9 +332,12 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(BulkImportResponse{
-		Message:  "Bulk import completed",
-		Scanned:  scannedCount,
-		Enqueued: enqueuedCount,
-		Errors:   errorCount,
+		Message:          "Bulk import completed",
+		Scanned:          scannedCount,
+		Enqueued:         enqueuedCount,
+		Duplicates:       duplicateCount,
+		OriginalsRemoved: removedCount,
+		CleanupPending:   pendingCount,
+		Errors:           errorCount,
 	})
 }

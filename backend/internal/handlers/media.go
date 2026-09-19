@@ -20,25 +20,13 @@ type MediaHandler struct {
 func (h *MediaHandler) ServeText(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	var filePath sql.NullString
-	err := h.DB.QueryRow("SELECT file_path FROM works WHERE id = $1", id).Scan(&filePath)
+	filePath, err := workFilePath(h.DB, id)
 	if err != nil || !filePath.Valid || filePath.String == "" {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
-	storagePath := os.Getenv("CODICE_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "./uploads"
-	}
-
-	fullPath := filepath.Join(storagePath, filePath.String)
-
-	// Prevent directory traversal
-	if !strings.HasPrefix(filepath.Clean(fullPath), filepath.Clean(storagePath)) {
-		http.Error(w, "Access denied", http.StatusForbidden)
-		return
-	}
+	fullPath := filePath.String // absolute, resolved from the database
 
 	f, err := os.Open(fullPath)
 	if err != nil {
@@ -69,24 +57,13 @@ func (h *MediaHandler) ServeText(w http.ResponseWriter, r *http.Request) {
 func (h *MediaHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	var filePath sql.NullString
-	err := h.DB.QueryRow("SELECT file_path FROM works WHERE id = $1", id).Scan(&filePath)
+	filePath, err := workFilePath(h.DB, id)
 	if err != nil || !filePath.Valid || filePath.String == "" {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
-	storagePath := os.Getenv("CODICE_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "./uploads"
-	}
-
-	fullPath := filepath.Join(storagePath, filePath.String)
-
-	if !strings.HasPrefix(filepath.Clean(fullPath), filepath.Clean(storagePath)) {
-		http.Error(w, "Access denied", http.StatusForbidden)
-		return
-	}
+	fullPath := filePath.String // absolute, resolved from the database
 
 	f, err := os.Open(fullPath)
 	if err != nil {

@@ -110,8 +110,10 @@ export default function MangaViewer({ fileUrl, bookId, initialProgress, workId }
 
     if (bookId) {
       timeoutRef.current = setTimeout(() => {
+        const percent = pages.length ? ((clampedPage + 1) / pages.length) * 100 : undefined;
+        const completed = pages.length ? clampedPage >= pages.length - 1 : undefined;
         import('../../../../lib/api').then(({ api }) => {
-          api.patch(`/works/${bookId}/progress`, { progress: clampedPage.toString() })
+          api.patch(`/works/${bookId}/progress`, { progress: clampedPage.toString(), percent, completed })
             .catch((err) => console.error('Failed to save reading progress:', err));
         });
       }, 1000);

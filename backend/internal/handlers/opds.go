@@ -2,12 +2,10 @@ package handlers
 
 import (
 	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"html"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,43 +13,15 @@ import (
 )
 
 type OPDSHandler struct {
-	DB *sql.DB
+	DB   *sql.DB
+	Auth appMiddleware.Authenticator
 }
 
+// OpdsAuth authenticates OPDS clients with an app token (HTTP Basic, the token
+// as the password) or a session bearer token. The account password is not
+// accepted (DEC-071).
 func (h *OPDSHandler) OpdsAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Codice OPDS"`)
-			http.Error(w, "Authorization required", http.StatusUnauthorized)
-			return
-		}
-		if strings.HasPrefix(authHeader, "Basic ") {
-			payload, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(authHeader, "Basic "))
-			if err != nil {
-				http.Error(w, "Invalid Basic Auth", http.StatusUnauthorized)
-				return
-			}
-			parts := strings.SplitN(string(payload), ":", 2)
-			if len(parts) != 2 {
-				http.Error(w, "Invalid Basic Auth", http.StatusUnauthorized)
-				return
-			}
-			var userID string
-			err = h.DB.QueryRow("SELECT id FROM users WHERE username = $1", parts[0]).Scan(&userID)
-			if err != nil {
-				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-				return
-			}
-			next.ServeHTTP(w, r)
-			return
-		}
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			appMiddleware.AuthMiddleware(next).ServeHTTP(w, r)
-			return
-		}
-		http.Error(w, "Unsupported authorization method", http.StatusUnauthorized)
-	})
+	return h.Auth.WithBasic(next)
 }
 
 func (h *OPDSHandler) baseURL(r *http.Request) string {
@@ -94,11 +64,10 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Format(time.RFC3339)
 
 	rows, err := h.DB.Query(`
-		SELECT w.id, w.original_title, COALESCE(p.name, 'Unknown Author'), COALESCE(e.cover_url, ''),
-		       COALESCE(w.format, ''), COALESCE(w.file_path, ''), w.created_at
-		FROM works w
-		LEFT JOIN person p ON w.author_id = p.id
-		LEFT JOIN editions e ON w.id = e.work_id
+		SELECT w.id, w.original_title, ` + authorLabel + `, COALESCE(wp.cover_url, ''),
+		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at, wp.file_id, COALESCE(wp.file_mode, '')
+		` + catalogFrom + `
+		WHERE w.retired_at IS NULL
 		ORDER BY w.id DESC LIMIT 50
 	`)
 	if err != nil {
@@ -112,7 +81,9 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 		var id int
 		var title, author, coverURL, format, filePath string
 		var createdAt sql.NullTime
-		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &filePath, &createdAt); err != nil {
+		var fileID sql.NullInt64
+		var mode string
+		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &filePath, &createdAt, &fileID, &mode); err != nil {
 			continue
 		}
 		updated := now
@@ -133,8 +104,7 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 			acqType = "audio/mpeg"
 		}
 
-		filename := filepath.Base(filePath)
-		escapedFilename := url.PathEscape(filename)
+		href := fileHref(fileID, mode, filePath)
 
 		if coverURL == "" {
 			coverURL = "/covers/placeholder.svg"
@@ -146,7 +116,7 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 		entries.WriteString(fmt.Sprintf("    <updated>%s</updated>\n", updated))
 		entries.WriteString(fmt.Sprintf("    <author><name>%s</name></author>\n", html.EscapeString(author)))
 		entries.WriteString(fmt.Sprintf("    <dc:identifier>%d</dc:identifier>\n", id))
-		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s/files/%s\" type=\"%s\"/>\n", base, escapedFilename, acqType))
+		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s%s\" type=\"%s\"/>\n", base, href, acqType))
 		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/image\" href=\"%s%s\" type=\"image/jpeg\"/>\n", base, coverURL))
 		entries.WriteString(fmt.Sprintf("  </entry>\n"))
 	}
@@ -178,12 +148,11 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Format(time.RFC3339)
 
 	rows, err := h.DB.Query(`
-		SELECT w.id, w.original_title, COALESCE(p.name, 'Unknown Author'), COALESCE(e.cover_url, ''),
-		       COALESCE(w.format, ''), COALESCE(w.file_path, ''), w.created_at
-		FROM works w
-		LEFT JOIN person p ON w.author_id = p.id
-		LEFT JOIN editions e ON w.id = e.work_id
-		WHERE LOWER(w.original_title) LIKE LOWER($1) OR LOWER(COALESCE(p.name, '')) LIKE LOWER($1)
+		SELECT w.id, w.original_title, `+authorLabel+`, COALESCE(wp.cover_url, ''),
+		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at, wp.file_id, COALESCE(wp.file_mode, '')
+		`+catalogFrom+`
+		WHERE w.retired_at IS NULL
+		  AND (LOWER(w.original_title) LIKE LOWER($1) OR `+authorMatches("$1")+`)
 		ORDER BY w.id DESC LIMIT 50
 	`, "%"+query+"%")
 	if err != nil {
@@ -198,7 +167,9 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 		var id int
 		var title, author, coverURL, format, filePath string
 		var createdAt sql.NullTime
-		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &filePath, &createdAt); err != nil {
+		var fileID sql.NullInt64
+		var mode string
+		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &filePath, &createdAt, &fileID, &mode); err != nil {
 			continue
 		}
 		count++
@@ -218,8 +189,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 			acqType = "text/markdown"
 		}
 
-		filename := filepath.Base(filePath)
-		escapedFilename := url.PathEscape(filename)
+		href := fileHref(fileID, mode, filePath)
 
 		if coverURL == "" {
 			coverURL = "/covers/placeholder.svg"
@@ -231,7 +201,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 		entries.WriteString(fmt.Sprintf("    <updated>%s</updated>\n", updated))
 		entries.WriteString(fmt.Sprintf("    <author><name>%s</name></author>\n", html.EscapeString(author)))
 		entries.WriteString(fmt.Sprintf("    <dc:identifier>%d</dc:identifier>\n", id))
-		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s/files/%s\" type=\"%s\"/>\n", base, escapedFilename, acqType))
+		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s%s\" type=\"%s\"/>\n", base, href, acqType))
 		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/image\" href=\"%s%s\" type=\"image/jpeg\"/>\n", base, coverURL))
 		entries.WriteString(fmt.Sprintf("  </entry>\n"))
 	}

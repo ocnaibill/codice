@@ -1,15 +1,15 @@
 package database
 
-import(
+import (
 	"context"
 	"log"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/ocnaibill/codice/backend/internal/config"
+	"github.com/redis/go-redis/v9"
 )
 
-func ConnectRedis() *redis.Client{
+func ConnectRedis() *redis.Client {
 	redisURL := config.Get("REDIS_URL", "redis://localhost:6379/0")
 
 	opts, err := redis.ParseURL(redisURL)
@@ -23,7 +23,7 @@ func ConnectRedis() *redis.Client{
 	defer cancel()
 
 	_, err = client.Ping(ctx).Result()
-	if err != nil{
+	if err != nil {
 		log.Fatalf("	Error connecting to Redis: %v", err)
 	}
 

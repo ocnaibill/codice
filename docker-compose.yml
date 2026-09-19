@@ -8,7 +8,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codice_secret}
       POSTGRES_DB: ${POSTGRES_DB:-codice_db}
     ports:
-      - "5432:5432"
+      # Loopback only: the backend and worker run on this machine. Publishing on
+      # all interfaces would expose the database to the whole network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - codice_pgdata:/var/lib/postgresql/data
     networks:
@@ -19,8 +21,12 @@ services:
   redis:
     image: redis:7-alpine
     container_name: codice_redis
+    # Set REDIS_PASSWORD (and put it in REDIS_URL, see .env.example) to require
+    # authentication. Left empty, Redis has no password, so it is only safe
+    # because the port is bound to loopback below.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-}"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     networks:
       - codice_network
     restart: unless-stopped

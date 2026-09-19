@@ -1,22 +1,53 @@
-import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, authenticatedUrl } from '../../../lib/api';
 
 export function EditBookModal({ book, onClose }) {
   const queryClient = useQueryClient();
 
+  // The list card does not carry ISBN, publisher, language, description or the
+  // locks, so the form starts from the full record. Saving before it loads would
+  // send empty values and clear those fields.
+  const { data: full, isLoading: isLoadingFull } = useQuery({
+    queryKey: ['work-edit', book.id],
+    queryFn: async () => (await api.get(`/works/${book.id}`)).data,
+  });
+  const { data: candidates = [] } = useQuery({
+    queryKey: ['work-candidates', book.id],
+    queryFn: async () => (await api.get(`/works/${book.id}/candidates`)).data.data,
+  });
+
   const [title, setTitle] = useState(book.title || '');
   const [author, setAuthor] = useState(book.author || '');
-  const [series, setSeries] = useState(book.series || '');
-  const [seriesIndex, setSeriesIndex] = useState(book.seriesIndex || '');
-  const [isbn, setIsbn] = useState(book.isbn || '');
-  const [publisher, setPublisher] = useState(book.publisher || '');
-  const [language, setLanguage] = useState(book.language || '');
-  const [description, setDescription] = useState(book.description || '');
+  const [series, setSeries] = useState('');
+  const [seriesIndex, setSeriesIndex] = useState('');
+  const [isbn, setIsbn] = useState('');
+  const [publisher, setPublisher] = useState('');
+  const [language, setLanguage] = useState('');
+  const [publicationDate, setPublicationDate] = useState('');
+  const [description, setDescription] = useState('');
   const [tagsInput, setTagsInput] = useState(book.tags ? book.tags.join(', ') : '');
-  const [titleLock, setTitleLock] = useState(book.titleLock || false);
-  const [authorLock, setAuthorLock] = useState(book.authorLock || false);
-  const [coverLock, setCoverLock] = useState(book.coverLock || false);
+  const [locks, setLocks] = useState({});
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    if (!full || initialized.current) return;
+    initialized.current = true;
+    const m = full.metadata || {};
+    setTitle(full.title || '');
+    setAuthor(full.author === 'Unknown Author' ? '' : full.author || '');
+    setSeries(m.series || '');
+    setSeriesIndex(m.seriesIndex ? String(m.seriesIndex) : '');
+    setIsbn(m.isbn || '');
+    setPublisher(m.publisher || '');
+    setLanguage(m.language || '');
+    setPublicationDate(m.publicationDate || '');
+    setDescription(m.description || '');
+    setTagsInput((full.tags || []).join(', '));
+    setLocks(m.locks || {});
+  }, [full]);
+
+  const setLock = (field, value) => setLocks((prev) => ({ ...prev, [field]: value }));
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   // --- Metadata Search ---
@@ -87,17 +118,38 @@ export function EditBookModal({ book, onClose }) {
       title,
       author,
       series,
-      series_index: seriesIndex ? parseFloat(seriesIndex) : undefined,
+      series_index: seriesIndex ? parseFloat(seriesIndex) : 0,
       isbn,
       publisher,
       language,
+      publication_date: publicationDate,
       description,
       tags: cleanTags,
-      title_lock: titleLock,
-      author_lock: authorLock,
-      cover_lock: coverLock,
+      title_lock: !!locks.title,
+      author_lock: !!locks.author,
+      series_lock: !!locks.series,
+      cover_lock: !!locks.cover,
+      isbn_lock: !!locks.isbn,
+      publisher_lock: !!locks.publisher,
+      language_lock: !!locks.language,
+      description_lock: !!locks.description,
+      publication_date_lock: !!locks.publication_date,
     });
   };
+
+  // Suggestions from external providers: nothing changes until an admin accepts.
+  const decideMutation = useMutation({
+    mutationFn: async ({ id, verb }) => {
+      await api.post(`/works/${book.id}/candidates/${id}/${verb}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['work-candidates', book.id] });
+      queryClient.invalidateQueries({ queryKey: ['work-edit', book.id] });
+      queryClient.invalidateQueries({ queryKey: ['works'] });
+      // Reload the form from the record the server now holds.
+      initialized.current = false;
+    },
+  });
 
   const handleDelete = () => {
     if (isConfirmingDelete) {
@@ -108,7 +160,7 @@ export function EditBookModal({ book, onClose }) {
     }
   };
 
-  const isPending = updateMutation.isPending || deleteMutation.isPending;
+  const isPending = updateMutation.isPending || deleteMutation.isPending || isLoadingFull;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -118,6 +170,7 @@ export function EditBookModal({ book, onClose }) {
           <div className="flex items-center gap-3">
             <button 
               type="button"
+              title="Hides the book from the library. Files, notes and progress are kept and it can be restored."
               onClick={handleDelete}
               disabled={isPending}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
@@ -126,7 +179,7 @@ export function EditBookModal({ book, onClose }) {
                   : 'bg-zinc-950 text-red-400 border border-red-900/50 hover:bg-red-950 hover:border-red-800'
               }`}
             >
-              {deleteMutation.isPending ? 'Deleting...' : (isConfirmingDelete ? 'Are you sure?' : 'Delete Book')}
+              {deleteMutation.isPending ? 'Retiring...' : (isConfirmingDelete ? 'Are you sure?' : 'Retire from Library')}
             </button>
             <button 
               onClick={onClose} 
@@ -266,26 +319,47 @@ export function EditBookModal({ book, onClose }) {
               disabled={isPending} />
           </div>
 
-          {/* Lock toggles */}
-          <div className="flex items-center justify-between gap-4 border-t border-zinc-800/80 pt-4">
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="titleLock" checked={titleLock}
-                onChange={(e) => setTitleLock(e.target.checked)}
-                className="rounded bg-zinc-800 border-zinc-700 text-blue-600 focus:ring-blue-500" />
-              <label htmlFor="titleLock" className="text-xs text-zinc-400">🔒 Title</label>
+          {/* Suggestions from external providers */}
+          {candidates.length > 0 && (
+            <div className="border-t border-zinc-800/80 pt-4">
+              <p className="text-xs font-medium text-amber-300 mb-2">💡 Suggestions ({candidates.length}) — nothing changes until you accept</p>
+              <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
+                {candidates.map((c) => (
+                  <div key={c.id} className="flex items-start justify-between gap-3 bg-zinc-950 border border-zinc-800 rounded-md p-2">
+                    <div className="text-xs min-w-0">
+                      <span className="text-zinc-500">{c.field} · {c.source}</span>
+                      <p className="text-zinc-200 break-words">{c.field === 'tags' ? JSON.parse(c.value).join(', ') : c.value}</p>
+                      {c.current && c.field !== 'tags' && <p className="text-zinc-600 break-words">now: {c.current}</p>}
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button type="button" disabled={decideMutation.isPending}
+                        onClick={() => decideMutation.mutate({ id: c.id, verb: 'accept' })}
+                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50">Accept</button>
+                      <button type="button" disabled={decideMutation.isPending}
+                        onClick={() => decideMutation.mutate({ id: c.id, verb: 'reject' })}
+                        className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 disabled:opacity-50">Reject</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="authorLock" checked={authorLock}
-                onChange={(e) => setAuthorLock(e.target.checked)}
-                className="rounded bg-zinc-800 border-zinc-700 text-blue-600 focus:ring-blue-500" />
-              <label htmlFor="authorLock" className="text-xs text-zinc-400">🔒 Author</label>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="coverLock" checked={coverLock}
-                onChange={(e) => setCoverLock(e.target.checked)}
-                className="rounded bg-zinc-800 border-zinc-700 text-blue-600 focus:ring-blue-500" />
-              <label htmlFor="coverLock" className="text-xs text-zinc-400">🔒 Cover</label>
-            </div>
+          )}
+
+          {/* Lock toggles: a locked field is never changed by automatic extraction.
+              A field you edit is locked when you save. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-zinc-800/80 pt-4">
+            {[
+              ['title', 'Title'], ['author', 'Author'], ['series', 'Series'], ['cover', 'Cover'],
+              ['isbn', 'ISBN'], ['publisher', 'Publisher'], ['language', 'Language'], ['description', 'Description'],
+            ].map(([field, label]) => (
+              <div key={field} className="flex items-center gap-2">
+                <input type="checkbox" id={`lock-${field}`} checked={!!locks[field]}
+                  onChange={(e) => setLock(field, e.target.checked)}
+                  disabled={isPending}
+                  className="rounded bg-zinc-800 border-zinc-700 text-blue-600 focus:ring-blue-500" />
+                <label htmlFor={`lock-${field}`} className="text-xs text-zinc-400">🔒 {label}</label>
+              </div>
+            ))}
           </div>
 
           {(updateMutation.isError || deleteMutation.isError) && (

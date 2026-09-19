@@ -1,6 +1,6 @@
 package database
 
-import(
+import (
 	"context"
 	"log"
 	"time"
@@ -9,7 +9,7 @@ import(
 	"github.com/ocnaibill/codice/backend/internal/config"
 )
 
-func ConnectPostgres() *pgx.Conn{
+func ConnectPostgres() *pgx.Conn {
 	dbURL := config.Get("DATABASE_URL", "postgres://codice_user:codice_secret@localhost:5432/codice_db?sslmode=disable")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -21,7 +21,7 @@ func ConnectPostgres() *pgx.Conn{
 	}
 
 	err = conn.Ping(ctx)
-	if err != nil{
+	if err != nil {
 		log.Fatalf("	PostgreSQL isn't responding: %v", err)
 	}
 
