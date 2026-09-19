@@ -11,15 +11,29 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 )
 
-// SessionTTL is how long a login lasts unless revoked earlier.
-const SessionTTL = 7 * 24 * time.Hour
+const (
+	defaultSessionTTL = 7 * 24 * time.Hour
+	maxSessionHours   = 24 * 365 // longer than a year is treated as a mistake
+)
+
+// TTL is how long a login lasts unless revoked earlier: JWT_EXPIRATION_HOURS
+// when it is a sensible whole number of hours, otherwise 7 days.
+func TTL() time.Duration {
+	h, err := strconv.Atoi(os.Getenv("JWT_EXPIRATION_HOURS"))
+	if err != nil || h <= 0 || h > maxSessionHours {
+		return defaultSessionTTL
+	}
+	return time.Duration(h) * time.Hour
+}
 
 // AppTokenPrefix marks app tokens so they are recognisable in configs and
 // secret scanners.
@@ -36,7 +50,7 @@ func (s *Store) CreateSession(ctx context.Context, userID, userAgent string) (id
 	if len(userAgent) > 255 {
 		userAgent = userAgent[:255]
 	}
-	expires = time.Now().Add(SessionTTL)
+	expires = time.Now().Add(TTL())
 	err = s.DB.QueryRowContext(ctx,
 		`INSERT INTO sessions (user_id, expires_at, user_agent) VALUES ($1, $2, $3) RETURNING id`,
 		userID, expires, userAgent).Scan(&id)

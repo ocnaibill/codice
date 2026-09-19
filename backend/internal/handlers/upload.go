@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -51,6 +52,71 @@ func resolveStoragePath() string {
 		storagePath = filepath.Join(candidate, storagePath)
 	}
 	return storagePath
+}
+
+var errOutsideImportRoots = errors.New("directory is outside the allowed import roots")
+
+// importRoots lists the directories bulk import may read: the default
+// <storage>/import first, then absolute paths from CODICE_IMPORT_ROOTS
+// (separated like PATH). The owner will manage these from the interface later
+// (DEC-035); until then they come from configuration.
+func importRoots(storagePath string) []string {
+	roots := []string{filepath.Join(storagePath, "import")}
+	for _, r := range filepath.SplitList(os.Getenv("CODICE_IMPORT_ROOTS")) {
+		if r = strings.TrimSpace(r); r != "" && filepath.IsAbs(r) {
+			roots = append(roots, filepath.Clean(r))
+		}
+	}
+	return roots
+}
+
+// resolveImportDir returns the real path of the requested directory if it is
+// inside one of the roots. An empty request means the default root and a
+// relative one is taken relative to it. Symlinks are resolved on both sides, so
+// a link inside a root cannot lead outside it.
+func resolveImportDir(requested string, roots []string) (string, error) {
+	if requested == "" {
+		requested = roots[0]
+	} else if !filepath.IsAbs(requested) {
+		requested = filepath.Join(roots[0], requested)
+	}
+	real, err := filepath.EvalSymlinks(filepath.Clean(requested))
+	if err != nil {
+		if os.IsNotExist(err) {
+			// A path that does not exist yet can still be refused for where it points.
+			if !lexicallyInside(filepath.Clean(requested), roots) {
+				return "", errOutsideImportRoots
+			}
+			return "", os.ErrNotExist
+		}
+		return "", err
+	}
+	for _, root := range roots {
+		realRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			continue
+		}
+		if isWithin(real, realRoot) {
+			return real, nil
+		}
+	}
+	return "", errOutsideImportRoots
+}
+
+func lexicallyInside(path string, roots []string) bool {
+	for _, root := range roots {
+		if isWithin(path, root) {
+			return true
+		}
+	}
+	return false
+}
+
+// isWithin reports whether path is root or below it (not a sibling that merely
+// shares a name prefix).
+func isWithin(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // UploadHandler holds Redis and PostgreSQL connections
@@ -169,29 +235,40 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 	json.NewDecoder(r.Body).Decode(&req)
 
 	storagePath := resolveStoragePath()
+	roots := importRoots(storagePath)
 
-	targetDir := req.Directory
-	if targetDir == "" {
-		targetDir = filepath.Join(storagePath, "import")
+	// The default import directory is created on first use; directories named in
+	// a request never are.
+	if req.Directory == "" {
+		if err := os.MkdirAll(roots[0], 0755); err != nil {
+			http.Error(w, "Error preparing import directory", http.StatusInternalServerError)
+			return
+		}
 	}
 
-	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
-		os.MkdirAll(targetDir, 0755)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(BulkImportResponse{
-			Message:  fmt.Sprintf("Import directory created at '%s'. Place files there and run bulk import again.", targetDir),
-			Scanned:  0,
-			Enqueued: 0,
-			Errors:   0,
-		})
+	targetDir, err := resolveImportDir(req.Directory, roots)
+	switch {
+	case errors.Is(err, errOutsideImportRoots):
+		http.Error(w, "Forbidden: directory is outside the allowed import roots", http.StatusForbidden)
+		return
+	case errors.Is(err, os.ErrNotExist):
+		http.Error(w, "Directory not found", http.StatusNotFound)
+		return
+	case err != nil:
+		http.Error(w, "Error resolving import directory", http.StatusInternalServerError)
 		return
 	}
 
 	var scannedCount, enqueuedCount, errorCount int
 	ctx := context.Background()
 
-	err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
+			return nil
+		}
+		// A symlink named like a book could expose any file the server can
+		// read; only regular files are imported.
+		if !info.Mode().IsRegular() {
 			return nil
 		}
 

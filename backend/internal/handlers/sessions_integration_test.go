@@ -313,3 +313,60 @@ func TestRevokeAllForUser_EndsSessionsAndAppTokens(t *testing.T) {
 		t.Errorf("another user's session was affected: %d", rec.Code)
 	}
 }
+
+func hashCost(t *testing.T, db *sql.DB, username string) (int, string) {
+	t.Helper()
+	var hash string
+	if err := db.QueryRow(`SELECT password_hash FROM users WHERE username = $1`, username).Scan(&hash); err != nil {
+		t.Fatal(err)
+	}
+	cost, err := bcrypt.Cost([]byte(hash))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cost, hash
+}
+
+func TestLogin_UpgradesOldPasswordHashesOnSuccess(t *testing.T) {
+	s := newAuthStack(t)
+
+	old, _ := bcrypt.GenerateFromPassword([]byte("s3cret"), 10)
+	s.db.Exec(`INSERT INTO users (username, email, password_hash, role) VALUES ('legacy','l@x',$1,'reader')`, string(old))
+
+	// A wrong password must not touch the stored hash.
+	s.req("POST", "/auth/login", "", `{"username":"legacy","password":"wrong"}`)
+	if cost, _ := hashCost(t, s.db, "legacy"); cost != 10 {
+		t.Fatalf("failed login changed the hash cost to %d", cost)
+	}
+
+	s.login(t, "legacy", "s3cret")
+	cost, upgraded := hashCost(t, s.db, "legacy")
+	if cost != bcryptCost {
+		t.Errorf("hash cost after login = %d, want %d", cost, bcryptCost)
+	}
+
+	// The upgraded hash still verifies, and a current-cost hash is left alone.
+	s.login(t, "legacy", "s3cret")
+	if _, again := hashCost(t, s.db, "legacy"); again != upgraded {
+		t.Error("a hash already at the current cost was rewritten")
+	}
+}
+
+func TestNewAccountsUseTheCurrentBcryptCost(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test_secret_key_for_testing_12345678")
+	t.Setenv("ALLOW_REGISTRATION", "true")
+	db := migratedDB(t)
+	h := &AuthHandler{DB: db, Sessions: &sessions.Store{DB: db}}
+
+	rec := httptest.NewRecorder()
+	h.Register(rec, httptest.NewRequest("POST", "/auth/register", strings.NewReader(`{"username":"nova","password":"pw"}`)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register: %d", rec.Code)
+	}
+	if cost, _ := hashCost(t, db, "nova"); cost != bcryptCost {
+		t.Errorf("registered hash cost = %d, want %d", cost, bcryptCost)
+	}
+	if bcryptCost < 12 {
+		t.Errorf("bcryptCost = %d; the minimum accepted by this project is 12", bcryptCost)
+	}
+}

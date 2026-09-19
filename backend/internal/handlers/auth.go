@@ -44,7 +44,11 @@ func burnPasswordCheck(password string) {
 	bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 }
 
-const bcryptCost = 10
+// bcryptCost is the work factor for new password hashes. 12 costs roughly a
+// quarter of a second on current hardware, which is negligible for a person
+// logging in and expensive for someone guessing offline; login attempts are
+// also rate limited. Older, cheaper hashes are upgraded on the next login.
+const bcryptCost = 12
 
 // invalidLoginMessage is the single answer for an unknown user, a wrong
 // password, an account without a local password, and a blocked account, so the
@@ -141,6 +145,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.upgradePasswordHash(id, passwordHash, req.Password)
+
 	tokenString, err := h.newSessionToken(r, id)
 	if err != nil {
 		http.Error(w, "Error generating authentication token", http.StatusInternalServerError)
@@ -149,6 +155,21 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(AuthResponse{Token: tokenString})
+}
+
+// upgradePasswordHash re-hashes a correct password at the current cost when the
+// stored hash is cheaper. It is best effort: a failure never blocks the login,
+// and the compare-and-set keeps it from overwriting a password changed meanwhile.
+func (h *AuthHandler) upgradePasswordHash(userID, oldHash, password string) {
+	if cost, err := bcrypt.Cost([]byte(oldHash)); err != nil || cost >= bcryptCost {
+		return
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+	if err != nil {
+		return
+	}
+	h.DB.Exec(`UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`,
+		string(newHash), userID, oldHash)
 }
 
 // Logout revokes the current session.
