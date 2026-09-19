@@ -61,13 +61,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	media := &MediaHandler{DB: db}
 
 	r := chi.NewRouter()
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			ctx := context.WithValue(req.Context(), middleware.UserIDKey, req.Header.Get("X-Test-User"))
-			ctx = context.WithValue(ctx, middleware.UserRoleKey, req.Header.Get("X-Test-Role"))
-			next.ServeHTTP(w, req.WithContext(ctx))
-		})
-	})
+	r.Use(identityFromHeaders)
 	r.Get("/works", lib.GetWorks)
 	r.Get("/works/{id}", lib.GetWorkByID)
 	r.Put("/works/{id}", lib.UpdateWork)
@@ -87,6 +81,15 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/opds/search", opds.SearchFeed)
 
 	return &catalogStack{t: t, db: db, router: r, storage: storage}
+}
+
+// identityFromHeaders stands in for the authentication middleware in tests.
+func identityFromHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, req.Header.Get("X-Test-User"))
+		ctx = context.WithValue(ctx, middleware.UserRoleKey, req.Header.Get("X-Test-Role"))
+		next.ServeHTTP(w, req.WithContext(ctx))
+	})
 }
 
 func (s *catalogStack) do(a actor, method, target, body string) *httptest.ResponseRecorder {

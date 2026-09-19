@@ -33,10 +33,17 @@ func testRouter(t *testing.T) http.Handler {
 	t.Helper()
 	t.Setenv("JWT_SECRET", testSecret)
 	auth := middleware.Authenticator{Sessions: fakeSessions}
+	notFound := func(ctx context.Context, rel string) (handlers.FileAccess, error) {
+		return handlers.FileAccess{}, handlers.ErrFileNotFound
+	}
 	return newRouter(routerDeps{
 		Auth:        auth,
 		WS:          &handlers.WsHandler{Auth: auth},
 		StoragePath: t.TempDir(),
+		// Every path is unknown: enough to tell "past authentication" (404)
+		// from "refused" (401), without a database.
+		FileLookup:  notFound,
+		CoverLookup: func(ctx context.Context, name string) (handlers.FileAccess, error) { return handlers.FileAccess{}, nil },
 	})
 }
 

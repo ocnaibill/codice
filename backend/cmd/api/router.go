@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -25,6 +24,9 @@ type routerDeps struct {
 	Auth        appMiddleware.Authenticator
 	WS          *handlers.WsHandler
 	StoragePath string
+	// Optional overrides, so route tests can run without a database.
+	FileLookup  handlers.FileLookup
+	CoverLookup handlers.FileLookup
 }
 
 // newRouter wires every HTTP route. Keeping it separate from main lets tests
@@ -148,23 +150,24 @@ func newRouter(d routerDeps) http.Handler {
 	// send a bearer token) and the short-lived ?rt= token used by <img>/<a>.
 	authWithBasic := d.Auth.AssetsWithBasic
 
-	// Helper to serve static files with Cache-Control headers (PERF-04)
-	fsCovers := http.StripPrefix("/covers/", http.FileServer(http.Dir(coversPath)))
-	r.With(authWithBasic).Get("/covers/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Cache images for 7 days, revalidate
-		w.Header().Set("Cache-Control", "public, max-age=604800, must-revalidate")
-		if strings.HasSuffix(r.URL.Path, ".svg") {
-			w.Header().Set("Content-Type", "image/svg+xml")
-		}
-		fsCovers.ServeHTTP(w, r)
-	}))
-
-	fsFiles := http.StripPrefix("/files/", http.FileServer(http.Dir(d.StoragePath)))
-	r.With(authWithBasic).Get("/files/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Do not cache original files (could be large, user might delete)
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		fsFiles.ServeHTTP(w, r)
-	}))
+	// Files are served only when the catalog owns the path, and a retired work's
+	// files only to owner and admin. Covers cache for a week (PERF-04); original
+	// files are never cached (they can be large and can be removed).
+	fileLookup, coverLookup := d.FileLookup, d.CoverLookup
+	if fileLookup == nil {
+		fileLookup = handlers.NewFileLookup(db)
+	}
+	if coverLookup == nil {
+		coverLookup = handlers.NewCoverLookup(db)
+	}
+	r.With(authWithBasic).Method("GET", "/covers/*", &handlers.FilesHandler{
+		Root: coversPath, Lookup: coverLookup,
+		CacheHeader: "public, max-age=604800, must-revalidate",
+	})
+	r.With(authWithBasic).Method("GET", "/files/*", &handlers.FilesHandler{
+		Root: d.StoragePath, Lookup: fileLookup,
+		CacheHeader: "no-cache, no-store, must-revalidate",
+	})
 
 	return r
 }
