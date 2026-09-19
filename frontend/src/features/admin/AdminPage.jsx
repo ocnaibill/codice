@@ -3,12 +3,14 @@ import { JobsTab } from './components/JobsTab';
 import { StorageTab } from './components/StorageTab';
 import { TrashTab } from './components/TrashTab';
 import { DuplicatesTab } from './components/DuplicatesTab';
+import { AccountsTab } from './components/AccountsTab';
 
 const TABS = [
   ['jobs', 'Trabalhos'],
   ['storage', 'Armazenamento'],
   ['trash', 'Lixeira'],
   ['duplicates', 'Duplicatas e OCR'],
+  ['accounts', 'Contas'],
 ];
 
 /** The administration area. Owner and admin see it; some actions are the owner's alone. */
@@ -44,6 +46,7 @@ export function AdminPage({ isOwner, onClose }) {
         {tab === 'storage' && <StorageTab isOwner={isOwner} />}
         {tab === 'trash' && <TrashTab isOwner={isOwner} />}
         {tab === 'duplicates' && <DuplicatesTab />}
+        {tab === 'accounts' && <AccountsTab />}
       </div>
     </div>
   );

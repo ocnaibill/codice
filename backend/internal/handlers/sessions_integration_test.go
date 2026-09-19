@@ -23,6 +23,7 @@ type authStack struct {
 	router   http.Handler
 	authH    *AuthHandler
 	lastRole string
+	users    *UsersHandler
 }
 
 func newAuthStack(t *testing.T) *authStack {
@@ -33,6 +34,7 @@ func newAuthStack(t *testing.T) *authStack {
 	a := middleware.Authenticator{Sessions: st.CheckSession, Basic: st.VerifyAppToken}
 	s := &authStack{db: db, store: st, authH: &AuthHandler{DB: db, Sessions: st}}
 	tokens := &AppTokensHandler{Sessions: st}
+	s.users = &UsersHandler{DB: db}
 
 	probe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.lastRole, _ = r.Context().Value(middleware.UserRoleKey).(string)
@@ -47,6 +49,9 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Post("/auth/app-tokens", tokens.Create)
 	r.With(a.Middleware).Get("/auth/app-tokens", tokens.List)
 	r.With(a.Middleware).Delete("/auth/app-tokens/{id}", tokens.Revoke)
+	r.With(a.Middleware).Get("/users", s.users.List)
+	r.With(a.Middleware).Post("/users/{id}/block", s.users.Block)
+	r.With(a.Middleware).Post("/users/{id}/unblock", s.users.Unblock)
 	r.With(a.Middleware).Get("/probe", probe)
 	r.With(a.AssetsWithBasic).Get("/files/probe", probe)
 	s.router = r

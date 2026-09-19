@@ -26,6 +26,7 @@ export const useOrphans = list('orphans', '/admin/storage/orphans');
 export const useTrash = list('trash', '/admin/trash');
 export const useDuplicates = list('duplicates', '/admin/duplicates');
 export const useOcr = list('ocr', '/admin/ocr');
+export const useAccounts = list('accounts', '/users');
 
 /** A POST/PUT/DELETE that refreshes the admin lists when it succeeds. */
 function useAdminAction(run) {
@@ -69,3 +70,6 @@ export const useScanDuplicates = () => useAdminAction(() => api.post('/admin/dup
 export const useDismissDuplicate = () => useAdminAction((id) => api.post(`/admin/duplicates/${id}/dismiss`));
 export const useLinkDuplicate = () =>
   useAdminAction(({ id, keep }) => api.post(`/admin/duplicates/${id}/link`, { keep, confirm: true }));
+
+export const useBlockAccount = () => useAdminAction((id) => api.post(`/users/${id}/block`));
+export const useUnblockAccount = () => useAdminAction((id) => api.post(`/users/${id}/unblock`));

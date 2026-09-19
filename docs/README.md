@@ -73,7 +73,10 @@ Para voltar: `docker exec -i codice_db pg_restore -U codice_user -d codice_db --
 - Ensaio básico da aplicação inteira realizado após o merge, inclusive com Redis ausente na inicialização. Permanecem os ensaios de falhas operacionais e os ajustes de interface descritos no relatório de validação.
 - Da Fase 1: `rt` e `ticket` aparecem no log de acesso do chi (risco baixo); `POSTGRES_PASSWORD` ainda tem valor padrão em `docker-compose.full.yml`; CORS aceita uma única origem; não há MFA.
 
-**Próximo passo:** revisar as correções da validação e seguir para a **Fase 4**, em fatias pequenas, começando por listagem e bloqueio/desbloqueio de contas. Convites, exclusão, transferência, redefinição e LDAP vêm depois. Só a troca de papel existe hoje; o leitor usado no ensaio foi semeado no banco isolado. A Fase 4 deve ir em branch e PR próprios.
+**Fase 4 (contas e governança): em andamento**, no branch `feat/fase4-contas`, em fatias pequenas.
+
+- *Fatia 1, entregue:* `GET /users` (owner e admin) lista as contas sem nada secreto e diz, por conta, se quem pede pode bloqueá-la (`canBlock`), então a regra fica só no servidor. `POST /users/{id}/block` e `/unblock` seguem a política de RN-022: o admin só bloqueia leitores; ninguém bloqueia o dono nem a si mesmo; o papel vem do banco. Bloquear (DEC-060) marca a conta, revoga sessões e tokens de aplicativo **na mesma transação** e fecha os WebSockets abertos da conta; nada é apagado e o bloqueio se desfaz, mas o desbloqueio não ressuscita sessões nem tokens antigos. Repetir a ação é inofensivo e a auditoria (`user.block`, `user.unblock`) registra só a mudança. A administração ganhou a aba "Contas", com confirmação ao bloquear.
+- *Próximas fatias, em ordem sugerida:* convites de uso único (7 dias, revogáveis, e-mail opcional; DEC-055, DEC-059), criação de conta pelo admin, exclusão de conta separada do bloqueio, pedidos de redefinição de senha aprovados por owner ou admin (DEC-063), transferência de titularidade em duas etapas com comando local de recuperação (DEC-057, DEC-058), e por fim o LDAP no mesmo formulário de login (DEC-072 a 075).
 
 ## Como rodar
 
@@ -97,7 +100,7 @@ export TEST_DATABASE_URL='postgres://postgres:test@127.0.0.1:55432/codice_test?s
 cd backend && go vet ./... && go test ./...
 ```
 
-O worker: `cd worker && venv/bin/python -m pytest` (82 testes). O frontend: `cd frontend && npm test` (59 testes). `make test` executa as três suítes e agora propaga falhas. Não use o banco de desenvolvimento como `TEST_DATABASE_URL`. Sem essa variável, os testes Go de integração continuam sendo ignorados: sucesso de `make test` sozinho não comprova integração.
+O worker: `cd worker && venv/bin/python -m pytest` (82 testes). O frontend: `cd frontend && npm test` (65 testes). `make test` executa as três suítes e agora propaga falhas. Não use o banco de desenvolvimento como `TEST_DATABASE_URL`. Sem essa variável, os testes Go de integração continuam sendo ignorados: sucesso de `make test` sozinho não comprova integração.
 
 Os testes semeiam obras com `testdb.AddWork` (`backend/internal/testdb`), que grava obra, edição, arquivo, local e autor como a aplicação faz.
 

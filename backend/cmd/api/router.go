@@ -40,7 +40,7 @@ func newRouter(d routerDeps) http.Handler {
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
-	usersHandler := &handlers.UsersHandler{DB: db}
+	usersHandler := &handlers.UsersHandler{DB: db, Disconnect: d.WS.DisconnectUser}
 	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
 	dupesHandler := &handlers.DuplicatesHandler{DB: db}
 	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
@@ -155,7 +155,11 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/admin/duplicates/{id}/dismiss", dupesHandler.Dismiss)
 	r.With(staff).Post("/admin/duplicates/{id}/link", dupesHandler.Link)
 
-	// Account roles
+	// Accounts: owner and admins list and block (the policy decides who may act on
+	// whom); only the owner changes roles.
+	r.With(staff).Get("/users", usersHandler.List)
+	r.With(staff).Post("/users/{id}/block", usersHandler.Block)
+	r.With(staff).Post("/users/{id}/unblock", usersHandler.Unblock)
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)
 
 	// Favorites, notes/quotes, and dashboard stats
