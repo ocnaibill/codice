@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Navbar } from './components/Navbar';
-import { BookGrid } from './features/library/components/BookGrid';
+import { AppShell } from './components/layout/AppShell';
+import { HomePage } from './pages/HomePage';
 import { Reader } from './features/reader/components/Reader';
 import { useGlobalStore } from './store/useGlobalStore';
 import { UploadModal } from './features/upload/components/UploadModal';
@@ -16,6 +16,9 @@ function App() {
 
   const queryClient = useQueryClient();
   const activeBookId = useGlobalStore((state) => state.activeBookId);
+  const closeBook = useGlobalStore((state) => state.closeBook);
+  const searchQuery = useGlobalStore((state) => state.searchQuery);
+  const setSearchQuery = useGlobalStore((state) => state.setSearchQuery);
 
   useEffect(() => {
     const checkStatusAndToken = async () => {
@@ -120,7 +123,7 @@ function App() {
 
   if (checkingStatus) {
     return (
-      <div className="flex h-screen items-center justify-center bg-zinc-950 text-zinc-400 font-mono text-sm">
+      <div className="flex h-screen items-center justify-center bg-surface text-ink-soft font-mono text-sm">
         Initializing Códice environment...
       </div>
     );
@@ -142,29 +145,36 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col relative">
+    <div className="relative">
       {/* Toast Notification Banner */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-xl border text-sm font-medium transition-all duration-300 flex items-center gap-3 ${
-          toast.type === 'error' 
-            ? 'bg-red-950/90 text-red-200 border-red-800' 
-            : 'bg-zinc-900/90 text-emerald-300 border-emerald-800/60 backdrop-blur'
+          toast.type === 'error'
+            ? 'bg-red-50 text-red-700 border-red-200'
+            : 'bg-white text-success border-success/30 backdrop-blur'
         }`}>
           <span>{toast.message}</span>
-          <button 
+          <button
             onClick={() => setToast(null)}
-            className="text-zinc-500 hover:text-zinc-300 text-xs ml-2"
+            className="text-ink-faint hover:text-ink text-xs ml-2"
           >
             ✕
           </button>
         </div>
       )}
-      <Navbar onLogout={handleLogout} />
       <UploadModal />
-      <main className="flex-1">
-        {/* Virtual routing view switch */}
-        {activeBookId ? <Reader /> : <BookGrid />}
-      </main>
+      {activeBookId ? (
+        <Reader />
+      ) : (
+        <AppShell
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onGoHome={closeBook}
+          onLogout={handleLogout}
+        >
+          <HomePage />
+        </AppShell>
+      )}
     </div>
   );
 }

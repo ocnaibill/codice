@@ -30,7 +30,9 @@ export default function PdfViewer({ fileUrl, bookId, initialProgress }) {
 
     if (bookId) {
       timeoutRef.current = setTimeout(() => {
-        api.patch(`/works/${bookId}/progress`, { progress: newPage.toString() })
+        const percent = numPages ? (newPage / numPages) * 100 : undefined;
+        const completed = numPages ? newPage >= numPages : undefined;
+        api.patch(`/works/${bookId}/progress`, { progress: newPage.toString(), percent, completed })
           .catch((err) => console.error("Failed to save PDF reading progress:", err));
       }, 1000);
     }

@@ -1,6 +1,9 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { useWork } from '../api/useWork';
+import { useReadingHeartbeat } from '../api/useReadingHeartbeat';
+import { useFavoriteToggle } from '../api/useFavoriteToggle';
+import { useCreateNote } from '../api/useCreateNote';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { authenticatedUrl } from '../../../lib/api';
 
@@ -17,6 +20,22 @@ export function Reader() {
   const closeBook = useGlobalStore((state) => state.closeBook);
 
   const { data: book, isLoading, isError } = useWork(activeBookId);
+  useReadingHeartbeat(activeBookId);
+  const favoriteToggle = useFavoriteToggle(activeBookId);
+  const createNote = useCreateNote(activeBookId);
+  const [showNoteForm, setShowNoteForm] = useState(false);
+  const [noteText, setNoteText] = useState('');
+
+  const handleSaveNote = () => {
+    const trimmed = noteText.trim();
+    if (!trimmed) return;
+    createNote.mutate(trimmed, {
+      onSuccess: () => {
+        setNoteText('');
+        setShowNoteForm(false);
+      },
+    });
+  };
 
   if (isLoading) {
     return (
@@ -94,7 +113,26 @@ export function Reader() {
           <p className="text-xs text-zinc-500">{book.author}</p>
         </div>
         <div className="flex gap-4 items-center">
-          <button 
+          <button
+            onClick={() => favoriteToggle.mutate(!book.isFavorite)}
+            disabled={favoriteToggle.isPending}
+            className={`p-2 rounded-md border transition-all ${
+              book.isFavorite
+                ? 'bg-amber-500/10 border-amber-600/60 text-amber-400'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+            }`}
+            title={book.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+          >
+            {book.isFavorite ? '★ Favorito' : '☆ Favoritar'}
+          </button>
+          <button
+            onClick={() => setShowNoteForm((v) => !v)}
+            className="p-2 rounded-md bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-all"
+            title="Salvar uma citação deste livro"
+          >
+            + Nota
+          </button>
+          <button
             onClick={closeBook}
             className="p-2 rounded-md bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-all"
             title="Close reader"
@@ -103,6 +141,33 @@ export function Reader() {
           </button>
         </div>
       </div>
+
+      {showNoteForm && (
+        <div className="px-6 py-3 border-b border-zinc-900 bg-zinc-950 flex flex-col gap-2">
+          <textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="Cole ou digite a citação que quer guardar..."
+            rows={3}
+            className="w-full rounded-md bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm p-3 outline-none focus:border-zinc-600"
+          />
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setShowNoteForm(false)}
+              className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSaveNote}
+              disabled={createNote.isPending || !noteText.trim()}
+              className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-500 disabled:opacity-40"
+            >
+              Salvar nota
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Dynamic Reader Router Viewport */}
       <div className="flex-1 overflow-y-auto bg-zinc-900/30">
