@@ -55,25 +55,19 @@ func (h *WsHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if tokenString == "" {
-		appEnv := os.Getenv("APP_ENV")
-		if appEnv == "production" {
-			http.Error(w, "Access denied: Authentication required", http.StatusUnauthorized)
-			return
+		http.Error(w, "Access denied: Authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
 		}
-		// Dev fallback: allow without token
-		log.Println("⚠️ WebSocket connection without token in dev mode")
-	} else {
-		// Validate token
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrSignatureInvalid
-			}
-			return middleware.GetJWTSecret(), nil
-		})
-		if err != nil || !token.Valid {
-			http.Error(w, "Access denied: Invalid or expired token", http.StatusUnauthorized)
-			return
-		}
+		return middleware.GetJWTSecret(), nil
+	})
+	if err != nil || !token.Valid {
+		http.Error(w, "Access denied: Invalid or expired token", http.StatusUnauthorized)
+		return
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)

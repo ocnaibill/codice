@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"html"
 	"net/http"
@@ -16,42 +15,14 @@ import (
 
 type OPDSHandler struct {
 	DB *sql.DB
+	// Verify confirms Basic credentials. Without it, Basic is refused.
+	Verify appMiddleware.BasicVerifier
 }
 
+// OpdsAuth authenticates OPDS clients with Bearer tokens or with Basic
+// credentials whose password is verified.
 func (h *OPDSHandler) OpdsAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Codice OPDS"`)
-			http.Error(w, "Authorization required", http.StatusUnauthorized)
-			return
-		}
-		if strings.HasPrefix(authHeader, "Basic ") {
-			payload, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(authHeader, "Basic "))
-			if err != nil {
-				http.Error(w, "Invalid Basic Auth", http.StatusUnauthorized)
-				return
-			}
-			parts := strings.SplitN(string(payload), ":", 2)
-			if len(parts) != 2 {
-				http.Error(w, "Invalid Basic Auth", http.StatusUnauthorized)
-				return
-			}
-			var userID string
-			err = h.DB.QueryRow("SELECT id FROM users WHERE username = $1", parts[0]).Scan(&userID)
-			if err != nil {
-				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-				return
-			}
-			next.ServeHTTP(w, r)
-			return
-		}
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			appMiddleware.AuthMiddleware(next).ServeHTTP(w, r)
-			return
-		}
-		http.Error(w, "Unsupported authorization method", http.StatusUnauthorized)
-	})
+	return appMiddleware.AuthMiddlewareWithBasic(h.Verify)(next)
 }
 
 func (h *OPDSHandler) baseURL(r *http.Request) string {

@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -24,6 +27,38 @@ type AuthRequest struct {
 
 type AuthResponse struct {
 	Token string `json:"token"`
+}
+
+var (
+	dummyHashOnce sync.Once
+	dummyHash     []byte
+)
+
+// NewBasicVerifier returns a BasicVerifier that checks the account password
+// against its bcrypt hash. An unknown user costs the same bcrypt comparison as
+// a wrong password, so response time does not reveal which usernames exist.
+func NewBasicVerifier(db *sql.DB) middleware.BasicVerifier {
+	return func(ctx context.Context, username, password string) (string, string, error) {
+		dummyHashOnce.Do(func() {
+			dummyHash, _ = bcrypt.GenerateFromPassword([]byte("codice-dummy-password"), 10)
+		})
+
+		var id, role, hash string
+		err := db.QueryRowContext(ctx,
+			"SELECT id, role, COALESCE(password_hash, '') FROM users WHERE username = $1", username,
+		).Scan(&id, &role, &hash)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && hash == "") {
+			bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+			return "", "", middleware.ErrInvalidCredentials
+		}
+		if err != nil {
+			return "", "", err
+		}
+		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+			return "", "", middleware.ErrInvalidCredentials
+		}
+		return id, role, nil
+	}
 }
 
 

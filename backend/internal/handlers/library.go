@@ -42,15 +42,13 @@ type LibraryHandler struct {
 	DB *sql.DB
 }
 
-// currentUserID extracts the authenticated user id from context, falling back
-// to the dev user (AuthMiddleware already applies the same fallback when no
-// token is present, so this only matters for handlers that read context
-// directly without a guaranteed non-empty value).
+// currentUserID extracts the authenticated user id from context. AuthMiddleware
+// guarantees it on protected routes; if it is ever missing this returns "" and
+// never a substitute identity, so the query matches nothing instead of acting
+// as another user.
 func currentUserID(r *http.Request) string {
-	if userID, ok := r.Context().Value(middleware.UserIDKey).(string); ok && userID != "" {
-		return userID
-	}
-	return middleware.DefaultDevUserID
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	return userID
 }
 
 // GetWorks fetches works from PostgreSQL with aggregated tags, server-side

@@ -26,6 +26,9 @@ func main() {
 	// 0. Load environment variables from .env
 	config.Load()
 
+	// Fail fast: the API must not start without a JWT secret (no default exists).
+	appMiddleware.GetJWTSecret()
+
 	// 1. Connection with PostgreSQL (PERF-02: connection pooling)
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -154,7 +157,8 @@ func main() {
 	r.With(appMiddleware.AuthMiddleware).Get("/works/{id}/audio", mediaHandler.ServeAudio)
 
 	// OPDS 1.2 Catalog (Basic Auth for mobile apps like KOReader, Moon+ Reader)
-	opdsHandler := &handlers.OPDSHandler{DB: db}
+	basicVerifier := handlers.NewBasicVerifier(db)
+	opdsHandler := &handlers.OPDSHandler{DB: db, Verify: basicVerifier}
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/catalog", opdsHandler.RootCatalog)
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/recent", opdsHandler.RecentFeed)
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/search", opdsHandler.SearchFeed)
@@ -164,6 +168,10 @@ func main() {
 
 	// WebSocket (auth handled inside handler for upgrade)
 	r.Get("/ws", wsHandler.HandleWS)
+
+	// Covers and files also accept Basic credentials (verified against the
+	// account password) because OPDS clients cannot send a bearer token.
+	authWithBasic := appMiddleware.AuthMiddlewareWithBasic(basicVerifier)
 
 	// Define base storage directory (fallback to ./uploads).
 	// Try to resolve relative paths from the project root by walking up from CWD.
@@ -207,7 +215,7 @@ func main() {
 
 	// Helper to serve static files with Cache-Control headers (PERF-04)
 	fsCovers := http.StripPrefix("/covers/", http.FileServer(http.Dir(coversPath)))
-	r.With(appMiddleware.AuthMiddleware).Get("/covers/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.With(authWithBasic).Get("/covers/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Cache images for 7 days, revalidate
 		w.Header().Set("Cache-Control", "public, max-age=604800, must-revalidate")
 		if strings.HasSuffix(r.URL.Path, ".svg") {
@@ -217,7 +225,7 @@ func main() {
 	}))
 
 	fsFiles := http.StripPrefix("/files/", http.FileServer(http.Dir(storagePath)))
-	r.With(appMiddleware.AuthMiddleware).Get("/files/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.With(authWithBasic).Get("/files/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Do not cache original files (could be large, user might delete)
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		fsFiles.ServeHTTP(w, r)
