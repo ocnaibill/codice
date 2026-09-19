@@ -40,6 +40,7 @@ func newRouter(d routerDeps) http.Handler {
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
+	invitesHandler := &handlers.InvitationsHandler{DB: db, Sessions: d.Sessions}
 	usersHandler := &handlers.UsersHandler{DB: db, Disconnect: d.WS.DisconnectUser}
 	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
 	dupesHandler := &handlers.DuplicatesHandler{DB: db}
@@ -79,6 +80,9 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(authRateLimit).Post("/auth/setup", authHandler.SetupMasterAdmin)
 	r.With(authRateLimit).Post("/auth/register", authHandler.Register)
 	r.With(authRateLimit).Post("/auth/login", authHandler.Login)
+	// Invitations are the way in while public registration is off (DEC-050).
+	r.With(authRateLimit).Get("/auth/invitation", invitesHandler.Check)
+	r.With(authRateLimit).Post("/auth/redeem", invitesHandler.Redeem)
 
 	// Session-backed authentication: a bearer token is only good while its
 	// session row is live and the account is not blocked.
@@ -161,6 +165,9 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/users/{id}/block", usersHandler.Block)
 	r.With(staff).Post("/users/{id}/unblock", usersHandler.Unblock)
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)
+	r.With(staff).Get("/invitations", invitesHandler.List)
+	r.With(staff).Post("/invitations", invitesHandler.Create)
+	r.With(staff).Delete("/invitations/{id}", invitesHandler.Revoke)
 
 	// Favorites, notes/quotes, and dashboard stats
 	r.With(auth).Post("/works/{id}/favorite", favoritesHandler.AddFavorite)

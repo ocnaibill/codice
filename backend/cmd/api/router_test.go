@@ -71,6 +71,9 @@ type route struct{ method, path string }
 
 // Routes the specification reserves to owner and admin (DEC-003, RF-007).
 var staffRoutes = []route{
+	{"GET", "/invitations"},
+	{"POST", "/invitations"},
+	{"DELETE", "/invitations/" + someUUID},
 	{"GET", "/users"},
 	{"POST", "/users/" + someUUID + "/block"},
 	{"POST", "/users/" + someUUID + "/unblock"},

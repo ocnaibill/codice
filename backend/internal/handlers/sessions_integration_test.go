@@ -24,6 +24,7 @@ type authStack struct {
 	authH    *AuthHandler
 	lastRole string
 	users    *UsersHandler
+	invites  *InvitationsHandler
 }
 
 func newAuthStack(t *testing.T) *authStack {
@@ -35,6 +36,7 @@ func newAuthStack(t *testing.T) *authStack {
 	s := &authStack{db: db, store: st, authH: &AuthHandler{DB: db, Sessions: st}}
 	tokens := &AppTokensHandler{Sessions: st}
 	s.users = &UsersHandler{DB: db}
+	s.invites = &InvitationsHandler{DB: db, Sessions: st}
 
 	probe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.lastRole, _ = r.Context().Value(middleware.UserRoleKey).(string)
@@ -49,6 +51,11 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Post("/auth/app-tokens", tokens.Create)
 	r.With(a.Middleware).Get("/auth/app-tokens", tokens.List)
 	r.With(a.Middleware).Delete("/auth/app-tokens/{id}", tokens.Revoke)
+	r.Get("/auth/invitation", s.invites.Check)
+	r.Post("/auth/redeem", s.invites.Redeem)
+	r.With(a.Middleware).Get("/invitations", s.invites.List)
+	r.With(a.Middleware).Post("/invitations", s.invites.Create)
+	r.With(a.Middleware).Delete("/invitations/{id}", s.invites.Revoke)
 	r.With(a.Middleware).Get("/users", s.users.List)
 	r.With(a.Middleware).Post("/users/{id}/block", s.users.Block)
 	r.With(a.Middleware).Post("/users/{id}/unblock", s.users.Unblock)

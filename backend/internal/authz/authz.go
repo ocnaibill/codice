@@ -57,3 +57,17 @@ func CanManageAccount(actor, target string, action Action) bool {
 		return false
 	}
 }
+
+// CanInvite decides whether actor may issue (or revoke) an invitation that
+// creates an account with the given role. Admins invite readers; only the owner
+// invites admins (DEC-055, DEC-056); nobody invites an owner.
+func CanInvite(actor, role string) bool {
+	switch role {
+	case RoleReader:
+		return IsStaff(actor)
+	case RoleAdmin:
+		return actor == RoleOwner
+	default:
+		return false
+	}
+}

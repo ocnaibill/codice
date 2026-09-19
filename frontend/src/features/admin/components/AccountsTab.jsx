@@ -3,6 +3,7 @@ import { useAccounts, useBlockAccount, useUnblockAccount, describeError } from '
 import { formatDate } from '../format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
+import { Invitations } from './Invitations';
 
 const ROLE = { owner: 'Dono', admin: 'Administrador', reader: 'Leitor' };
 
@@ -10,7 +11,7 @@ const ROLE = { owner: 'Dono', admin: 'Administrador', reader: 'Leitor' };
  * The accounts. Whether the caller may block one comes from the server (`canBlock`),
  * so the rules about who may act on whom live in one place only.
  */
-export function AccountsTab() {
+export function AccountsTab({ isOwner }) {
   const { data, isLoading, isError } = useAccounts();
   const block = useBlockAccount();
   const unblock = useUnblockAccount();
@@ -18,6 +19,7 @@ export function AccountsTab() {
   const accounts = data?.data || [];
 
   return (
+    <div className="flex flex-col gap-5">
     <Section
       title="Contas"
       hint="Bloquear impede a pessoa de entrar e encerra na hora as sessões, os tokens de aplicativo e as conexões abertas dela. Notas e progresso ficam guardados, e o bloqueio se desfaz."
@@ -63,5 +65,7 @@ export function AccountsTab() {
         />
       )}
     </Section>
+    <Invitations isOwner={isOwner} />
+    </div>
   );
 }

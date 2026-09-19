@@ -9,6 +9,7 @@ import { Auth } from './features/auth/components/Auth';
 import { useMe, isStaff } from './features/auth/api/useMe';
 import { AdminPage } from './features/admin/AdminPage';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
+import { AcceptInvite } from './features/auth/components/AcceptInvite';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
 import { refreshLibrary } from './lib/refreshLibrary';
 
@@ -17,6 +18,12 @@ function App() {
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [assetsReady, setAssetsReady] = useState(false);
+  // A link like /?invite=<secret> opens the sign-up page for that invitation.
+  const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
+  const leaveInvite = () => {
+    window.history.replaceState(null, '', window.location.pathname);
+    setInviteToken(null);
+  };
 
   const queryClient = useQueryClient();
   const activeBookId = useGlobalStore((state) => state.activeBookId);
@@ -194,6 +201,16 @@ function App() {
           setIsFirstRun(false);
           setIsAuthenticated(true);
         }} 
+      />
+    );
+  }
+
+  if (!isAuthenticated && inviteToken) {
+    return (
+      <AcceptInvite
+        token={inviteToken}
+        onAccepted={() => { leaveInvite(); setIsAuthenticated(true); }}
+        onCancel={leaveInvite}
       />
     );
   }

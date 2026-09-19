@@ -27,6 +27,7 @@ export const useTrash = list('trash', '/admin/trash');
 export const useDuplicates = list('duplicates', '/admin/duplicates');
 export const useOcr = list('ocr', '/admin/ocr');
 export const useAccounts = list('accounts', '/users');
+export const useInvitations = list('invitations', '/invitations');
 
 /** A POST/PUT/DELETE that refreshes the admin lists when it succeeds. */
 function useAdminAction(run) {
@@ -73,3 +74,7 @@ export const useLinkDuplicate = () =>
 
 export const useBlockAccount = () => useAdminAction((id) => api.post(`/users/${id}/block`));
 export const useUnblockAccount = () => useAdminAction((id) => api.post(`/users/${id}/unblock`));
+
+export const useCreateInvitation = () =>
+  useAdminAction(async ({ role, email }) => (await api.post('/invitations', { role, email })).data);
+export const useRevokeInvitation = () => useAdminAction((id) => api.delete(`/invitations/${id}`));

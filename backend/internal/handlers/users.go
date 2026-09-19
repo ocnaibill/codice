@@ -213,6 +213,14 @@ func (h *UsersHandler) setBlocked(w http.ResponseWriter, r *http.Request, block 
 			http.Error(w, "Error ending the account's access", http.StatusInternalServerError)
 			return
 		}
+		// Links the account handed out but nobody used yet die with its access.
+		if _, err := tx.Exec(`
+			UPDATE invitations SET revoked_at = now(), revoked_by = $2
+			WHERE created_by = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()`,
+			targetID, actorID); err != nil {
+			http.Error(w, "Error ending the account's invitations", http.StatusInternalServerError)
+			return
+		}
 	}
 	if changed {
 		if err := audit.Record(r.Context(), tx, actorID, action, "user", targetID, map[string]any{"role": targetRole}); err != nil {

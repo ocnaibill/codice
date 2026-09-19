@@ -46,7 +46,7 @@ export function AdminPage({ isOwner, onClose }) {
         {tab === 'storage' && <StorageTab isOwner={isOwner} />}
         {tab === 'trash' && <TrashTab isOwner={isOwner} />}
         {tab === 'duplicates' && <DuplicatesTab />}
-        {tab === 'accounts' && <AccountsTab />}
+        {tab === 'accounts' && <AccountsTab isOwner={isOwner} />}
       </div>
     </div>
   );

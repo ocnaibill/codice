@@ -71,3 +71,26 @@ func TestValidAssignableRole(t *testing.T) {
 		}
 	}
 }
+
+func TestCanInvite(t *testing.T) {
+	cases := []struct {
+		actor, role string
+		want        bool
+	}{
+		{RoleOwner, RoleReader, true},
+		{RoleOwner, RoleAdmin, true},
+		{RoleAdmin, RoleReader, true},
+		{RoleAdmin, RoleAdmin, false}, // only the owner makes admins (DEC-056)
+		{RoleReader, RoleReader, false},
+		{RoleReader, RoleAdmin, false},
+		{RoleOwner, RoleOwner, false}, // no invitation grants owner
+		{RoleAdmin, RoleOwner, false},
+		{"", RoleReader, false},
+		{RoleOwner, "root", false},
+	}
+	for _, c := range cases {
+		if got := CanInvite(c.actor, c.role); got != c.want {
+			t.Errorf("CanInvite(%q, %q) = %v, want %v", c.actor, c.role, got, c.want)
+		}
+	}
+}

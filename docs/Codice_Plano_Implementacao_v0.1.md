@@ -132,7 +132,7 @@ Tamanho: M a G. Cobre RF-002 a 004, 038, 047 a 049 e DEC-050 a 063. Depende das 
 - Auditoria administrativa (formato ainda a definir, ver §9).
 - **LDAP e OIDC:** depois do login local, como a especificação permite (§23). O LDAP vem primeiro, no mesmo formulário de login, com roteamento pela conta e o owner sempre local; o OIDC entra depois como botão separado (DEC-072 a 075). Inclui criação no primeiro login por provedor, vínculo assistido por e-mail coincidente e revalidação com teto de 24 horas (DEC-051, 053, 061).
 
-**Estado em 19 de setembro de 2026: em andamento.** Feita a fatia de listar e bloquear/desbloquear contas (revogação imediata de sessões, tokens e conexões abertas, na mesma transação da marcação; aba "Contas" na administração). Faltam convites, criação e exclusão de conta, redefinição de senha, transferência de titularidade e o LDAP.
+**Estado em 19 de setembro de 2026: em andamento.** Feita a fatia de listar e bloquear/desbloquear contas (revogação imediata de sessões, tokens e conexões abertas, na mesma transação da marcação; aba "Contas" na administração). Feita também a de convites (uso único, 7 dias, e-mail opcional, segredo só como hash, resgate atômico). Faltam criação e exclusão de conta, redefinição de senha, transferência de titularidade e o LDAP.
 
 **Testes:** convite expirado, usado ou revogado não cria conta; resgate concorrente cria uma só; conta bloqueada perde sessões e tokens na hora; comando de recuperação sem acesso local não tem efeito.
 
