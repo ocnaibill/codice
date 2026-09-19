@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/storage"
+	"github.com/ocnaibill/codice/backend/internal/testdb"
 )
 
 const (
@@ -163,15 +164,7 @@ func (s *catalogStack) scalar(q string, args ...any) string {
 // legacy columns. The database projects it onto editions, files and contributors.
 func (s *catalogStack) addWork(title, author, file, format string) int {
 	s.t.Helper()
-	var personID sql.NullInt64
-	if author != "" {
-		s.db.QueryRow(`INSERT INTO person (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`, author).Scan(&personID)
-	}
-	var id int
-	if err := s.db.QueryRow(`INSERT INTO works (original_title, file_path, format, author_id) VALUES ($1, $2, $3, $4) RETURNING id`,
-		title, file, format, personID).Scan(&id); err != nil {
-		s.t.Fatal(err)
-	}
+	id, _, _ := testdb.AddWork(s.t, s.db, testdb.Work{Title: title, Path: file, Format: format, Author: author})
 	return id
 }
 
@@ -447,7 +440,7 @@ func TestProgress_IsPerFileNotPerWork(t *testing.T) {
 		t.Errorf("malformed id: %d, want 404", rec.Code)
 	}
 	// A work without any file has nothing to read.
-	s.exec(`INSERT INTO works (original_title) VALUES ('Sem arquivo')`)
+	testdb.AddWork(t, s.db, testdb.Work{Title: "Sem arquivo"})
 	empty := int(mustInt(s, `SELECT id FROM works WHERE original_title = 'Sem arquivo'`))
 	if rec := s.do(ana, "PATCH", fmt.Sprintf("/works/%d/progress", empty), `{"progress":"x"}`); rec.Code != 404 {
 		t.Errorf("work without a file: %d, want 404", rec.Code)

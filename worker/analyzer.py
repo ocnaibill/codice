@@ -64,28 +64,35 @@ class Analyzer:
         self.db.execute(query, (status.value, error, work_id))
         print(f"   📊 Work {work_id} status → {status.value}")
 
-    # Descriptive text fields stored on the work: field name -> column. Locks and
-    # provenance are keyed by the field name; series_index follows series.
-    TEXT_FIELDS = {
+    # Descriptive text fields: field name -> column. Locks and provenance are
+    # keyed by the field name; series_index follows series. Title, series and
+    # description belong to the work; the rest describe its primary edition.
+    WORK_FIELDS = {
         'title': 'original_title',
         'series': 'series',
+        'description': 'description',
+    }
+    EDITION_FIELDS = {
         'isbn': 'isbn',
         'language': 'language',
         'publisher': 'publisher',
         'publication_date': 'publication_date',
-        'description': 'description',
     }
 
     def _load_state(self, work_id: int) -> dict:
         """Current values, locks and provenance of a work's descriptive fields."""
         row = self.db.fetchone(
-            """SELECT w.original_title, COALESCE(p.name, ''), COALESCE(w.series, ''),
-                      COALESCE(w.series_index, 0), COALESCE(w.isbn, ''), COALESCE(w.language, ''),
-                      COALESCE(w.publisher, ''), COALESCE(w.publication_date, ''),
+            """SELECT w.original_title,
+                      COALESCE((SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id
+                                WHERE c.work_id = w.id AND c.role = 'author'
+                                ORDER BY c.position, p.name LIMIT 1), ''),
+                      COALESCE(w.series, ''), COALESCE(w.series_index, 0),
+                      COALESCE(e.isbn, ''), COALESCE(e.language, ''),
+                      COALESCE(e.publisher, ''), COALESCE(e.publication_date, ''),
                       COALESCE(w.description, ''),
                       w.title_lock, w.author_lock, w.series_lock, w.cover_lock, w.isbn_lock,
                       w.language_lock, w.publisher_lock, w.publication_date_lock, w.description_lock
-               FROM works w LEFT JOIN person p ON p.id = w.author_id
+               FROM works w LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
                WHERE w.id = %s""",
             (work_id,))
         if not row:
@@ -143,14 +150,18 @@ class Analyzer:
 
         updates = []
         params = []
+        edition_updates = []
+        edition_params = []
         written = []
 
-        for field, column in self.TEXT_FIELDS.items():
-            value = metadata.get(field)
-            if value and self._may_fill(state, field) and value != state['values'].get(field):
-                updates.append(f"{column} = %s")
-                params.append(value)
-                written.append(field)
+        for fields, sets, values in ((self.WORK_FIELDS, updates, params),
+                                     (self.EDITION_FIELDS, edition_updates, edition_params)):
+            for field, column in fields.items():
+                value = metadata.get(field)
+                if value and self._may_fill(state, field) and value != state['values'].get(field):
+                    sets.append(f"{column} = %s")
+                    values.append(value)
+                    written.append(field)
 
         if metadata.get('series_index') and self._may_fill(state, 'series') \
                 and metadata['series_index'] != state['values'].get('series_index'):
@@ -159,8 +170,9 @@ class Analyzer:
 
         # Technical facts about the file itself: not editorial, never locked.
         if metadata.get('format'):
-            updates.append("format = %s")
-            params.append(metadata['format'])
+            self.db.execute(
+                "UPDATE files SET format = %s WHERE id = (SELECT file_id FROM work_primary WHERE work_id = %s)",
+                (metadata['format'], work_id))
         if metadata.get('page_count'):
             updates.append("page_count = %s")
             params.append(metadata['page_count'])
@@ -170,6 +182,10 @@ class Analyzer:
             query = f"UPDATE works SET {', '.join(updates)} WHERE id = %s"
             params.append(work_id)
             self.db.execute(query, tuple(params))
+        if edition_updates:
+            self.db.execute(
+                f"UPDATE editions SET {', '.join(edition_updates)} WHERE work_id = %s AND is_primary",
+                tuple(edition_params) + (work_id,))
         for field in written:
             self._record_source(work_id, field, 'file')
 
@@ -183,7 +199,13 @@ class Analyzer:
                    RETURNING id""",
                 (author,))
             if author_id:
-                self.db.execute("UPDATE works SET author_id = %s WHERE id = %s", (author_id[0], work_id))
+                self.db.execute(
+                    "DELETE FROM work_contributors WHERE work_id = %s AND role = 'author' AND position = 0",
+                    (work_id,))
+                self.db.execute(
+                    """INSERT INTO work_contributors (work_id, person_id, role, position)
+                       VALUES (%s, %s, 'author', 0) ON CONFLICT DO NOTHING""",
+                    (work_id, author_id[0]))
                 self._record_source(work_id, 'author', 'file')
 
         # Cover (with lock check), stored on the primary edition.

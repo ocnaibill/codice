@@ -69,14 +69,7 @@ func (e *env) scalar(q string, args ...any) string {
 // work creates a work with one file; isbn goes on its edition.
 func (e *env) work(title, author, isbn, format, path string) int {
 	e.t.Helper()
-	var id int
-	if err := e.db.QueryRow(`INSERT INTO works (original_title, file_path, format) VALUES ($1, $2, $3) RETURNING id`, title, path, format).Scan(&id); err != nil {
-		e.t.Fatal(err)
-	}
-	if author != "" {
-		e.exec(`INSERT INTO person (name) VALUES ($1) ON CONFLICT DO NOTHING`, author)
-		e.exec(`INSERT INTO work_contributors (work_id, person_id, role, position) SELECT $1, id, 'author', 0 FROM person WHERE name = $2`, id, author)
-	}
+	id, _, _ := testdb.AddWork(e.t, e.db, testdb.Work{Title: title, Path: path, Format: format, Author: author})
 	if isbn != "" {
 		e.exec(`UPDATE editions SET isbn = $2 WHERE work_id = $1 AND is_primary`, id, isbn)
 	}

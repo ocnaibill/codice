@@ -150,8 +150,7 @@ func (m *Mover) revert(ctx context.Context, locID int64) {
 	m.DB.ExecContext(ctx, `UPDATE storage_locations SET state = 'ok', moving_to = NULL WHERE id = $1`, locID)
 }
 
-// finalize records that the file is now at target. The legacy column
-// works.file_path is kept in step for code that still reads it.
+// finalize records that the file is now at target.
 func (m *Mover) finalize(ctx context.Context, locID, fileID int64, target string) error {
 	tx, err := m.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -162,12 +161,6 @@ func (m *Mover) finalize(ctx context.Context, locID, fileID int64, target string
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE files SET organized_at = now() WHERE id = $1`, fileID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE works SET file_path = $1
-		WHERE id = (SELECT e.work_id FROM files f JOIN editions e ON e.id = f.edition_id WHERE f.id = $2)
-		  AND (SELECT file_id FROM work_primary WHERE work_id = works.id) = $2`, target, fileID); err != nil {
 		return err
 	}
 	return tx.Commit()

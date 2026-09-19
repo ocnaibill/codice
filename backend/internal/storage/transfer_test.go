@@ -30,7 +30,9 @@ func referenced(t *testing.T) (e *env, fileID int64, origin, root string) {
 	// As if the worker had read the metadata.
 	e.exec(`UPDATE works SET original_title = 'Duna' WHERE id = (SELECT work_id FROM work_primary WHERE file_id = $1)`, fileID)
 	e.exec(`INSERT INTO person (name) VALUES ('Frank Herbert') ON CONFLICT DO NOTHING`)
-	e.exec(`UPDATE works SET author_id = (SELECT id FROM person WHERE name = 'Frank Herbert') WHERE original_title = 'Duna'`)
+	e.exec(`INSERT INTO work_contributors (work_id, person_id, role, position)
+		SELECT w.id, p.id, 'author', 0 FROM works w, person p WHERE w.original_title = 'Duna' AND p.name = 'Frank Herbert'
+		ON CONFLICT DO NOTHING`)
 	return
 }
 
@@ -66,9 +68,6 @@ func TestTransfer_CopiesVerifiesPublishesAndRemovesTheOriginal(t *testing.T) {
 	}
 	if got := e.scalar(`SELECT file_path FROM work_primary WHERE work_id = $1`, work); got != "Frank Herbert/Duna/Duna.epub" {
 		t.Errorf("work_primary = %q", got)
-	}
-	if got := e.scalar(`SELECT file_path FROM works WHERE id = $1`, work); got != "Frank Herbert/Duna/Duna.epub" {
-		t.Errorf("legacy column = %q", got)
 	}
 	if got := e.scalar(`SELECT organized_at IS NOT NULL FROM files WHERE id = $1`, fileID); got != "true" {
 		t.Error("not marked organized")

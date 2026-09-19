@@ -191,7 +191,7 @@ func TestUpload_SameNameAtTheSameTimeNeverCollides(t *testing.T) {
 	// Different bytes, same file name, back to back (the old name used the clock in seconds).
 	s.upload(admin, "livro.epub", corpusFile(t, "epub_acentos.epub"))
 	s.upload(admin, "livro.epub", corpusFile(t, "epub_alterado.epub"))
-	names := s.scalar(`SELECT count(DISTINCT file_path) FROM works`)
+	names := s.scalar(`SELECT count(DISTINCT path) FROM storage_locations`)
 	if names != "2" || s.counts() != "2/2/2" {
 		t.Errorf("distinct stored names = %s, counts = %s", names, s.counts())
 	}

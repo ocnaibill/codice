@@ -30,10 +30,7 @@ func setup(t *testing.T) *sql.DB {
 
 func newWork(t *testing.T, db *sql.DB, title string) int {
 	t.Helper()
-	var id int
-	if err := db.QueryRow(`INSERT INTO works (original_title, file_path) VALUES ($1, $2) RETURNING id`, title, title+".epub").Scan(&id); err != nil {
-		t.Fatal(err)
-	}
+	id, _, _ := testdb.AddWork(t, db, testdb.Work{Title: title, Path: title + ".epub"})
 	return id
 }
 

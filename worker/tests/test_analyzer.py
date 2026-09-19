@@ -27,7 +27,7 @@ class FakeDB:
         self.statements.append((" ".join(query.split()), params))
 
     def fetchone(self, query, params=()):
-        if "FROM works w LEFT JOIN person" in query:
+        if "w.title_lock" in query:
             return tuple(self.values[n] for n in VALUE_NAMES) + tuple(self.locks[n] for n in LOCK_NAMES)
         if "INSERT INTO person" in query:
             return (99,)
@@ -50,6 +50,10 @@ class FakeDB:
         ups = self.matching("UPDATE works SET")
         return ups[0] if ups else None
 
+    def edition_update(self):
+        ups = self.matching("UPDATE editions SET")
+        return ups[0] if ups else None
+
     def recorded_sources(self):
         return {p[1]: p[2] for q, p in self.matching("INSERT INTO work_field_sources")}
 
@@ -64,9 +68,14 @@ class TestNativeMetadata:
         Analyzer(db).save_metadata(7, dict(NATIVE))
 
         query, params = db.work_update()
-        for column in ("original_title = %s", "language = %s", "publisher = %s", "isbn = %s", "description = %s"):
+        for column in ("original_title = %s", "description = %s", "page_count = %s"):
             assert column in query
-        assert "format = %s" in query and "page_count = %s" in query
+        # What describes the edition is written to the primary edition, and the format to its file.
+        edition_query, _ = db.edition_update()
+        for column in ("language = %s", "publisher = %s", "isbn = %s"):
+            assert column in edition_query
+        assert "is_primary" in edition_query
+        assert db.matching("UPDATE files SET format")[0][1] == ('epub', 7)
         assert db.recorded_sources() == {
             'title': 'file', 'language': 'file', 'publisher': 'file', 'isbn': 'file',
             'description': 'file', 'author': 'file'}
@@ -76,21 +85,24 @@ class TestNativeMetadata:
         db = FakeDB(values={'title': 'Título antigo', 'publisher': 'Editora antiga'}, sources={})
         Analyzer(db).save_metadata(7, dict(NATIVE))
         query, _ = db.work_update()
-        assert "original_title" not in query and "publisher" not in query
-        assert "language = %s" in query  # an empty field is still filled
+        edition_query, _ = db.edition_update()
+        assert "original_title" not in query and "publisher" not in edition_query
+        assert "language = %s" in edition_query  # an empty field is still filled
 
     def test_does_not_overwrite_a_confirmed_value(self):
         db = FakeDB(values={'title': 'Corrigido', 'isbn': '999'},
                     sources={'title': 'manual', 'isbn': 'openlibrary'})
         Analyzer(db).save_metadata(7, dict(NATIVE))
         query, _ = db.work_update()
-        assert "original_title" not in query and "isbn" not in query
+        edition_query, _ = db.edition_update()
+        assert "original_title" not in query and "isbn" not in edition_query
 
     def test_does_not_overwrite_a_locked_field_even_if_empty(self):
         db = FakeDB(locks={'title': True, 'author': True, 'publisher': True})
         Analyzer(db).save_metadata(7, dict(NATIVE))
         query, _ = db.work_update()
-        assert "original_title" not in query and "publisher" not in query
+        edition_query, _ = db.edition_update()
+        assert "original_title" not in query and "publisher" not in edition_query
         assert db.matching("INSERT INTO person") == []
         assert 'title' not in db.recorded_sources() and 'author' not in db.recorded_sources()
 
@@ -103,7 +115,7 @@ class TestNativeMetadata:
     def test_an_unchanged_value_causes_no_write_or_provenance_entry(self):
         db = FakeDB(values={'title': 'Duna', 'author': 'Frank Herbert'}, sources={'title': 'file', 'author': 'file'})
         Analyzer(db).save_metadata(7, {'title': 'Duna', 'author': 'Frank Herbert'})
-        assert db.work_update() is None
+        assert db.work_update() is None and db.edition_update() is None
         assert db.recorded_sources() == {}
 
 
@@ -179,3 +191,13 @@ class TestCandidates:
         Analyzer(db).save_candidates(7, {'title': 'Duna'}, 'openlibrary')
         query, _ = db.matching("INSERT INTO metadata_candidates")[0]
         assert "ON CONFLICT (work_id, field, source, value) DO NOTHING" in query
+
+
+class TestAuthor:
+    def test_becomes_the_first_author_contributor(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, dict(NATIVE))
+        assert db.matching("UPDATE works SET author_id") == []
+        assert db.matching("DELETE FROM work_contributors")[0][1] == (7,)
+        insert = db.matching("INSERT INTO work_contributors")[0]
+        assert insert[1] == (7, 99) and "'author', 0" in insert[0]

@@ -32,14 +32,18 @@ def enqueue_file(cursor, src_path, dst_path):
         return 'duplicate', existing[0]
 
     shutil.copy2(src_path, dst_path)
-    cursor.execute("INSERT INTO works (original_title, file_path) VALUES (%s, %s) RETURNING id",
-                   (os.path.basename(src_path), os.path.basename(dst_path)))
+    title = os.path.basename(src_path)
+    cursor.execute("INSERT INTO works (original_title) VALUES (%s) RETURNING id", (title,))
     work_id = cursor.fetchone()[0]
-    # The database projects the work onto its primary file; record the bytes' facts there.
+    cursor.execute("INSERT INTO editions (work_id, title, is_primary) VALUES (%s, %s, TRUE) RETURNING id",
+                   (work_id, title))
+    edition_id = cursor.fetchone()[0]
     cursor.execute(
-        "UPDATE files SET sha256 = %s, size_bytes = %s "
-        "WHERE id = (SELECT file_id FROM work_primary WHERE work_id = %s)",
-        (digest, os.path.getsize(src_path), work_id))
+        "INSERT INTO files (edition_id, format, sha256, size_bytes) VALUES (%s, %s, %s, %s) RETURNING id",
+        (edition_id, os.path.splitext(src_path)[1].lstrip('.').lower() or None, digest, os.path.getsize(src_path)))
+    file_id = cursor.fetchone()[0]
+    cursor.execute("INSERT INTO storage_locations (file_id, mode, path) VALUES (%s, 'managed', %s)",
+                   (file_id, os.path.basename(dst_path)))
     cursor.execute(
         "INSERT INTO jobs (type, work_id, payload, priority) VALUES ('ingest', %s, %s, 0) "
         "ON CONFLICT (type, work_id) WHERE state IN ('pending', 'running') DO NOTHING",

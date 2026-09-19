@@ -164,67 +164,96 @@ func TestExpand_CopiesLegacyDataIntoTheNewModel(t *testing.T) {
 	}
 }
 
-func TestExpand_LegacyWritersStillFeedTheNewModel(t *testing.T) {
-	db := migrated(t)
-	mustExec(t, db, `INSERT INTO person (id, name) VALUES (1, 'Frank Herbert'), (2, 'Ursula Le Guin')`)
+// columnExists reports whether a column is present on a table.
+func columnExists(t *testing.T, db *sql.DB, table, column string) bool {
+	t.Helper()
+	return count(t, db, `SELECT COUNT(*) FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`, table, column) == 1
+}
 
-	// The upload handler inserts a bare work with its file.
+func triggerExists(t *testing.T, db *sql.DB, name string) bool {
+	t.Helper()
+	return count(t, db, `SELECT COUNT(*) FROM pg_trigger WHERE tgname = $1`, name) == 1
+}
+
+var legacyColumns = []string{"file_path", "format", "language", "publisher", "publication_date", "isbn", "author_id"}
+
+func TestContract_LegacyColumnsGoWithoutLosingWhatTheyHeld(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.MigrateTo(db, 10); err != nil {
+		t.Fatal(err)
+	}
+	// Until the contract step the legacy writers still feed the new model.
+	mustExec(t, db, `INSERT INTO person (id, name) VALUES (1, 'Frank Herbert')`)
 	mustExec(t, db, `INSERT INTO works (id, original_title, file_path) VALUES (10, 'upload.epub', '1_upload.epub')`)
-	if n := count(t, db, `SELECT COUNT(*) FROM editions WHERE work_id = 10 AND is_primary`); n != 1 {
-		t.Fatalf("primary edition not created: %d", n)
-	}
-	if got := str(t, db, `SELECT file_path FROM work_primary WHERE work_id = 10`); got != "1_upload.epub" {
-		t.Errorf("file location = %q", got)
+	mustExec(t, db, `UPDATE works SET format='epub', language='pt', publisher='Aleph', isbn='9788576573135', publication_date='2017', author_id=1 WHERE id = 10`)
+	for _, c := range legacyColumns {
+		if !columnExists(t, db, "works", c) {
+			t.Fatalf("works.%s is missing before the contract step", c)
+		}
 	}
 
-	// The worker fills metadata in the legacy columns.
-	mustExec(t, db, `UPDATE works SET format='epub', language='pt', publisher='Aleph', isbn='9788576573135', publication_date='2017', author_id=1 WHERE id = 10`)
-	if got := str(t, db, `SELECT publisher FROM editions WHERE work_id = 10 AND is_primary`); got != "Aleph" {
-		t.Errorf("edition publisher = %q", got)
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
 	}
-	if got := str(t, db, `SELECT file_format FROM work_primary WHERE work_id = 10`); got != "epub" {
-		t.Errorf("file format = %q", got)
+	for _, c := range legacyColumns {
+		if columnExists(t, db, "works", c) {
+			t.Errorf("works.%s is still there", c)
+		}
+	}
+	for _, trg := range []string{"works_project_insert", "works_project_update"} {
+		if triggerExists(t, db, trg) {
+			t.Errorf("trigger %s is still there", trg)
+		}
+	}
+	// What the columns held now lives in the model that replaced them.
+	if got := str(t, db, `SELECT publisher || '/' || language || '/' || isbn || '/' || publication_date FROM editions WHERE work_id = 10 AND is_primary`); got != "Aleph/pt/9788576573135/2017" {
+		t.Errorf("edition = %q", got)
+	}
+	if got := str(t, db, `SELECT file_path || '/' || file_format FROM work_primary WHERE work_id = 10`); got != "1_upload.epub/epub" {
+		t.Errorf("primary file = %q", got)
 	}
 	if got := str(t, db, `SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id WHERE c.work_id = 10`); got != "Frank Herbert" {
 		t.Errorf("contributor = %q", got)
 	}
 
-	// The worker stores the cover with the upsert it has always used, now
-	// naming the primary-edition index as the conflict target.
+	// A note still takes its reference from the work, now through the contributor.
+	addUsers(t, db)
+	mustExec(t, db, `INSERT INTO notes (user_id, work_id, quote) VALUES ($1, 10, 'q')`, userA)
+	if got := str(t, db, `SELECT source_title || '/' || source_author FROM notes WHERE work_id = 10`); got != "upload.epub/Frank Herbert" {
+		t.Errorf("note source = %q", got)
+	}
+
+	// The worker's cover upsert names the primary-edition index as its target.
 	mustExec(t, db, `INSERT INTO editions (work_id, title, cover_url) VALUES (10, 'Duna', '/covers/duna.jpg')
 		ON CONFLICT (work_id) WHERE is_primary DO UPDATE SET cover_url = EXCLUDED.cover_url`)
 	if n := count(t, db, `SELECT COUNT(*) FROM editions WHERE work_id = 10`); n != 1 {
 		t.Errorf("cover upsert created a second edition: %d", n)
 	}
-	if got := str(t, db, `SELECT cover_url FROM work_primary WHERE work_id = 10`); got != "/covers/duna.jpg" {
-		t.Errorf("cover = %q", got)
-	}
 
-	// Changing the author replaces the primary contributor; clearing it removes it.
-	mustExec(t, db, `UPDATE works SET author_id = 2 WHERE id = 10`)
-	if got := str(t, db, `SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id WHERE c.work_id = 10`); got != "Ursula Le Guin" {
-		t.Errorf("contributor after change = %q", got)
+	// Rolling back restores the columns from the new tables, and the old
+	// behaviour with them.
+	if err := database.RollbackTo(db, 10); err != nil {
+		t.Fatalf("rollback: %v", err)
 	}
-	mustExec(t, db, `UPDATE works SET author_id = NULL WHERE id = 10`)
-	if n := count(t, db, `SELECT COUNT(*) FROM work_contributors WHERE work_id = 10`); n != 0 {
-		t.Errorf("contributor not removed: %d", n)
+	if got := str(t, db, `SELECT format || '/' || language || '/' || publisher || '/' || isbn || '/' || publication_date || '/' || file_path || '/' || author_id FROM works WHERE id = 10`); got != "epub/pt/Aleph/9788576573135/2017/1_upload.epub/1" {
+		t.Errorf("restored columns = %q", got)
 	}
-
-	// Moving the file updates its location, not its identity.
-	fileID := count(t, db, `SELECT file_id FROM work_primary WHERE work_id = 10`)
-	mustExec(t, db, `UPDATE works SET file_path = 'moved/upload.epub' WHERE id = 10`)
-	if got := str(t, db, `SELECT file_path FROM work_primary WHERE work_id = 10`); got != "moved/upload.epub" {
-		t.Errorf("location after move = %q", got)
+	mustExec(t, db, `INSERT INTO works (id, original_title, file_path) VALUES (11, 'outra', 'outra.epub')`)
+	if n := count(t, db, `SELECT COUNT(*) FROM editions WHERE work_id = 11 AND is_primary`); n != 1 {
+		t.Errorf("the restored trigger did not create the edition: %d", n)
 	}
-	if again := count(t, db, `SELECT file_id FROM work_primary WHERE work_id = 10`); again != fileID {
-		t.Errorf("file identity changed when the path did: %d -> %d", fileID, again)
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("re-applying: %v", err)
+	}
+	if got := str(t, db, `SELECT file_path FROM work_primary WHERE work_id = 11`); got != "outra.epub" {
+		t.Errorf("work created while rolled back lost its file: %q", got)
 	}
 }
 
 func TestModel_WorkWithTwoEditionsAndThreeFiles(t *testing.T) {
 	db := migrated(t)
-	mustExec(t, db, `INSERT INTO works (id, original_title, file_path, format) VALUES (1, 'Duna', 'duna-pt.epub', 'epub')`)
-	primary := count(t, db, `SELECT id FROM editions WHERE work_id = 1`)
+	_, primary, _ := testdb.AddWork(t, db, testdb.Work{ID: 1, Title: "Duna", Path: "duna-pt.epub", Format: "epub"})
 
 	// A second edition, in English, with two formats; the Portuguese edition gets a PDF too.
 	var en int
@@ -236,7 +265,7 @@ func TestModel_WorkWithTwoEditionsAndThreeFiles(t *testing.T) {
 		($1, 'epub', repeat('a', 64)), ($1, 'pdf', repeat('b', 64)), ($2, 'pdf', repeat('c', 64))`, en, primary)
 
 	if n := count(t, db, `SELECT COUNT(*) FROM files f JOIN editions e ON e.id = f.edition_id WHERE e.work_id = 1`); n != 4 {
-		// three new files plus the one created for the legacy file_path
+		// three new files plus the one the work started with
 		t.Errorf("files of the work = %d, want 4", n)
 	}
 	if n := count(t, db, `SELECT COUNT(*) FROM editions WHERE work_id = 1`); n != 2 {
@@ -255,7 +284,8 @@ func TestModel_Invariants(t *testing.T) {
 	db := migrated(t)
 	addUsers(t, db)
 	mustExec(t, db, `INSERT INTO person (id, name) VALUES (1, 'Frank Herbert')`)
-	mustExec(t, db, `INSERT INTO works (id, original_title, file_path) VALUES (1, 'Duna', 'duna.epub'), (2, 'Outro', 'outro.epub')`)
+	testdb.AddWork(t, db, testdb.Work{ID: 1, Title: "Duna", Path: "duna.epub"})
+	testdb.AddWork(t, db, testdb.Work{ID: 2, Title: "Outro", Path: "outro.epub"})
 	primary := count(t, db, `SELECT edition_id FROM work_primary WHERE work_id = 1`)
 
 	t.Run("only one primary edition per work", func(t *testing.T) {
@@ -317,7 +347,7 @@ func TestModel_Invariants(t *testing.T) {
 	})
 
 	t.Run("notes survive the deletion of their work", func(t *testing.T) {
-		mustExec(t, db, `INSERT INTO works (id, original_title, author_id) VALUES (50, 'Efêmera', 1)`)
+		testdb.AddWork(t, db, testdb.Work{ID: 50, Title: "Efêmera", AuthorID: 1})
 		mustExec(t, db, `INSERT INTO notes (user_id, work_id, quote) VALUES ($1, 50, 'frase importante')`, userA)
 		// The reference was filled from the work by the trigger.
 		if got := str(t, db, `SELECT source_title || ' / ' || source_author FROM notes WHERE quote = 'frase importante'`); got != "Efêmera / Frank Herbert" {
@@ -389,7 +419,7 @@ func TestModel_Invariants(t *testing.T) {
 
 func TestExpand_CanBeRolledBackAndReapplied(t *testing.T) {
 	db := migrated(t)
-	mustExec(t, db, `INSERT INTO works (id, original_title, file_path, format) VALUES (1, 'Duna', 'duna.epub', 'epub')`)
+	testdb.AddWork(t, db, testdb.Work{ID: 1, Title: "Duna", Path: "duna.epub", Format: "epub"})
 
 	if err := database.RollbackTo(db, 1); err != nil {
 		t.Fatalf("rollback: %v", err)

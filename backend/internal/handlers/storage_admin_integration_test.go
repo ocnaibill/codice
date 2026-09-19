@@ -16,7 +16,7 @@ func TestStorageAdmin_PreviewThenConfirmMovesFilesAndTheyStayReachable(t *testin
 	s := newCatalogStack(t)
 	duna := s.addWork("Duna", "Frank Herbert", "aa11_Duna.epub", "epub")
 	watch := s.addWork("Watchmen", "Alan Moore", "bb22_w.cbz", "cbz")
-	s.exec(`UPDATE works SET language = 'pt', publisher = 'Aleph', publication_date = '2017' WHERE id = $1`, duna)
+	s.exec(`UPDATE editions SET language = 'pt', publisher = 'Aleph', publication_date = '2017' WHERE work_id = $1 AND is_primary`, duna)
 	for _, f := range []string{"aa11_Duna.epub", "bb22_w.cbz"} {
 		os.WriteFile(filepath.Join(s.storage, f), []byte("bytes of "+f), 0o644)
 	}

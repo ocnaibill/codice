@@ -38,11 +38,12 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int) (*WorkMetadata, e
 	m := &WorkMetadata{Locks: map[string]bool{}, Sources: map[string]string{}}
 	var titleL, authorL, seriesL, coverL, isbnL, pubL, langL, dateL, descL bool
 	err := db.QueryRowContext(ctx, `
-		SELECT COALESCE(series, ''), COALESCE(series_index, 0), COALESCE(isbn, ''), COALESCE(publisher, ''),
-		       COALESCE(language, ''), COALESCE(publication_date, ''), COALESCE(description, ''),
-		       title_lock, author_lock, series_lock, cover_lock,
-		       isbn_lock, publisher_lock, language_lock, publication_date_lock, description_lock
-		FROM works WHERE id = $1`, workID).Scan(
+		SELECT COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(e.isbn, ''), COALESCE(e.publisher, ''),
+		       COALESCE(e.language, ''), COALESCE(e.publication_date, ''), COALESCE(w.description, ''),
+		       w.title_lock, w.author_lock, w.series_lock, w.cover_lock,
+		       w.isbn_lock, w.publisher_lock, w.language_lock, w.publication_date_lock, w.description_lock
+		FROM works w LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
+		WHERE w.id = $1`, workID).Scan(
 		&m.Series, &m.SeriesIndex, &m.ISBN, &m.Publisher, &m.Language, &m.PublicationDate, &m.Description,
 		&titleL, &authorL, &seriesL, &coverL, &isbnL, &pubL, &langL, &dateL, &descL)
 	if err != nil {
@@ -102,10 +103,12 @@ func readWorkFields(tx *sql.Tx, workID int) (workFields, bool, error) {
 	var f workFields
 	var retired bool
 	err := tx.QueryRow(`
-		SELECT w.original_title, COALESCE(p.name, 'Unknown Author'), COALESCE(w.series, ''), COALESCE(w.series_index, 0),
-		       COALESCE(w.isbn, ''), COALESCE(w.publisher, ''), COALESCE(w.language, ''),
-		       COALESCE(w.publication_date, ''), COALESCE(w.description, ''), w.retired_at IS NOT NULL
-		FROM works w LEFT JOIN person p ON p.id = w.author_id
+		SELECT w.original_title, COALESCE(a.name, 'Unknown Author'), COALESCE(w.series, ''), COALESCE(w.series_index, 0),
+		       COALESCE(e.isbn, ''), COALESCE(e.publisher, ''), COALESCE(e.language, ''),
+		       COALESCE(e.publication_date, ''), COALESCE(w.description, ''), w.retired_at IS NOT NULL
+		FROM works w
+		LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
+		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1 FOR UPDATE OF w`, workID).Scan(
 		&f.Title, &f.Author, &f.Series, &f.SeriesIndex, &f.ISBN, &f.Publisher, &f.Language,
 		&f.PublicationDate, &f.Description, &retired)
@@ -128,6 +131,14 @@ func applyWorkFields(ctx context.Context, tx *sql.Tx, workID int, actor, source 
 		args = append(args, val)
 		sets = append(sets, col+" = $"+strconv.Itoa(len(args)))
 	}
+	// isbn, publisher, language and publication date describe the primary edition.
+	editionSets := []string{}
+	editionArgs := []any{workID}
+	addEdition := func(col string, val any) {
+		editionArgs = append(editionArgs, val)
+		editionSets = append(editionSets, col+" = $"+strconv.Itoa(len(editionArgs)))
+	}
+	newAuthor := ""
 	lockNow := map[string]bool{}
 	note := func(field, from, to string) {
 		changes = append(changes, fieldChange{Field: field, From: from, To: to})
@@ -158,20 +169,17 @@ func applyWorkFields(ctx context.Context, tx *sql.Tx, workID int, actor, source 
 	} {
 		if f.to != f.from {
 			// A cleared field is stored as NULL, not as an empty string.
-			add(f.col, sql.NullString{String: f.to, Valid: f.to != ""})
+			value := sql.NullString{String: f.to, Valid: f.to != ""}
+			if f.name == "description" {
+				add(f.col, value)
+			} else {
+				addEdition(f.col, value)
+			}
 			note(f.name, f.from, f.to)
 		}
 	}
 	if next.Author != cur.Author {
-		var authorID int
-		err := tx.QueryRowContext(ctx, `SELECT id FROM person WHERE name = $1`, next.Author).Scan(&authorID)
-		if errors.Is(err, sql.ErrNoRows) {
-			err = tx.QueryRowContext(ctx, `INSERT INTO person (name) VALUES ($1) RETURNING id`, next.Author).Scan(&authorID)
-		}
-		if err != nil {
-			return nil, err
-		}
-		add("author_id", authorID)
+		newAuthor = next.Author
 		note("author", cur.Author, next.Author)
 	}
 
@@ -187,6 +195,16 @@ func applyWorkFields(ctx context.Context, tx *sql.Tx, workID int, actor, source 
 	if len(sets) > 0 {
 		sets = append(sets, "updated_at = CURRENT_TIMESTAMP")
 		if _, err := tx.ExecContext(ctx, "UPDATE works SET "+strings.Join(sets, ", ")+" WHERE id = $1", args...); err != nil {
+			return nil, err
+		}
+	}
+	if len(editionSets) > 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE editions SET "+strings.Join(editionSets, ", ")+" WHERE work_id = $1 AND is_primary", editionArgs...); err != nil {
+			return nil, err
+		}
+	}
+	if newAuthor != "" {
+		if err := setFirstAuthor(ctx, tx, workID, newAuthor); err != nil {
 			return nil, err
 		}
 	}
@@ -255,18 +273,19 @@ func (h *LibraryHandler) ListCandidates(w http.ResponseWriter, r *http.Request) 
 		SELECT c.id, c.field, c.value, c.source, c.evidence, c.created_at,
 		       CASE c.field
 		         WHEN 'title' THEN w.original_title
-		         WHEN 'author' THEN COALESCE(p.name, '')
+		         WHEN 'author' THEN COALESCE(a.name, '')
 		         WHEN 'series' THEN COALESCE(w.series, '')
 		         WHEN 'series_index' THEN COALESCE(w.series_index, 0)::text
-		         WHEN 'isbn' THEN COALESCE(w.isbn, '')
-		         WHEN 'language' THEN COALESCE(w.language, '')
-		         WHEN 'publisher' THEN COALESCE(w.publisher, '')
-		         WHEN 'publication_date' THEN COALESCE(w.publication_date, '')
+		         WHEN 'isbn' THEN COALESCE(e.isbn, '')
+		         WHEN 'language' THEN COALESCE(e.language, '')
+		         WHEN 'publisher' THEN COALESCE(e.publisher, '')
+		         WHEN 'publication_date' THEN COALESCE(e.publication_date, '')
 		         WHEN 'description' THEN COALESCE(w.description, '')
 		         ELSE '' END
 		FROM metadata_candidates c
 		JOIN works w ON w.id = c.work_id
-		LEFT JOIN person p ON p.id = w.author_id
+		LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
+		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE c.work_id = $1 AND c.state = 'pending'
 		ORDER BY c.field, c.id`, id)
 	if err != nil {
@@ -437,4 +456,30 @@ func addTags(tx *sql.Tx, workID int, names []string) error {
 		}
 	}
 	return nil
+}
+
+// firstAuthorSQL selects the name of a work's first author. It expects the work
+// to be aliased w and is meant to be used as a LATERAL subquery.
+const firstAuthorSQL = `
+	SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id
+	WHERE c.work_id = w.id AND c.role = 'author' ORDER BY c.position, p.name LIMIT 1`
+
+// setFirstAuthor makes name the work's first author, creating the person if
+// needed. Other contributors are left as they are.
+func setFirstAuthor(ctx context.Context, tx *sql.Tx, workID int, name string) error {
+	var personID int
+	err := tx.QueryRowContext(ctx, `SELECT id FROM person WHERE name = $1`, name).Scan(&personID)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = tx.QueryRowContext(ctx, `INSERT INTO person (name) VALUES ($1) RETURNING id`, name).Scan(&personID)
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM work_contributors WHERE work_id = $1 AND role = 'author' AND position = 0`, workID); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO work_contributors (work_id, person_id, role, position) VALUES ($1, $2, 'author', 0)
+		ON CONFLICT DO NOTHING`, workID, personID)
+	return err
 }

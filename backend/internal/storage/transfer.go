@@ -174,12 +174,6 @@ func (t *Transferrer) switchToManaged(ctx context.Context, fm fileMeta, target, 
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE works SET file_path = $1
-		WHERE id = (SELECT e.work_id FROM files f JOIN editions e ON e.id = f.edition_id WHERE f.id = $2)
-		  AND (SELECT file_id FROM work_primary WHERE work_id = works.id) = $2`, target, fm.fileID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO storage_cleanups (path, sha256, file_id, reason)
 		VALUES ($1, $2, $3, 'waiting to be removed')
 		ON CONFLICT (path) DO UPDATE SET sha256 = EXCLUDED.sha256, file_id = EXCLUDED.file_id`, source, sum, fm.fileID); err != nil {

@@ -194,12 +194,11 @@ func (s *Scanner) catalogue(ctx context.Context, root, rel, abs, ext, actor stri
 	var fileID int64
 	name := path.Base(rel)
 	format := strings.TrimPrefix(ext, ".")
-	if err := tx.QueryRowContext(ctx, `INSERT INTO works (original_title, format) VALUES ($1, $2) RETURNING id`, name, format).Scan(&workID); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO works (original_title) VALUES ($1) RETURNING id`, name).Scan(&workID); err != nil {
 		report.problem("%s: %v", rel, err)
 		return
 	}
-	// The database projected the work onto a primary edition; attach the file to it.
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM editions WHERE work_id = $1 AND is_primary`, workID).Scan(&editionID); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO editions (work_id, title, is_primary) VALUES ($1, $2, TRUE) RETURNING id`, workID, name).Scan(&editionID); err != nil {
 		report.problem("%s: %v", rel, err)
 		return
 	}

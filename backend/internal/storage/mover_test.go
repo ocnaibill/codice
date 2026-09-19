@@ -54,18 +54,8 @@ func (e *env) scalar(q string, args ...any) string {
 // database) and writes its file to disk at the flat ingestion path.
 func (e *env) addWork(title, author, file, format, lang, publisher, date string) (workID int, fileID int64) {
 	e.t.Helper()
-	var personID sql.NullInt64
-	if author != "" {
-		e.db.QueryRow(`INSERT INTO person (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`, author).Scan(&personID)
-	}
-	if err := e.db.QueryRow(`INSERT INTO works (original_title, file_path, format, author_id, language, publisher, publication_date)
-		VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, '')) RETURNING id`,
-		title, file, format, personID, lang, publisher, date).Scan(&workID); err != nil {
-		e.t.Fatal(err)
-	}
-	if err := e.db.QueryRow(`SELECT file_id FROM work_primary WHERE work_id = $1`, workID).Scan(&fileID); err != nil {
-		e.t.Fatal(err)
-	}
+	workID, _, fileID = testdb.AddWork(e.t, e.db, testdb.Work{
+		Title: title, Path: file, Format: format, Author: author, Language: lang, Publisher: publisher, Date: date})
 	e.write(file, "content of "+file)
 	return workID, fileID
 }
@@ -104,10 +94,6 @@ func TestMove_RelocatesTheFileAndKeepsTheDatabaseInStep(t *testing.T) {
 	}
 	if got := e.scalar(`SELECT organized_at IS NOT NULL FROM files WHERE id = $1`, file); got != "true" {
 		t.Error("the file was not marked organized")
-	}
-	// The legacy column follows, for code that still reads it.
-	if got := e.scalar(`SELECT file_path FROM works WHERE id = $1`, work); got != target {
-		t.Errorf("works.file_path = %q", got)
 	}
 	if got := e.scalar(`SELECT file_path FROM work_primary WHERE work_id = $1`, work); got != target {
 		t.Errorf("work_primary = %q", got)
@@ -308,7 +294,9 @@ func TestReorganize_IsExplicitAndRevalidatesThePreview(t *testing.T) {
 	}
 
 	// Correcting the metadata does NOT move the file (DEC-037)...
-	e.exec(`UPDATE works SET original_title = 'Duna', author_id = (SELECT id FROM person WHERE name = 'F. Herbert') WHERE id = $1`, work)
+	e.exec(`UPDATE works SET original_title = 'Duna' WHERE id = $1`, work)
+	e.exec(`DELETE FROM work_contributors WHERE work_id = $1`, work)
+	e.exec(`INSERT INTO work_contributors (work_id, person_id, role, position) SELECT $1, id, 'author', 0 FROM person WHERE name = 'F. Herbert'`, work)
 	e.exec(`UPDATE person SET name = 'Frank Herbert' WHERE name = 'F. Herbert'`)
 	if got := strings.Split(e.locationOf(file), "|")[0]; got != initial || !e.has(initial) {
 		t.Fatalf("a metadata correction moved the file to %q", got)

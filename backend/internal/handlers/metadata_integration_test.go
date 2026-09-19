@@ -24,7 +24,8 @@ func (s *catalogStack) meta(id int) *WorkMetadata {
 func TestEditWork_SavesEveryFieldAndOnlyLocksWhatChanged(t *testing.T) {
 	s := newCatalogStack(t)
 	id := s.addWork("Dune", "F. Herbert", "d.epub", "epub")
-	s.exec(`UPDATE works SET isbn = '111', publisher = 'Velha Editora', language = 'en', description = 'Descrição do arquivo', series = 'Dune Chronicles', series_index = 1 WHERE id = $1`, id)
+	s.exec(`UPDATE works SET description = 'Descrição do arquivo', series = 'Dune Chronicles', series_index = 1 WHERE id = $1`, id)
+	s.exec(`UPDATE editions SET isbn = '111', publisher = 'Velha Editora', language = 'en' WHERE work_id = $1 AND is_primary`, id)
 
 	// Change several fields, leave ISBN and description as they are.
 	body := `{"title":"Duna","author":"Frank Herbert","tags":[],"series":"Crônicas de Duna","series_index":2.5,
@@ -69,7 +70,8 @@ func TestEditWork_SavesEveryFieldAndOnlyLocksWhatChanged(t *testing.T) {
 func TestEditWork_AbsentFieldsAreKeptAndEmptyOnesAreCleared(t *testing.T) {
 	s := newCatalogStack(t)
 	id := s.addWork("Duna", "Frank Herbert", "d.epub", "epub")
-	s.exec(`UPDATE works SET isbn = '111', publisher = 'Aleph', description = 'texto' WHERE id = $1`, id)
+	s.exec(`UPDATE works SET description = 'texto' WHERE id = $1`, id)
+	s.exec(`UPDATE editions SET isbn = '111', publisher = 'Aleph' WHERE work_id = $1 AND is_primary`, id)
 
 	// The old client sent only title, author and tags: nothing else may be lost.
 	s.put(id, `{"title":"Duna","author":"Frank Herbert","tags":["a"]}`)
@@ -83,7 +85,7 @@ func TestEditWork_AbsentFieldsAreKeptAndEmptyOnesAreCleared(t *testing.T) {
 	if m.ISBN != "" || !m.Locks["isbn"] {
 		t.Errorf("cleared isbn = %q locked=%v", m.ISBN, m.Locks["isbn"])
 	}
-	if got := s.scalar(`SELECT COALESCE(isbn, 'NULL') FROM works WHERE id = $1`, id); got != "NULL" {
+	if got := s.scalar(`SELECT COALESCE(isbn, 'NULL') FROM editions WHERE work_id = $1 AND is_primary`, id); got != "NULL" {
 		t.Errorf("a cleared field is stored as %q, want NULL", got)
 	}
 	if m.Publisher != "Aleph" {
@@ -94,7 +96,7 @@ func TestEditWork_AbsentFieldsAreKeptAndEmptyOnesAreCleared(t *testing.T) {
 func TestEditWork_ExplicitLocksProtectOrReleaseUnchangedFields(t *testing.T) {
 	s := newCatalogStack(t)
 	id := s.addWork("Duna", "Frank Herbert", "d.epub", "epub")
-	s.exec(`UPDATE works SET publisher = 'Aleph' WHERE id = $1`, id)
+	s.exec(`UPDATE editions SET publisher = 'Aleph' WHERE work_id = $1 AND is_primary`, id)
 	base := `"title":"Duna","author":"Frank Herbert","tags":[]`
 
 	// Protect an unchanged field.
@@ -206,7 +208,7 @@ func TestCandidates_AcceptRejectAndSettle(t *testing.T) {
 	s.decide(id, author, "accept")
 	s.decide(id, idx, "accept")
 	s.decide(id, tags, "accept")
-	if got := s.scalar(`SELECT p.name FROM works w JOIN person p ON p.id = w.author_id WHERE w.id = $1`, id); got != "Frank Herbert" {
+	if got := s.scalar(`SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id WHERE c.work_id = $1 AND c.role = 'author' AND c.position = 0`, id); got != "Frank Herbert" {
 		t.Errorf("author = %q", got)
 	}
 	if got := s.scalar(`SELECT series_index::text FROM works WHERE id = $1`, id); got != "1" {
@@ -223,7 +225,7 @@ func TestCandidates_AcceptRejectAndSettle(t *testing.T) {
 	if code := s.decide(id, isbn, "reject"); code != 200 {
 		t.Fatalf("reject: %d", code)
 	}
-	if got := s.scalar(`SELECT COALESCE(isbn, 'NULL') FROM works WHERE id = $1`, id); got != "NULL" {
+	if got := s.scalar(`SELECT COALESCE(isbn, 'NULL') FROM editions WHERE work_id = $1 AND is_primary`, id); got != "NULL" {
 		t.Errorf("a rejected suggestion was applied: %q", got)
 	}
 	if m := s.meta(id); m.Locks["isbn"] {

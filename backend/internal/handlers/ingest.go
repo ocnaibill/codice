@@ -131,18 +131,20 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 	}
 	defer tx.Rollback()
 
-	var workID int
-	if err := tx.QueryRowContext(ctx,
-		`INSERT INTO works (original_title, file_path, format) VALUES ($1, $2, $3) RETURNING id`,
-		safeName, stored, strings.TrimPrefix(ext, ".")).Scan(&workID); err != nil {
+	var workID, editionID int
+	var fileID int64
+	format := strings.TrimPrefix(ext, ".")
+	if err := tx.QueryRowContext(ctx, `INSERT INTO works (original_title) VALUES ($1) RETURNING id`, safeName).Scan(&workID); err != nil {
 		cleanup()
 		return nil, err
 	}
-	// The database projects the work onto its primary edition and file (migration
-	// 00002); record the facts about the bytes on that file.
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE files SET sha256 = $1, size_bytes = $2
-		WHERE id = (SELECT file_id FROM work_primary WHERE work_id = $3)`, sum, size, workID); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO editions (work_id, title, is_primary) VALUES ($1, $2, TRUE) RETURNING id`, workID, safeName).Scan(&editionID); err != nil {
+		cleanup()
+		return nil, err
+	}
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO files (edition_id, format, sha256, size_bytes) VALUES ($1, $2, $3, $4) RETURNING id`,
+		editionID, format, sum, size).Scan(&fileID); err != nil {
 		cleanup()
 		var pe *pq.Error
 		if errors.As(err, &pe) && pe.Code == "23505" {
@@ -151,6 +153,10 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 				return nil, dup
 			}
 		}
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO storage_locations (file_id, mode, path) VALUES ($1, 'managed', $2)`, fileID, stored); err != nil {
+		cleanup()
 		return nil, err
 	}
 	jobID, err := jobs.Enqueue(ctx, tx, jobs.TypeIngest, workID, map[string]any{"file_path": mustAbs(finalPath)}, opts.Priority, opts.Actor)

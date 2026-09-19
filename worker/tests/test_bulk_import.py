@@ -23,10 +23,16 @@ class FakeCursor:
             return (self.existing_work,) if self.existing_work else None
         if "INSERT INTO works" in self._last:
             return (self.next_work_id,)
+        if "INSERT INTO editions" in self._last:
+            return (7,)
+        if "INSERT INTO files" in self._last:
+            return (9,)
         return None
 
     def writes(self):
-        return [q.split(" ")[0] + " " + q.split(" ")[1] for q, _ in self.statements if not q.startswith("SELECT")]
+        """The statements that change data, as verb and table."""
+        return [" ".join(q.split(" ")[:3]) if q.startswith("INSERT") else " ".join(q.split(" ")[:2])
+                for q, _ in self.statements if not q.startswith("SELECT")]
 
 
 def source_file(tmp_path, content=b"some book bytes"):
@@ -46,10 +52,14 @@ class TestEnqueueFile:
 
         assert (outcome, work_id) == ('enqueued', 42)
         assert open(dst, 'rb').read() == b"some book bytes"
-        # Work, hash and job are all written on the caller's transaction; the caller commits.
-        assert cursor.writes() == ["INSERT INTO", "UPDATE files", "INSERT INTO", "UPDATE works"]
-        hash_update = next(p for q, p in cursor.statements if q.startswith("UPDATE files"))
-        assert hash_update == (sha256_of(src), len(b"some book bytes"), 42)
+        # Work, edition, file with its hash, location and job are all written on the
+        # caller's transaction; the caller commits.
+        assert cursor.writes() == ["INSERT INTO works", "INSERT INTO editions", "INSERT INTO files",
+                                   "INSERT INTO storage_locations", "INSERT INTO jobs", "UPDATE works"]
+        file_insert = next(p for q, p in cursor.statements if q.startswith("INSERT INTO files"))
+        assert file_insert == (7, 'epub', sha256_of(src), len(b"some book bytes"))
+        location = next(p for q, p in cursor.statements if q.startswith("INSERT INTO storage_locations"))
+        assert location == (9, "1_1_Duna.epub")
         job_insert = next((q, p) for q, p in cursor.statements if q.startswith("INSERT INTO jobs"))
         assert "ON CONFLICT (type, work_id) WHERE state IN ('pending', 'running') DO NOTHING" in job_insert[0]
         assert json.loads(job_insert[1][1]) == {"file_path": os.path.abspath(dst)}
