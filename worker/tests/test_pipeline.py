@@ -88,3 +88,28 @@ class TestPipeline:
         result = run(db, meta(), FakeProviders(record=None))
         assert result.title == 'Duna'
         assert db.matching("INSERT INTO metadata_candidates") == []
+
+
+class TestEnsureFile:
+    def test_a_missing_file_is_a_permanent_error_not_a_lenient_success(self, tmp_path):
+        import pytest
+        from pipeline import ensure_file
+        from runner import classify
+
+        with pytest.raises(FileNotFoundError) as caught:
+            ensure_file(str(tmp_path / "gone.epub"))
+        assert classify(caught.value) == 'permanent'
+        assert "gone.epub" in str(caught.value) and str(tmp_path) not in str(caught.value)  # no server paths in the message
+
+    def test_a_directory_or_empty_path_is_refused(self, tmp_path):
+        import pytest
+        from pipeline import ensure_file
+        for bad in ("", None, str(tmp_path)):
+            with pytest.raises((ValueError, FileNotFoundError)):
+                ensure_file(bad)
+
+    def test_an_existing_file_passes(self, tmp_path):
+        from pipeline import ensure_file
+        f = tmp_path / "ok.epub"
+        f.write_bytes(b"x")
+        ensure_file(str(f))

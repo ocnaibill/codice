@@ -13,7 +13,8 @@ from extractors.base import BaseExtractor
 from providers import ProviderRegistry
 from db import CodiceDatabase
 from analyzer import Analyzer, MediaStatus
-from pipeline import analyze_file
+from pipeline import analyze_file, ensure_file
+from runner import JobRunner, JobsClient, new_owner_name
 
 # 1. Loads variables from .env, trying multiple locations
 env_paths = ["../.env", ".env"]
@@ -26,36 +27,39 @@ for p in env_paths:
 if not loaded:
     print("Warning: No .env file found. Using system environment variables.")
 
-# 2. Configures the Redis connection
+# 2. Redis is optional: it only wakes the worker up sooner than its next poll.
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+WAKEUP_STREAM = "codice_jobs_wakeup"
+EVENTS_CHANNEL = "codice_updates"
 
-r = redis.from_url(
-    REDIS_URL, 
-    decode_responses=True,
-    socket_timeout=10.0,
-    socket_connect_timeout=5.0,
-    socket_keepalive=True,
-    retry_on_timeout=True
-)
-
-STREAM_NAME = 'ingestion_tasks'
-GROUP_NAME = 'python_workers'
-CONSUMER_NAME = 'worker_1'
+POLL_SECONDS = float(os.getenv("WORKER_POLL_SECONDS", "5"))
+LEASE_SECONDS = int(os.getenv("JOB_LEASE_SECONDS", "120"))
+# One heavy job at a time by default (DEC-069); the owner can raise it.
+MAX_RUNNING = int(os.getenv("JOBS_MAX_CONCURRENT", "1"))
 
 
-def setup_redis_stream():
-    """Creates the Consumer Group in Redis, if it does not exist."""
+def connect_redis():
+    """Returns a Redis client, or None: the worker works without it."""
     try:
-        r.ping()
-        print("✅ Successfully connected to Redis!")
-        r.xgroup_create(STREAM_NAME, GROUP_NAME, id='0', mkstream=True)
-        print(f"📦 Consumer group '{GROUP_NAME}' configured.")
-    except redis.exceptions.ResponseError as e:
-        if "BUSYGROUP" not in str(e):
-            print(f"❌ Error creating group: {e}")
-    except redis.exceptions.ConnectionError:
-        print("❌ Could not connect to Redis. Is the container running?")
-        exit(1)
+        client = redis.from_url(
+            REDIS_URL, decode_responses=True, socket_timeout=10.0, socket_connect_timeout=5.0,
+            socket_keepalive=True, retry_on_timeout=True)
+        client.ping()
+        print("✅ Connected to Redis (used only to wake the worker up)")
+        return client
+    except Exception as err:
+        print(f"⚠️ Redis unavailable ({err}); polling the database instead")
+        return None
+
+
+def publish(client, event: dict):
+    """Broadcast a UI event. Failing to do so never affects a job."""
+    if client is None:
+        return
+    try:
+        client.publish(EVENTS_CHANNEL, json.dumps(event))
+    except Exception as err:
+        print(f"   ⚠️ could not publish event: {err}")
 
 
 def register_extractors() -> list:
@@ -79,99 +83,86 @@ def find_extractor(extractors: list, file_path: str) -> BaseExtractor:
     raise ValueError(f"Unsupported format: {file_path}")
 
 
-def listen_for_tasks():
-    setup_redis_stream()
+def wait_for_work(client, last_id):
+    """Sleep until Redis says there may be work, or until the next poll."""
+    if client is None:
+        time.sleep(POLL_SECONDS)
+        return last_id
+    try:
+        messages = client.xread({WAKEUP_STREAM: last_id}, block=int(POLL_SECONDS * 1000), count=50)
+        for _stream, entries in messages or []:
+            last_id = entries[-1][0]
+    except Exception as err:
+        print(f"⚠️ Redis wake-up failed ({err}); falling back to polling")
+        time.sleep(POLL_SECONDS)
+    return last_id
 
-    db = CodiceDatabase()
+
+def build_runner(db, client):
     extractors = register_extractors()
     provider_registry = ProviderRegistry()
     analyzer = Analyzer(db)
 
-    print("⏳ Python Worker waiting for tasks in the queue...")
+    storage_path = os.getenv('CODICE_STORAGE_PATH', './uploads')
+    # If relative, resolve from project root (two levels up from worker/)
+    if not os.path.isabs(storage_path):
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        storage_path = os.path.join(project_root, storage_path)
+    covers_dir = os.path.join(storage_path, 'covers')
+    os.makedirs(covers_dir, exist_ok=True)
 
+    def process(job, checkpoint):
+        file_path = job['payload'].get('file_path')
+        print(f"\n📥 Job {job['id']} (work {job['work_id']}, attempt {job['attempts']}/{job['max_attempts']})")
+        print(f"   File: {file_path}")
+        ensure_file(file_path)
+        extractor = find_extractor(extractors, file_path)
+        print(f"   🔍 Using extractor: {extractor.__class__.__name__}")
+        checkpoint()
+        return analyze_file(job['work_id'], file_path, extractor, analyzer, provider_registry, covers_dir, checkpoint)
+
+    def on_start(job):
+        analyzer.update_status(job['work_id'], MediaStatus.ANALYZING)
+        publish(client, {"type": "WORK_ANALYZING", "work_id": job['work_id']})
+
+    def on_success(job, metadata):
+        analyzer.update_status(job['work_id'], MediaStatus.READY)
+        publish(client, {"type": "WORK_READY", "work_id": job['work_id'], "title": metadata.title})
+        print(f"✅ Job {job['id']} completed.")
+
+    def on_failure(job, kind, message):
+        analyzer.update_status(job['work_id'], MediaStatus.ERROR, message)
+        publish(client, {"type": "WORK_ERROR", "work_id": job['work_id'], "error": message})
+
+    def on_retry(job, message):
+        # Not final: the job waits and runs again, so the work goes back to queued.
+        analyzer.update_status(job['work_id'], MediaStatus.QUEUED)
+        print(f"   🔁 Will retry: {message}")
+
+    owner = new_owner_name()
+    print(f"🆔 Worker {owner}")
+    jobs = JobsClient(db, owner, lease_seconds=LEASE_SECONDS, max_running=MAX_RUNNING)
+    return JobRunner(jobs, process, on_start=on_start, on_success=on_success, on_failure=on_failure,
+                     on_retry=on_retry, heartbeat_every=max(1.0, LEASE_SECONDS / 4))
+
+
+def listen_for_tasks():
+    db = CodiceDatabase()
+    client = connect_redis()
+    runner = build_runner(db, client)
+    last_id = '$'
+
+    print("⏳ Python Worker waiting for jobs...")
     while True:
         try:
-            messages = r.xreadgroup(
-                groupname=GROUP_NAME,
-                consumername=CONSUMER_NAME,
-                streams={STREAM_NAME: '>'},
-                block=5000,
-                count=1
-            )
-
-            if not messages:
-                continue
-
-            for stream, message_list in messages:
-                for message_id, data in message_list:
-                    file_path = data.get('file_path')
-                    work_id = data.get('work_id')
-
-                    print(f"\n📥 New task received! ID: {message_id}")
-                    print(f"   Work ID: {work_id}")
-                    print(f"   File: {file_path}")
-
-                    try:
-                        # 1. Set status to ANALYZING and broadcast event
-                        analyzer.update_status(work_id, MediaStatus.ANALYZING)
-                        r.publish('codice_updates', json.dumps({
-                            "type": "WORK_ANALYZING",
-                            "work_id": work_id
-                        }))
-
-                        # 2. Find the right extractor
-                        extractor = find_extractor(extractors, file_path)
-                        print(f"   🔍 Using extractor: {extractor.__class__.__name__}")
-
-                        # 3. Extract what the file says, then collect provider suggestions
-                        storage_path = os.getenv('CODICE_STORAGE_PATH', './uploads')
-                        # If relative, resolve from project root (two levels up from worker/)
-                        if not os.path.isabs(storage_path):
-                            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                            storage_path = os.path.join(project_root, storage_path)
-                        covers_dir = os.path.join(storage_path, 'covers')
-                        os.makedirs(covers_dir, exist_ok=True)
-
-                        metadata = analyze_file(work_id, file_path, extractor, analyzer,
-                                                provider_registry, covers_dir)
-
-                        # 6. Set status to READY
-                        analyzer.update_status(work_id, MediaStatus.READY)
-
-                        # 7. Broadcast WORK_READY event
-                        event = {
-                            "type": "WORK_READY",
-                            "work_id": work_id,
-                            "title": metadata.title
-                        }
-                        r.publish('codice_updates', json.dumps(event))
-                        print(f"📡 Broadcast WORK_READY event for Work ID: {work_id}")
-
-                        # 8. Acknowledge task
-                        r.xack(STREAM_NAME, GROUP_NAME, message_id)
-                        print(f"✅ Task {message_id} completed successfully.")
-
-                    except (ValueError, FileNotFoundError) as sec_err:
-                        print(f"⚠️ Validation/security error: {sec_err}")
-                        analyzer.update_status(work_id, MediaStatus.ERROR, str(sec_err))
-                        r.publish('codice_updates', json.dumps({
-                            "type": "WORK_ERROR",
-                            "work_id": work_id,
-                            "error": str(sec_err)
-                        }))
-                        r.xack(STREAM_NAME, GROUP_NAME, message_id)
-                    except Exception as err:
-                        print(f"❌ Processing failure: {err}")
-                        analyzer.update_status(work_id, MediaStatus.ERROR, str(err))
-                        r.publish('codice_updates', json.dumps({
-                            "type": "WORK_ERROR",
-                            "work_id": work_id,
-                            "error": str(err)
-                        }))
-
-        except Exception as e:
-            print(f"⚠️ Unexpected network error: {e}")
-            time.sleep(2)
+            if runner.run_one():
+                continue  # more may be waiting: look again before sleeping
+        except Exception as err:
+            # The database itself is unreachable: nothing to do but wait for it.
+            print(f"⚠️ Could not reach the job queue: {err}")
+            time.sleep(POLL_SECONDS)
+            continue
+        last_id = wait_for_work(client, last_id)
 
 
 if __name__ == "__main__":

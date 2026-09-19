@@ -53,9 +53,10 @@ class BaseExtractor(ABC):
         import os
         filename = os.path.basename(file_path)
         name, _ = os.path.splitext(filename)
-        # Remove common prefixes like timestamps
+        # Remove the prefixes the server adds to stored names: a timestamp (and a
+        # counter, for bulk imports) or a 12-character random id.
         import re
-        name = re.sub(r'^\d+_', '', name)
+        name = re.sub(r'^(?:(?:\d+|[0-9a-f]{12})_)+', '', name)
         name = name.replace('_', ' ').replace('-', ' ')
         return name.strip()
 

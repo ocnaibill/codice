@@ -1,15 +1,32 @@
 """The analysis of one work: extract what the file says, then ask external
 providers for suggestions. Kept apart from the queue loop so it can be tested
 and reused by whatever runs the jobs."""
+import os
+
 from analyzer import Analyzer
 
 
-def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_registry, covers_dir):
+def ensure_file(file_path):
+    """Fail early, and permanently, when there is nothing to read. The extractors
+    are lenient (a missing or truncated file still "extracts" a title taken from
+    its name), so without this check a vanished file would look like a success."""
+    if not file_path:
+        raise ValueError("the job has no file path")
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"file not found: {os.path.basename(file_path)}")
+
+
+def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_registry, covers_dir,
+                 checkpoint=lambda: None):
     """Analyze one file and store the results. Returns the extracted metadata.
 
     - What the file itself says is saved as native metadata: it fills empty
       fields, never overwrites a locked or confirmed one, and records that it
       came from the file.
+    checkpoint() is called between steps and raises when the job was cancelled or
+    lost, so the work stops at a safe point: nothing is written before the file
+    has been read, and each later step writes complete data.
+
     - External providers only *suggest*. Their data is stored as candidates for
       an admin to accept or reject (DEC-019, DEC-026); it never changes the work
       by itself. The only thing taken from a provider directly is a cover, and
@@ -17,6 +34,7 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
     """
     metadata = extractor.extract(file_path, covers_dir)
     print(f"   📄 Local metadata: {metadata.title} ({metadata.page_count} pages)")
+    checkpoint()
 
     native = {
         'title': metadata.title,
@@ -35,6 +53,7 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
         'raw': metadata.raw,
     }
     analyzer.save_metadata(work_id, native)
+    checkpoint()
 
     enriched = provider_registry.search_best(metadata.title, metadata.format)
     identifiers = dict(native)
@@ -64,6 +83,7 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
         identifiers['enriched_source'] = source
         identifiers['raw'] = dict(metadata.raw or {}, **raw)
 
+    checkpoint()
     analyzer.save_identifiers(work_id, identifiers)
     analyzer.save_media_pages(work_id, native)
     return metadata
