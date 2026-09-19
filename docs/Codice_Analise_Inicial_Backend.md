@@ -276,3 +276,15 @@ Resultado das correções no branch `feat/fase1-seguranca`, cada uma com testes 
 | RF-008 Validar formato real | Corrigido no envio | O conteúdo é conferido antes de aceitar. Os extratores continuam lenientes; por isso o worker agora falha (permanente) quando o arquivo não existe |
 | Enriquecimento sobrescrevia dados | Corrigido | O worker preenche só campos vazios ou vindos do arquivo e registra a origem; provedores externos geram sugestões que o admin aceita ou rejeita (DEC-019, DEC-026) |
 
+## 13 Organização em disco e modo referenciado (19 de setembro de 2026)
+
+| Item da especificação | Situação | Como |
+| --- | --- | --- |
+| DEC-036 e DEC-065 (pastas legíveis, identidade no banco) | Atendido | O caminho é só localização: o arquivo mantém seu id ao mudar de lugar, então notas e progresso não dependem do nome físico |
+| DEC-037, RF-044 (reorganizar de forma explícita) | Atendido | Prévia com hash do plano, execução só do plano exato, recusa se a biblioteca mudou |
+| DEC-032, DEC-035 (referenciado, raízes do owner) | Atendido | Raízes só do owner, varredura sem alterar arquivos, arquivo servido por id dentro da raiz |
+| RF-011, DEC-033 e DEC-034 (mover para o gerenciado) | Atendido, com uma divergência | O fluxo verifica hash e só remove a origem se ela não mudou. A remoção é opt-in na importação em lote (a DEC-033 a faz padrão) |
+| RNF-008 (consistência e recuperação) | Atendido para movimentos | Destino registrado antes do movimento e recuperação na subida |
+| RF-041 (várias edições e formatos) | Base pronta | O catálogo já modela edições e arquivos; falta a criação de edições pela interface (Fase 5) |
+| DEC-041 a 043 (lixeira) | Aberto | Sem lixeira recuperável ainda |
+

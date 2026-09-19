@@ -56,9 +56,17 @@ Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz
 - **Metadados:** o worker só preenche o que está vazio; o que os provedores externos encontram vira **sugestão** para aceitar ou rejeitar no modal de edição. Campos que você altera ficam confirmados e travados.
 - **Worker:** rode o worker e a API. O worker sozinho já consome a fila pelo banco; o Redis é opcional.
 
-**Pendências da Fase 3** (segunda etapa): organização em disco no padrão de DEC-065, modo referenciado e "mover para o gerenciado", lixeira recuperável, candidatos a duplicidade por título/autor/ISBN, detecção de páginas sem texto para OCR, remoção dos gatilhos de compatibilidade e das colunas antigas, tela de jobs e limpeza de arquivos órfãos.
+**Fase 3, segunda etapa: organização em disco e modo referenciado, concluídos** (plano §5).
 
-**Próximo passo: concluir a Fase 3** pelos itens acima, começando pela organização em disco e pelo modo referenciado, que definem onde os arquivos vivem e destravam a lixeira e a remoção dos gatilhos. Depois vem a Fase 4 (contas e governança, com o LDAP).
+- **Layout:** cada arquivo gerenciado vai para `Autor/Obra/Idioma — Editora — Ano/Arquivo` assim que a análise termina; quadrinhos em série vão para `Série/NN - Título`. Corrigir metadados não move nada: uma reorganização é **explícita**, com prévia e confirmação do plano exato (`GET` e `POST /admin/storage/reorganize`).
+- **Modo referenciado:** o owner autoriza diretórios (`/admin/storage/roots`), owner e admin varrem (`POST /admin/library/scan`) e os arquivos ficam onde estão, sem serem tocados. Os que somem ficam marcados como ausentes com notas e progresso preservados.
+- **Mover para o gerenciado** (`POST /admin/library/move-to-managed`): copia, confere o hash e só então remove a origem, e só se ela não mudou. O que não puder ser removido fica em `GET /admin/storage/cleanups`.
+- **Atenção:** a importação em lote continua **só copiando**; para movê-los é preciso pedir `removeOriginals: true`. A DEC-033 faz da remoção o padrão, e a decisão é sua.
+- **Antes de rodar:** faça um `pg_dump`. São oito migrações. Depois da atualização, os arquivos já existentes continuam no caminho plano até você pedir uma reorganização.
+
+**Pendências da Fase 3:** lixeira recuperável, candidatos a duplicidade por título/autor/ISBN, detecção de páginas sem texto para OCR, remoção dos gatilhos de compatibilidade e das colunas antigas, telas de jobs, raízes e reorganização, e limpeza de arquivos órfãos.
+
+**Próximo passo:** abrir o PR do branch (fases 1 a 3) e, depois, a Fase 4 (contas e governança, com o LDAP). Os itens acima podem entrar antes ou depois.
 
 ## Como rodar os testes
 

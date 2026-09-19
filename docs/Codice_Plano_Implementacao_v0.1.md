@@ -100,14 +100,21 @@ Tamanho: G. Cobre os achados 4.5, 4.6 e 4.7, RF-007 a 011, 019/020, 041, 044 e 0
 - *3a, infraestrutura de jobs (DEC-066 a 069, RF-020)*: fila no PostgreSQL com a máquina de estados em funções SQL (pegar, batimento, concluir, falhar com espera de 30 s, 2 min e 10 min, cancelar), prioridade para importações manuais, um job pesado por vez, retomada de job cujo worker sumiu, erro permanente sem repetição, reexecução e cancelamento pela API, tudo auditado. O Redis só acorda o worker.
 - *3b, ingestão (RF-008, DEC-027, DEC-067)*: upload e importação em lote compartilham um caminho com limite real de tamanho, hash SHA-256 no envio, validação do conteúdo, recusa de bytes já armazenados (também numa corrida) e obra, hash e job criados numa só transação.
 
-**Ainda não feito na Fase 3**, para uma segunda etapa:
-- Organização em disco no padrão de DEC-065 (`Autor/Obra/Idioma — Editora — Ano/Arquivo`): os arquivos seguem planos, com nome aleatório mais o nome original.
-- Modo referenciado com raízes do owner e o fluxo "Mover para o armazenamento gerenciado" com remoção verificada da origem (DEC-032 a 035, RF-011).
+**Segunda etapa da Fase 3 (também em 19 de setembro de 2026): organização em disco e modo referenciado, concluídos.**
+
+- *Layout (DEC-065)*: `Autor/Obra/Idioma — Editora — Ano/Arquivo`, com pasta `Vários autores` para mais de três autores, `Autor desconhecido`, campos ausentes omitidos sem marcadores, `Série/NN - Título` para quadrinhos e mangá em série, sanitização de caracteres e nomes reservados, limite de cerca de 200 caracteres e desempate estável por um sufixo derivado do id do arquivo. A fronteira da pasta de série ficou como na especificação: só cbz e cbr.
+- *Organização inicial automática*: depois que a análise de um arquivo termina, o próprio banco cria um job `organize`, que o processo da API executa. Corrigir metadados **não** move arquivos (DEC-037): `GET /admin/storage/reorganize` mostra a prévia com um hash do plano e `POST` só executa esse plano exato, recusando com 409 se a biblioteca mudou.
+- *Mover com segurança*: o destino é gravado antes de tocar no disco, e uma rotina de recuperação, executada na subida, resolve o que uma queda deixou (chegou, não saiu, está nos dois lugares, em nenhum). Nada é sobrescrito e nada sai da raiz.
+- *Modo referenciado (DEC-032, DEC-035)*: só o owner autoriza diretórios (sem sobreposição com o armazenamento gerenciado nem entre si). A varredura, um job, cataloga sem alterar nada, ignora symlinks, recusa conteúdo inválido, não cataloga bytes que a biblioteca já tem (inclusive os do modo gerenciado), marca arquivos ausentes preservando notas e progresso, reativa os que voltam e sinaliza para revisão os que mudaram de conteúdo. Arquivos referenciados são servidos por id (`/file/{id}`), só enquanto o caminho real continua dentro da raiz.
+- *Mover para o gerenciado (DEC-033, DEC-034, RF-011)*: um job que confere o hash da origem, copia para o staging calculando o hash, publica, troca a localização e registra a origem como pendente na mesma transação, e só então remove a origem se ela não mudou. O arquivo mantém o id, então notas e progresso continuam. Origem alterada ou impossível de remover fica listada com o motivo (`GET /admin/storage/cleanups`, com nova tentativa).
+- *Duas decisões que divergem do texto*: (1) a importação em lote **não** remove as originais por padrão; a remoção é opt-in (`removeOriginals`), porque uma importação sempre só copiou e apagar arquivos de alguém não deve começar sozinho. A DEC-033 faz da remoção o padrão; vale você decidir. (2) A quantidade máxima de arquivos por pedido de transferência é 500.
+
+**Ainda não feito na Fase 3:**
 - Lixeira recuperável e limpeza automática opcional (DEC-041 a 043, RF-045): hoje a exclusão física de uma obra retirada é imediata.
 - Candidatos a duplicidade por título, autor ou ISBN para revisão administrativa (DEC-029).
 - Detecção de páginas sem texto para OCR (RF-019).
-- A etapa "contrair": remover os gatilhos de compatibilidade e as colunas antigas de `works`, o que exige o worker e o upload escreverem o modelo novo diretamente.
-- Tela de administração de jobs (a API existe) e limpeza de arquivos órfãos deixados por uma queda entre gravar o arquivo e confirmar a transação.
+- A etapa "contrair": remover os gatilhos de compatibilidade e as colunas antigas de `works`.
+- Telas de administração de jobs, de raízes e de reorganização (as APIs existem), e a limpeza de arquivos órfãos deixados por uma queda entre gravar o arquivo e confirmar a transação.
 
 ## 6 Fase 4: contas e governança
 
@@ -156,7 +163,7 @@ Sem detalhamento agora, na ordem sugerida pela especificação: busca textual e 
 | Fase 1 | Sessões revogáveis e autenticação OPDS | Resolvido: DEC-070 e DEC-071 |
 | Fase 2 | Ferramenta de migração | Resolvido: goose |
 | Fase 2 | Destino dos dados de teste | Resolvido: migração sem descarte; nenhum reset foi necessário |
-| Fase 3 | Fronteira da pasta de série (quadrinhos e mangá versus livros) | Como na especificação, §12.1 |
+| Fase 3 | Fronteira da pasta de série (quadrinhos e mangá versus livros) | Resolvido como na especificação: só cbz e cbr |
 | Fase 4 | Formato da auditoria administrativa | Tabela de eventos com ator, ação, alvo e data, sem segredos |
 | Fase 5 | Significado de tempo de leitura e conclusão | Definir antes de consolidar as estatísticas |
 
