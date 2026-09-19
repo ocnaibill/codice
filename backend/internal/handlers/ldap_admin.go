@@ -77,6 +77,9 @@ func (h *LDAPAdminHandler) Check(w http.ResponseWriter, r *http.Request) {
 	err := h.Directory.Check(r.Context())
 	reason := ""
 	if err != nil {
+		// The reason (a certificate that does not match, a refused service account...)
+		// goes to the server log for the operator; the screen only gets the category.
+		log.Printf("LDAP connection test failed: %v", err)
 		reason = "unavailable"
 		if !errors.Is(err, ldapauth.ErrUnavailable) {
 			reason = "error"
