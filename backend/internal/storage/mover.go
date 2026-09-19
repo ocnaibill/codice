@@ -254,15 +254,30 @@ type fileMeta struct {
 	fileID int64
 	workID int
 	path   string
+	root   string // only for referenced files
+	sha    string
+	size   int64
 	meta   Meta
 	title  string
 }
 
+// fileQuery selects files. mode is "managed" unless set; fileID 0 means any.
+type fileQuery struct {
+	mode            string
+	workID          int
+	fileID          int64
+	onlyUnorganized bool
+}
+
 // loadFiles reads what the layout needs about every file, or about one work's
 // files that are not organized yet.
-func (m *Mover) loadFiles(ctx context.Context, onlyWork int, onlyUnorganized bool) ([]fileMeta, error) {
+func (m *Mover) loadFiles(ctx context.Context, q fileQuery) ([]fileMeta, error) {
+	if q.mode == "" {
+		q.mode = "managed"
+	}
 	rows, err := m.DB.QueryContext(ctx, `
-		SELECT f.id, e.work_id, l.path, w.original_title, COALESCE(e.language, ''), COALESCE(e.publisher, ''),
+		SELECT f.id, e.work_id, l.path, COALESCE(l.root, ''), COALESCE(f.sha256, ''), COALESCE(f.size_bytes, 0),
+		       w.original_title, COALESCE(e.language, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.publication_date, ''), COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(f.format, ''),
 		       COALESCE((SELECT array_agg(p.name ORDER BY c.position, p.name)
 		                 FROM work_contributors c JOIN person p ON p.id = c.person_id
@@ -271,10 +286,11 @@ func (m *Mover) loadFiles(ctx context.Context, onlyWork int, onlyUnorganized boo
 		JOIN files f ON f.id = l.file_id
 		JOIN editions e ON e.id = f.edition_id
 		JOIN works w ON w.id = e.work_id
-		WHERE l.mode = 'managed' AND l.state = 'ok'
-		  AND ($1 = 0 OR e.work_id = $1)
-		  AND (NOT $2 OR f.organized_at IS NULL)
-		ORDER BY f.id`, onlyWork, onlyUnorganized)
+		WHERE l.mode = $1 AND l.state = 'ok'
+		  AND ($2 = 0 OR e.work_id = $2)
+		  AND ($3 = 0 OR f.id = $3)
+		  AND (NOT $4 OR f.organized_at IS NULL)
+		ORDER BY f.id`, q.mode, q.workID, q.fileID, q.onlyUnorganized)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +300,7 @@ func (m *Mover) loadFiles(ctx context.Context, onlyWork int, onlyUnorganized boo
 		var fm fileMeta
 		var authors []string
 		var format string
-		if err := rows.Scan(&fm.fileID, &fm.workID, &fm.path, &fm.title, &fm.meta.Language, &fm.meta.Publisher,
+		if err := rows.Scan(&fm.fileID, &fm.workID, &fm.path, &fm.root, &fm.sha, &fm.size, &fm.title, &fm.meta.Language, &fm.meta.Publisher,
 			&fm.meta.Year, &fm.meta.Series, &fm.meta.SeriesIndex, &format, pq.Array(&authors)); err != nil {
 			return nil, err
 		}
@@ -346,7 +362,7 @@ func mustJSON(v any) []byte {
 // Plan previews reorganizing every managed file to match its current metadata
 // (RF-044). Nothing is moved.
 func (m *Mover) Plan(ctx context.Context) (*Plan, error) {
-	files, err := m.loadFiles(ctx, 0, false)
+	files, err := m.loadFiles(ctx, fileQuery{})
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +410,7 @@ func (m *Mover) Apply(ctx context.Context, previewHash string) (*ApplyResult, er
 // layout path. It is what runs after a file is first analysed (the initial
 // layout is applied at incorporation, spec 12.1).
 func (m *Mover) OrganizeWork(ctx context.Context, workID int) error {
-	files, err := m.loadFiles(ctx, workID, true)
+	files, err := m.loadFiles(ctx, fileQuery{workID: workID, onlyUnorganized: true})
 	if err != nil {
 		return err
 	}

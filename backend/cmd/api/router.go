@@ -129,6 +129,9 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Post("/admin/storage/roots", storageHandler.AddRoot)
 	r.With(owner).Delete("/admin/storage/roots/{id}", storageHandler.RemoveRoot)
 	r.With(staff).Post("/admin/library/scan", storageHandler.Scan)
+	r.With(staff).Post("/admin/library/move-to-managed", storageHandler.MoveToManaged)
+	r.With(staff).Get("/admin/storage/cleanups", storageHandler.ListCleanups)
+	r.With(staff).Post("/admin/storage/cleanups/retry", storageHandler.RetryCleanups)
 
 	// Account roles
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)

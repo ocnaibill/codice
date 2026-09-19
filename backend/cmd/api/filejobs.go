@@ -28,6 +28,26 @@ func fileJobHandlers(db *sql.DB, mover *storage.Mover) map[string]jobs.Handler {
 			}
 			return err
 		},
+		// Move a referenced file into the managed storage, then remove the original
+		// if it is still exactly what was copied.
+		"transfer": func(ctx context.Context, j jobs.Claimed) error {
+			var payload struct {
+				FileID int64 `json:"file_id"`
+			}
+			if err := json.Unmarshal(j.Payload, &payload); err != nil || payload.FileID == 0 {
+				return jobs.Permanent(errors.New("the job has no file"))
+			}
+			res, err := (&storage.Transferrer{Mover: mover}).MoveToManaged(ctx, payload.FileID)
+			switch {
+			case errors.Is(err, storage.ErrNotReferenced), errors.Is(err, storage.ErrSourceMissing),
+				errors.Is(err, storage.ErrSourceChanged), errors.Is(err, storage.ErrUnsafePath):
+				return jobs.Permanent(err) // retrying will not change these
+			case err != nil:
+				return err
+			}
+			log.Printf("transfer of file %d: %+v", payload.FileID, *res)
+			return nil
+		},
 		// Catalogue an authorised directory without touching its files.
 		"scan": func(ctx context.Context, j jobs.Claimed) error {
 			var payload struct {

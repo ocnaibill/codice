@@ -43,6 +43,7 @@ func validateContent(path, ext string) error { return filecheck.Validate(path, e
 type ingestResult struct {
 	WorkID int
 	JobID  int64
+	SHA    string // of the stored bytes, to verify an original before removing it
 }
 
 // ingestOptions tunes one ingestion.
@@ -167,7 +168,7 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 		// picks it up when it polls.
 		log.Printf("job %d saved; workers were not woken (%v)", jobID, err)
 	}
-	return &ingestResult{WorkID: workID, JobID: jobID}, nil
+	return &ingestResult{WorkID: workID, JobID: jobID, SHA: sum}, nil
 }
 
 func mustAbs(p string) string {

@@ -257,3 +257,74 @@ func (h *StorageHandler) Scan(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]any{"job_id": id})
 }
+
+type moveRequest struct {
+	FileIDs []int64 `json:"fileIds"`
+}
+
+// MoveToManaged queues the transfer of referenced files into the managed
+// storage ("Mover para o armazenamento gerenciado"). The original is removed once
+// the copy is verified, so this is an explicit action on chosen files (DEC-034).
+func (h *StorageHandler) MoveToManaged(w http.ResponseWriter, r *http.Request) {
+	var req moveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.FileIDs) == 0 || len(req.FileIDs) > 500 {
+		http.Error(w, "fileIds is required (1 to 500 ids)", http.StatusBadRequest)
+		return
+	}
+	type queued struct {
+		FileID int64  `json:"fileId"`
+		JobID  int64  `json:"jobId,omitempty"`
+		Error  string `json:"error,omitempty"`
+	}
+	out := []queued{}
+	for _, id := range req.FileIDs {
+		q := queued{FileID: id}
+		var workID int
+		err := h.DB.QueryRowContext(r.Context(), `
+			SELECT e.work_id FROM storage_locations l JOIN files f ON f.id = l.file_id JOIN editions e ON e.id = f.edition_id
+			WHERE f.id = $1 AND l.mode = 'referenced' AND l.state = 'ok'`, id).Scan(&workID)
+		if errors.Is(err, sql.ErrNoRows) {
+			q.Error = "not a referenced file that is available"
+			out = append(out, q)
+			continue
+		}
+		if err != nil {
+			http.Error(w, "Error looking up the file", http.StatusInternalServerError)
+			return
+		}
+		q.JobID, err = jobs.Enqueue(r.Context(), h.DB, "transfer", workID, map[string]any{"file_id": id}, jobs.PriorityManual, currentUserID(r))
+		if err != nil {
+			q.Error = "could not queue the transfer"
+		}
+		out = append(out, q)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]any{"data": out})
+}
+
+// ListCleanups shows originals that a transfer or import could not remove yet,
+// and why.
+func (h *StorageHandler) ListCleanups(w http.ResponseWriter, r *http.Request) {
+	list, err := storage.PendingCleanups(r.Context(), h.DB)
+	if err != nil {
+		http.Error(w, "Error listing pending removals", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"data": list})
+}
+
+// RetryCleanups tries again to remove the pending originals. Each is checked
+// again first: one that changed is kept.
+func (h *StorageHandler) RetryCleanups(w http.ResponseWriter, r *http.Request) {
+	removed, remaining, err := storage.RetryCleanups(r.Context(), h.DB)
+	if err != nil {
+		http.Error(w, "Error retrying the removals", http.StatusInternalServerError)
+		return
+	}
+	audit.Record(r.Context(), h.DB, currentUserID(r), "storage.cleanup_retry", "storage", "cleanups",
+		map[string]any{"removed": removed, "remaining": remaining})
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"removed": removed, "remaining": remaining})
+}

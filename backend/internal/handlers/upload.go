@@ -15,6 +15,7 @@ import (
 
 	"github.com/ocnaibill/codice/backend/internal/filecheck"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
+	"github.com/ocnaibill/codice/backend/internal/storage"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -225,14 +226,20 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 type BulkImportRequest struct {
 	Directory string `json:"directory"`
+	// RemoveOriginals makes the import a move: each original is deleted once its
+	// copy is safely in the library and the original is still exactly what was
+	// copied. Off by default, so an import never deletes anything on its own.
+	RemoveOriginals bool `json:"removeOriginals"`
 }
 
 type BulkImportResponse struct {
-	Message    string `json:"message"`
-	Scanned    int    `json:"scanned"`
-	Enqueued   int    `json:"enqueued"`
-	Duplicates int    `json:"duplicates"`
-	Errors     int    `json:"errors"`
+	Message          string `json:"message"`
+	Scanned          int    `json:"scanned"`
+	Enqueued         int    `json:"enqueued"`
+	Duplicates       int    `json:"duplicates"`
+	OriginalsRemoved int    `json:"originalsRemoved"`
+	CleanupPending   int    `json:"cleanupPending"`
+	Errors           int    `json:"errors"`
 }
 
 // HandleBulkImport scans a directory recursively and enqueues all discovered PDF/EPUB/CBZ documents
@@ -266,7 +273,8 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var scannedCount, enqueuedCount, duplicateCount, errorCount int
+	var scannedCount, enqueuedCount, duplicateCount, errorCount, removedCount, pendingCount int
+	removeOriginals := req.RemoveOriginals
 	ctx := r.Context()
 	actor := currentUserID(r)
 	limit := maxUploadBytes()
@@ -294,11 +302,19 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 
 		// Same path as an upload (hash, validation, one transaction), at batch
 		// priority so manual imports are served first (DEC-069).
-		_, err = h.ingest(ctx, src, info.Name(), ingestOptions{Actor: actor, Priority: jobs.PriorityBatch, MaxBytes: limit})
+		res, err := h.ingest(ctx, src, info.Name(), ingestOptions{Actor: actor, Priority: jobs.PriorityBatch, MaxBytes: limit})
 		var dup *errDuplicate
 		switch {
 		case err == nil:
 			enqueuedCount++
+			if removeOriginals {
+				// A move: the original goes only if it is still what was copied.
+				if storage.RemoveVerifiedOrigin(ctx, h.DB, path, res.SHA, info) {
+					removedCount++
+				} else {
+					pendingCount++
+				}
+			}
 		case errors.As(err, &dup):
 			duplicateCount++
 		default:
@@ -316,10 +332,12 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(BulkImportResponse{
-		Message:    "Bulk import completed",
-		Scanned:    scannedCount,
-		Enqueued:   enqueuedCount,
-		Duplicates: duplicateCount,
-		Errors:     errorCount,
+		Message:          "Bulk import completed",
+		Scanned:          scannedCount,
+		Enqueued:         enqueuedCount,
+		Duplicates:       duplicateCount,
+		OriginalsRemoved: removedCount,
+		CleanupPending:   pendingCount,
+		Errors:           errorCount,
 	})
 }

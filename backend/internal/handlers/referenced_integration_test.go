@@ -297,3 +297,106 @@ func TestBulkImport_AcceptsDirectoriesTheOwnerAuthorised(t *testing.T) {
 		t.Error("the original was removed by an import")
 	}
 }
+
+func TestBulkImport_RemovesOriginalsOnlyWhenAskedAndOnlyWhenVerified(t *testing.T) {
+	s := newCatalogStack(t)
+	lib := referencedLibrary(t)
+	s.addRoot(admin, lib)
+
+	rec := s.do(admin, "POST", "/works/bulk-import", fmt.Sprintf(`{"directory":%q,"removeOriginals":true}`, lib))
+	var r BulkImportResponse
+	json.Unmarshal(rec.Body.Bytes(), &r)
+	if rec.Code != 200 || r.Enqueued != 3 || r.OriginalsRemoved != 3 || r.CleanupPending != 0 {
+		t.Fatalf("import as a move: %d %+v", rec.Code, r)
+	}
+	for _, rel := range []string{"Livros/Duna.epub", "Quadrinhos/Watchmen 01.cbz", "Notas/notas pessoais.txt"} {
+		if _, err := os.Stat(filepath.Join(lib, filepath.FromSlash(rel))); !os.IsNotExist(err) {
+			t.Errorf("%s was not removed after a verified copy", rel)
+		}
+	}
+	if got := s.scalar(`SELECT count(*) FROM storage_locations WHERE mode = 'managed'`); got != "3" {
+		t.Errorf("managed copies = %s", got)
+	}
+}
+
+func TestBulkImport_AnOriginalThatCannotBeRemovedIsReportedNotLost(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permissions do not stop root")
+	}
+	s := newCatalogStack(t)
+	lib := referencedLibrary(t)
+	s.addRoot(admin, lib)
+	locked := filepath.Join(lib, "Livros")
+	os.Chmod(locked, 0o555)
+	defer os.Chmod(locked, 0o755)
+
+	rec := s.do(admin, "POST", "/works/bulk-import", fmt.Sprintf(`{"directory":%q,"removeOriginals":true}`, lib))
+	var r BulkImportResponse
+	json.Unmarshal(rec.Body.Bytes(), &r)
+	if r.Enqueued != 3 || r.OriginalsRemoved != 2 || r.CleanupPending != 1 {
+		t.Fatalf("report = %+v, want 2 removed and 1 kept", r)
+	}
+	if _, err := os.Stat(filepath.Join(locked, "Duna.epub")); err != nil {
+		t.Error("the original that could not be removed vanished")
+	}
+
+	var list struct{ Data []storage.Cleanup }
+	json.Unmarshal(s.do(admin, "GET", "/admin/storage/cleanups", "").Body.Bytes(), &list)
+	if len(list.Data) != 1 || !strings.HasSuffix(list.Data[0].Path, "Duna.epub") || !strings.Contains(list.Data[0].Reason, "could not be removed") {
+		t.Fatalf("pending = %+v", list.Data)
+	}
+	// Retrying while it is still locked keeps it; after unlocking it finishes.
+	var retry map[string]int
+	json.Unmarshal(s.do(admin, "POST", "/admin/storage/cleanups/retry", "").Body.Bytes(), &retry)
+	if retry["removed"] != 0 || retry["remaining"] != 1 {
+		t.Errorf("retry while locked = %v", retry)
+	}
+	os.Chmod(locked, 0o755)
+	json.Unmarshal(s.do(admin, "POST", "/admin/storage/cleanups/retry", "").Body.Bytes(), &retry)
+	if retry["removed"] != 1 || retry["remaining"] != 0 {
+		t.Errorf("retry after unlocking = %v", retry)
+	}
+	if got := s.scalar(`SELECT count(*) FROM audit_log WHERE action = 'storage.cleanup_retry'`); got != "2" {
+		t.Errorf("audited retries = %s", got)
+	}
+}
+
+func TestMoveToManagedEndpoint_QueuesOneTransferPerReferencedFile(t *testing.T) {
+	s := newCatalogStack(t)
+	lib := referencedLibrary(t)
+	(&storage.Scanner{DB: s.db}).Scan(context.Background(), lib, "", idAdmin)
+	var ref int64
+	s.db.QueryRow(`SELECT file_id FROM work_primary WHERE file_path = 'Livros/Duna.epub'`).Scan(&ref)
+	managedWork := s.addWork("Gerenciada", "X", "m.epub", "epub")
+	var managed int64
+	s.db.QueryRow(`SELECT file_id FROM work_primary WHERE work_id = $1`, managedWork).Scan(&managed)
+
+	rec := s.do(admin, "POST", "/admin/library/move-to-managed", fmt.Sprintf(`{"fileIds":[%d,%d,999999]}`, ref, managed))
+	if rec.Code != 202 {
+		t.Fatalf("move-to-managed: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Data []struct {
+			FileID int64
+			JobID  int64
+			Error  string
+		}
+	}
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	if len(out.Data) != 3 || out.Data[0].JobID == 0 || out.Data[1].Error == "" || out.Data[2].Error == "" {
+		t.Errorf("answer = %+v (only the referenced file may be queued)", out.Data)
+	}
+	if got := s.scalar(`SELECT count(*) || '/' || max(type) || '/' || max(priority) FROM jobs WHERE type = 'transfer'`); got != "1/transfer/10" {
+		t.Errorf("jobs = %s", got)
+	}
+	// Asking again while it waits does not queue a second transfer of the same work.
+	s.do(admin, "POST", "/admin/library/move-to-managed", fmt.Sprintf(`{"fileIds":[%d]}`, ref))
+	if got := s.scalar(`SELECT count(*) FROM jobs WHERE type = 'transfer'`); got != "1" {
+		t.Errorf("transfer jobs after asking twice = %s", got)
+	}
+	for _, bad := range []string{`{}`, `{"fileIds":[]}`, `nope`} {
+		if code := s.do(admin, "POST", "/admin/library/move-to-managed", bad).Code; code != 400 {
+			t.Errorf("body %q: %d, want 400", bad, code)
+		}
+	}
+}
