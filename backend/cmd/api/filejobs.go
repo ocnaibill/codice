@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"log"
 	"os"
@@ -13,7 +15,7 @@ import (
 
 // fileJobHandlers are the jobs that touch the file system, run inside the API
 // process through the same queue as every other job.
-func fileJobHandlers(mover *storage.Mover) map[string]jobs.Handler {
+func fileJobHandlers(db *sql.DB, mover *storage.Mover) map[string]jobs.Handler {
 	return map[string]jobs.Handler{
 		// Put a freshly analysed file at its layout path.
 		"organize": func(ctx context.Context, j jobs.Claimed) error {
@@ -25,6 +27,35 @@ func fileJobHandlers(mover *storage.Mover) map[string]jobs.Handler {
 				return jobs.Permanent(err) // retrying will not bring a missing file back
 			}
 			return err
+		},
+		// Catalogue an authorised directory without touching its files.
+		"scan": func(ctx context.Context, j jobs.Claimed) error {
+			var payload struct {
+				RootID int    `json:"root_id"`
+				Subdir string `json:"subdir"`
+			}
+			if err := json.Unmarshal(j.Payload, &payload); err != nil {
+				return jobs.Permanent(err)
+			}
+			var root, actor string
+			err := db.QueryRowContext(ctx, `
+				SELECT r.path, COALESCE(j.created_by::text, '') FROM storage_roots r, jobs j WHERE r.id = $1 AND j.id = $2`,
+				payload.RootID, j.ID).Scan(&root, &actor)
+			if errors.Is(err, sql.ErrNoRows) {
+				return jobs.Permanent(errors.New("the root is no longer authorised"))
+			}
+			if err != nil {
+				return err
+			}
+			report, err := (&storage.Scanner{DB: db}).Scan(ctx, root, payload.Subdir, actor)
+			if err != nil {
+				if errors.Is(err, storage.ErrUnsafePath) {
+					return jobs.Permanent(err)
+				}
+				return err
+			}
+			log.Printf("scan of %s: %+v", root, *report)
+			return nil
 		},
 	}
 }

@@ -53,12 +53,8 @@ func (h *PageHandler) GetPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	storagePath := os.Getenv("CODICE_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "./uploads"
-	}
-
-	fullPath := filepath.Join(storagePath, filePath.String)
+	fullPath := filePath.String // absolute, resolved from the database
+	storagePath := resolveStoragePath() // where the CBR page cache lives
 
 	// Only CBZ/CBR support page listing for now
 	ext := strings.ToLower(filepath.Ext(fullPath))
@@ -106,12 +102,8 @@ func (h *PageHandler) ServePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	storagePath := os.Getenv("CODICE_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "./uploads"
-	}
-
-	fullPath := filepath.Join(storagePath, filePath.String)
+	fullPath := filePath.String // absolute, resolved from the database
+	storagePath := resolveStoragePath() // where the CBR page cache lives
 	ext := strings.ToLower(filepath.Ext(fullPath))
 
 	switch ext {
@@ -147,12 +139,8 @@ func (h *PageHandler) ServePageThumbnail(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	storagePath := os.Getenv("CODICE_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "./uploads"
-	}
-
-	fullPath := filepath.Join(storagePath, filePath.String)
+	fullPath := filePath.String // absolute, resolved from the database
+	storagePath := resolveStoragePath() // where the CBR page cache lives
 	ext := strings.ToLower(filepath.Ext(fullPath))
 
 	switch ext {

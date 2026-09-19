@@ -33,13 +33,31 @@ type Mover struct {
 	Root string // the managed storage directory; every managed path is relative to it
 }
 
-// safeRel cleans a relative path and refuses anything that could leave the root.
-func safeRel(rel string) (string, bool) {
+// SafeRel cleans a relative path and refuses anything that could leave its root.
+func SafeRel(rel string) (string, bool) {
 	rel = path.Clean(filepath.ToSlash(rel))
 	if rel == "." || rel == "" || rel == ".." || strings.HasPrefix(rel, "../") || path.IsAbs(rel) || strings.ContainsRune(rel, 0) {
 		return "", false
 	}
 	return rel, true
+}
+
+// AbsPath is where a stored file really is. A managed location is relative to the
+// storage directory and a referenced one to its root; either way the relative
+// part must be a safe path that stays inside it.
+func AbsPath(storageRoot, mode, locRoot, rel string) (string, bool) {
+	rel, ok := SafeRel(rel)
+	if !ok {
+		return "", false
+	}
+	base := storageRoot
+	if mode == "referenced" {
+		base = locRoot
+	}
+	if base == "" {
+		return "", false
+	}
+	return filepath.Join(base, filepath.FromSlash(rel)), true
 }
 
 func (m *Mover) full(rel string) string { return filepath.Join(m.Root, filepath.FromSlash(rel)) }
@@ -55,7 +73,7 @@ func exists(p string) bool {
 // database is confirmed. If the process stops between these steps, Recover
 // settles the outcome from what is on disk. An existing file is never overwritten.
 func (m *Mover) Move(ctx context.Context, fileID int64, target string) error {
-	target, ok := safeRel(target)
+	target, ok := SafeRel(target)
 	if !ok {
 		return ErrUnsafePath
 	}

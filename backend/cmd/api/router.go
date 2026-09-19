@@ -42,7 +42,7 @@ func newRouter(d routerDeps) http.Handler {
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
 	usersHandler := &handlers.UsersHandler{DB: db}
 	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
-	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db}
+	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
 	statsHandler := &handlers.StatsHandler{DB: db}
@@ -123,6 +123,13 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Get("/admin/storage/reorganize", storageHandler.PreviewReorganize)
 	r.With(staff).Post("/admin/storage/reorganize", storageHandler.Reorganize)
 
+	// Referenced library: only the owner authorises directories (DEC-035); owner
+	// and admin catalogue inside them.
+	r.With(staff).Get("/admin/storage/roots", storageHandler.ListRoots)
+	r.With(owner).Post("/admin/storage/roots", storageHandler.AddRoot)
+	r.With(owner).Delete("/admin/storage/roots/{id}", storageHandler.RemoveRoot)
+	r.With(staff).Post("/admin/library/scan", storageHandler.Scan)
+
 	// Account roles
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)
 
@@ -180,6 +187,7 @@ func newRouter(d routerDeps) http.Handler {
 		Root: coversPath, Lookup: coverLookup,
 		CacheHeader: "public, max-age=604800, must-revalidate",
 	})
+	r.With(authWithBasic).Method("GET", "/file/{id}", &handlers.FileByIDHandler{DB: db, StorageRoot: d.StoragePath})
 	r.With(authWithBasic).Method("GET", "/files/*", &handlers.FilesHandler{
 		Root: d.StoragePath, Lookup: fileLookup,
 		CacheHeader: "no-cache, no-store, must-revalidate",

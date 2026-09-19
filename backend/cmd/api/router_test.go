@@ -78,6 +78,8 @@ var staffRoutes = []route{
 	{"POST", "/works/1/restore"},
 	{"GET", "/admin/jobs"},
 	{"GET", "/admin/storage/reorganize"},
+	{"GET", "/admin/storage/roots"},
+	{"POST", "/admin/library/scan"},
 	{"POST", "/admin/storage/reorganize"},
 	{"POST", "/admin/jobs/1/rerun"},
 	{"POST", "/admin/jobs/1/cancel"},
@@ -88,6 +90,7 @@ var staffRoutes = []route{
 
 // Routes reserved to the owner alone (DEC-056).
 var ownerRoutes = []route{
+	{"POST", "/admin/storage/roots"},
 	{"PUT", "/users/" + someUUID + "/role"},
 }
 
@@ -223,5 +226,19 @@ func TestOldStyleTokenWithRoleClaimIsRefused(t *testing.T) {
 	rec := do(h, "PUT", "/works/1", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4Iiwicm9sZSI6ImFkbWluIn0.x", "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("got %d, want 401", rec.Code)
+	}
+}
+
+func TestOwnerOnlyRoutes_ThatNeedTheDatabaseAreStillGuarded(t *testing.T) {
+	// Removing an authorised directory reaches the database once past the guard,
+	// so only the guard itself is checked here.
+	h := testRouter(t)
+	for _, role := range []string{"admin", "reader"} {
+		if rec := do(h, "DELETE", "/admin/storage/roots/1", tokenFor(t, role), ""); rec.Code != http.StatusForbidden {
+			t.Errorf("DELETE /admin/storage/roots/1 as %s: got %d, want 403", role, rec.Code)
+		}
+	}
+	if rec := do(h, "DELETE", "/admin/storage/roots/1", "", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("anonymous: got %d, want 401", rec.Code)
 	}
 }

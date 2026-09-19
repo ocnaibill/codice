@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -12,19 +13,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ocnaibill/codice/backend/internal/filecheck"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
 	"github.com/redis/go-redis/v9"
 )
 
 // SupportedFormats is the set of file extensions accepted by upload and bulk import.
-var SupportedFormats = map[string]bool{
-	".pdf": true, ".epub": true,
-	".cbz": true, ".cbr": true,
-	".txt": true, ".md": true,
-	".mobi": true, ".azw": true, ".azw3": true,
-	".mp3": true, ".m4a": true, ".m4b": true,
-	".flac": true, ".ogg": true, ".wav": true,
-}
+var SupportedFormats = filecheck.Supported
 
 // resolveStoragePath resolves a relative CODICE_STORAGE_PATH from the project root.
 func resolveStoragePath() string {
@@ -117,6 +112,27 @@ func lexicallyInside(path string, roots []string) bool {
 func isWithin(path, root string) bool {
 	rel, err := filepath.Rel(root, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// authorisedRoots are the directories the owner authorised in the database
+// (DEC-035). They are valid sources for importing into the managed storage too.
+func (h *UploadHandler) authorisedRoots(ctx context.Context) []string {
+	if h.DB == nil {
+		return nil
+	}
+	rows, err := h.DB.QueryContext(ctx, `SELECT path FROM storage_roots ORDER BY id`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if rows.Scan(&p) == nil {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // UploadHandler holds Redis and PostgreSQL connections
@@ -226,6 +242,7 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 
 	storagePath := resolveStoragePath()
 	roots := importRoots(storagePath)
+	roots = append(roots, h.authorisedRoots(r.Context())...)
 
 	// The default import directory is created on first use; directories named in
 	// a request never are.

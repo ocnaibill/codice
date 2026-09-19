@@ -108,7 +108,8 @@ const cardColumns = `
 	(rp.completed_at IS NOT NULL),
 	(f.user_id IS NOT NULL),
 	wp.file_id,
-	(w.retired_at IS NOT NULL)`
+	(w.retired_at IS NOT NULL),
+	COALESCE(wp.file_mode, '')`
 
 // cardJoins add the calling user's progress on the primary file and favorite flag.
 const cardJoins = `
@@ -123,18 +124,17 @@ func scanWork(row rowScanner) (Work, error) {
 	var work Work
 	var filePath sql.NullString
 	var fileID sql.NullInt64
+	var mode string
 	err := row.Scan(
 		&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format,
 		&work.Series, &work.SeriesIndex, &work.MediaStatus, pq.Array(&work.Tags),
 		&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
-		&fileID, &work.Retired,
+		&fileID, &work.Retired, &mode,
 	)
 	if err != nil {
 		return work, err
 	}
-	if filePath.Valid && filePath.String != "" {
-		work.FileURL = filesURL(filePath.String)
-	}
+	work.FileURL = fileHref(fileID, mode, filePath.String)
 	if fileID.Valid {
 		work.FileID = &fileID.Int64
 	}
@@ -294,12 +294,12 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 	rows, err := h.DB.Query(`
 		SELECT e.id, COALESCE(e.title, ''), COALESCE(e.language, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.publication_date, ''), COALESCE(e.isbn, ''), e.is_primary,
-		       f.id, COALESCE(f.format, ''), f.size_bytes, f.availability, l.path,
+		       f.id, COALESCE(f.format, ''), f.size_bytes, f.availability, l.path, l.mode,
 		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL)
 		FROM editions e
 		LEFT JOIN files f ON f.edition_id = e.id
 		LEFT JOIN LATERAL (
-			SELECT path FROM storage_locations WHERE file_id = f.id ORDER BY id LIMIT 1
+			SELECT path, mode FROM storage_locations WHERE file_id = f.id ORDER BY id LIMIT 1
 		) l ON TRUE
 		LEFT JOIN reading_progress rp ON rp.file_id = f.id AND rp.user_id = $2
 		WHERE e.work_id = $1
@@ -315,11 +315,11 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		var e Edition
 		var fileID sql.NullInt64
 		var size sql.NullInt64
-		var format, availability, filePath sql.NullString
+		var format, availability, filePath, mode sql.NullString
 		var percent float64
 		var completed sql.NullBool
 		if err := rows.Scan(&e.ID, &e.Title, &e.Language, &e.Publisher, &e.PublicationDate, &e.ISBN, &e.IsPrimary,
-			&fileID, &format, &size, &availability, &filePath, &percent, &completed); err != nil {
+			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed); err != nil {
 			return nil, err
 		}
 		i, seen := index[e.ID]
@@ -335,9 +335,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 			if size.Valid {
 				fi.SizeBytes = &size.Int64
 			}
-			if filePath.Valid && filePath.String != "" {
-				fi.URL = filesURL(filePath.String)
-			}
+			fi.URL = fileHref(fileID, mode.String, filePath.String)
 			editions[i].Files = append(editions[i].Files, fi)
 		}
 	}

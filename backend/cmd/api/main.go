@@ -123,7 +123,7 @@ func main() {
 	// File jobs (organizing, and later scanning and transferring) run in this
 	// process; the Python worker only takes ingestion.
 	mover := &storage.Mover{DB: db, Root: storagePath}
-	handlers := fileJobHandlers(mover)
+	handlers := fileJobHandlers(db, mover)
 	types := make([]string, 0, len(handlers))
 	for t := range handlers {
 		types = append(types, t)

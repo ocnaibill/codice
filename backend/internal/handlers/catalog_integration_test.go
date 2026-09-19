@@ -62,13 +62,21 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	media := &MediaHandler{DB: db}
 	upload := &UploadHandler{DB: db}
 	jobsAdmin := &JobsHandler{DB: db, StoragePath: storageDir}
-	storageAdmin := &StorageHandler{Mover: &storage.Mover{DB: db, Root: storageDir}, DB: db}
+	storageAdmin := &StorageHandler{Mover: &storage.Mover{DB: db, Root: storageDir}, DB: db, StoragePath: storageDir}
+	byID := &FileByIDHandler{DB: db, StorageRoot: storageDir}
+	pages := &PageHandler{DB: db}
 
 	r := chi.NewRouter()
 	r.Use(identityFromHeaders)
 	r.Post("/upload", upload.HandleUpload)
 	r.Get("/admin/jobs", jobsAdmin.List)
 	r.Get("/admin/storage/reorganize", storageAdmin.PreviewReorganize)
+	r.Get("/admin/storage/roots", storageAdmin.ListRoots)
+	r.Post("/admin/storage/roots", storageAdmin.AddRoot)
+	r.Delete("/admin/storage/roots/{id}", storageAdmin.RemoveRoot)
+	r.Post("/admin/library/scan", storageAdmin.Scan)
+	r.Get("/file/{id}", byID.ServeHTTP)
+	r.Get("/works/{id}/pages", pages.GetPages)
 	r.Post("/admin/storage/reorganize", storageAdmin.Reorganize)
 	r.Post("/admin/jobs/{id}/rerun", jobsAdmin.Rerun)
 	r.Post("/admin/jobs/{id}/cancel", jobsAdmin.Cancel)

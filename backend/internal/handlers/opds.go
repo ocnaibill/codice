@@ -6,7 +6,6 @@ import (
 	"html"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -66,7 +65,7 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.DB.Query(`
 		SELECT w.id, w.original_title, ` + authorLabel + `, COALESCE(wp.cover_url, ''),
-		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at
+		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at, wp.file_id, COALESCE(wp.file_mode, '')
 		` + catalogFrom + `
 		WHERE w.retired_at IS NULL
 		ORDER BY w.id DESC LIMIT 50
@@ -82,7 +81,9 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 		var id int
 		var title, author, coverURL, format, filePath string
 		var createdAt sql.NullTime
-		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &filePath, &createdAt); err != nil {
+		var fileID sql.NullInt64
+		var mode string
+		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &filePath, &createdAt, &fileID, &mode); err != nil {
 			continue
 		}
 		updated := now
@@ -103,8 +104,7 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 			acqType = "audio/mpeg"
 		}
 
-		filename := filepath.Base(filePath)
-		escapedFilename := strings.TrimPrefix(filesURL(filename), "/files/")
+		href := fileHref(fileID, mode, filePath)
 
 		if coverURL == "" {
 			coverURL = "/covers/placeholder.svg"
@@ -116,7 +116,7 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 		entries.WriteString(fmt.Sprintf("    <updated>%s</updated>\n", updated))
 		entries.WriteString(fmt.Sprintf("    <author><name>%s</name></author>\n", html.EscapeString(author)))
 		entries.WriteString(fmt.Sprintf("    <dc:identifier>%d</dc:identifier>\n", id))
-		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s/files/%s\" type=\"%s\"/>\n", base, escapedFilename, acqType))
+		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s%s\" type=\"%s\"/>\n", base, href, acqType))
 		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/image\" href=\"%s%s\" type=\"image/jpeg\"/>\n", base, coverURL))
 		entries.WriteString(fmt.Sprintf("  </entry>\n"))
 	}
@@ -149,7 +149,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.DB.Query(`
 		SELECT w.id, w.original_title, ` + authorLabel + `, COALESCE(wp.cover_url, ''),
-		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at
+		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at, wp.file_id, COALESCE(wp.file_mode, '')
 		` + catalogFrom + `
 		WHERE w.retired_at IS NULL
 		  AND (LOWER(w.original_title) LIKE LOWER($1) OR ` + authorMatches("$1") + `)
@@ -167,7 +167,9 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 		var id int
 		var title, author, coverURL, format, filePath string
 		var createdAt sql.NullTime
-		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &filePath, &createdAt); err != nil {
+		var fileID sql.NullInt64
+		var mode string
+		if err := rows.Scan(&id, &title, &author, &coverURL, &format, &filePath, &createdAt, &fileID, &mode); err != nil {
 			continue
 		}
 		count++
@@ -187,8 +189,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 			acqType = "text/markdown"
 		}
 
-		filename := filepath.Base(filePath)
-		escapedFilename := strings.TrimPrefix(filesURL(filename), "/files/")
+		href := fileHref(fileID, mode, filePath)
 
 		if coverURL == "" {
 			coverURL = "/covers/placeholder.svg"
@@ -200,7 +201,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 		entries.WriteString(fmt.Sprintf("    <updated>%s</updated>\n", updated))
 		entries.WriteString(fmt.Sprintf("    <author><name>%s</name></author>\n", html.EscapeString(author)))
 		entries.WriteString(fmt.Sprintf("    <dc:identifier>%d</dc:identifier>\n", id))
-		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s/files/%s\" type=\"%s\"/>\n", base, escapedFilename, acqType))
+		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/acquisition\" href=\"%s%s\" type=\"%s\"/>\n", base, href, acqType))
 		entries.WriteString(fmt.Sprintf("    <link rel=\"http://opds-spec.org/image\" href=\"%s%s\" type=\"image/jpeg\"/>\n", base, coverURL))
 		entries.WriteString(fmt.Sprintf("  </entry>\n"))
 	}

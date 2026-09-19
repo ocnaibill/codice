@@ -26,18 +26,8 @@ func (h *MediaHandler) ServeText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	storagePath := os.Getenv("CODICE_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "./uploads"
-	}
+	fullPath := filePath.String // absolute, resolved from the database
 
-	fullPath := filepath.Join(storagePath, filePath.String)
-
-	// Prevent directory traversal
-	if !strings.HasPrefix(filepath.Clean(fullPath), filepath.Clean(storagePath)) {
-		http.Error(w, "Access denied", http.StatusForbidden)
-		return
-	}
 
 	f, err := os.Open(fullPath)
 	if err != nil {
@@ -74,17 +64,8 @@ func (h *MediaHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	storagePath := os.Getenv("CODICE_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "./uploads"
-	}
+	fullPath := filePath.String // absolute, resolved from the database
 
-	fullPath := filepath.Join(storagePath, filePath.String)
-
-	if !strings.HasPrefix(filepath.Clean(fullPath), filepath.Clean(storagePath)) {
-		http.Error(w, "Access denied", http.StatusForbidden)
-		return
-	}
 
 	f, err := os.Open(fullPath)
 	if err != nil {

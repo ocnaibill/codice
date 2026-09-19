@@ -9,6 +9,7 @@ import (
 
 	"github.com/ocnaibill/codice/backend/internal/authz"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/storage"
 )
 
 // The catalog shows a work through its primary edition and that edition's first
@@ -41,17 +42,25 @@ func isStaffRequest(r *http.Request) bool {
 	return authz.IsStaff(role)
 }
 
-// workFilePath returns the path of the primary file of an available (not
-// retired) work.
+// workFilePath returns the absolute path of the primary file of an available
+// (not retired) work, whether it is managed or referenced.
 func workFilePath(db *sql.DB, id string) (sql.NullString, error) {
-	var p sql.NullString
+	var out sql.NullString
 	if _, err := strconv.Atoi(id); err != nil {
-		return p, sql.ErrNoRows
+		return out, sql.ErrNoRows
 	}
+	var mode, root, rel sql.NullString
 	err := db.QueryRow(`
-		SELECT wp.file_path FROM works w JOIN work_primary wp ON wp.work_id = w.id
-		WHERE w.id = $1 AND w.retired_at IS NULL`, id).Scan(&p)
-	return p, err
+		SELECT wp.file_mode, wp.file_root, wp.file_path
+		FROM works w JOIN work_primary wp ON wp.work_id = w.id
+		WHERE w.id = $1 AND w.retired_at IS NULL AND COALESCE(wp.file_state, 'ok') = 'ok'`, id).Scan(&mode, &root, &rel)
+	if err != nil || !rel.Valid {
+		return out, err
+	}
+	if full, ok := storage.AbsPath(resolveStoragePath(), mode.String, root.String, rel.String); ok {
+		out = sql.NullString{String: full, Valid: true}
+	}
+	return out, nil
 }
 
 // filesURL is the URL of a managed file. Paths now have folders, spaces and
@@ -63,4 +72,16 @@ func filesURL(rel string) string {
 		segments[i] = url.PathEscape(s)
 	}
 	return "/files/" + strings.Join(segments, "/")
+}
+
+// fileHref is the URL of a file: managed files by their path, referenced files
+// (which have no path inside the storage directory) by id.
+func fileHref(fileID sql.NullInt64, mode, rel string) string {
+	if mode == "referenced" && fileID.Valid {
+		return "/file/" + strconv.FormatInt(fileID.Int64, 10)
+	}
+	if rel == "" {
+		return ""
+	}
+	return filesURL(rel)
 }
