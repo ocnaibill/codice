@@ -7,12 +7,13 @@ import { useGlobalStore } from './store/useGlobalStore';
 import { UploadModal } from './features/upload/components/UploadModal';
 import { Auth } from './features/auth/components/Auth';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
-import { api, wsUrl } from './lib/api';
+import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(true);
+  const [assetsReady, setAssetsReady] = useState(false);
 
   const queryClient = useQueryClient();
   const activeBookId = useGlobalStore((state) => state.activeBookId);
@@ -44,6 +45,32 @@ function App() {
     checkStatusAndToken();
   }, []);
 
+  // The server no longer accepts our session (expired, revoked, blocked): back to login.
+  useEffect(() => {
+    const onSessionLost = () => setIsAuthenticated(false);
+    window.addEventListener(UNAUTHORIZED_EVENT, onSessionLost);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onSessionLost);
+  }, []);
+
+  // Covers, files and pages load via <img>/<audio>, which cannot send headers, so
+  // they carry a short-lived asset token that api.js keeps renewed.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      clearAssetToken();
+      setAssetsReady(false);
+      return;
+    }
+    let cancelled = false;
+    refreshAssetToken()
+      .catch((err) => console.error('Could not obtain the asset token:', err))
+      .finally(() => {
+        if (!cancelled) setAssetsReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
+
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -53,9 +80,12 @@ function App() {
     let reconnectTimeout = null;
     let isCancelled = false;
 
-    const connect = () => {
+    const connect = async () => {
       try {
-        socket = new WebSocket(wsUrl('/ws'));
+        // Each connection needs its own 60-second ticket from the server.
+        const url = await wsUrl('/ws');
+        if (isCancelled) return;
+        socket = new WebSocket(url);
 
         socket.onopen = () => {
           console.log('⚡ Real-time WebSocket connected');
@@ -116,8 +146,15 @@ function App() {
     };
   }, [queryClient, isAuthenticated]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // Revoke the session on the server so the token is dead everywhere.
+      await api.post('/auth/logout');
+    } catch (err) {
+      console.error('Logout request failed:', err);
+    }
     localStorage.removeItem('codice_token');
+    clearAssetToken();
     setIsAuthenticated(false);
   };
 
@@ -142,6 +179,14 @@ function App() {
 
   if (!isAuthenticated) {
     return <Auth onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
+
+  if (!assetsReady) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface text-ink-soft font-mono text-sm">
+        Initializing Códice environment...
+      </div>
+    );
   }
 
   return (
