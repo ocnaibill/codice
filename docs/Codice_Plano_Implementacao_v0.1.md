@@ -62,6 +62,15 @@ Tamanho: G. É o núcleo estrutural. Cobre os achados 4.3, 4.4 e 4.5 e as decis�
 
 **Risco principal:** o frontend depende dos contratos atuais. Mitigar mantendo os endpoints existentes como camada de compatibilidade até cada tela ser migrada.
 
+**Estado da Fase 2 em 19 de setembro de 2026: concluída na parte técnica**, no branch `feat/fase1-seguranca` (sem merge). Decisões tomadas na execução:
+- **Ferramenta de migração: goose**, com SQL embutido no binário e trava de sessão contra instâncias simultâneas. `00001_baseline.sql` é o esquema antigo, idempotente, de modo que um banco criado pela rotina anterior é adotado sem erro nem perda.
+- **Estratégia "expandir" e não "trocar":** `00002_model_target.sql` cria o modelo novo ao lado do antigo e copia os dados existentes. Nada foi apagado: as colunas antigas de `works` e a tabela `user_progress` continuam no banco, e **o acervo de teste não foi descartado nem reimportado**. Gatilhos projetam as escritas nas colunas antigas (feitas pelo worker e pelos uploads) sobre as tabelas novas, e a visão `work_primary` define "a edição e o arquivo de uma obra" para o código que ainda pensa em um arquivo por obra. Os gatilhos e as colunas antigas saem na Fase 3, quando o worker passar a escrever o modelo novo (etapa "contrair").
+- **Tabelas criadas agora:** `editions` (várias por obra, uma primária), `files` (hash único), `storage_locations`, `work_contributors`, `reading_progress` (por usuário e arquivo, com coluna de Locator versionado e contador de revisão), `audit_log` e `external_identities` (o owner não pode ter identidade externa, imposto no banco). `notes` ganhou a referência bibliográfica e deixou de ser apagada em cascata.
+- **Adiadas de propósito para a fase que usa cada uma**, porque acrescentar uma tabela depois é barato e mudar uma existente não é: jobs (Fase 3a), convites e pedidos de redefinição (Fase 4), e séries, categorias, tags pessoais e coleções (Fase 5, junto das telas de organização; a hierarquia de categorias precisará rejeitar ciclos, RF-040).
+- **Rotas:** `DELETE /works/{id}` agora retira a obra (reversível, DEC-038); `POST /works/{id}/restore` a devolve; a exclusão física exige `?purge=true` numa obra já retirada e só apaga arquivos gerenciados. O progresso e o tempo de leitura são por arquivo (`fileId` opcional, padrão o arquivo primário). `GET /works/{id}` lista todas as edições e arquivos, com o progresso de quem consulta em cada um.
+
+Restrições conhecidas: a migração `00002` pode ser desfeita (`RollbackTo`), mas só sem perda numa atualização recém-feita, porque linhas que existem apenas no modelo novo se perdem; o registro de auditoria ainda não é somente de acréscimo; e `/files/*` continua servindo por caminho a qualquer usuário autenticado, então retirar uma obra a esconde do catálogo, mas não bloqueia o download por quem souber o caminho.
+
 ## 5 Fase 3: jobs, ingestão e armazenamento
 
 Tamanho: G. Cobre os achados 4.5, 4.6 e 4.7, RF-007 a 011, 019/020, 041, 044 e 045, e DEC-026 a 043, 065 a 069. Divide-se em duas partes.
@@ -129,8 +138,8 @@ Sem detalhamento agora, na ordem sugerida pela especificação: busca textual e 
 | --- | --- | --- |
 | Fase 0 | Como agrupar os commits do trabalho local e em qual branch | Um branch por tema; você revisa antes do merge |
 | Fase 1 | Sessões revogáveis e autenticação OPDS | Resolvido: DEC-070 e DEC-071 |
-| Fase 2 | Ferramenta de migração | goose ou golang-migrate |
-| Fase 2 | Destino dos dados de teste | Reset explícito, confirmado por você |
+| Fase 2 | Ferramenta de migração | Resolvido: goose |
+| Fase 2 | Destino dos dados de teste | Resolvido: migração sem descarte; nenhum reset foi necessário |
 | Fase 3 | Fronteira da pasta de série (quadrinhos e mangá versus livros) | Como na especificação, §12.1 |
 | Fase 4 | Formato da auditoria administrativa | Tabela de eventos com ator, ação, alvo e data, sem segredos |
 | Fase 5 | Significado de tempo de leitura e conclusão | Definir antes de consolidar as estatísticas |

@@ -42,7 +42,19 @@ Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz
 - Bloquear, excluir e convidar contas, transferência de titularidade e redefinição de senha pertencem à Fase 4. Só a troca de papel existe.
 - CORS aceita uma única origem, e MFA não existe. `worker/bulk_import.py` é uma ferramenta de linha de comando do operador e não foi alterada.
 
-**Próximo passo: Fase 2, modelo de dados alvo** (Work/Edition/File, migrações versionadas, notas sem exclusão em cascata). Antes de começar, decidir a ferramenta de migração (goose ou golang-migrate) e o destino dos dados de teste, que só serão descartados por ação sua.
+**Fase 2 (modelo de dados alvo): concluída na parte técnica**, no mesmo branch. Detalhes e decisões no plano (§4).
+
+- Migrações versionadas com goose. Ao subir, a API aplica `00001_baseline` (o esquema antigo, idempotente) e `00002_model_target`. **Antes de rodar no seu banco de desenvolvimento, faça um backup** (`pg_dump`): a migração copia dados e não apaga nada, mas é o primeiro uso real.
+- Obra com várias edições e vários arquivos (formato e idioma distintos), com hash único por arquivo; progresso por usuário e arquivo; autores múltiplos; notas que sobrevivem à obra e guardam título e autor; registro de auditoria.
+- Retirada reversível no lugar da exclusão: o botão do frontend agora diz "Retire from Library". A exclusão física é um passo extra (`?purge=true`), só para obra já retirada.
+- O worker continua escrevendo nas colunas antigas de `works`; gatilhos no banco projetam essas escritas no modelo novo. Isso sai na Fase 3.
+
+**Pendências da Fase 2**, que não bloqueiam a Fase 3:
+- O modal de edição envia série, ISBN, editora, idioma, descrição e as travas de campo, mas o backend só grava título, autor e tags (isso já era assim antes). A edição completa e a proveniência por campo são da Fase 3 (RF-009).
+- `/files/*` serve por caminho a qualquer usuário autenticado: uma obra retirada some do catálogo, mas o arquivo continua acessível a quem souber o caminho.
+- O registro de auditoria não é somente de acréscimo, e `user_progress` e as colunas antigas continuam no banco até a Fase 3.
+
+**Próximo passo: Fase 3, jobs, ingestão e armazenamento.** Ela começa pela infraestrutura de jobs (tabela no PostgreSQL como fonte da verdade, despachante para o Redis Streams e reconciliador) e pela ingestão (upload com hash e staging, validação de conteúdo, duplicidade, lixeira), e remove os gatilhos de compatibilidade.
 
 ## Como rodar os testes
 

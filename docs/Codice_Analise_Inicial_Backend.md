@@ -257,3 +257,12 @@ Resultado das correções no branch `feat/fase1-seguranca`, cada uma com testes 
 | §9.8 CORS de origem única | Mantido | Adequado ao desenvolvimento; revisar na implantação |
 | §9.9 Custo do bcrypt | Corrigido | Custo 12, com re-hash no login |
 
+## 11 Situação dos achados 4.3, 4.4 e 4.5 após a Fase 2 (19 de setembro de 2026)
+
+| Achado | Situação | Como |
+| --- | --- | --- |
+| 4.3 Obra como unidade de arquivo | Modelo criado, migração em curso | `editions` deixou de ser 1 para 1, e existem `files`, `storage_locations` e `work_contributors`; uma obra com várias edições e arquivos aparece uma vez no catálogo. As colunas antigas de `works` continuam como entrada do worker, projetadas por gatilhos, até a Fase 3 |
+| 4.4 Progresso pertence à obra | Corrigido | `reading_progress` por usuário e arquivo, com Locator versionado (ainda vazio: cada leitor o adotará na Fase 5) e contador de revisão. O progresso antigo foi copiado para o arquivo primário |
+| 4.5 Exclusão apaga arquivos e notas | Corrigido em parte | Retirar é reversível e preserva arquivos e notas; a exclusão física é um passo separado, restrito a obra retirada, e só apaga arquivos gerenciados. A lixeira recuperável e a limpeza automática (DEC-041 a 043) são da Fase 3 |
+| Notas dependiam de JOIN com a obra | Corrigido | A nota guarda título e autor e sobrevive à retirada e à exclusão da obra (RF-039) |
+
