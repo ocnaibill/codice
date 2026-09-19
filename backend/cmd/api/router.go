@@ -39,6 +39,7 @@ func newRouter(d routerDeps) http.Handler {
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
 	usersHandler := &handlers.UsersHandler{DB: db}
+	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
 	statsHandler := &handlers.StatsHandler{DB: db}
@@ -109,6 +110,11 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Post("/auth/app-tokens", appTokensHandler.Create)
 	r.With(auth).Get("/auth/app-tokens", appTokensHandler.List)
 	r.With(auth).Delete("/auth/app-tokens/{id}", appTokensHandler.Revoke)
+
+	// Jobs administration (RF-020)
+	r.With(staff).Get("/admin/jobs", jobsHandler.List)
+	r.With(staff).Post("/admin/jobs/{id}/rerun", jobsHandler.Rerun)
+	r.With(staff).Post("/admin/jobs/{id}/cancel", jobsHandler.Cancel)
 
 	// Account roles
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)

@@ -59,9 +59,16 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	stats := &StatsHandler{DB: db}
 	opds := &OPDSHandler{DB: db}
 	media := &MediaHandler{DB: db}
+	upload := &UploadHandler{DB: db}
+	jobsAdmin := &JobsHandler{DB: db}
 
 	r := chi.NewRouter()
 	r.Use(identityFromHeaders)
+	r.Post("/upload", upload.HandleUpload)
+	r.Get("/admin/jobs", jobsAdmin.List)
+	r.Post("/admin/jobs/{id}/rerun", jobsAdmin.Rerun)
+	r.Post("/admin/jobs/{id}/cancel", jobsAdmin.Cancel)
+	r.Post("/works/bulk-import", upload.HandleBulkImport)
 	r.Get("/works", lib.GetWorks)
 	r.Get("/works/{id}", lib.GetWorkByID)
 	r.Put("/works/{id}", lib.UpdateWork)
