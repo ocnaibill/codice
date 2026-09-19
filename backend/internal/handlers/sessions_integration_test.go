@@ -25,6 +25,7 @@ type authStack struct {
 	lastRole string
 	users    *UsersHandler
 	invites  *InvitationsHandler
+	resets   *PasswordResetsHandler
 }
 
 func newAuthStack(t *testing.T) *authStack {
@@ -37,6 +38,7 @@ func newAuthStack(t *testing.T) *authStack {
 	tokens := &AppTokensHandler{Sessions: st}
 	s.users = &UsersHandler{DB: db}
 	s.invites = &InvitationsHandler{DB: db, Sessions: st}
+	s.resets = &PasswordResetsHandler{DB: db}
 
 	probe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.lastRole, _ = r.Context().Value(middleware.UserRoleKey).(string)
@@ -51,6 +53,12 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Post("/auth/app-tokens", tokens.Create)
 	r.With(a.Middleware).Get("/auth/app-tokens", tokens.List)
 	r.With(a.Middleware).Delete("/auth/app-tokens/{id}", tokens.Revoke)
+	r.Post("/auth/reset-request", s.resets.Request)
+	r.Get("/auth/reset", s.resets.Check)
+	r.Post("/auth/reset", s.resets.Redeem)
+	r.With(a.Middleware).Get("/password-resets", s.resets.List)
+	r.With(a.Middleware).Post("/password-resets/{id}/approve", s.resets.Approve)
+	r.With(a.Middleware).Post("/password-resets/{id}/reject", s.resets.Reject)
 	r.Get("/auth/invitation", s.invites.Check)
 	r.Post("/auth/redeem", s.invites.Redeem)
 	r.With(a.Middleware).Get("/invitations", s.invites.List)

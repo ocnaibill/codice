@@ -7,6 +7,7 @@ const STATE = { pending: 'Pendente', used: 'Usado', expired: 'Expirado', revoked
 const ROLE = { admin: 'Administrador', reader: 'Leitor' };
 
 export const inviteLink = (token) => `${window.location.origin}/?invite=${encodeURIComponent(token)}`;
+export const resetLink = (token) => `${window.location.origin}/?reset=${encodeURIComponent(token)}`;
 
 /**
  * Invitations: a single-use link, valid for seven days, that you hand to the

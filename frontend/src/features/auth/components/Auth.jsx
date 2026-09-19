@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { api } from '../../../lib/api';
 import { AuthCard } from './AuthCard';
 import { FormField } from './FormField';
+import { ForgotPassword } from './ForgotPassword';
 
 export function Auth({ onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -11,6 +12,7 @@ export function Auth({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgot, setForgot] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -34,6 +36,10 @@ export function Auth({ onLoginSuccess }) {
       setLoading(false);
     }
   };
+
+  if (forgot) {
+    return <ForgotPassword initialUsername={username} onBack={() => setForgot(false)} />;
+  }
 
   return (
     <AuthCard title={isLogin ? 'Bem-vindo de volta' : 'Crie sua conta'} subtitle={isLogin ? 'Entre para acessar seu acervo' : 'Comece a organizar sua biblioteca'}>
@@ -77,6 +83,12 @@ export function Auth({ onLoginSuccess }) {
           placeholder="••••••••"
           required
         />
+
+        {isLogin && (
+          <button type="button" onClick={() => setForgot(true)} className="self-end font-body text-[12px] text-brand hover:underline">
+            Esqueci minha senha
+          </button>
+        )}
 
         <button
           type="submit"

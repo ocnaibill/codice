@@ -28,6 +28,7 @@ export const useDuplicates = list('duplicates', '/admin/duplicates');
 export const useOcr = list('ocr', '/admin/ocr');
 export const useAccounts = list('accounts', '/users');
 export const useInvitations = list('invitations', '/invitations');
+export const usePasswordResets = list('password-resets', '/password-resets');
 
 /** A POST/PUT/DELETE that refreshes the admin lists when it succeeds. */
 function useAdminAction(run) {
@@ -80,3 +81,5 @@ export const useCreateInvitation = () =>
 export const useRevokeInvitation = () => useAdminAction((id) => api.delete(`/invitations/${id}`));
 export const useDeleteAccount = () =>
   useAdminAction(({ id, username }) => api.delete(`/users/${id}`, { data: { confirmUsername: username } }));
+export const useApproveReset = () => useAdminAction(async (id) => (await api.post(`/password-resets/${id}/approve`)).data);
+export const useRejectReset = () => useAdminAction((id) => api.post(`/password-resets/${id}/reject`));

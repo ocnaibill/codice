@@ -17,6 +17,7 @@ const (
 	ActionDemote  Action = "demote"  // admin -> reader
 	ActionBlock   Action = "block"
 	ActionRemove  Action = "remove"
+	ActionReset   Action = "reset" // approve a password reset
 )
 
 // IsStaff reports whether the role may run catalog administration
@@ -37,7 +38,7 @@ func IsAssignableRole(role string) bool {
 // actions are denied.
 func CanManageAccount(actor, target string, action Action) bool {
 	switch action {
-	case ActionPromote, ActionDemote, ActionBlock, ActionRemove:
+	case ActionPromote, ActionDemote, ActionBlock, ActionRemove, ActionReset:
 	default:
 		return false
 	}
@@ -52,7 +53,7 @@ func CanManageAccount(actor, target string, action Action) bool {
 	case RoleAdmin:
 		// Admins may block or remove readers, but never change roles and
 		// never act on other admins (closes "invite as reader, then promote").
-		return target == RoleReader && (action == ActionBlock || action == ActionRemove)
+		return target == RoleReader && (action == ActionBlock || action == ActionRemove || action == ActionReset)
 	default:
 		return false
 	}

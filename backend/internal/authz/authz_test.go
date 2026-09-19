@@ -31,6 +31,15 @@ func TestCanManageAccount(t *testing.T) {
 		{"admin may block reader", RoleAdmin, RoleReader, ActionBlock, true},
 		{"admin may remove reader", RoleAdmin, RoleReader, ActionRemove, true},
 
+		// Approving a password reset follows the same reach (RF-049).
+		{"owner approves a reset for a reader", RoleOwner, RoleReader, ActionReset, true},
+		{"owner approves a reset for an admin", RoleOwner, RoleAdmin, ActionReset, true},
+		{"owner is never reset from here", RoleOwner, RoleOwner, ActionReset, false},
+		{"admin approves a reset for a reader", RoleAdmin, RoleReader, ActionReset, true},
+		{"admin cannot approve a reset for an admin", RoleAdmin, RoleAdmin, ActionReset, false},
+		{"admin cannot approve a reset for the owner", RoleAdmin, RoleOwner, ActionReset, false},
+		{"reader approves nothing", RoleReader, RoleReader, ActionReset, false},
+
 		// Readers manage nobody.
 		{"reader cannot block reader", RoleReader, RoleReader, ActionBlock, false},
 		{"reader cannot promote", RoleReader, RoleReader, ActionPromote, false},

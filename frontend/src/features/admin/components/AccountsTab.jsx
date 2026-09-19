@@ -4,6 +4,7 @@ import { formatDate } from '../format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 import { Invitations } from './Invitations';
+import { PasswordResets } from './PasswordResets';
 
 const ROLE = { owner: 'Dono', admin: 'Administrador', reader: 'Leitor' };
 
@@ -86,6 +87,7 @@ export function AccountsTab({ isOwner }) {
         />
       )}
     </Section>
+    <PasswordResets />
     <Invitations isOwner={isOwner} />
     </div>
   );

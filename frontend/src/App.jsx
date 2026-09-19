@@ -10,6 +10,7 @@ import { useMe, isStaff } from './features/auth/api/useMe';
 import { AdminPage } from './features/admin/AdminPage';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
 import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
+import { ResetPassword } from './features/auth/components/ResetPassword';
 import { AcceptInvite } from './features/auth/components/AcceptInvite';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
 import { refreshLibrary } from './lib/refreshLibrary';
@@ -22,6 +23,12 @@ function App() {
   const [changingPassword, setChangingPassword] = useState(false);
   // A link like /?invite=<secret> opens the sign-up page for that invitation.
   const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset'));
+  const leaveLink = () => {
+    window.history.replaceState(null, '', window.location.pathname);
+    setInviteToken(null);
+    setResetToken(null);
+  };
   const leaveInvite = () => {
     window.history.replaceState(null, '', window.location.pathname);
     setInviteToken(null);
@@ -205,6 +212,10 @@ function App() {
         }} 
       />
     );
+  }
+
+  if (!isAuthenticated && resetToken) {
+    return <ResetPassword token={resetToken} onDone={leaveLink} />;
   }
 
   if (!isAuthenticated && inviteToken) {
