@@ -266,3 +266,13 @@ Resultado das correções no branch `feat/fase1-seguranca`, cada uma com testes 
 | 4.5 Exclusão apaga arquivos e notas | Corrigido em parte | Retirar é reversível e preserva arquivos e notas; a exclusão física é um passo separado, restrito a obra retirada, e só apaga arquivos gerenciados. A lixeira recuperável e a limpeza automática (DEC-041 a 043) são da Fase 3 |
 | Notas dependiam de JOIN com a obra | Corrigido | A nota guarda título e autor e sobrevive à retirada e à exclusão da obra (RF-039) |
 
+## 12 Situação dos achados 4.5, 4.6 e 4.7 após a Fase 3 (19 de setembro de 2026)
+
+| Achado | Situação | Como |
+| --- | --- | --- |
+| 4.6 Jobs sem recuperação | Corrigido | Fila no PostgreSQL com lease, batimento e retomada de worker que sumiu, até 3 tentativas com espera crescente, erro permanente sem repetição e reexecução manual. O nome do consumidor é único por processo. Verificado com a pilha real, inclusive com o Redis parado |
+| 4.7 Upload sem consistência | Corrigido | Streaming para staging com nome aleatório, hash SHA-256, limite real do corpo, validação do conteúdo e obra, hash e job numa única transação; se algo falha, o arquivo é removido. Bytes idênticos, também em envios simultâneos, devolvem o registro existente |
+| 4.5 Exclusão apaga arquivos | Corrigido em parte | Além da retirada reversível da Fase 2, arquivos e capas só são servidos quando o catálogo os possui e obras retiradas ficam ocultas a leitores. Falta a lixeira recuperável (DEC-041 a 043) |
+| RF-008 Validar formato real | Corrigido no envio | O conteúdo é conferido antes de aceitar. Os extratores continuam lenientes; por isso o worker agora falha (permanente) quando o arquivo não existe |
+| Enriquecimento sobrescrevia dados | Corrigido | O worker preenche só campos vazios ou vindos do arquivo e registra a origem; provedores externos geram sugestões que o admin aceita ou rejeita (DEC-019, DEC-026) |
+

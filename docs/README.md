@@ -49,12 +49,16 @@ Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz
 - Retirada reversível no lugar da exclusão: o botão do frontend agora diz "Retire from Library". A exclusão física é um passo extra (`?purge=true`), só para obra já retirada.
 - O worker continua escrevendo nas colunas antigas de `works`; gatilhos no banco projetam essas escritas no modelo novo. Isso sai na Fase 3.
 
-**Pendências da Fase 2**, que não bloqueiam a Fase 3:
-- O modal de edição envia série, ISBN, editora, idioma, descrição e as travas de campo, mas o backend só grava título, autor e tags (isso já era assim antes). A edição completa e a proveniência por campo são da Fase 3 (RF-009).
-- `/files/*` serve por caminho a qualquer usuário autenticado: uma obra retirada some do catálogo, mas o arquivo continua acessível a quem souber o caminho.
-- O registro de auditoria não é somente de acréscimo, e `user_progress` e as colunas antigas continuam no banco até a Fase 3.
+**Fase 3 (jobs, ingestão e armazenamento): parcial.** As três pendências da Fase 2 foram resolvidas (edição completa de metadados com travas e proveniência, arquivos servidos só quando o catálogo os possui, auditoria somente de acréscimo), e entraram a fila de jobs no PostgreSQL e a ingestão endurecida. Detalhes e o que falta no plano (§5).
 
-**Próximo passo: Fase 3, jobs, ingestão e armazenamento.** Ela começa pela infraestrutura de jobs (tabela no PostgreSQL como fonte da verdade, despachante para o Redis Streams e reconciliador) e pela ingestão (upload com hash e staging, validação de conteúdo, duplicidade, lixeira), e remove os gatilhos de compatibilidade.
+- **Jobs:** PostgreSQL é a fonte da verdade e o Redis só acorda o worker, então reiniciar ou esvaziar o Redis, ou subir sem ele, não perde nada. Erros temporários repetem até 3 vezes (30 s, 2 min, 10 min), os permanentes não repetem, e um job cujo worker sumiu é retomado por outro. `GET /admin/jobs`, `POST /admin/jobs/{id}/rerun` e `/cancel`, para owner e admin.
+- **Upload e importação em lote:** limite real de tamanho (`CODICE_MAX_UPLOAD_MB`), validação do conteúdo, bytes idênticos recusados com a indicação do registro existente, e obra, hash e job numa só transação. O frontend agora explica a recusa.
+- **Metadados:** o worker só preenche o que está vazio; o que os provedores externos encontram vira **sugestão** para aceitar ou rejeitar no modal de edição. Campos que você altera ficam confirmados e travados.
+- **Worker:** rode o worker e a API. O worker sozinho já consome a fila pelo banco; o Redis é opcional.
+
+**Pendências da Fase 3** (segunda etapa): organização em disco no padrão de DEC-065, modo referenciado e "mover para o gerenciado", lixeira recuperável, candidatos a duplicidade por título/autor/ISBN, detecção de páginas sem texto para OCR, remoção dos gatilhos de compatibilidade e das colunas antigas, tela de jobs e limpeza de arquivos órfãos.
+
+**Próximo passo: concluir a Fase 3** pelos itens acima, começando pela organização em disco e pelo modo referenciado, que definem onde os arquivos vivem e destravam a lixeira e a remoção dos gatilhos. Depois vem a Fase 4 (contas e governança, com o LDAP).
 
 ## Como rodar os testes
 

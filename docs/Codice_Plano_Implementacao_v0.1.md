@@ -93,6 +93,22 @@ Tamanho: G. Cobre os achados 4.5, 4.6 e 4.7, RF-007 a 011, 019/020, 041, 044 e 0
 
 **Testes:** arquivo corrompido é bloqueado; duplicata devolve o registro existente; falha no meio da transferência preserva uma cópia válida; retirar obra preserva arquivos e notas.
 
+**Estado da Fase 3 em 19 de setembro de 2026: parcial.** Entregue, no mesmo branch:
+
+- *As três pendências da Fase 2*: edição completa de metadados (todos os campos, nove travas, proveniência por campo), arquivos servidos só quando o catálogo os possui e a auditoria somente de acréscimo.
+- *Fluxo de sugestões (DEC-019, DEC-026, RF-009)*: o worker preenche só campos vazios ou vindos do próprio arquivo, nunca sobrescreve o que foi confirmado, e os provedores externos passam a gerar **candidatos** que o admin aceita ou rejeita.
+- *3a, infraestrutura de jobs (DEC-066 a 069, RF-020)*: fila no PostgreSQL com a máquina de estados em funções SQL (pegar, batimento, concluir, falhar com espera de 30 s, 2 min e 10 min, cancelar), prioridade para importações manuais, um job pesado por vez, retomada de job cujo worker sumiu, erro permanente sem repetição, reexecução e cancelamento pela API, tudo auditado. O Redis só acorda o worker.
+- *3b, ingestão (RF-008, DEC-027, DEC-067)*: upload e importação em lote compartilham um caminho com limite real de tamanho, hash SHA-256 no envio, validação do conteúdo, recusa de bytes já armazenados (também numa corrida) e obra, hash e job criados numa só transação.
+
+**Ainda não feito na Fase 3**, para uma segunda etapa:
+- Organização em disco no padrão de DEC-065 (`Autor/Obra/Idioma — Editora — Ano/Arquivo`): os arquivos seguem planos, com nome aleatório mais o nome original.
+- Modo referenciado com raízes do owner e o fluxo "Mover para o armazenamento gerenciado" com remoção verificada da origem (DEC-032 a 035, RF-011).
+- Lixeira recuperável e limpeza automática opcional (DEC-041 a 043, RF-045): hoje a exclusão física de uma obra retirada é imediata.
+- Candidatos a duplicidade por título, autor ou ISBN para revisão administrativa (DEC-029).
+- Detecção de páginas sem texto para OCR (RF-019).
+- A etapa "contrair": remover os gatilhos de compatibilidade e as colunas antigas de `works`, o que exige o worker e o upload escreverem o modelo novo diretamente.
+- Tela de administração de jobs (a API existe) e limpeza de arquivos órfãos deixados por uma queda entre gravar o arquivo e confirmar a transação.
+
 ## 6 Fase 4: contas e governança
 
 Tamanho: M a G. Cobre RF-002 a 004, 038, 047 a 049 e DEC-050 a 063. Depende das fases 1 e 2.
