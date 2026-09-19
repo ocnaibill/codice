@@ -76,6 +76,9 @@ var staffRoutes = []route{
 	{"PUT", "/works/1"},
 	{"DELETE", "/works/1"},
 	{"POST", "/works/1/restore"},
+	{"GET", "/works/1/candidates"},
+	{"POST", "/works/1/candidates/1/accept"},
+	{"POST", "/works/1/candidates/1/reject"},
 }
 
 // Routes reserved to the owner alone (DEC-056).

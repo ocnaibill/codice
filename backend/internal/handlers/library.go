@@ -25,23 +25,24 @@ import (
 // shown through its primary edition and file; GET /works/{id} also lists every
 // edition and file.
 type Work struct {
-	ID              int       `json:"id"`
-	Title           string    `json:"title"`
-	Author          string    `json:"author"`
-	CoverURL        string    `json:"coverUrl"`
-	FileURL         string    `json:"fileUrl,omitempty"`
-	FileID          *int64    `json:"fileId,omitempty"`
-	Format          string    `json:"format,omitempty"`
-	Series          string    `json:"series,omitempty"`
-	SeriesIndex     float64   `json:"seriesIndex,omitempty"`
-	MediaStatus     string    `json:"mediaStatus,omitempty"`
-	Tags            []string  `json:"tags"`
-	ReadingProgress string    `json:"readingProgress,omitempty"`
-	PercentComplete float64   `json:"percentComplete"`
-	Completed       bool      `json:"completed"`
-	IsFavorite      bool      `json:"isFavorite"`
-	Retired         bool      `json:"retired,omitempty"`
-	Editions        []Edition `json:"editions,omitempty"`
+	ID              int           `json:"id"`
+	Title           string        `json:"title"`
+	Author          string        `json:"author"`
+	CoverURL        string        `json:"coverUrl"`
+	FileURL         string        `json:"fileUrl,omitempty"`
+	FileID          *int64        `json:"fileId,omitempty"`
+	Format          string        `json:"format,omitempty"`
+	Series          string        `json:"series,omitempty"`
+	SeriesIndex     float64       `json:"seriesIndex,omitempty"`
+	MediaStatus     string        `json:"mediaStatus,omitempty"`
+	Tags            []string      `json:"tags"`
+	ReadingProgress string        `json:"readingProgress,omitempty"`
+	PercentComplete float64       `json:"percentComplete"`
+	Completed       bool          `json:"completed"`
+	IsFavorite      bool          `json:"isFavorite"`
+	Retired         bool          `json:"retired,omitempty"`
+	Editions        []Edition     `json:"editions,omitempty"`
+	Metadata        *WorkMetadata `json:"metadata,omitempty"`
 }
 
 // Edition is one publication of a work: its language, publisher and date, and
@@ -276,6 +277,14 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 	}
 	work.Editions = editions
 
+	meta, err := loadMetadata(r.Context(), h.DB, id)
+	if err != nil {
+		log.Println("Error fetching metadata:", err)
+		http.Error(w, "Error fetching book", http.StatusInternalServerError)
+		return
+	}
+	work.Metadata = meta
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(work)
 }
@@ -335,17 +344,38 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 	return editions, rows.Err()
 }
 
-// UpdateWorkRequest represents the payload for updating work metadata
+// UpdateWorkRequest is the payload for editing a work. Title and author are
+// always sent. Every other field is optional: a field that is absent is left as
+// it is, while an empty string clears it. The *_lock flags protect (or release)
+// a field against automatic changes.
 type UpdateWorkRequest struct {
-	Title  string   `json:"title"`
-	Author string   `json:"author"`
-	Tags   []string `json:"tags"`
+	Title           string   `json:"title"`
+	Author          string   `json:"author"`
+	Tags            []string `json:"tags"`
+	Series          *string  `json:"series"`
+	SeriesIndex     *float64 `json:"series_index"`
+	ISBN            *string  `json:"isbn"`
+	Publisher       *string  `json:"publisher"`
+	Language        *string  `json:"language"`
+	PublicationDate *string  `json:"publication_date"`
+	Description     *string  `json:"description"`
+
+	TitleLock           *bool `json:"title_lock"`
+	AuthorLock          *bool `json:"author_lock"`
+	SeriesLock          *bool `json:"series_lock"`
+	CoverLock           *bool `json:"cover_lock"`
+	ISBNLock            *bool `json:"isbn_lock"`
+	PublisherLock       *bool `json:"publisher_lock"`
+	LanguageLock        *bool `json:"language_lock"`
+	PublicationDateLock *bool `json:"publication_date_lock"`
+	DescriptionLock     *bool `json:"description_lock"`
 }
 
-// UpdateWork updates title, resolves author, and syncs tags in one transaction.
-// A field the admin actually changes becomes confirmed: it is locked against
-// automatic enrichment (RN-008), and the bibliographic reference kept on the
-// user's notes follows it while the work is available (DEC-040).
+// UpdateWork edits a work's descriptive metadata and tags in one transaction. A
+// field the admin actually changes becomes confirmed (RN-008): it is locked
+// against automatic enrichment and its provenance is recorded as manual. The
+// bibliographic reference kept on the user's notes follows a confirmed title or
+// author while the work is available (DEC-040).
 func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 	id, ok := workIDParam(r)
 	if !ok {
@@ -371,13 +401,7 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	// Current values, and the row locked for the rest of the transaction.
-	var oldTitle, oldAuthor string
-	var retired bool
-	err = tx.QueryRow(`
-		SELECT w.original_title, COALESCE(p.name, 'Unknown Author'), w.retired_at IS NOT NULL
-		FROM works w LEFT JOIN person p ON p.id = w.author_id
-		WHERE w.id = $1 FOR UPDATE OF w`, id).Scan(&oldTitle, &oldAuthor, &retired)
+	cur, retired, err := readWorkFields(tx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Book not found", http.StatusNotFound)
@@ -387,91 +411,59 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Resolve Author
-	authorName := strings.TrimSpace(req.Author)
-	if authorName == "" {
-		authorName = "Unknown Author"
+	next := cur
+	next.Title = req.Title
+	next.Author = strings.TrimSpace(req.Author)
+	if next.Author == "" {
+		next.Author = "Unknown Author"
 	}
-	var authorID int
-	err = tx.QueryRow("SELECT id FROM person WHERE name = $1", authorName).Scan(&authorID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			err = tx.QueryRow("INSERT INTO person (name) VALUES ($1) RETURNING id", authorName).Scan(&authorID)
-			if err != nil {
-				http.Error(w, "Error creating author record", http.StatusInternalServerError)
-				return
-			}
-		} else {
-			http.Error(w, "Error querying author record", http.StatusInternalServerError)
-			return
-		}
+	if req.Series != nil {
+		next.Series = strings.TrimSpace(*req.Series)
+	}
+	if req.SeriesIndex != nil {
+		next.SeriesIndex = *req.SeriesIndex
+	}
+	if req.ISBN != nil {
+		next.ISBN = strings.TrimSpace(*req.ISBN)
+	}
+	if req.Publisher != nil {
+		next.Publisher = strings.TrimSpace(*req.Publisher)
+	}
+	if req.Language != nil {
+		next.Language = strings.TrimSpace(*req.Language)
+	}
+	if req.PublicationDate != nil {
+		next.PublicationDate = strings.TrimSpace(*req.PublicationDate)
+	}
+	if req.Description != nil {
+		next.Description = strings.TrimSpace(*req.Description)
 	}
 
-	titleChanged := req.Title != oldTitle
-	authorChanged := authorName != oldAuthor
-
-	// 2. Update the work; a changed field is confirmed, hence locked.
-	_, err = tx.Exec(`
-		UPDATE works
-		SET original_title = $1, author_id = $2,
-		    title_lock = title_lock OR $4, author_lock = author_lock OR $5,
-		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $3`, req.Title, authorID, id, titleChanged, authorChanged)
+	locks := map[string]*bool{
+		"title": req.TitleLock, "author": req.AuthorLock, "series": req.SeriesLock, "cover": req.CoverLock,
+		"isbn": req.ISBNLock, "publisher": req.PublisherLock, "language": req.LanguageLock,
+		"publication_date": req.PublicationDateLock, "description": req.DescriptionLock,
+	}
+	actor := currentUserID(r)
+	changes, err := applyWorkFields(r.Context(), tx, id, actor, sourceManual, cur, retired, next, locks)
 	if err != nil {
+		log.Println("Error updating work:", err)
 		http.Error(w, "Error updating work record", http.StatusInternalServerError)
 		return
 	}
 
-	// 3. Notes keep a bibliographic reference that follows confirmed corrections
-	// while the work is available; a retired work keeps the last confirmed values.
-	if (titleChanged || authorChanged) && !retired {
-		_, err = tx.Exec(`
-			UPDATE notes SET source_title = $1, source_author = NULLIF($2, 'Unknown Author')
-			WHERE work_id = $3`, req.Title, authorName, id)
-		if err != nil {
-			http.Error(w, "Error updating note references", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	// 4. Sync Tags (delete existing relations and re-insert new ones)
+	// Sync Tags (delete existing relations and re-insert new ones)
 	if _, err = tx.Exec("DELETE FROM work_tags WHERE work_id = $1", id); err != nil {
 		http.Error(w, "Error resetting work tags", http.StatusInternalServerError)
 		return
 	}
-	for _, tagName := range req.Tags {
-		if tagName == "" {
-			continue
-		}
-		var tagID int
-		err = tx.QueryRow("SELECT id FROM tags WHERE name = $1", tagName).Scan(&tagID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				err = tx.QueryRow("INSERT INTO tags (name) VALUES ($1) RETURNING id", tagName).Scan(&tagID)
-				if err != nil {
-					http.Error(w, "Error creating tag record", http.StatusInternalServerError)
-					return
-				}
-			} else {
-				http.Error(w, "Error querying tag record", http.StatusInternalServerError)
-				return
-			}
-		}
-		if _, err = tx.Exec("INSERT INTO work_tags (work_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", id, tagID); err != nil {
-			http.Error(w, "Error linking work tag", http.StatusInternalServerError)
-			return
-		}
+	if err := addTags(tx, id, req.Tags); err != nil {
+		http.Error(w, "Error linking work tags", http.StatusInternalServerError)
+		return
 	}
 
-	if titleChanged || authorChanged {
-		details := map[string]any{}
-		if titleChanged {
-			details["title"] = map[string]string{"from": oldTitle, "to": req.Title}
-		}
-		if authorChanged {
-			details["author"] = map[string]string{"from": oldAuthor, "to": authorName}
-		}
-		if err := audit.Record(r.Context(), tx, currentUserID(r), "work.update", "work", strconv.Itoa(id), details); err != nil {
+	if len(changes) > 0 {
+		if err := audit.Record(r.Context(), tx, actor, "work.update", "work", strconv.Itoa(id), auditDetails(changes)); err != nil {
 			http.Error(w, "Error recording audit entry", http.StatusInternalServerError)
 			return
 		}
