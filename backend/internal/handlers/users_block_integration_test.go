@@ -169,6 +169,7 @@ func TestListAccounts_ShowsWhoTheCallerMayBlockAndNothingSecret(t *testing.T) {
 			Role      string
 			BlockedAt *string
 			CanBlock  bool
+			CanRemove bool
 			IsSelf    bool
 		}
 	}
@@ -189,6 +190,11 @@ func TestListAccounts_ShowsWhoTheCallerMayBlockAndNothingSecret(t *testing.T) {
 	// An admin may block readers only: not the owner, another admin, or themself.
 	if got["ana"].can != true || !got["ana"].blocked {
 		t.Errorf("reader = %+v", got["ana"])
+	}
+	for _, a := range body.Data {
+		if a.CanRemove != a.CanBlock {
+			t.Errorf("%s: canRemove=%v canBlock=%v; for an admin they are the same set (readers)", a.Username, a.CanRemove, a.CanBlock)
+		}
 	}
 	if got["boss"].can || got["adm"].can || !got["adm"].self {
 		t.Errorf("owner/admin rows = %+v / %+v", got["boss"], got["adm"])

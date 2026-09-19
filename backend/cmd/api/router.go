@@ -115,6 +115,7 @@ func newRouter(d routerDeps) http.Handler {
 
 	// Session, resource tokens and app tokens
 	r.With(auth).Get("/auth/me", authHandler.Me)
+	r.With(auth, authRateLimit).Post("/auth/password", authHandler.ChangePassword)
 	r.With(auth).Post("/auth/logout", authHandler.Logout)
 	r.With(auth).Post("/auth/resource-token", authHandler.ResourceToken)
 	r.With(auth).Post("/auth/app-tokens", appTokensHandler.Create)
@@ -164,6 +165,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Get("/users", usersHandler.List)
 	r.With(staff).Post("/users/{id}/block", usersHandler.Block)
 	r.With(staff).Post("/users/{id}/unblock", usersHandler.Unblock)
+	r.With(staff).Delete("/users/{id}", usersHandler.Delete)
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)
 	r.With(staff).Get("/invitations", invitesHandler.List)
 	r.With(staff).Post("/invitations", invitesHandler.Create)

@@ -9,10 +9,10 @@ import { mount } from '../testUtils';
 import { AccountsTab } from './AccountsTab';
 
 const accounts = [
-  { id: 'o1', username: 'boss', email: 'b@x', role: 'owner', blockedAt: null, canBlock: false, isSelf: true },
-  { id: 'r1', username: 'ana', email: 'a@x', role: 'reader', blockedAt: null, canBlock: true, isSelf: false },
-  { id: 'r2', username: 'bob', email: 'bo@x', role: 'reader', blockedAt: '2026-09-01T10:00:00Z', canBlock: true, isSelf: false },
-  { id: 'a2', username: 'adm', email: 'ad@x', role: 'admin', blockedAt: null, canBlock: false, isSelf: false },
+  { id: 'o1', username: 'boss', email: 'b@x', role: 'owner', blockedAt: null, canBlock: false, canRemove: false, isSelf: true },
+  { id: 'r1', username: 'ana', email: 'a@x', role: 'reader', blockedAt: null, canBlock: true, canRemove: true, isSelf: false },
+  { id: 'r2', username: 'bob', email: 'bo@x', role: 'reader', blockedAt: '2026-09-01T10:00:00Z', canBlock: true, canRemove: true, isSelf: false },
+  { id: 'a2', username: 'adm', email: 'ad@x', role: 'admin', blockedAt: null, canBlock: false, canRemove: false, isSelf: false },
 ];
 let view;
 
@@ -56,6 +56,33 @@ describe('AccountsTab', () => {
   it('unblocks with one click, since nothing is lost', async () => {
     await view.click(view.button('Desbloquear'));
     expect(api.post).toHaveBeenCalledWith('/users/r2/unblock');
+  });
+
+  it('offers to delete only where the server allows it', async () => {
+    const del = [...document.querySelectorAll('button')].filter((b) => b.textContent === 'Excluir');
+    expect(del).toHaveLength(2); // ana and bob
+  });
+
+  it('deletes only after the username is typed exactly', async () => {
+    api.delete.mockResolvedValue({});
+    await view.click([...document.querySelectorAll('button')].filter((b) => b.textContent === 'Excluir')[0]);
+    expect(view.dialog().textContent).toContain('Excluir ana de vez?');
+    const confirm = () => view.button('Excluir conta');
+    expect(confirm().disabled).toBe(true);
+
+    await view.type(view.dialog().querySelector('input'), 'an');
+    expect(confirm().disabled).toBe(true);
+    await view.type(view.dialog().querySelector('input'), 'ana');
+    expect(confirm().disabled).toBe(false);
+
+    await view.click(confirm());
+    expect(api.delete).toHaveBeenCalledWith('/users/r1', { data: { confirmUsername: 'ana' } });
+  });
+
+  it('does not delete when the question is cancelled', async () => {
+    await view.click([...document.querySelectorAll('button')].filter((b) => b.textContent === 'Excluir')[0]);
+    await view.click(view.button('Cancelar'));
+    expect(api.delete).not.toHaveBeenCalled();
   });
 
   it('shows what the server said when it refuses', async () => {

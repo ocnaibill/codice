@@ -78,3 +78,5 @@ export const useUnblockAccount = () => useAdminAction((id) => api.post(`/users/$
 export const useCreateInvitation = () =>
   useAdminAction(async ({ role, email }) => (await api.post('/invitations', { role, email })).data);
 export const useRevokeInvitation = () => useAdminAction((id) => api.delete(`/invitations/${id}`));
+export const useDeleteAccount = () =>
+  useAdminAction(({ id, username }) => api.delete(`/users/${id}`, { data: { confirmUsername: username } }));

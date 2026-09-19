@@ -107,8 +107,9 @@ type accountView struct {
 	CreatedAt *time.Time `json:"createdAt"`
 	// CanBlock says whether the caller may block or unblock this account, so the
 	// interface never has to repeat the policy.
-	CanBlock bool `json:"canBlock"`
-	IsSelf   bool `json:"isSelf"`
+	CanBlock  bool `json:"canBlock"`
+	CanRemove bool `json:"canRemove"`
+	IsSelf    bool `json:"isSelf"`
 }
 
 // List shows the accounts to the owner and admins. The caller's role comes from
@@ -138,6 +139,7 @@ func (h *UsersHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		a.IsSelf = a.ID == actorID
 		a.CanBlock = !a.IsSelf && authz.CanManageAccount(actorRole, a.Role, authz.ActionBlock)
+		a.CanRemove = !a.IsSelf && authz.CanManageAccount(actorRole, a.Role, authz.ActionRemove)
 		out = append(out, a)
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -214,10 +216,7 @@ func (h *UsersHandler) setBlocked(w http.ResponseWriter, r *http.Request, block 
 			return
 		}
 		// Links the account handed out but nobody used yet die with its access.
-		if _, err := tx.Exec(`
-			UPDATE invitations SET revoked_at = now(), revoked_by = $2
-			WHERE created_by = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()`,
-			targetID, actorID); err != nil {
+		if err := revokeIssuedInvitations(r.Context(), tx, targetID, actorID); err != nil {
 			http.Error(w, "Error ending the account's invitations", http.StatusInternalServerError)
 			return
 		}
@@ -233,6 +232,98 @@ func (h *UsersHandler) setBlocked(w http.ResponseWriter, r *http.Request, block 
 		return
 	}
 	if block && h.Disconnect != nil {
+		h.Disconnect(targetID)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type deleteAccountRequest struct {
+	// ConfirmUsername must repeat the account's username: deleting is permanent,
+	// so a click is not enough.
+	ConfirmUsername string `json:"confirmUsername"`
+}
+
+// Delete removes an account and its personal data for good (DEC-060): notes,
+// favourites, reading progress, sessions, app tokens and linked identities. It is
+// separate from blocking, which is reversible and keeps them. Works, files and
+// the audit log are not personal data and stay; the audit entries keep the
+// username they were written with. Nobody deletes the owner or themself, and an
+// admin deletes readers only.
+func (h *UsersHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	targetID := chi.URLParam(r, "id")
+	if !uuidPattern.MatchString(targetID) {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	var req deleteAccountRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+	actorID, _ := r.Context().Value(middleware.UserIDKey).(string)
+
+	tx, err := h.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		http.Error(w, "Error starting transaction", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	var actorRole, targetRole, username string
+	if err := tx.QueryRow(`SELECT role FROM users WHERE id = $1 FOR UPDATE`, actorID).Scan(&actorRole); err != nil {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if actorID == targetID {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	err = tx.QueryRow(`SELECT role, username FROM users WHERE id = $1 FOR UPDATE`, targetID).Scan(&targetRole, &username)
+	if err == sql.ErrNoRows {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Error querying database", http.StatusInternalServerError)
+		return
+	}
+	if !authz.CanManageAccount(actorRole, targetRole, authz.ActionRemove) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if req.ConfirmUsername != username {
+		http.Error(w, "confirmUsername must repeat the account's username", http.StatusBadRequest)
+		return
+	}
+
+	var notes, favorites, progress int
+	if err := tx.QueryRow(`
+		SELECT (SELECT count(*) FROM notes WHERE user_id = $1),
+		       (SELECT count(*) FROM favorites WHERE user_id = $1),
+		       (SELECT count(*) FROM reading_progress WHERE user_id = $1)`, targetID).Scan(&notes, &favorites, &progress); err != nil {
+		http.Error(w, "Error querying database", http.StatusInternalServerError)
+		return
+	}
+	if err := revokeIssuedInvitations(r.Context(), tx, targetID, actorID); err != nil {
+		http.Error(w, "Error ending the account's invitations", http.StatusInternalServerError)
+		return
+	}
+	// Recorded first, with counts only: the content of the notes is never read.
+	if err := audit.Record(r.Context(), tx, actorID, "user.delete", "user", targetID, map[string]any{
+		"username": username, "role": targetRole, "notes": notes, "favorites": favorites, "filesWithProgress": progress,
+	}); err != nil {
+		http.Error(w, "Error recording audit entry", http.StatusInternalServerError)
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM users WHERE id = $1`, targetID); err != nil {
+		http.Error(w, "Error deleting the account", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Error committing the change", http.StatusInternalServerError)
+		return
+	}
+	if h.Disconnect != nil {
 		h.Disconnect(targetID)
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -59,6 +59,8 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Get("/users", s.users.List)
 	r.With(a.Middleware).Post("/users/{id}/block", s.users.Block)
 	r.With(a.Middleware).Post("/users/{id}/unblock", s.users.Unblock)
+	r.With(a.Middleware).Delete("/users/{id}", s.users.Delete)
+	r.With(a.Middleware).Post("/auth/password", s.authH.ChangePassword)
 	r.With(a.Middleware).Get("/probe", probe)
 	r.With(a.AssetsWithBasic).Get("/files/probe", probe)
 	s.router = r

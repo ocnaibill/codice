@@ -2,9 +2,11 @@ import iconSearch from '../../assets/icons/header-search.svg';
 import iconSync from '../../assets/icons/header-sync.svg';
 import iconBell from '../../assets/icons/header-bell.svg';
 import iconAvatar from '../../assets/icons/header-avatar.svg';
+import { useState } from 'react';
 import { useGlobalStore } from '../../store/useGlobalStore';
 
-export function Header({ searchQuery, onSearchChange, onAvatarClick, canAdmin = false, onOpenAdmin }) {
+export function Header({ searchQuery, onSearchChange, onLogout, onChangePassword, canAdmin = false, onOpenAdmin }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const openUploadModal = useGlobalStore((state) => state.openUploadModal);
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 bg-[rgba(249,249,253,0.85)] px-4 sm:px-6 shadow-[0px_1px_8px_0px_rgba(0,0,0,0.04)] backdrop-blur-md">
@@ -47,13 +49,31 @@ export function Header({ searchQuery, onSearchChange, onAvatarClick, canAdmin = 
           <img src={iconBell} alt="" className="h-[17px] w-[13px]" />
         </button>
         <span className="hidden sm:block h-5 w-px bg-[rgba(219,193,182,0.6)]" />
-        <button
-          onClick={onAvatarClick}
-          title="Sair"
-          className="flex size-8 items-center justify-center rounded-full bg-brand shadow-[0px_1px_1.5px_rgba(0,0,0,0.1)] hover:brightness-110"
-        >
-          <img src={iconAvatar} alt="Usuário" className="size-3" />
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title="Minha conta"
+            className="flex size-8 items-center justify-center rounded-full bg-brand shadow-[0px_1px_1.5px_rgba(0,0,0,0.1)] hover:brightness-110"
+          >
+            <img src={iconAvatar} alt="Minha conta" className="size-3" />
+          </button>
+          {menuOpen && (
+            <div role="menu" className="absolute right-0 top-10 z-40 w-44 overflow-hidden rounded-lg bg-white py-1 shadow-xl">
+              {onChangePassword && (
+                <button role="menuitem" onClick={() => { setMenuOpen(false); onChangePassword(); }}
+                  className="block w-full px-4 py-2 text-left font-body text-[13px] text-ink hover:bg-surface">
+                  Alterar senha
+                </button>
+              )}
+              <button role="menuitem" onClick={() => { setMenuOpen(false); onLogout?.(); }}
+                className="block w-full px-4 py-2 text-left font-body text-[13px] text-ink hover:bg-surface">
+                Sair
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

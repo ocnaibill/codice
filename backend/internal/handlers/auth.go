@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/ocnaibill/codice/backend/internal/audit"
 	"net/http"
 	"os"
 	"sync"
@@ -337,4 +338,77 @@ func (h *AuthHandler) SetupMasterAdmin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(AuthResponse{Token: tokenString})
+}
+
+type changePasswordRequest struct {
+	Current string `json:"current"`
+	New     string `json:"new"`
+}
+
+// ChangePassword lets a person change their own password. It needs the current
+// one (a stolen session alone must not be enough), and it ends every OTHER
+// session of the account, so a change made because someone else got in actually
+// removes them. The session used stays, and app tokens are separate credentials
+// that keep working.
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	var req changePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	sid, _ := r.Context().Value(middleware.SessionIDKey).(string)
+	if sid == "" {
+		http.Error(w, "Forbidden: sign in to change the password", http.StatusForbidden)
+		return
+	}
+	if len(req.New) < minPasswordLength {
+		http.Error(w, "The new password must have at least 8 characters", http.StatusBadRequest)
+		return
+	}
+
+	var hash string
+	if err := h.DB.QueryRowContext(r.Context(), `SELECT COALESCE(password_hash, '') FROM users WHERE id = $1`, userID).Scan(&hash); err != nil {
+		http.Error(w, "Error querying database", http.StatusInternalServerError)
+		return
+	}
+	if hash == "" {
+		http.Error(w, "This account has no local password", http.StatusBadRequest)
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Current)) != nil {
+		http.Error(w, "The current password is not correct", http.StatusForbidden)
+		return
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.New), bcryptCost)
+	if err != nil {
+		http.Error(w, "Error processing password hash", http.StatusInternalServerError)
+		return
+	}
+
+	tx, err := h.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		http.Error(w, "Error changing the password", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE users SET password_hash = $2 WHERE id = $1`, userID, string(newHash)); err != nil {
+		http.Error(w, "Error changing the password", http.StatusInternalServerError)
+		return
+	}
+	res, err := tx.Exec(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL`, userID, sid)
+	if err != nil {
+		http.Error(w, "Error changing the password", http.StatusInternalServerError)
+		return
+	}
+	ended, _ := res.RowsAffected()
+	if err := audit.Record(r.Context(), tx, userID, "user.password_change", "user", userID, map[string]any{"sessionsEnded": ended}); err != nil {
+		http.Error(w, "Error recording audit entry", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Error changing the password", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

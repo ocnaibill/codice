@@ -9,6 +9,7 @@ import { Auth } from './features/auth/components/Auth';
 import { useMe, isStaff } from './features/auth/api/useMe';
 import { AdminPage } from './features/admin/AdminPage';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
+import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
 import { AcceptInvite } from './features/auth/components/AcceptInvite';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
 import { refreshLibrary } from './lib/refreshLibrary';
@@ -18,6 +19,7 @@ function App() {
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [assetsReady, setAssetsReady] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   // A link like /?invite=<secret> opens the sign-up page for that invitation.
   const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
   const leaveInvite = () => {
@@ -246,6 +248,7 @@ function App() {
         </div>
       )}
       <UploadModal />
+      {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
       {activeBookId ? (
         <Reader />
       ) : (
@@ -254,6 +257,7 @@ function App() {
           onSearchChange={setSearchQuery}
           onGoHome={closeBook}
           onLogout={handleLogout}
+          onChangePassword={() => setChangingPassword(true)}
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >

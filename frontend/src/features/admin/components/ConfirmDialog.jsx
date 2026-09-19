@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 const TONES = {
   neutral: 'bg-surface-alt text-ink hover:brightness-95',
@@ -13,7 +13,10 @@ const TONES = {
  *
  * choices: [{ label, value, tone }]; onChoose(value) is called with the one picked.
  */
-export function ConfirmDialog({ title, message, choices, onChoose, onCancel, cancelLabel = 'Cancelar' }) {
+export function ConfirmDialog({ title, message, choices, onChoose, onCancel, cancelLabel = 'Cancelar', requireText }) {
+  const [typed, setTyped] = useState('');
+  const locked = requireText !== undefined && typed !== requireText;
+
   useEffect(() => {
     const onKey = (event) => {
       if (event.key === 'Escape') onCancel();
@@ -30,6 +33,16 @@ export function ConfirmDialog({ title, message, choices, onChoose, onCancel, can
       <div role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">{title}</h2>
         <div className="mt-3 text-[14px] leading-relaxed text-ink-soft">{message}</div>
+        {requireText !== undefined && (
+          <label className="mt-4 flex flex-col gap-1 text-[12px] text-ink-soft">
+            Para confirmar, digite <strong className="text-ink">{requireText}</strong>
+            <input
+              value={typed} onChange={(event) => setTyped(event.target.value)} autoFocus autoComplete="off"
+              aria-label="Confirmação digitada"
+              className="rounded bg-surface px-3 py-2 text-[14px] text-ink outline-none"
+            />
+          </label>
+        )}
         <div className="mt-6 flex flex-wrap justify-end gap-2">
           <button onClick={onCancel} className="rounded px-4 py-2 text-[13px] text-ink-soft hover:text-ink">
             {cancelLabel}
@@ -38,7 +51,8 @@ export function ConfirmDialog({ title, message, choices, onChoose, onCancel, can
             <button
               key={String(choice.value)}
               onClick={() => onChoose(choice.value)}
-              className={`rounded px-4 py-2 text-[13px] font-medium ${TONES[choice.tone || 'neutral']}`}
+              disabled={locked}
+              className={`rounded px-4 py-2 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-40 ${TONES[choice.tone || 'neutral']}`}
             >
               {choice.label}
             </button>

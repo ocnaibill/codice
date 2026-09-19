@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAccounts, useBlockAccount, useUnblockAccount, describeError } from '../api/admin';
+import { useAccounts, useBlockAccount, useUnblockAccount, useDeleteAccount, describeError } from '../api/admin';
 import { formatDate } from '../format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
@@ -15,14 +15,16 @@ export function AccountsTab({ isOwner }) {
   const { data, isLoading, isError } = useAccounts();
   const block = useBlockAccount();
   const unblock = useUnblockAccount();
+  const remove = useDeleteAccount();
   const [blocking, setBlocking] = useState(null);
+  const [deleting, setDeleting] = useState(null);
   const accounts = data?.data || [];
 
   return (
     <div className="flex flex-col gap-5">
     <Section
       title="Contas"
-      hint="Bloquear impede a pessoa de entrar e encerra na hora as sessões, os tokens de aplicativo e as conexões abertas dela. Notas e progresso ficam guardados, e o bloqueio se desfaz."
+      hint="Bloquear impede a pessoa de entrar e encerra na hora as sessões, os tokens de aplicativo e as conexões abertas dela. Notas e progresso ficam guardados, e o bloqueio se desfaz. Excluir é outra coisa: apaga a conta e os dados pessoais de vez."
     >
       {isLoading && <Loading />}
       {isError && <ErrorNote>Não foi possível carregar as contas.</ErrorNote>}
@@ -43,17 +45,36 @@ export function AccountsTab({ isOwner }) {
                 {account.blockedAt && ` · bloqueada em ${formatDate(account.blockedAt)}`}
               </p>
             </div>
-            {account.canBlock && (
-              account.blockedAt ? (
-                <Btn onClick={() => unblock.mutate(account.id)} disabled={unblock.isPending}>Desbloquear</Btn>
-              ) : (
-                <Btn tone="danger" onClick={() => setBlocking(account)}>Bloquear</Btn>
-              )
-            )}
+            <div className="flex gap-2">
+              {account.canBlock && (
+                account.blockedAt ? (
+                  <Btn onClick={() => unblock.mutate(account.id)} disabled={unblock.isPending}>Desbloquear</Btn>
+                ) : (
+                  <Btn tone="danger" onClick={() => setBlocking(account)}>Bloquear</Btn>
+                )
+              )}
+              {account.canRemove && <Btn tone="danger" onClick={() => setDeleting(account)}>Excluir</Btn>}
+            </div>
           </li>
         ))}
       </ul>
-      <ErrorNote>{block.isError ? describeError(block.error) : unblock.isError && describeError(unblock.error)}</ErrorNote>
+      <ErrorNote>{block.isError ? describeError(block.error) : unblock.isError ? describeError(unblock.error) : remove.isError && describeError(remove.error)}</ErrorNote>
+
+      {deleting && (
+        <ConfirmDialog
+          title={`Excluir ${deleting.username} de vez?`}
+          message={
+            <>
+              <p>Apaga a conta e tudo o que é pessoal dela: notas, favoritos, progresso de leitura, sessões e tokens. Isso não pode ser desfeito.</p>
+              <p className="mt-2">Os livros do acervo ficam. Para só impedir a entrada, use Bloquear, que se desfaz.</p>
+            </>
+          }
+          requireText={deleting.username}
+          choices={[{ label: 'Excluir conta', value: true, tone: 'danger' }]}
+          onChoose={() => { remove.mutate({ id: deleting.id, username: deleting.username }); setDeleting(null); }}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
 
       {blocking && (
         <ConfirmDialog

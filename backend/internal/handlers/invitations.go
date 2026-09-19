@@ -381,3 +381,13 @@ func (h *InvitationsHandler) Redeem(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(AuthResponse{Token: token})
 }
+
+// revokeIssuedInvitations cancels the invitations an account handed out that
+// nobody has used yet. It runs when the account is blocked or deleted: links the
+// account gave out must not outlive its access.
+func revokeIssuedInvitations(ctx context.Context, tx *sql.Tx, issuerID, actorID string) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE invitations SET revoked_at = now(), revoked_by = $2
+		WHERE created_by = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()`, issuerID, actorID)
+	return err
+}

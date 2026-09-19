@@ -71,6 +71,7 @@ type route struct{ method, path string }
 
 // Routes the specification reserves to owner and admin (DEC-003, RF-007).
 var staffRoutes = []route{
+	{"DELETE", "/users/" + someUUID},
 	{"GET", "/invitations"},
 	{"POST", "/invitations"},
 	{"DELETE", "/invitations/" + someUUID},
@@ -164,6 +165,7 @@ func TestAuthRoutes_RequireASession(t *testing.T) {
 	h := testRouter(t)
 	for _, rt := range []route{
 		{"GET", "/auth/me"},
+		{"POST", "/auth/password"},
 		{"POST", "/auth/logout"},
 		{"POST", "/auth/resource-token"},
 		{"POST", "/auth/app-tokens"},
