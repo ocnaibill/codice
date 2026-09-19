@@ -42,6 +42,7 @@ func newRouter(d routerDeps) http.Handler {
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
 	usersHandler := &handlers.UsersHandler{DB: db}
 	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
+	dupesHandler := &handlers.DuplicatesHandler{DB: db}
 	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
@@ -146,6 +147,12 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Post("/admin/trash/policy/apply", trashHandler.ApplyPolicy)
 	r.With(staff).Get("/admin/storage/orphans", trashHandler.Orphans)
 	r.With(staff).Post("/admin/storage/orphans/trash", trashHandler.TrashOrphans)
+
+	// Possible duplicates (DEC-029): the system proposes, an admin decides.
+	r.With(staff).Get("/admin/duplicates", dupesHandler.List)
+	r.With(staff).Post("/admin/duplicates/scan", dupesHandler.Scan)
+	r.With(staff).Post("/admin/duplicates/{id}/dismiss", dupesHandler.Dismiss)
+	r.With(staff).Post("/admin/duplicates/{id}/link", dupesHandler.Link)
 
 	// Account roles
 	r.With(owner).Put("/users/{id}/role", usersHandler.UpdateRole)

@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ocnaibill/codice/backend/internal/dupes"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
 	"github.com/ocnaibill/codice/backend/internal/storage"
 )
@@ -25,6 +26,16 @@ func fileJobHandlers(db *sql.DB, mover *storage.Mover) map[string]jobs.Handler {
 			err := mover.OrganizeWork(ctx, *j.WorkID)
 			if errors.Is(err, storage.ErrNotMovable) || errors.Is(err, os.ErrNotExist) {
 				return jobs.Permanent(err) // retrying will not bring a missing file back
+			}
+			return err
+		},
+		// Look for works that may be the same book. It only proposes.
+		"dedupe": func(ctx context.Context, j jobs.Claimed) error {
+			var err error
+			if j.WorkID != nil {
+				_, err = dupes.Detect(ctx, db, *j.WorkID)
+			} else {
+				_, err = dupes.DetectAll(ctx, db)
 			}
 			return err
 		},
