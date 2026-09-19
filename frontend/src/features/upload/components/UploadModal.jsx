@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
-import { useUploadBook } from '../api/useUploadBook';
+import { useUploadBook, describeUploadError } from '../api/useUploadBook';
 
 export function UploadModal() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -9,7 +9,7 @@ export function UploadModal() {
   const isOpen = useGlobalStore((state) => state.isUploadModalOpen);
   const closeModal = useGlobalStore((state) => state.closeUploadModal);
   
-  const { mutate: uploadBook, isPending, isError } = useUploadBook();
+  const { mutate: uploadBook, isPending, isError, error } = useUploadBook();
 
   if (!isOpen) return null;
 
@@ -101,7 +101,7 @@ export function UploadModal() {
           )}
 
           {/* Status Feedback */}
-          {isError && <p className="text-red-400 text-sm font-medium">Error uploading file.</p>}
+          {isError && <p className="text-red-400 text-sm font-medium">{describeUploadError(error)}</p>}
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3 mt-4">
