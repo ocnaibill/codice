@@ -150,6 +150,21 @@ func RunAutoMigrations(db *sql.DB) error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_notes_user_id_created_at ON notes(user_id, created_at DESC);`,
+
+		// 10. Migration 012: roles owner / admin / reader (spec DEC-014, DEC-022).
+		// Before this, the setup wizard created an 'admin'. If no owner exists
+		// yet, the earliest admin becomes the owner; later admins stay admins.
+		// The statements are idempotent and safe to run on every startup.
+		`UPDATE users SET role = 'reader' WHERE role IS NULL;`,
+		`ALTER TABLE users ALTER COLUMN role SET DEFAULT 'reader';`,
+		`ALTER TABLE users ALTER COLUMN role SET NOT NULL;`,
+		`UPDATE users SET role = 'owner'
+			WHERE id = (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at, id LIMIT 1)
+			  AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'owner');`,
+		`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;`,
+		`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('owner', 'admin', 'reader'));`,
+		// At most one owner: a partial unique index on a constant expression.
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_owner ON users ((role)) WHERE role = 'owner';`,
 	}
 
 	for _, stmt := range statements {

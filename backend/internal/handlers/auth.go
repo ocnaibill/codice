@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 )
@@ -179,20 +180,15 @@ func (h *AuthHandler) GetSetupStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(SetupStatusResponse{IsFirstRun: count == 0})
 }
 
-// SetupMasterAdmin creates the initial master administrator account during first-run setup
+// setupLockKey serialises first-run setup across concurrent requests
+// (pg_advisory_xact_lock). The value is arbitrary but must stay constant.
+const setupLockKey = 7301122
+
+// SetupMasterAdmin creates the initial owner during first-run setup. The
+// emptiness check and the insert run in one transaction behind an advisory
+// lock, so concurrent requests cannot create more than one account (RF-001);
+// the unique owner index in the database is the second line of defence.
 func (h *AuthHandler) SetupMasterAdmin(w http.ResponseWriter, r *http.Request) {
-	var count int
-	err := h.DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
-	if err != nil {
-		http.Error(w, "Error checking database state", http.StatusInternalServerError)
-		return
-	}
-
-	if count > 0 {
-		http.Error(w, "First-time setup has already been completed", http.StatusForbidden)
-		return
-	}
-
 	var req AuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
@@ -209,16 +205,47 @@ func (h *AuthHandler) SetupMasterAdmin(w http.ResponseWriter, r *http.Request) {
 		email = req.Username + "@codice.local"
 	}
 
+	// Hash before taking the lock: bcrypt is slow and must not hold it.
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), 10)
 	if err != nil {
 		http.Error(w, "Error processing password hash", http.StatusInternalServerError)
 		return
 	}
 
-	var id string
-	query := `INSERT INTO users (username, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id`
-	err = h.DB.QueryRow(query, req.Username, email, string(hashedPassword)).Scan(&id)
+	tx, err := h.DB.BeginTx(r.Context(), nil)
 	if err != nil {
+		http.Error(w, "Error checking database state", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`SELECT pg_advisory_xact_lock($1)`, setupLockKey); err != nil {
+		http.Error(w, "Error checking database state", http.StatusInternalServerError)
+		return
+	}
+
+	var count int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM users").Scan(&count); err != nil {
+		http.Error(w, "Error checking database state", http.StatusInternalServerError)
+		return
+	}
+	if count > 0 {
+		http.Error(w, "First-time setup has already been completed", http.StatusForbidden)
+		return
+	}
+
+	var id string
+	query := `INSERT INTO users (username, email, password_hash, role) VALUES ($1, $2, $3, 'owner') RETURNING id`
+	if err := tx.QueryRow(query, req.Username, email, string(hashedPassword)).Scan(&id); err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			http.Error(w, "First-time setup has already been completed", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "Error creating master admin account", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		http.Error(w, "Error creating master admin account", http.StatusInternalServerError)
 		return
 	}
@@ -226,7 +253,7 @@ func (h *AuthHandler) SetupMasterAdmin(w http.ResponseWriter, r *http.Request) {
 	expirationTime := time.Now().Add(7 * 24 * time.Hour)
 	claims := jwt.MapClaims{
 		"sub":  id,
-		"role": "admin",
+		"role": "owner",
 		"exp":  expirationTime.Unix(),
 	}
 
