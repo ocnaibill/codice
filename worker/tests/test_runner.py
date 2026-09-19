@@ -202,3 +202,31 @@ class TestClassification:
 
     def test_control_flow_exceptions_are_not_ordinary_errors(self):
         assert not issubclass(Cancelled, ValueError) and not issubclass(LeaseLost, ValueError)
+
+
+class TestJobsClientClaim:
+    """The worker must ask the queue for its own job types only."""
+
+    class RecordingDB:
+        def __init__(self):
+            self.calls = []
+
+        def fetchone(self, query, params=()):
+            self.calls.append((" ".join(query.split()), params))
+            return None
+
+    def test_it_asks_only_for_ingestion_jobs(self):
+        from runner import JobsClient
+
+        db = self.RecordingDB()
+        JobsClient(db, "worker-1", lease_seconds=60, max_running=2).claim()
+        query, params = db.calls[0]
+        assert "jobs_claim(%s, %s, %s, %s::text[])" in query
+        assert params == ("worker-1", 60, 2, ['ingest'])
+
+    def test_the_types_can_be_narrowed_or_widened_explicitly(self):
+        from runner import JobsClient
+
+        db = self.RecordingDB()
+        JobsClient(db, "w", types=['ingest', 'ocr']).claim()
+        assert db.calls[0][1][3] == ['ingest', 'ocr']

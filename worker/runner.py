@@ -43,16 +43,21 @@ def new_owner_name() -> str:
 class JobsClient:
     """Thin wrapper over the queue functions in PostgreSQL."""
 
-    def __init__(self, db, owner: str, lease_seconds: int = 120, max_running: int = 1):
+    # This worker only analyses files. Organizing, scanning and transferring are
+    # file-system jobs that the API process runs; taking them here would fail them.
+    JOB_TYPES = ['ingest']
+
+    def __init__(self, db, owner: str, lease_seconds: int = 120, max_running: int = 1, types=None):
         self.db = db
         self.owner = owner
         self.lease_seconds = lease_seconds
         self.max_running = max_running
+        self.types = list(types) if types is not None else list(self.JOB_TYPES)
 
     def claim(self):
         row = self.db.fetchone(
-            "SELECT id, work_id, payload, attempts, max_attempts FROM jobs_claim(%s, %s, %s)",
-            (self.owner, self.lease_seconds, self.max_running))
+            "SELECT id, work_id, payload, attempts, max_attempts FROM jobs_claim(%s, %s, %s, %s::text[])",
+            (self.owner, self.lease_seconds, self.max_running, self.types))
         if not row or row[0] is None:
             return None
         return {'id': row[0], 'work_id': row[1], 'payload': row[2] or {}, 'attempts': row[3], 'max_attempts': row[4]}
