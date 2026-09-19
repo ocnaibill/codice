@@ -45,6 +45,8 @@ Tamanho: M. Cobre os achados 4.1, 4.2 e 4.8, além de RN-015 e RN-022.
 
 **Decisões confirmadas em 19 de setembro de 2026:** sessões são registros no banco, revogáveis de imediato (DEC-070), e clientes OPDS usam tokens de aplicativo revogáveis, não a senha da conta (DEC-071). A Fase 1 inclui as tabelas de sessão e de tokens e a revogação por bloqueio ou redefinição de senha.
 
+**Estado da Fase 1 em 19 de setembro de 2026: concluída na parte técnica**, no branch `feat/fase1-seguranca` (sem merge). Todas as tarefas acima foram feitas, com estas diferenças em relação ao plano: a importação em lote usa raízes lidas de `CODICE_IMPORT_ROOTS` (a interface do owner fica para depois) e não segue symlinks; `JWT_EXPIRATION_HOURS` passou a valer; o bcrypt subiu para custo 12 com re-hash no login; e o token de URL foi substituído por um token de recurso de 15 minutos (`?rt=`) e um ticket de WebSocket de 60 segundos. A gestão de contas além da troca de papel (`PUT /users/{id}/role`) continua na Fase 4. As pendências que sobraram estão no `README.md` desta pasta.
+
 ## 4 Fase 2: modelo de dados alvo
 
 Tamanho: G. É o núcleo estrutural. Cobre os achados 4.3, 4.4 e 4.5 e as decisões DEC-013 a DEC-017, 023-025, 036, 038-041.

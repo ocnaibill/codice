@@ -237,3 +237,23 @@ Leitura direta de `middleware/auth.go`, `handlers/auth.go`, `handlers/opds.go`, 
 - Os extratores usam `print` com emojis. Executados no Windows com o console em `cp1252`, a extração inteira falha com `UnicodeEncodeError`. Em Docker/Linux não ocorre; vale trocar por `logging`.
 - EPUB, CBZ (LTR e RTL, com `ComicInfo.xml`) e CBZ de imagem longa extraem título, autor, idioma, série e ISBN corretamente. O extrator não lê a direção de leitura nem o layout fixo do EPUB.
 
+
+## 10 Situação dos achados após a Fase 1 (19 de setembro de 2026)
+
+Resultado das correções no branch `feat/fase1-seguranca`, cada uma com testes que falham quando a proteção é removida. Os achados 4.3 a 4.7 (modelo de dados, progresso, exclusão, jobs e upload) não fazem parte da Fase 1 e seguem abertos.
+
+| Achado | Situação | Como |
+| --- | --- | --- |
+| 4.1 Basic sem validar senha | Corrigido | O middleware comum recusa Basic. Onde Basic ainda é aceito (OPDS, capas, arquivos), o segredo é um token de aplicativo verificado por hash (DEC-071); a senha da conta não vale mais |
+| 4.2 Sem exigência de admin | Corrigido | `RequireStaff` em upload, lote, edição e exclusão; a importação em lote só lê raízes autorizadas e não segue symlinks |
+| 4.8 Setup não atômico | Corrigido | Transação com trava e índice único parcial do owner; teste com 12 setups simultâneos |
+| §9.1 Fallback de admin anônimo | Corrigido | Removido do HTTP e do WebSocket |
+| §9.2 Segredo JWT padrão | Corrigido | A API não sobe sem `JWT_SECRET` |
+| §9.3 Papel no token, 7 dias sem revogação | Corrigido | Sessões no banco (DEC-070); o papel é lido do banco a cada requisição |
+| §9.4 Token na URL | Corrigido, com ressalva | Tokens de recurso de 15 minutos e ticket de 60 segundos; ainda aparecem no log de acesso |
+| §9.5 Sem gestão de usuários | Parcial | Existe o papel owner e a troca de papel por owner; convites, bloqueio e exclusão ficam para a Fase 4 |
+| §9.6 Mensagens de login | Corrigido | Mensagem única e mesmo custo de bcrypt para usuário inexistente |
+| §9.7 Portas do PostgreSQL e Redis | Corrigido | Loopback no Compose de desenvolvimento; sem porta publicada no completo; senha do Redis obrigatória no completo |
+| §9.8 CORS de origem única | Mantido | Adequado ao desenvolvimento; revisar na implantação |
+| §9.9 Custo do bcrypt | Corrigido | Custo 12, com re-hash no login |
+
