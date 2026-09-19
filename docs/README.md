@@ -9,6 +9,7 @@ Idioma: português brasileiro. Estes documentos foram elaborados em 18 e 19 de s
 | [Codice_Especificacao_Mestre_v0.4.md](Codice_Especificacao_Mestre_v0.4.md) | Regras, decisões (DEC-001 a DEC-075), requisitos (RF/RNF/RN), modelo, arquitetura e questões em aberto. **Comece por aqui.** |
 | [Codice_Analise_Inicial_Backend.md](Codice_Analise_Inicial_Backend.md) | Análise do backend existente contra a especificação: achados de segurança e de modelo de dados (§4), matriz por requisito (§5) e verificação de código da Fase 0 (§9). |
 | [Codice_Plano_Implementacao_v0.1.md](Codice_Plano_Implementacao_v0.1.md) | Plano em fases (0 a 6), com tarefas, testes e dependências. |
+| [Codice_Validacao_Base_2026-09-19.md](Codice_Validacao_Base_2026-09-19.md) | Validação posterior ao merge do PR #6: testes executados, ensaio com navegador, correções e pendências. |
 
 Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz do repositório, são planos anteriores (sprints de extratores e metadados). Não conhecem as decisões de governança da especificação atual.
 
@@ -19,6 +20,8 @@ Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz
 - O estado do código está em "Estado" abaixo e na análise.
 
 ## Estado em 19 de setembro de 2026
+
+**Atualização após o merge:** o PR #6 já foi integrado à `main` (`83fc908`). A validação subsequente passou em 232 casos/subcasos Go (com PostgreSQL, nenhum ignorado), 82 testes Python e 54 testes frontend; build e `go vet` aprovados. API, worker e navegador foram exercitados com banco e arquivos sintéticos isolados. Correções locais: inicialização/reconexão sem Redis, atualização de obras pendentes sem WebSocket e propagação de falhas no Makefile. Consulte o relatório acima para o alcance e as pendências; esses resultados não homologam toda a especificação.
 
 **Fase 0 (preparar o terreno): concluída.** Corpus sintético em `testdata/`, script `scripts/reset-dev-db.sh` (simulação por padrão) e trabalho local salvo em `chore/salvar-trabalho-local`.
 
@@ -67,10 +70,10 @@ Para voltar: `docker exec -i codice_db pg_restore -U codice_user -d codice_db --
 - Rodar o OCR de fato (a detecção já indica onde) e a fila `ocr`.
 - Tela para listar arquivos referenciados e usar "mover para o gerenciado" (a API existe: `POST /admin/library/move-to-managed`).
 - Tela para criar e revogar tokens de aplicativo (UI-21); sem ela o OPDS só funciona pela API. O leitor ainda vê botões de upload e edição (recebe 403); esconder por papel é ajuste de interface, agora que `/auth/me` existe.
-- Rodar a aplicação inteira (API, worker, Redis, frontend) uma vez nesta versão do código e olhar as telas novas num navegador; os testes cobrem os componentes com a API simulada.
+- Ensaio básico da aplicação inteira realizado após o merge, inclusive com Redis ausente na inicialização. Permanecem os ensaios de falhas operacionais e os ajustes de interface descritos no relatório de validação.
 - Da Fase 1: `rt` e `ticket` aparecem no log de acesso do chi (risco baixo); `POSTGRES_PASSWORD` ainda tem valor padrão em `docker-compose.full.yml`; CORS aceita uma única origem; não há MFA.
 
-**Próximo passo:** revisar e integrar o PR, e então a **Fase 4** (contas e governança, com o LDAP): bloquear, excluir e convidar contas, transferência de titularidade, redefinição de senha e o login unificado (DEC-072 a 075). Só a troca de papel existe hoje.
+**Próximo passo:** revisar as correções da validação e seguir para a **Fase 4**, em fatias pequenas, começando por listagem e bloqueio/desbloqueio de contas. Convites, exclusão, transferência, redefinição e LDAP vêm depois. Só a troca de papel existe hoje; o leitor usado no ensaio foi semeado no banco isolado.
 
 ## Como rodar
 
@@ -94,7 +97,7 @@ export TEST_DATABASE_URL='postgres://postgres:test@127.0.0.1:55432/codice_test?s
 cd backend && go vet ./... && go test ./...
 ```
 
-O worker: `cd worker && venv/bin/python -m pytest` (81 testes). O frontend: `cd frontend && npx vitest run` (53 testes). Não use o banco de desenvolvimento como `TEST_DATABASE_URL`. Ao testar, capture o código de saída do `go test`: um `| tail` esconde a falha.
+O worker: `cd worker && venv/bin/python -m pytest` (82 testes). O frontend: `cd frontend && npm test` (54 testes). `make test` executa as três suítes e agora propaga falhas. Não use o banco de desenvolvimento como `TEST_DATABASE_URL`. Sem essa variável, os testes Go de integração continuam sendo ignorados: sucesso de `make test` sozinho não comprova integração.
 
 Os testes semeiam obras com `testdb.AddWork` (`backend/internal/testdb`), que grava obra, edição, arquivo, local e autor como a aplicação faz.
 

@@ -1,5 +1,7 @@
 # Códice 📚
 
+> Estado atual, decisões e próximos passos: [documentação do projeto](docs/README.md). O histórico abaixo descreve os sprints iniciais; consulte também a [validação da base de 19/09/2026](docs/Codice_Validacao_Base_2026-09-19.md).
+
 A complete, modern, and open-source system for managing and consuming digital libraries (Homelab). Códice supports fiction books (EPUB, PDF), manga/comic collections (CBZ, CBR), plain text (TXT, MD), and audiobooks — with a specialized metadata extraction pipeline and OPDS 1.2 catalog for mobile app compatibility.
 
 ## 🏗️ Architecture
@@ -38,10 +40,11 @@ make test-worker     # pytest tests/ — discovers all test_*.py
 make test-frontend   # npx vitest run — discovers all *.test.js / *.test.jsx
 ```
 
-**Current coverage:**
-- Backend: 22 Go tests (config, auth middleware, auth handler, page handler)
-- Frontend: 5 JS tests (api.js helpers — authenticatedUrl, wsUrl)
-- Worker: pytest setup ready for extractors and providers
+**Latest validation (2026-09-19):**
+- Backend: 232 passing cases/subcases, including PostgreSQL integration tests
+- Frontend: 54 passing tests
+- Worker: 82 passing tests
+- These are passing test counts, not coverage percentages. Integration tests require an isolated `TEST_DATABASE_URL`; see `docs/README.md`.
 
 ## 🙏 Inspirations & References
 
