@@ -20,6 +20,7 @@ export function Header({ searchQuery, onSearchChange, onAvatarClick, canAdmin = 
       </div>
 
       <div className="flex items-center gap-3">
+        {canAdmin && (
         <button
           onClick={openUploadModal}
           className="flex items-center gap-2 rounded bg-brand px-3 py-2 text-white shadow-[0px_1px_1.5px_rgba(0,0,0,0.1)] hover:brightness-110"
@@ -28,6 +29,7 @@ export function Header({ searchQuery, onSearchChange, onAvatarClick, canAdmin = 
           <span className="font-body text-[13px] leading-none">+</span>
           <span className="hidden sm:inline font-body text-[11px] tracking-[0.44px]">Adicionar</span>
         </button>
+        )}
         {canAdmin && (
           <button
             onClick={onOpenAdmin}

@@ -10,6 +10,7 @@ import { useMe, isStaff } from './features/auth/api/useMe';
 import { AdminPage } from './features/admin/AdminPage';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
+import { refreshLibrary } from './lib/refreshLibrary';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -77,6 +78,17 @@ function App() {
     };
   }, [isAuthenticated]);
 
+  // Reading moves progress and the counters; refresh them when the reader closes.
+  const readerWasOpen = React.useRef(false);
+  useEffect(() => {
+    if (activeBookId) readerWasOpen.current = true;
+    else if (readerWasOpen.current) {
+      readerWasOpen.current = false;
+      refreshLibrary(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['notes'] });
+    }
+  }, [activeBookId, queryClient]);
+
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -102,7 +114,7 @@ function App() {
             const data = JSON.parse(event.data);
             if (data.type === 'WORK_READY') {
               console.log(`🎉 Book processing completed: "${data.title}"`);
-              queryClient.invalidateQueries({ queryKey: ['works'] });
+              refreshLibrary(queryClient);
               setToast({
                 type: 'success',
                 message: `✨ Metadata updated: ${data.title || 'Book ready'}`,
@@ -110,10 +122,10 @@ function App() {
               setTimeout(() => setToast(null), 5000);
             } else if (data.type === 'WORK_ANALYZING') {
               console.log(`🔍 Book analyzing: ID ${data.work_id}`);
-              queryClient.invalidateQueries({ queryKey: ['works'] });
+              refreshLibrary(queryClient);
             } else if (data.type === 'WORK_ERROR') {
               console.warn(`❌ Processing error for Work ID ${data.work_id}:`, data.error);
-              queryClient.invalidateQueries({ queryKey: ['works'] });
+              refreshLibrary(queryClient);
               setToast({
                 type: 'error',
                 message: `❌ Failed to process book: ${data.error || 'Unknown error'}`,
@@ -228,7 +240,7 @@ function App() {
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >
-          {adminOpen && staff ? <AdminPage isOwner={me.role === 'owner'} /> : <HomePage />}
+          {adminOpen && staff ? <AdminPage isOwner={me.role === 'owner'} onClose={closeBook} /> : <HomePage />}
         </AppShell>
       )}
     </div>

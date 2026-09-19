@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
+import { refreshLibrary } from '../../../lib/refreshLibrary';
 
 export const useFavoriteToggle = (workId) => {
   const queryClient = useQueryClient();
@@ -11,8 +12,7 @@ export const useFavoriteToggle = (workId) => {
         : api.delete(`/works/${workId}/favorite`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['work', workId] });
-      queryClient.invalidateQueries({ queryKey: ['favorites'] });
-      queryClient.invalidateQueries({ queryKey: ['works'] });
+      refreshLibrary(queryClient);
     },
   });
 };

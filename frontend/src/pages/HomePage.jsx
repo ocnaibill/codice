@@ -5,6 +5,7 @@ import { LibraryFilterBar } from '../features/home/components/LibraryFilterBar';
 import { LibraryGrid } from '../features/home/components/LibraryGrid';
 import { FavoriteSeries } from '../features/home/components/FavoriteSeries';
 import { NotesQuotes } from '../features/home/components/NotesQuotes';
+import { useMe } from '../features/auth/api/useMe';
 import { useStats } from '../features/home/api/useStats';
 import { useFavorites } from '../features/home/api/useFavorites';
 import { useNotes } from '../features/home/api/useNotes';
@@ -18,6 +19,7 @@ const GRID_TITLES = {
 };
 
 export function HomePage() {
+  const { data: me } = useMe();
   const [formatFilter, setFormatFilter] = useState('all');
   const [viewMode, setViewMode] = useState('grid');
 
@@ -30,7 +32,7 @@ export function HomePage() {
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-8 px-4 py-8 sm:px-6 lg:flex-row lg:items-start lg:gap-6 lg:px-10">
       <div className="flex min-w-0 flex-1 flex-col gap-8">
-        <GreetingStats userName="Bianco" stats={stats} isLoading={statsLoading} />
+        <GreetingStats userName={me?.username} stats={stats} isLoading={statsLoading} />
         <ContinueReading items={inProgressResult?.data ?? []} isLoading={inProgressLoading} />
         <LibraryFilterBar
           worksTotal={stats?.worksTotal ?? 0}

@@ -40,6 +40,13 @@ describe('AdminPage', () => {
     expect(view.text()).toContain('Nenhuma sugestão pendente');
   });
 
+  it('has a way back to the library, also on narrow screens', async () => {
+    const back = vi.fn();
+    view = await mount(<AdminPage isOwner onClose={back} />);
+    await view.click(view.buttonMatching(/Voltar ao acervo/));
+    expect(back).toHaveBeenCalledTimes(1);
+  });
+
   it('marks the tab that is open', async () => {
     view = await mount(<AdminPage isOwner={false} />);
     await view.click(view.button('Lixeira'));
@@ -66,5 +73,14 @@ describe('who sees the administration', () => {
 
     view = await mount(<Header canAdmin={false} onOpenAdmin={open} />);
     expect(view.button('Administração')).toBeUndefined();
+  });
+
+  it('does not offer to add books to a reader, who would only get a 403', async () => {
+    view = await mount(<Header canAdmin={false} />);
+    expect(view.buttonMatching(/Adicionar/)).toBeUndefined();
+    view.unmount();
+
+    view = await mount(<Header canAdmin />);
+    expect(view.buttonMatching(/Adicionar/)).toBeTruthy();
   });
 });

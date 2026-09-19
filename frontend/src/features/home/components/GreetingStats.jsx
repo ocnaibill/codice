@@ -27,7 +27,7 @@ export function GreetingStats({ userName, stats, isLoading }) {
       <div className="shrink-0">
         <p className="font-display text-[10px] text-brand">{dateLabel}</p>
         <p className="font-display text-xl text-ink">
-          {greetingPeriod(now.getHours())}, <span className="font-medium text-brand">{userName} :)</span>
+          {greetingPeriod(now.getHours())}{userName && <>, <span className="font-medium text-brand">{userName} :)</span></>}
         </p>
         <p className="font-display text-xl italic text-ink">O que queremos hoje?</p>
       </div>

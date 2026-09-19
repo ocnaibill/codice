@@ -27,6 +27,11 @@ export const useWorks = ({
   return useQuery({
     queryKey: ['works', { page, limit, search, inProgress, favorite, formatGroup }],
     queryFn: fetchWorks,
+    // Redis/WebSocket notifications are best effort. Pending work must still
+    // reach its final state in the UI if a notification is lost.
+    refetchInterval: (query) => query.state.data?.data?.some(
+      (work) => ['UNKNOWN', 'QUEUED', 'ANALYZING'].includes(work.mediaStatus)
+    ) ? 3000 : false,
     placeholderData: (previousData) => previousData, // Keep previous data while fetching next page
   });
 };

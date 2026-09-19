@@ -12,11 +12,18 @@ const TABS = [
 ];
 
 /** The administration area. Owner and admin see it; some actions are the owner's alone. */
-export function AdminPage({ isOwner }) {
+export function AdminPage({ isOwner, onClose }) {
   const [tab, setTab] = useState('jobs');
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-      <h1 className="font-display text-2xl font-semibold text-ink">Administração</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-semibold text-ink">Administração</h1>
+        {onClose && (
+          <button onClick={onClose} className="rounded bg-surface-alt px-3 py-1.5 text-[12px] text-ink hover:brightness-95">
+            ← Voltar ao acervo
+          </button>
+        )}
+      </div>
       <div role="tablist" className="mt-4 flex flex-wrap gap-1 border-b border-border-hairline">
         {TABS.map(([key, label]) => (
           <button

@@ -17,7 +17,6 @@ import (
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"github.com/ocnaibill/codice/backend/internal/storage"
-	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -62,16 +61,11 @@ func main() {
 		redisURL = "redis://localhost:6379/0"
 	}
 
-	opt, err := redis.ParseURL(redisURL)
+	redisClient, err := connectRedis(context.Background(), redisURL)
 	if err != nil {
-		log.Fatalf("Failed to parse Redis URL: %v", err)
+		log.Fatal(err)
 	}
-
-	redisClient := redis.NewClient(opt)
-	if err := redisClient.Ping(context.Background()).Err(); err != nil {
-		log.Fatalf("Redis did not respond to ping: %v", err)
-	}
-	log.Println("✅ Successfully connected to Redis!")
+	defer redisClient.Close()
 
 	sessionStore := &sessions.Store{DB: db}
 	authenticator := appMiddleware.Authenticator{

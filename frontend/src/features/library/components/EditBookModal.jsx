@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, authenticatedUrl } from '../../../lib/api';
+import { refreshLibrary } from '../../../lib/refreshLibrary';
 
 export function EditBookModal({ book, onClose }) {
   const queryClient = useQueryClient();
@@ -92,7 +93,7 @@ export function EditBookModal({ book, onClose }) {
       await api.put(`/works/${book.id}`, updatedData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['works'] });
+      refreshLibrary(queryClient);
       onClose();
     },
   });
@@ -102,7 +103,7 @@ export function EditBookModal({ book, onClose }) {
       await api.delete(`/works/${book.id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['works'] });
+      refreshLibrary(queryClient);
       onClose();
     },
   });
@@ -145,7 +146,7 @@ export function EditBookModal({ book, onClose }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['work-candidates', book.id] });
       queryClient.invalidateQueries({ queryKey: ['work-edit', book.id] });
-      queryClient.invalidateQueries({ queryKey: ['works'] });
+      refreshLibrary(queryClient);
       // Reload the form from the record the server now holds.
       initialized.current = false;
     },
