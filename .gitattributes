@@ -1,0 +1,4 @@
+# Keep the synthetic corpus byte-exact (hashes in manifest.json) and shell scripts LF-only,
+# regardless of core.autocrlf on the checkout machine.
+testdata/corpus/** -text
+*.sh text eol=lf

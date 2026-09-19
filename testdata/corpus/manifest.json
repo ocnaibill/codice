@@ -128,8 +128,8 @@
       "file": "notas.txt",
       "expect": "valid",
       "note": "Texto simples UTF-8",
-      "sha256": "a7b0c01c19ad453a2017f7bfc50ce3b90f5803997f141c3942f50768fbccfeca",
-      "bytes": 83,
+      "sha256": "3c278f284a09d057c107d2054ba908a651d8e9188ac23c24785a4d72046f84fd",
+      "bytes": 81,
       "format": "txt"
     }
   ]

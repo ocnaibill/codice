@@ -251,11 +251,13 @@ def main():
     build_cbz(OUT / "cbz_webtoon_imagem_longa.cbz", [("001.png", tall)], comicinfo("Webtoon Sintético", "1", "Capítulo 1", None))
     record("cbz_webtoon_imagem_longa.cbz", "valid", "CBZ com uma imagem muito alta (400x6000), estilo webtoon", format="cbz")
 
-    (OUT / "notas.txt").write_text("Arquivo de texto simples para testes.\nSegunda linha com acentuação: coração.\n", encoding="utf-8")
+    # write_bytes: no platform newline translation, so hashes are identical on Windows and macOS
+    (OUT / "notas.txt").write_bytes("Arquivo de texto simples para testes.\nSegunda linha com acentuação: coração.\n".encode("utf-8"))
     record("notas.txt", "valid", "Texto simples UTF-8", format="txt")
 
-    (OUT / "manifest.json").write_text(json.dumps({"generated_by": "testdata/generate_corpus.py", "files": manifest},
-                                                  ensure_ascii=False, indent=2), encoding="utf-8")
+    (OUT / "manifest.json").write_bytes(
+        json.dumps({"generated_by": "testdata/generate_corpus.py", "files": manifest}, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+    )
     print(f"{len(manifest)} files written to {OUT}")
 
 
