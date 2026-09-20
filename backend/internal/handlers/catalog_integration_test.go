@@ -114,6 +114,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	prog := &ProgressHandler{DB: db}
 	r.Get("/progress/files/{id}", prog.Get)
 	r.Put("/progress/files/{id}", prog.Put)
+	r.Put("/progress/files/{id}/completion", prog.SetCompletion)
 	r.Post("/works/{id}/reading-heartbeat", lib.ReadingHeartbeat)
 	r.Post("/works/{id}/favorite", fav.AddFavorite)
 	r.Delete("/works/{id}/favorite", fav.RemoveFavorite)

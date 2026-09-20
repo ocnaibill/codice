@@ -144,7 +144,12 @@ func hasPosition(a string) string {
 // cardJoins add the calling user's progress on the primary file and favorite flag.
 var cardJoins = `
 	LEFT JOIN reading_progress rp ON rp.file_id = wp.file_id AND rp.user_id = $1
-	LEFT JOIN favorites f ON f.work_id = w.id AND f.user_id = $1
+	LEFT JOIN favorites f ON f.work_id = w.id AND f.user_id = $1` + lastReadJoin
+
+// lastReadJoin adds, as lastrp, the file the caller read most recently in the work w ($1 is the
+// caller): the one to continue, and the one that says whether the work is finished (DEC-077). Only
+// a file with a position counts, and only one that can still be opened.
+var lastReadJoin = `
 	LEFT JOIN LATERAL (
 		SELECT r.file_id, r.position, r.percent_complete, r.completed_at, f2.format, l.path, l.mode
 		FROM reading_progress r
@@ -634,7 +639,7 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 			locator_version = NULL,
 			percent_complete = CASE WHEN $6 THEN EXCLUDED.percent_complete ELSE reading_progress.percent_complete END,
 			completed_at = CASE
-				WHEN $5 THEN now()
+				WHEN $5 THEN COALESCE(reading_progress.completed_at, now())
 				WHEN $7 THEN NULL
 				ELSE reading_progress.completed_at
 			END,

@@ -197,7 +197,8 @@ func (h *ProgressHandler) Put(w http.ResponseWriter, r *http.Request) {
 			locator = EXCLUDED.locator,
 			locator_version = EXCLUDED.locator_version,
 			percent_complete = COALESCE($6::float8, rp.percent_complete),
-			completed_at = CASE WHEN $7::boolean IS NULL THEN rp.completed_at WHEN $7::boolean THEN now() END,
+			-- A finished file stays finished: the first date is kept, and only an explicit false reopens it.
+			completed_at = CASE WHEN $7::boolean IS NULL THEN rp.completed_at WHEN $7::boolean THEN COALESCE(rp.completed_at, now()) END,
 			device = EXCLUDED.device,
 			client_updated_at = EXCLUDED.client_updated_at,
 			revision = rp.revision + 1,
@@ -225,6 +226,59 @@ func (h *ProgressHandler) Put(w http.ResponseWriter, r *http.Request) {
 	st, err := h.load(r, userID, fileID)
 	if err != nil {
 		log.Println("Error reading saved progress:", err)
+		http.Error(w, "Error saving progress", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+// PutCompletionRequest marks a file finished or reopens it.
+type PutCompletionRequest struct {
+	Completed *bool `json:"completed"`
+}
+
+// SetCompletion marks the caller's file as finished, or reopens it (DEC-077): the explicit
+// action, for a book finished elsewhere or one to read again. It needs no locator. Finishing
+// sets the percentage to 100; reopening a file that was at 100 takes it back to 0, and keeps the
+// position, so it can be picked up where it was or read from the start.
+func (h *ProgressHandler) SetCompletion(w http.ResponseWriter, r *http.Request) {
+	fileID, ok := fileIDParam(r)
+	if !ok {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+	var req PutCompletionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Completed == nil {
+		http.Error(w, "completed is true or false", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.fileFormat(r, fileID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+		log.Println("Error checking file for completion:", err)
+		http.Error(w, "Error saving progress", http.StatusInternalServerError)
+		return
+	}
+	userID := currentUserID(r)
+	_, err := h.DB.ExecContext(r.Context(), `
+		INSERT INTO reading_progress AS rp (user_id, file_id, position, percent_complete, completed_at, updated_at)
+		VALUES ($1, $2, '', CASE WHEN $3::boolean THEN 100 ELSE 0 END, CASE WHEN $3::boolean THEN now() END, now())
+		ON CONFLICT (user_id, file_id) DO UPDATE SET
+			completed_at = CASE WHEN $3::boolean THEN COALESCE(rp.completed_at, now()) END,
+			percent_complete = CASE WHEN $3::boolean THEN 100 WHEN rp.percent_complete >= 100 THEN 0 ELSE rp.percent_complete END,
+			revision = rp.revision + 1,
+			updated_at = now()`, userID, fileID, *req.Completed)
+	if err != nil {
+		log.Println("Error saving completion:", err)
+		http.Error(w, "Error saving progress", http.StatusInternalServerError)
+		return
+	}
+	st, err := h.load(r, userID, fileID)
+	if err != nil {
+		log.Println("Error reading saved completion:", err)
 		http.Error(w, "Error saving progress", http.StatusInternalServerError)
 		return
 	}

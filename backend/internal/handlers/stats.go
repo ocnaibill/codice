@@ -40,17 +40,26 @@ const audioFormats = "('mp3','m4a','m4b','ogg','wav','flac')"
 // scanFormatBreakdown counts available (not retired) works by the format of
 // their primary file. joinSQL adds joins, such as the caller's progress.
 func scanFormatBreakdown(db *sql.DB, joinSQL string, args ...interface{}) (FormatBreakdown, int, error) {
+	return scanFormatBreakdownBy(db, "wp.file_format", joinSQL, "", args...)
+}
+
+// scanFormatBreakdownBy counts works by the format given by formatExpr, after joinSQL and
+// only those that satisfy where (a condition, or empty).
+func scanFormatBreakdownBy(db *sql.DB, formatExpr, joinSQL, where string, args ...interface{}) (FormatBreakdown, int, error) {
 	var b FormatBreakdown
+	if where != "" {
+		where = " AND " + where
+	}
 	query := `
 		SELECT
-			COUNT(*) FILTER (WHERE LOWER(wp.file_format) IN ` + bookFormats + `),
-			COUNT(*) FILTER (WHERE LOWER(wp.file_format) IN ` + comicFormats + `),
-			COUNT(*) FILTER (WHERE LOWER(wp.file_format) IN ` + audioFormats + `),
+			COUNT(*) FILTER (WHERE LOWER(` + formatExpr + `) IN ` + bookFormats + `),
+			COUNT(*) FILTER (WHERE LOWER(` + formatExpr + `) IN ` + comicFormats + `),
+			COUNT(*) FILTER (WHERE LOWER(` + formatExpr + `) IN ` + audioFormats + `),
 			COUNT(*)
 		FROM works w
 		LEFT JOIN work_primary wp ON wp.work_id = w.id
 		` + joinSQL + `
-		WHERE w.retired_at IS NULL`
+		WHERE w.retired_at IS NULL` + where
 	var total int
 	err := db.QueryRow(query, args...).Scan(&b.Livros, &b.Mangas, &b.Audio, &total)
 	return b, total, err
@@ -91,10 +100,11 @@ func (h *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 		stats.CatalogedPercent = int((float64(catalogedCount) / float64(worksTotal)) * 100)
 	}
 
-	inProgressBreakdown, inProgressTotal, err := scanFormatBreakdown(
-		h.DB,
-		`JOIN reading_progress up ON up.file_id = wp.file_id AND up.user_id = $1 AND up.position <> '' AND up.completed_at IS NULL`,
-		userID,
+	// A work is in progress, or finished, by the file its reader touched last (DEC-077), counted
+	// under that file's format: reading the English EPUB of a book whose main file is a PDF makes
+	// it an ebook in progress.
+	inProgressBreakdown, inProgressTotal, err := scanFormatBreakdownBy(
+		h.DB, "lastrp.format", lastReadJoin, "lastrp.file_id IS NOT NULL AND lastrp.completed_at IS NULL", userID,
 	)
 	if err != nil {
 		log.Println("Error computing in-progress breakdown:", err)
@@ -104,12 +114,9 @@ func (h *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	stats.InProgressBreakdown = inProgressBreakdown
 	stats.InProgressCount = inProgressTotal
 
-	completedBreakdown, completedTotal, err := scanFormatBreakdown(
-		h.DB,
-		`JOIN reading_progress up ON up.file_id = wp.file_id AND up.user_id = $1
-		 AND up.completed_at IS NOT NULL
-		 AND date_trunc('month', up.completed_at) = date_trunc('month', CURRENT_TIMESTAMP)`,
-		userID,
+	completedBreakdown, completedTotal, err := scanFormatBreakdownBy(
+		h.DB, "lastrp.format", lastReadJoin,
+		"lastrp.completed_at IS NOT NULL AND date_trunc('month', lastrp.completed_at) = date_trunc('month', CURRENT_TIMESTAMP)", userID,
 	)
 	if err != nil {
 		log.Println("Error computing completed-this-month breakdown:", err)

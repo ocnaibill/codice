@@ -348,3 +348,124 @@ func TestContinueReading_OpeningAFileIsNotBeginningIt(t *testing.T) {
 		}
 	}
 }
+
+func TestCompletion_IsAFactThatOnlyAnExplicitActionUndoes(t *testing.T) {
+	s := newCatalogStack(t)
+	_, epub, _ := s.bookWithTwoFiles()
+	at := func(page int, extra string) string {
+		return fmt.Sprintf(`{"locator":{"type":"epub","href":"c%d.xhtml"}%s}`, page, extra)
+	}
+
+	s.progress(ana, "PUT", epub, at(9, `,"completed":true,"percent":100`))
+	first := s.scalar(`SELECT completed_at::text FROM reading_progress WHERE user_id = $1 AND file_id = $2`, idAna, epub)
+	if first == "" {
+		t.Fatal("not completed")
+	}
+
+	// Going back and forth, and being told it is finished again, changes nothing about it.
+	if _, st := s.progress(ana, "PUT", epub, at(2, ``)); !st.Completed {
+		t.Errorf("navigating back must not undo a completion: %+v", st)
+	}
+	s.progress(ana, "PUT", epub, at(9, `,"completed":true`))
+	if got := s.scalar(`SELECT completed_at::text FROM reading_progress WHERE user_id = $1 AND file_id = $2`, idAna, epub); got != first {
+		t.Errorf("the date of the completion is the first one: %s then %s", first, got)
+	}
+	// Only an explicit false reopens it.
+	if _, st := s.progress(ana, "PUT", epub, at(2, `,"completed":false`)); st.Completed {
+		t.Errorf("reopened: %+v", st)
+	}
+}
+
+func TestCompletion_CanBeMarkedAndReopenedWithoutReading(t *testing.T) {
+	s := newCatalogStack(t)
+	work, epub, pdf := s.bookWithTwoFiles()
+	done := func(a actor, file int64, body string) (int, progressBody) {
+		s.t.Helper()
+		rec := s.do(a, "PUT", fmt.Sprintf("/progress/files/%d/completion", file), body)
+		var out progressBody
+		json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+
+	// Finished elsewhere: marked without ever opening it.
+	code, st := done(ana, epub, `{"completed":true}`)
+	if code != 200 || !st.Completed || st.Percent != 100 || st.Revision != 1 {
+		t.Fatalf("mark: %d %+v", code, st)
+	}
+	if got := s.list(ana, "?inProgress=true"); len(got.Data) != 0 {
+		t.Errorf("a finished book is not in progress: %v", ids(got.Data))
+	}
+	if w, _ := s.detail(ana, work); w.Continue == nil || !w.Continue.Completed || w.Continue.FileID != epub {
+		t.Errorf("the work knows its last file is finished: %+v", w.Continue)
+	}
+
+	// Reopened with nothing else, it is a file nobody has begun.
+	code, st = done(ana, epub, `{"completed":false}`)
+	if code != 200 || st.Completed || st.Percent != 0 || st.Revision != 2 {
+		t.Fatalf("reopen: %d %+v", code, st)
+	}
+	if w, _ := s.detail(ana, work); w.Continue != nil {
+		t.Errorf("nothing to continue after reopening an unread file: %+v", w.Continue)
+	}
+
+	// A file that was read to the end keeps its position when reopened, to continue from there.
+	s.progress(ana, "PUT", pdf, `{"locator":{"type":"pdf","page":41},"percent":100,"completed":true}`)
+	_, st = done(ana, pdf, `{"completed":false}`)
+	if st.Completed || st.Percent != 0 || st.Position != "42" {
+		t.Errorf("reopen keeps the place: %+v", st)
+	}
+	if got := s.list(ana, "?inProgress=true"); len(got.Data) != 1 || got.Data[0].Continue.FileID != pdf {
+		t.Errorf("reopened, it is in progress again: %+v", got.Data)
+	}
+
+	// It is personal, and only for files that can be read.
+	if _, st := s.progress(bob, "GET", pdf, ""); st.Revision != 0 || st.Completed {
+		t.Errorf("bob's file is untouched: %+v", st)
+	}
+	if code, _ := done(ana, 999999, `{"completed":true}`); code != http.StatusNotFound {
+		t.Errorf("unknown file: %d", code)
+	}
+	for _, body := range []string{`{}`, `nope`, `{"completed":"yes"}`} {
+		if code, _ := done(ana, epub, body); code != http.StatusBadRequest {
+			t.Errorf("%s: %d", body, code)
+		}
+	}
+	s.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, work)
+	if code, _ := done(ana, epub, `{"completed":true}`); code != http.StatusNotFound {
+		t.Errorf("retired work: %d", code)
+	}
+}
+
+func TestStats_FollowTheFileReadLast(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _, _ := s.bookWithTwoFiles() // epub primary, plus a pdf
+	comic := s.addFile(int(mustInt(s, `SELECT edition_id FROM work_primary WHERE work_id = $1`, work)), "cbz", "duna.cbz", "managed")
+	stats := func(a actor) DashboardStats {
+		var st DashboardStats
+		json.Unmarshal(s.do(a, "GET", "/stats", "").Body.Bytes(), &st)
+		return st
+	}
+
+	// Read only in the comic file, which is not the primary one: it is a comic in progress.
+	s.progress(ana, "PUT", comic, `{"locator":{"type":"image","index":3},"percent":20}`)
+	got := stats(ana)
+	if got.InProgressCount != 1 || got.InProgressBreakdown.Mangas != 1 || got.InProgressBreakdown.Livros != 0 || got.CompletedThisMonth != 0 {
+		t.Errorf("in progress: %+v", got)
+	}
+	if other := stats(bob); other.InProgressCount != 0 || other.CompletedThisMonth != 0 {
+		t.Errorf("bob: %+v", other)
+	}
+
+	// Finished this month: no longer in progress, and counted where it was read.
+	s.progress(ana, "PUT", comic, `{"locator":{"type":"image","index":9},"percent":100,"completed":true}`)
+	got = stats(ana)
+	if got.InProgressCount != 0 || got.CompletedThisMonth != 1 || got.CompletedBreakdown.Mangas != 1 {
+		t.Errorf("completed: %+v", got)
+	}
+
+	// Finished last month: it is not in this month's count.
+	s.exec(`UPDATE reading_progress SET completed_at = now() - interval '40 days' WHERE user_id = $1 AND file_id = $2`, idAna, comic)
+	if got := stats(ana); got.CompletedThisMonth != 0 || got.InProgressCount != 0 {
+		t.Errorf("an old completion: %+v", got)
+	}
+}
