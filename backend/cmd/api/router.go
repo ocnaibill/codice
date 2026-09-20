@@ -262,6 +262,9 @@ func newRouter(d routerDeps) http.Handler {
 	if coverLookup == nil {
 		coverLookup = handlers.NewCoverLookup(db)
 	}
+	// The stand-in for a work with no cover. It is part of the program, not of the library:
+	// a fresh installation has no such file on disk.
+	r.With(authWithBasic).Get("/covers/placeholder.svg", handlers.CoverPlaceholder)
 	r.With(authWithBasic).Method("GET", "/covers/*", &handlers.FilesHandler{
 		Root: coversPath, Lookup: coverLookup,
 		CacheHeader: "public, max-age=604800, must-revalidate",
