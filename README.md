@@ -44,17 +44,53 @@ docker compose -f docker-compose.full.yml up -d --build
 
 Abra `http://localhost:8080`: na primeira visita você cria o **dono** da instância. As migrações do banco rodam sozinhas quando a API sobe, e os serviços esperam uns pelos outros (banco e Redis saudáveis, depois a API, depois o site e o worker).
 
-**Onde ficam os dados.** Em dois volumes do Docker: `codice_pgdata` (banco) e `codice_storage` (a biblioteca e as capas). Derrubar (`down`) não os apaga; `down -v` apaga. **Não há backup automático:** faça e agende o seu.
+**Onde ficam os dados.** Em dois volumes do Docker: `codice_pgdata` (banco) e `codice_storage` (a biblioteca e as capas). Derrubar (`down`) não os apaga; `down -v` apaga. **O Códice não agenda backups: você agenda o comando abaixo.** Faça um backup **antes de atualizar**: depois de `git pull`, um `up -d --build` refaz as imagens e aplica as migrações novas.
+
+### Backup e restauração
+
+O comando `codice-admin` (dentro da imagem da API) faz um pacote com o banco, a lista de todos os arquivos com seus hashes e, com `--include-files`, os arquivos e as capas. O banco e a lista saem do **mesmo instantâneo**, então concordam mesmo que alguém envie um livro durante o backup. **Sessões, tokens de aplicativo, convites e links de redefinição nunca entram no pacote**: uma restauração não pode reviver uma credencial que foi revogada depois do backup. Com uma frase-senha, o pacote é criptografado (com [age](https://age-encryption.org)); **guarde a frase fora do servidor**, porque sem ela o pacote não abre. Sem criptografia, o pacote guarda os hashes de senha e as notas de todo mundo.
+
+**Fazer um backup** (a pasta `/mnt/backups/codice` precisa existir; o comando roda com o seu usuário e grava o arquivo com permissão `600`, com o nome `codice-backup-AAAAMMDD-HHMMSS.tar.age`):
 
 ```bash
-# banco
-docker compose -f docker-compose.full.yml exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > codice-$(date +%F).dump
-
-# arquivos
-docker run --rm -v <projeto>_codice_storage:/data:ro -v "$PWD":/out alpine tar czf /out/codice-arquivos-$(date +%F).tgz -C /data .
+export CODICE_BACKUP_PASSPHRASE='uma frase longa, guardada fora do servidor'
+docker compose -f docker-compose.full.yml run --rm --no-deps -T --user "$(id -u):$(id -g)" \
+  -e CODICE_BACKUP_PASSPHRASE -v /mnt/backups/codice:/backups \
+  backend codice-admin backup --dir /backups --include-files
 ```
 
-(`<projeto>` é o nome da pasta do repositório, minúsculo, ou o valor de `-p`.) Faça o backup do banco **antes de atualizar**: depois de `git pull`, um `up -d --build` refaz as imagens e aplica as migrações novas.
+Sem `--include-files`, o pacote leva só o banco e a lista de arquivos: use isso se você já copia a biblioteca com outra ferramenta (snapshots, restic, Borg). Se preferir mandar o pacote direto para outro lugar, `--out -` escreve na saída padrão (`... exec -T backend codice-admin backup --out - > arquivo`), e as mensagens vão para a saída de erro.
+
+**Agendar.** O padrão é um por dia: em *Administração → Armazenamento* aparece a data do último backup, e ela fica vermelha depois de dois dias. Por exemplo, no `cron` (`crontab -e`), todo dia às 3h, guardando 7 diários, 4 semanais e 3 mensais:
+
+```
+0 3 * * * cd /caminho/do/codice && CODICE_BACKUP_PASSPHRASE="$(cat /etc/codice-frase)" docker compose -f docker-compose.full.yml run --rm --no-deps -T --user "$(id -u):$(id -g)" -e CODICE_BACKUP_PASSPHRASE -v /mnt/backups/codice:/backups backend sh -c 'codice-admin backup --dir /backups --include-files && codice-admin prune-backups --dir /backups --yes'
+```
+
+`prune-backups` só considera arquivos com o nome de um pacote e, sem `--yes`, só mostra o plano; ajuste com `--daily`, `--weekly` e `--monthly`. Um backup que falha não deixa arquivo parcial.
+
+**Conferir sem restaurar.** `verify-backup` lê o pacote inteiro e confere cada hash contra o manifesto; com `--deep` ele **ensaia a restauração** num banco temporário (que apaga em seguida), compara o que voltou e diz quanto tempo levou. Faça isso de vez em quando: um backup que nunca foi restaurado não é uma garantia.
+
+```bash
+docker compose -f docker-compose.full.yml run --rm --no-deps -T --user "$(id -u):$(id -g)" \
+  -e CODICE_BACKUP_PASSPHRASE -v /mnt/backups/codice:/backups:ro \
+  backend codice-admin verify-backup --deep /backups/codice-backup-AAAAMMDD-HHMMSS.tar.age
+```
+
+**Restaurar** (numa máquina nova, ou depois de perder os volumes). Traga o seu `.env` (os segredos **não** vão no pacote), suba só o banco e o Redis, restaure e então suba o resto:
+
+```bash
+docker compose -f docker-compose.full.yml up -d postgres redis
+docker compose -f docker-compose.full.yml run --rm --no-deps -T -e CODICE_BACKUP_PASSPHRASE backend \
+  codice-admin restore --in - < /mnt/backups/codice/codice-backup-AAAAMMDD-HHMMSS.tar.age
+docker compose -f docker-compose.full.yml up -d
+```
+
+Antes de tocar em qualquer coisa, o comando lê e confere o pacote **inteiro** (hashes, formato, versão do esquema, nomes de arquivo perigosos) e recusa um pacote corrompido, incompleto ou de um Códice mais novo. Os arquivos entram sem sobrescrever nenhum diferente; depois ele confere o hash de cada arquivo da lista (os que faltam ficam marcados como ausentes na biblioteca) e migra o esquema para a versão atual. Todos precisam entrar de novo, e tokens de aplicativo e convites precisam ser emitidos de novo; o dono vê um aviso de que a instância foi restaurada.
+
+Numa instância que **já tem dados**, a restauração é recusada até você pedir `--overwrite` (e digitar o nome do banco, a não ser que use `--yes`). Mesmo assim o banco atual **não é apagado**: é renomeado para `<banco>_before_restore_<hora>` e fica lá, e o comando diz como apagá-lo quando você tiver certeza. Pare a API e o worker antes (`docker compose ... stop backend worker frontend`): o comando recusa se houver alguém conectado.
+
+**O que o pacote não tem, e você precisa guardar por conta própria:** o `.env` e os segredos (`JWT_SECRET`, senhas), a pasta `ldap/`, as pastas da sua biblioteca externa (modo referenciado), e o Redis (não guarda nada que se perca). **Versões:** o `pg_dump` precisa ser da mesma versão principal do servidor (a imagem já traz o cliente 15, igual ao `postgres:15` do compose); se você trocar a versão do PostgreSQL, troque o pacote `postgresql15-client` no `backend/Dockerfile`. O comando recusa fazer um backup com um `pg_dump` mais novo que o servidor, porque ele não restauraria. Fora de contêiner, use `go run ./cmd/codice-admin backup ...` (ou o binário) com `DATABASE_URL`, `CODICE_STORAGE_PATH` e, se preciso, `PG_DUMP` e `PG_RESTORE`.
 
 **Rede e HTTPS.** Por padrão o site só escuta em `127.0.0.1`. Para abrir a outros aparelhos da sua rede, defina `CODICE_BIND=0.0.0.0`. Para a internet, deixe em `127.0.0.1` e ponha na frente um proxy reverso ou um túnel (Caddy, Traefik, Cloudflare Tunnel...) apontando para `http://127.0.0.1:8080`, e use HTTPS lá: o Códice não termina TLS. Só o site tem porta publicada; a API, o banco e o Redis ficam na rede interna.
 
@@ -82,7 +118,7 @@ services:
 
 Os contêineres rodam como o usuário 10001, então essa pasta precisa ser legível por ele (e gravável, se você quiser mover arquivos para dentro do acervo ou remover os originais).
 
-**Limites de hoje.** O worker não tem um healthcheck próprio. O OCR (só a detecção existe) não roda. O comando de backup com verificação de restauração (RF-034) ainda não existe: use os comandos acima.
+**Limites de hoje.** O worker não tem um healthcheck próprio. O OCR (só a detecção existe) não roda. O backup não agenda a si mesmo (só o comando existe), e a data do último backup aparece na interface só para os backups feitos nesta instância depois da última restauração.
 
 ## 🔐 Login com Authentik (LDAP)
 
