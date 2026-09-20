@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { api, authenticatedUrl } from '../../../../lib/api';
+import { authenticatedUrl } from '../../../../lib/api';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -11,7 +11,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-export default function PdfViewer({ fileUrl, bookId, initialProgress }) {
+export default function PdfViewer({ fileUrl, onProgress, initialProgress }) {
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(initialProgress ? parseInt(initialProgress, 10) || 1 : 1);
   const timeoutRef = useRef(null);
@@ -28,11 +28,11 @@ export default function PdfViewer({ fileUrl, bookId, initialProgress }) {
       clearTimeout(timeoutRef.current);
     }
 
-    if (bookId) {
+    if (onProgress) {
       timeoutRef.current = setTimeout(() => {
         const percent = numPages ? (newPage / numPages) * 100 : undefined;
         const completed = numPages ? newPage >= numPages : undefined;
-        api.patch(`/works/${bookId}/progress`, { progress: newPage.toString(), percent, completed })
+        onProgress({ type: 'pdf', page: newPage - 1 }, { percent, completed })
           .catch((err) => console.error("Failed to save PDF reading progress:", err));
       }, 1000);
     }

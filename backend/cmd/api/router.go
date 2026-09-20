@@ -124,8 +124,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Get("/works", libHandler.GetWorks)
 	r.With(auth).Get("/works/{id}", libHandler.GetWorkByID)
 	r.With(auth).Patch("/works/{id}/progress", libHandler.UpdateProgress)
-	r.With(auth).Get("/files/{id}/progress", progressHandler.Get)
-	r.With(auth).Put("/files/{id}/progress", progressHandler.Put)
+	r.With(auth).Get("/progress/files/{id}", progressHandler.Get)
+	r.With(auth).Put("/progress/files/{id}", progressHandler.Put)
 	r.With(auth).Post("/works/{id}/reading-heartbeat", libHandler.ReadingHeartbeat)
 
 	// Catalog administration

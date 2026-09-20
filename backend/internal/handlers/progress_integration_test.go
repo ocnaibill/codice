@@ -24,7 +24,7 @@ type progressBody struct {
 
 func (s *catalogStack) progress(a actor, method string, file int64, body string) (int, progressBody) {
 	s.t.Helper()
-	rec := s.do(a, method, fmt.Sprintf("/files/%d/progress", file), body)
+	rec := s.do(a, method, fmt.Sprintf("/progress/files/%d", file), body)
 	var out progressBody
 	json.Unmarshal(rec.Body.Bytes(), &out)
 	return rec.Code, out
@@ -81,6 +81,31 @@ func TestFileProgress_ACompletionCanBeMarkedAndReopened(t *testing.T) {
 	}
 	if _, st := s.progress(ana, "PUT", epub, `{`+loc+`,"completed":false,"percent":-5}`); st.Completed || st.Percent != 0 {
 		t.Errorf("reopened: %+v", st)
+	}
+}
+
+func TestFileProgress_TheSheetKnowsWhichFilesWereStartedEvenWithoutAPercentage(t *testing.T) {
+	s := newCatalogStack(t)
+	work, epub, pdf := s.bookWithTwoFiles()
+
+	// An EPUB viewer knows where the reader is but not how far along it is.
+	s.progress(ana, "PUT", epub, `{"locator":{"type":"epub","href":"ch2.xhtml"}}`)
+
+	started := func(a actor) map[int64]bool {
+		w, _ := s.detail(a, work)
+		out := map[int64]bool{}
+		for _, e := range w.Editions {
+			for _, f := range e.Files {
+				out[f.ID] = f.Started
+			}
+		}
+		return out
+	}
+	if got := started(ana); !got[epub] || got[pdf] {
+		t.Errorf("ana started only the epub: %v", got)
+	}
+	if got := started(bob); got[epub] || got[pdf] {
+		t.Errorf("bob started nothing, and must not learn that ana did: %v", got)
 	}
 }
 
@@ -191,7 +216,7 @@ func TestFileProgress_ARetiredOrMissingFileIsNotFound(t *testing.T) {
 	if code, _ := s.progress(ana, "PUT", 999999, body); code != http.StatusNotFound {
 		t.Errorf("unknown file: %d", code)
 	}
-	if rec := s.do(ana, "GET", "/files/abc/progress", ""); rec.Code != http.StatusNotFound {
+	if rec := s.do(ana, "GET", "/progress/files/abc", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("not a number: %d", rec.Code)
 	}
 	s.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, work)

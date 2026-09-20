@@ -10,7 +10,7 @@ import { api } from '../../../../lib/api';
  * displaying sections whose TOC-hrefs don't match the OPF-relative spine
  * hrefs.  By driving epubjs ourselves we side-step all of that.
  */
-export default function EpubViewer({ fileUrl, bookId, initialProgress }) {
+export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [toc, setToc] = useState([]);
@@ -129,11 +129,10 @@ export default function EpubViewer({ fileUrl, bookId, initialProgress }) {
 
           // Debounced progress save
           if (timeoutRef.current) clearTimeout(timeoutRef.current);
-          if (bookId) {
+          if (onProgress) {
             timeoutRef.current = setTimeout(() => {
-              api
-                .patch(`/works/${bookId}/progress`, { progress: cfi })
-                .catch((err) => console.error('Failed to save progress:', err));
+              onProgress({ type: 'epub', cfi })
+                ?.catch?.((err) => console.error('Failed to save progress:', err));
             }, 1000);
           }
         });

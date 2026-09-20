@@ -15,7 +15,8 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/locator"
 )
 
-// ProgressHandler serves the reading position of one file for the calling user. The file is
+// ProgressHandler serves (under /progress/files/{id}, apart from /files/*, which serves the
+// library's own files) the reading position of one file for the calling user. The file is
 // the unit (DEC-030): the EPUB and the PDF of one book keep separate positions, and nothing
 // here reads or writes another user's.
 type ProgressHandler struct {

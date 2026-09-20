@@ -1,9 +1,11 @@
-import React, { lazy, Suspense, useState } from 'react';
+import React, { lazy, Suspense, useMemo, useState } from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { useWork } from '../api/useWork';
 import { useReadingHeartbeat } from '../api/useReadingHeartbeat';
 import { useFavoriteToggle } from '../api/useFavoriteToggle';
 import { useCreateNote } from '../api/useCreateNote';
+import { useFileProgress } from '../api/useFileProgress';
+import { findFile, languageName } from '../files';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { authenticatedUrl } from '../../../lib/api';
 
@@ -19,8 +21,15 @@ export function Reader() {
   const activeBookId = useGlobalStore((state) => state.activeBookId);
   const closeBook = useGlobalStore((state) => state.closeBook);
 
+  const activeFileId = useGlobalStore((state) => state.activeFileId);
+  const fromStart = useGlobalStore((state) => state.fromStart);
+
   const { data: book, isLoading, isError } = useWork(activeBookId);
-  useReadingHeartbeat(activeBookId);
+  // The file being read: the one chosen on the sheet, or the work's primary. Its position,
+  // its format and its reading time are its own.
+  const file = useMemo(() => findFile(book, activeFileId), [book, activeFileId]);
+  const progress = useFileProgress(file?.id);
+  useReadingHeartbeat(activeBookId, file?.id);
   const favoriteToggle = useFavoriteToggle(activeBookId);
   const createNote = useCreateNote(activeBookId);
   const [showNoteForm, setShowNoteForm] = useState(false);
@@ -37,7 +46,7 @@ export function Reader() {
     });
   };
 
-  if (isLoading) {
+  if (isLoading || (file && progress.isLoading)) {
     return (
       <div className="flex h-[calc(100vh-4rem)] items-center justify-center bg-zinc-950">
         <span className="text-zinc-500 animate-pulse font-medium">Loading book details...</span>
@@ -45,10 +54,12 @@ export function Reader() {
     );
   }
 
-  if (isError || !book || !book.fileUrl) {
+  if (isError || !book || !file?.url || file.availability === 'missing') {
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col items-center justify-center bg-zinc-950 gap-4">
-        <span className="text-red-400 font-medium">Error: File not found on server.</span>
+        <span className="text-red-400 font-medium">
+          {file?.availability === 'missing' ? 'Este arquivo não está mais no disco do servidor.' : 'Error: File not found on server.'}
+        </span>
         <button 
           onClick={closeBook} 
           className="text-sm font-medium bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-md hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
@@ -60,35 +71,40 @@ export function Reader() {
   }
 
   // Determine file format from backend metadata, fallback to file extension
-  const format = (book.format || book.fileUrl.split('.').pop() || '').toLowerCase();
+  const format = (file.format || file.url.split('.').pop() || '').toLowerCase();
+  const fileUrl = file.url;
+  // The saved position of this file, unless the person chose to start over. Older readers
+  // understand it as text (a CFI, a page number, seconds): the server keeps that form in sync.
+  const initialProgress = fromStart ? undefined : progress.data?.position || undefined;
+  const onProgress = progress.save;
 
   const renderViewer = () => {
     switch (format) {
       case 'pdf':
-        return <PdfViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+        return <PdfViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} />;
       case 'epub':
-        return <EpubViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+        return <EpubViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} />;
       case 'cbz':
       case 'cbr':
-        return <MangaViewer fileUrl={book.fileUrl} bookId={book.id} workId={book.id} initialProgress={book.readingProgress} />;
+        return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} />;
       case 'txt':
-        return <TextViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+        return <TextViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} />;
       case 'md':
-        return <MarkdownViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+        return <MarkdownViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} />;
       case 'mp3':
       case 'm4a':
       case 'm4b':
       case 'ogg':
       case 'wav':
       case 'flac':
-        return <AudioViewer fileUrl={book.fileUrl} bookId={book.id} initialProgress={book.readingProgress} />;
+        return <AudioViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} />;
       case 'mobi':
       case 'azw':
       case 'azw3':
         return (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-zinc-400">
             <p>MOBI/AZW files cannot be viewed in the browser.</p>
-            <a href={authenticatedUrl(book.fileUrl)}
+            <a href={authenticatedUrl(fileUrl)}
                download
                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500">
               Download File
@@ -110,7 +126,12 @@ export function Reader() {
       <div className="flex items-center justify-between px-6 py-3 border-b border-zinc-900 bg-zinc-950 shadow-sm z-10 sticky top-0">
         <div>
           <h2 className="text-zinc-200 font-medium">{book.title}</h2>
-          <p className="text-xs text-zinc-500">{book.author}</p>
+          <p className="text-xs text-zinc-500">
+            {book.author}
+            {' · '}
+            {format.toUpperCase()}
+            {file.edition?.language ? ` · ${languageName(file.edition.language)}` : ''}
+          </p>
         </div>
         <div className="flex gap-4 items-center">
           <button

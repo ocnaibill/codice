@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { api, authenticatedUrl } from '../../../../lib/api';
+import { authenticatedUrl } from '../../../../lib/api';
 
-export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
+export default function AudioViewer({ fileUrl, onProgress, initialProgress }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -10,13 +10,12 @@ export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
   const timeoutRef = useRef(null);
 
   const saveProgress = (time, total, completed = false) => {
-    if (!bookId) return;
+    if (!onProgress) return;
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
       const percent = total ? (time / total) * 100 : undefined;
-      api
-        .patch(`/works/${bookId}/progress`, { progress: time.toString(), percent, completed })
-        .catch((err) => console.error('Failed to save audio reading progress:', err));
+      onProgress({ type: 'audio', track: 0, ms: Math.round(time * 1000) }, { percent, completed })
+        ?.catch?.((err) => console.error('Failed to save audio reading progress:', err));
     }, 1500);
   };
 

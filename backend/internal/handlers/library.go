@@ -68,6 +68,9 @@ type FileInfo struct {
 	URL             string  `json:"url,omitempty"`
 	PercentComplete float64 `json:"percentComplete"`
 	Completed       bool    `json:"completed"`
+	// Started is true when the calling user has a saved position in this file, even if the
+	// viewer could not say how far along it is (an EPUB has no fixed page count).
+	Started bool `json:"started"`
 	// NeedsOCR is set for a PDF with pages that carry no text (RF-019);
 	// PagesWithoutText lists them, numbered from 1.
 	NeedsOCR         bool  `json:"needsOcr,omitempty"`
@@ -300,7 +303,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		SELECT e.id, COALESCE(e.title, ''), COALESCE(e.language, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.publication_date, ''), COALESCE(e.isbn, ''), e.is_primary,
 		       f.id, COALESCE(f.format, ''), f.size_bytes, f.availability, l.path, l.mode,
-		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL),
+		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL), (rp.file_id IS NOT NULL),
 		       COALESCE(tl.needs_ocr, FALSE), tl.pages_without_text
 		FROM editions e
 		LEFT JOIN files f ON f.edition_id = e.id
@@ -324,11 +327,11 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		var size sql.NullInt64
 		var format, availability, filePath, mode sql.NullString
 		var percent float64
-		var completed sql.NullBool
+		var completed, started sql.NullBool
 		var needsOCR bool
 		var missing pq.Int64Array
 		if err := rows.Scan(&e.ID, &e.Title, &e.Language, &e.Publisher, &e.PublicationDate, &e.ISBN, &e.IsPrimary,
-			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &needsOCR, &missing); err != nil {
+			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &started, &needsOCR, &missing); err != nil {
 			return nil, err
 		}
 		i, seen := index[e.ID]
@@ -340,7 +343,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		}
 		if fileID.Valid {
 			fi := FileInfo{ID: fileID.Int64, Format: format.String, Availability: availability.String,
-				PercentComplete: percent, Completed: completed.Bool}
+				PercentComplete: percent, Completed: completed.Bool, Started: started.Bool}
 			if size.Valid {
 				fi.SizeBytes = &size.Int64
 			}

@@ -6,7 +6,7 @@ const PRELOAD_COUNT = 2;
 // Loading timeout per page in ms
 const PAGE_TIMEOUT = 30000;
 
-export default function MangaViewer({ fileUrl, bookId, initialProgress, workId }) {
+export default function MangaViewer({ fileUrl, onProgress, initialProgress, workId }) {
   const [pages, setPages] = useState([]);
   const [currentPage, setCurrentPage] = useState(
     initialProgress ? parseInt(initialProgress, 10) || 0 : 0
@@ -108,17 +108,15 @@ export default function MangaViewer({ fileUrl, bookId, initialProgress, workId }
       clearTimeout(timeoutRef.current);
     }
 
-    if (bookId) {
+    if (onProgress) {
       timeoutRef.current = setTimeout(() => {
         const percent = pages.length ? ((clampedPage + 1) / pages.length) * 100 : undefined;
         const completed = pages.length ? clampedPage >= pages.length - 1 : undefined;
-        import('../../../../lib/api').then(({ api }) => {
-          api.patch(`/works/${bookId}/progress`, { progress: clampedPage.toString(), percent, completed })
-            .catch((err) => console.error('Failed to save reading progress:', err));
-        });
+        onProgress({ type: 'image', index: clampedPage }, { percent, completed })
+          ?.catch?.((err) => console.error('Failed to save reading progress:', err));
       }, 1000);
     }
-  }, [bookId, pages.length]);
+  }, [onProgress, pages.length]);
 
   useEffect(() => {
     return () => {

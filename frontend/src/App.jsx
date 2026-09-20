@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AppShell } from './components/layout/AppShell';
 import { HomePage } from './pages/HomePage';
 import { Reader } from './features/reader/components/Reader';
+import { WorkSheet } from './features/reader/components/WorkSheet';
 import { useGlobalStore } from './store/useGlobalStore';
 import { UploadModal } from './features/upload/components/UploadModal';
 import { Auth } from './features/auth/components/Auth';
@@ -262,6 +263,7 @@ function App() {
       <UploadModal />
       <OwnershipBanner me={me} />
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
+      <WorkSheet />
       {activeBookId ? (
         <Reader />
       ) : (
