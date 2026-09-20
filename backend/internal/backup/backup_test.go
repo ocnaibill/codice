@@ -635,6 +635,29 @@ func TestCreate_WarnsAboutWhatCannotBeIncludedAndKeepsGoing(t *testing.T) {
 	}
 }
 
+func TestCreate_AFileThatCannotBeReadStopsTheBackupInsteadOfLeavingItOut(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads everything")
+	}
+	s := newSource(t)
+	locked := filepath.Join(s.storage, "Autor 0", "Duna.epub")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(locked, 0o644)
+
+	var out bytes.Buffer
+	_, err := Create(ctx, CreateOptions{DB: s.db, DatabaseURL: s.dsn, StorageRoot: s.storage, Out: &out, IncludeFiles: true, TmpDir: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "cannot be read") || !strings.Contains(err.Error(), "Duna.epub") {
+		t.Fatalf("an unreadable file: %v", err)
+	}
+	// Without the files there is nothing to read, and the backup goes through.
+	out.Reset()
+	if _, err := Create(ctx, CreateOptions{DB: s.db, DatabaseURL: s.dsn, StorageRoot: s.storage, Out: &out, TmpDir: t.TempDir()}); err != nil {
+		t.Errorf("without files: %v", err)
+	}
+}
+
 func TestCreate_TheDumpAndTheListComeFromOneSnapshot(t *testing.T) {
 	s := newSource(t)
 	// Works are added while packages are made. Whatever is in a package, the list of files

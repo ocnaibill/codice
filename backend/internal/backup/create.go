@@ -274,6 +274,11 @@ func includeFiles(o CreateOptions, entries []FileEntry, sum *FilesSummary, res *
 		full := filepath.Join(root, filepath.FromSlash(rel))
 		f, err := os.Open(full)
 		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				// A file that is there but cannot be read is not the same as one that is gone: the
+				// package would silently lack the library, and a scheduled backup would look fine.
+				return fmt.Errorf("file %d (%s) exists but cannot be read (%w): run the backup as the user that owns the library, or leave out --include-files", e.FileID, rel, unwrapPath(err))
+			}
 			res.Warnings = append(res.Warnings, fmt.Sprintf("file %d (%s): not on disk, not included", e.FileID, rel))
 			sum.Missing++
 			continue
@@ -320,9 +325,21 @@ func includeFiles(o CreateOptions, entries []FileEntry, sum *FilesSummary, res *
 		}
 		f, err := os.Open(p)
 		if err != nil {
-			return nil
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return fmt.Errorf("cover %s cannot be read (%w): run the backup as the user that owns the library, or leave out --include-files", rel, unwrapPath(err))
 		}
 		defer f.Close()
 		return add(MemberStorage+path.Clean(filepath.ToSlash(rel)), info.Size(), f)
 	})
+}
+
+// unwrapPath drops the path from an *fs.PathError, which the message already names.
+func unwrapPath(err error) error {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err
+	}
+	return err
 }
