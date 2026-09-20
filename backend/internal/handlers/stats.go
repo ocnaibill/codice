@@ -104,7 +104,8 @@ func (h *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	// under that file's format: reading the English EPUB of a book whose main file is a PDF makes
 	// it an ebook in progress.
 	inProgressBreakdown, inProgressTotal, err := scanFormatBreakdownBy(
-		h.DB, "lastrp.format", lastReadJoin, "lastrp.file_id IS NOT NULL AND lastrp.completed_at IS NULL", userID,
+		h.DB, "lastrp.format", lastReadJoin,
+		"lastrp.file_id IS NOT NULL AND lastrp.completed_at IS NULL AND wrs.work_id IS NULL", userID,
 	)
 	if err != nil {
 		log.Println("Error computing in-progress breakdown:", err)
@@ -114,10 +115,24 @@ func (h *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	stats.InProgressBreakdown = inProgressBreakdown
 	stats.InProgressCount = inProgressTotal
 
-	completedBreakdown, completedTotal, err := scanFormatBreakdownBy(
-		h.DB, "lastrp.format", lastReadJoin,
-		"lastrp.completed_at IS NOT NULL AND date_trunc('month', lastrp.completed_at) = date_trunc('month', CURRENT_TIMESTAMP)", userID,
-	)
+	// Finished this month is counted from the history, one per work however many times or in how
+	// many formats it was finished (under the format of the latest), so finishing the EPUB and the
+	// PDF of one book in a month is one book (DEC-080).
+	var completedBreakdown FormatBreakdown
+	var completedTotal int
+	err = h.DB.QueryRow(`
+		SELECT
+			COUNT(*) FILTER (WHERE LOWER(format) IN `+bookFormats+`),
+			COUNT(*) FILTER (WHERE LOWER(format) IN `+comicFormats+`),
+			COUNT(*) FILTER (WHERE LOWER(format) IN `+audioFormats+`),
+			COUNT(*)
+		FROM (
+			SELECT DISTINCT ON (c.work_id) c.format
+			FROM reading_completions c
+			JOIN works w ON w.id = c.work_id AND w.retired_at IS NULL
+			WHERE c.user_id = $1 AND date_trunc('month', c.completed_at) = date_trunc('month', CURRENT_TIMESTAMP)
+			ORDER BY c.work_id, c.completed_at DESC
+		) latest`, userID).Scan(&completedBreakdown.Livros, &completedBreakdown.Mangas, &completedBreakdown.Audio, &completedTotal)
 	if err != nil {
 		log.Println("Error computing completed-this-month breakdown:", err)
 		http.Error(w, "Error computing stats", http.StatusInternalServerError)

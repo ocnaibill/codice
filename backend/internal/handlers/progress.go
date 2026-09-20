@@ -229,12 +229,30 @@ func (h *ProgressHandler) Put(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error saving progress", http.StatusInternalServerError)
 		return
 	}
+	if !st.Completed {
+		h.reopenWork(r, userID, fileID) // reading on: the work is no longer "finished"
+	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+// reopenWork takes the mark "the whole work is finished" off the work a file belongs to (DEC-080).
+// It is what reading on does: the person is back in the book. A finished file that only keeps
+// saving its last page does not.
+func (h *ProgressHandler) reopenWork(r *http.Request, userID string, fileID int64) {
+	if _, err := h.DB.ExecContext(r.Context(), `
+		DELETE FROM work_reading_state
+		WHERE user_id = $1 AND work_id = (SELECT e.work_id FROM files f JOIN editions e ON e.id = f.edition_id WHERE f.id = $2)`,
+		userID, fileID); err != nil {
+		log.Println("Error clearing the finished mark:", err)
+	}
 }
 
 // PutCompletionRequest marks a file finished or reopens it.
 type PutCompletionRequest struct {
 	Completed *bool `json:"completed"`
+	// Restart, with completed false, is "read it again": the position and percentage go too, so the
+	// file is one nobody has begun, and finishing it again counts as another time (DEC-080).
+	Restart bool `json:"restart"`
 }
 
 // SetCompletion marks the caller's file as finished, or reopens it (DEC-077): the explicit
@@ -249,8 +267,8 @@ func (h *ProgressHandler) SetCompletion(w http.ResponseWriter, r *http.Request) 
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
 	var req PutCompletionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Completed == nil {
-		http.Error(w, "completed is true or false", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Completed == nil || (req.Restart && *req.Completed) {
+		http.Error(w, "completed is true or false; restart only goes with false", http.StatusBadRequest)
 		return
 	}
 	if _, err := h.fileFormat(r, fileID); err != nil {
@@ -268,13 +286,19 @@ func (h *ProgressHandler) SetCompletion(w http.ResponseWriter, r *http.Request) 
 		VALUES ($1, $2, '', CASE WHEN $3::boolean THEN 100 ELSE 0 END, CASE WHEN $3::boolean THEN now() END, now())
 		ON CONFLICT (user_id, file_id) DO UPDATE SET
 			completed_at = CASE WHEN $3::boolean THEN COALESCE(rp.completed_at, now()) END,
-			percent_complete = CASE WHEN $3::boolean THEN 100 WHEN rp.percent_complete >= 100 THEN 0 ELSE rp.percent_complete END,
+			percent_complete = CASE WHEN $3::boolean THEN 100 WHEN $4::boolean OR rp.percent_complete >= 100 THEN 0 ELSE rp.percent_complete END,
+			position = CASE WHEN $4::boolean THEN '' ELSE rp.position END,
+			locator = CASE WHEN $4::boolean THEN NULL ELSE rp.locator END,
+			locator_version = CASE WHEN $4::boolean THEN NULL ELSE rp.locator_version END,
 			revision = rp.revision + 1,
-			updated_at = now()`, userID, fileID, *req.Completed)
+			updated_at = now()`, userID, fileID, *req.Completed, req.Restart)
 	if err != nil {
 		log.Println("Error saving completion:", err)
 		http.Error(w, "Error saving progress", http.StatusInternalServerError)
 		return
+	}
+	if !*req.Completed {
+		h.reopenWork(r, userID, fileID)
 	}
 	st, err := h.load(r, userID, fileID)
 	if err != nil {
@@ -283,4 +307,80 @@ func (h *ProgressHandler) SetCompletion(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+// Opened records that the caller opened a file (DEC-079): which version is the latest one they
+// opened, even if they closed it without moving. It creates the row if there is none, changes
+// neither the revision nor the position, and a file only opened is still one nobody has begun.
+func (h *ProgressHandler) Opened(w http.ResponseWriter, r *http.Request) {
+	fileID, ok := fileIDParam(r)
+	if !ok {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+	if _, err := h.fileFormat(r, fileID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+		log.Println("Error checking file for an opening:", err)
+		http.Error(w, "Error saving progress", http.StatusInternalServerError)
+		return
+	}
+	if _, err := h.DB.ExecContext(r.Context(), `
+		INSERT INTO reading_progress AS rp (user_id, file_id, position, last_opened_at, updated_at)
+		VALUES ($1, $2, '', now(), now())
+		ON CONFLICT (user_id, file_id) DO UPDATE SET last_opened_at = now()`, currentUserID(r), fileID); err != nil {
+		log.Println("Error saving an opening:", err)
+		http.Error(w, "Error saving progress", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PutFinishedRequest marks a whole work as finished, or takes the mark off.
+type PutFinishedRequest struct {
+	Finished *bool `json:"finished"`
+}
+
+// SetWorkFinished marks the whole work as finished for the caller (DEC-080): every version leaves
+// Continue Reading, and none of them is said to have been read to the end. The person asked for it,
+// typically after finishing one version while another was still in progress.
+func (h *ProgressHandler) SetWorkFinished(w http.ResponseWriter, r *http.Request) {
+	workID, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+	var req PutFinishedRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Finished == nil {
+		http.Error(w, "finished is true or false", http.StatusBadRequest)
+		return
+	}
+	var exists bool
+	if err := h.DB.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM works WHERE id = $1 AND retired_at IS NULL)`, workID).Scan(&exists); err != nil {
+		log.Println("Error checking work for the finished mark:", err)
+		http.Error(w, "Error saving progress", http.StatusInternalServerError)
+		return
+	}
+	if !exists {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
+	userID := currentUserID(r)
+	var err error
+	if *req.Finished {
+		_, err = h.DB.ExecContext(r.Context(), `
+			INSERT INTO work_reading_state (user_id, work_id) VALUES ($1, $2)
+			ON CONFLICT (user_id, work_id) DO UPDATE SET finished_at = now()`, userID, workID)
+	} else {
+		_, err = h.DB.ExecContext(r.Context(), `DELETE FROM work_reading_state WHERE user_id = $1 AND work_id = $2`, userID, workID)
+	}
+	if err != nil {
+		log.Println("Error saving the finished mark:", err)
+		http.Error(w, "Error saving progress", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"finished": *req.Finished})
 }

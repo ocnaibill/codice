@@ -115,6 +115,8 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/progress/files/{id}", prog.Get)
 	r.Put("/progress/files/{id}", prog.Put)
 	r.Put("/progress/files/{id}/completion", prog.SetCompletion)
+	r.Post("/progress/files/{id}/opened", prog.Opened)
+	r.Put("/progress/works/{id}/finished", prog.SetWorkFinished)
 	r.Post("/works/{id}/reading-heartbeat", lib.ReadingHeartbeat)
 	r.Post("/works/{id}/favorite", fav.AddFavorite)
 	r.Delete("/works/{id}/favorite", fav.RemoveFavorite)
@@ -400,8 +402,9 @@ func TestProgress_IsPerFileNotPerWork(t *testing.T) {
 	if perFile[epub] != 30 || perFile[pdf] != 80 {
 		t.Errorf("per-file percent = %v", perFile)
 	}
-	if w.ReadingProgress != "cap-3" {
-		t.Errorf("the card must show the primary file's position, got %q", w.ReadingProgress)
+	// The card speaks for the version that counts: the one opened last among those begun (DEC-079).
+	if w.ReadingProgress != "p-200" || w.PercentComplete != 80 {
+		t.Errorf("the card must show the position of the version that counts, got %q %v", w.ReadingProgress, w.PercentComplete)
 	}
 	// Another user has nothing.
 	if wb, _ := s.detail(bob, duna); wb.ReadingProgress != "" || wb.PercentComplete != 0 {
@@ -414,13 +417,24 @@ func TestProgress_IsPerFileNotPerWork(t *testing.T) {
 		t.Errorf("revision and percent after a position-only update = %q, want 2:30 (two writes to this file)", got)
 	}
 
-	// Completion and un-completion.
+	// Completion and un-completion, of the primary file (the EPUB).
+	fileDone := func() bool {
+		w, _ := s.detail(ana, duna)
+		for _, e := range w.Editions {
+			for _, f := range e.Files {
+				if f.ID == epub {
+					return f.Completed
+				}
+			}
+		}
+		return false
+	}
 	s.do(ana, "PATCH", fmt.Sprintf("/works/%d/progress", duna), `{"progress":"fim","percent":100,"completed":true}`)
-	if w, _ := s.detail(ana, duna); !w.Completed {
+	if !fileDone() {
 		t.Error("completed flag not stored")
 	}
 	s.do(ana, "PATCH", fmt.Sprintf("/works/%d/progress", duna), `{"progress":"cap-1","completed":false}`)
-	if w, _ := s.detail(ana, duna); w.Completed {
+	if fileDone() {
 		t.Error("completed=false must clear completion")
 	}
 
