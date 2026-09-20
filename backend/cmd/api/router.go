@@ -49,6 +49,7 @@ func newRouter(d routerDeps) http.Handler {
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
 	healthHandler := &handlers.HealthHandler{DB: db, Redis: d.RedisClient}
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions, Directory: d.Directory}
+	backupAdmin := &handlers.BackupAdminHandler{DB: db}
 	ldapAdmin := &handlers.LDAPAdminHandler{DB: db, Directory: d.Directory, Host: d.DirectoryHost, BaseDN: d.DirectoryBase}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
 	invitesHandler := &handlers.InvitationsHandler{DB: db, Sessions: d.Sessions}
@@ -181,6 +182,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Put("/admin/trash/policy", trashHandler.SetPolicy)
 	r.With(owner).Get("/admin/trash/policy/preview", trashHandler.PreviewPolicy)
 	r.With(owner).Post("/admin/trash/policy/apply", trashHandler.ApplyPolicy)
+	r.With(staff).Get("/admin/backup", backupAdmin.Get)
 	r.With(staff).Get("/admin/storage/orphans", trashHandler.Orphans)
 	r.With(staff).Post("/admin/storage/orphans/trash", trashHandler.TrashOrphans)
 

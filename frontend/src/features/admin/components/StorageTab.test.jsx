@@ -14,12 +14,15 @@ const plan = {
 };
 let view;
 
-async function open({ isOwner = true, cleanups = [], orphans = [] } = {}) {
+let lastBackup = null;
+async function open({ isOwner = true, cleanups = [], orphans = [], last = null } = {}) {
+  lastBackup = last;
   api.get.mockImplementation(async (url) => {
     if (url === '/admin/storage/roots') return { data: { roots: [{ id: 2, path: '/mnt/livros' }], managed: '/data/uploads' } };
     if (url === '/admin/storage/cleanups') return { data: { data: cleanups } };
     if (url === '/admin/storage/orphans') return { data: { data: orphans } };
     if (url === '/admin/storage/reorganize') return { data: plan };
+    if (url === '/admin/backup') return { data: { lastBackup } };
     throw new Error(`unexpected GET ${url}`);
   });
   api.post.mockResolvedValue({ data: { moved: 1, failures: [] } });
@@ -28,6 +31,29 @@ async function open({ isOwner = true, cleanups = [], orphans = [] } = {}) {
 }
 afterEach(() => view.unmount());
 beforeEach(() => vi.clearAllMocks());
+
+describe('StorageTab backup', () => {
+  const hoursAgo = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();
+
+  it('says so, in red, when no backup was ever made', async () => {
+    await open();
+    expect(view.text()).toContain('Nenhum backup registrado');
+  });
+
+  it('shows the latest backup and what it holds', async () => {
+    await open({ last: { at: hoursAgo(3), bytes: 2048, files: 12, includesFiles: true, encrypted: true } });
+    expect(view.text()).toContain('Último backup');
+    expect(view.text()).toContain('com 12 arquivo(s)');
+    expect(view.text()).toContain('criptografado');
+    expect(view.text()).not.toContain('Faz mais de dois dias');
+  });
+
+  it('calls out a backup older than two days, since the goal is one a day', async () => {
+    await open({ last: { at: hoursAgo(60), bytes: 2048, files: 0, includesFiles: false, encrypted: false } });
+    expect(view.text()).toContain('Faz mais de dois dias');
+    expect(view.text()).toContain('sem criptografia');
+  });
+});
 
 describe('StorageTab', () => {
   it('scans an authorised folder', async () => {

@@ -22,6 +22,7 @@ const list = (key, url, params) =>
 export const useJobs = list('jobs', '/admin/jobs', ({ state } = {}) => (state ? { state } : undefined));
 export const useRoots = list('roots', '/admin/storage/roots');
 export const useCleanups = list('cleanups', '/admin/storage/cleanups');
+export const useBackup = list('backup', '/admin/backup');
 export const useOrphans = list('orphans', '/admin/storage/orphans');
 export const useTrash = list('trash', '/admin/trash');
 export const useDuplicates = list('duplicates', '/admin/duplicates');
