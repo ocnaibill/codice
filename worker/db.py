@@ -1,5 +1,6 @@
 import os
 import psycopg2
+import psycopg2.extras
 
 
 class CodiceDatabase:
@@ -30,3 +31,9 @@ class CodiceDatabase:
             with conn.cursor() as cur:
                 cur.execute(query, params)
                 return cur.fetchall()
+
+    def insert_many(self, query, rows, template=None):
+        """Insert many rows in one statement and one transaction. `query` ends in `VALUES %s`."""
+        with psycopg2.connect(self.db_url) as conn:
+            with conn.cursor() as cur:
+                psycopg2.extras.execute_values(cur, query, rows, template=template, page_size=len(rows) or 1)

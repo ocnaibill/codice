@@ -18,6 +18,7 @@ const TYPE_LABEL = {
   scan: 'Varredura de pasta',
   transfer: 'Mover para o acervo',
   dedupe: 'Busca de duplicatas',
+  extract_text: 'Leitura do texto para busca',
 };
 
 export function JobsTab() {

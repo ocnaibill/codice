@@ -43,9 +43,9 @@ def new_owner_name() -> str:
 class JobsClient:
     """Thin wrapper over the queue functions in PostgreSQL."""
 
-    # This worker only analyses files. Organizing, scanning and transferring are
+    # This worker analyses files and reads their text. Organizing, scanning and transferring are
     # file-system jobs that the API process runs; taking them here would fail them.
-    JOB_TYPES = ['ingest']
+    JOB_TYPES = ['ingest', 'extract_text']
 
     def __init__(self, db, owner: str, lease_seconds: int = 120, max_running: int = 1, types=None):
         self.db = db
@@ -56,11 +56,12 @@ class JobsClient:
 
     def claim(self):
         row = self.db.fetchone(
-            "SELECT id, work_id, payload, attempts, max_attempts FROM jobs_claim(%s, %s, %s, %s::text[])",
+            "SELECT id, work_id, payload, attempts, max_attempts, type FROM jobs_claim(%s, %s, %s, %s::text[])",
             (self.owner, self.lease_seconds, self.max_running, self.types))
         if not row or row[0] is None:
             return None
-        return {'id': row[0], 'work_id': row[1], 'payload': row[2] or {}, 'attempts': row[3], 'max_attempts': row[4]}
+        return {'id': row[0], 'work_id': row[1], 'payload': row[2] or {}, 'attempts': row[3], 'max_attempts': row[4],
+                'type': row[5]}
 
     def heartbeat(self, job_id) -> str:
         return self.db.fetchone("SELECT jobs_heartbeat(%s, %s, %s)", (job_id, self.owner, self.lease_seconds))[0]

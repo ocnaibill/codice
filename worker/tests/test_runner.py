@@ -222,7 +222,7 @@ class TestJobsClientClaim:
         JobsClient(db, "worker-1", lease_seconds=60, max_running=2).claim()
         query, params = db.calls[0]
         assert "jobs_claim(%s, %s, %s, %s::text[])" in query
-        assert params == ("worker-1", 60, 2, ['ingest'])
+        assert params == ("worker-1", 60, 2, ['ingest', 'extract_text'])
 
     def test_the_types_can_be_narrowed_or_widened_explicitly(self):
         from runner import JobsClient

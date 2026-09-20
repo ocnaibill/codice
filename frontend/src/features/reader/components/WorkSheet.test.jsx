@@ -20,7 +20,7 @@ const work = {
   editions: [
     {
       id: 1, language: 'en', publisher: 'Ace', publicationDate: '1990', isPrimary: true,
-      files: [{ id: 10, format: 'epub', sizeBytes: 3 * 1024 * 1024, availability: 'available', url: '/file/10', percentComplete: 40, completed: false }],
+      files: [{ id: 10, format: 'epub', sizeBytes: 3 * 1024 * 1024, availability: 'available', url: '/file/10', percentComplete: 40, completed: false, textStatus: 'ready', textSegments: 120 }],
     },
     {
       id: 2, language: 'pt-BR', publisher: 'Aleph', isPrimary: false,
@@ -28,7 +28,7 @@ const work = {
         { id: 20, format: 'pdf', availability: 'available', url: '/file/20', percentComplete: 0, completed: false, needsOcr: true },
         { id: 21, format: 'cbz', availability: 'missing', percentComplete: 0, completed: false },
         { id: 22, format: 'mp3', availability: 'available', url: '/file/22', percentComplete: 100, completed: true },
-        { id: 23, format: 'txt', availability: 'available', url: '/file/23', percentComplete: 0, completed: false, started: true },
+        { id: 23, format: 'txt', availability: 'available', url: '/file/23', percentComplete: 0, completed: false, started: true, textStatus: 'failed' },
       ],
     },
   ],
@@ -87,6 +87,10 @@ describe('WorkSheet', () => {
     expect(rowOf('pdf').textContent).toContain('Não iniciado');
     expect(rowOf('mp3').textContent).toContain('Concluído');
     expect(rowOf('pdf').textContent).toContain('Páginas sem texto');
+    // What became of the text, for the search: indexed, or not read.
+    expect(rowOf('epub').textContent).toContain('texto indexado');
+    expect(rowOf('txt').textContent).toContain('texto não lido');
+    expect(rowOf('mp3').textContent).not.toContain('texto');
     // A position with no percentage (an EPUB or text viewer) is still a started file.
     expect(rowOf('txt').textContent).toContain('Em andamento');
     expect(rowOf('txt').querySelector('button').textContent).toBe('Continuar');
