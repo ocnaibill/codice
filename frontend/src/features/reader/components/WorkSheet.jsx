@@ -2,9 +2,10 @@ import React from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { authenticatedUrl } from '../../../lib/api';
 import { useWork } from '../api/useWork';
+import { useSetCompletion } from '../api/useCompletion';
 import { formatSize, languageName } from '../files';
 
-function FileRow({ file, onRead }) {
+function FileRow({ file, onRead, onComplete, busy }) {
   const percent = Math.round(file.percentComplete || 0);
   const started = file.started || percent > 0 || file.completed;
   const usable = file.availability === 'available' && !!file.url;
@@ -46,9 +47,17 @@ function FileRow({ file, onRead }) {
                 Do começo
               </button>
             )}
+            <button
+              onClick={() => onComplete(file, !file.completed)}
+              disabled={busy}
+              className="ml-auto text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-40"
+              title={file.completed ? 'Volta a contar como em leitura; a posição é mantida' : 'Conta como lido, sem precisar abrir'}
+            >
+              {file.completed ? 'Reabrir' : 'Marcar como concluído'}
+            </button>
             <a
               href={authenticatedUrl(file.url)}
-              className="ml-auto text-xs text-zinc-500 hover:text-zinc-300"
+              className="text-xs text-zinc-500 hover:text-zinc-300"
               title="Baixar o arquivo"
             >
               Baixar
@@ -74,6 +83,7 @@ export function WorkSheet() {
   const closeSheet = useGlobalStore((state) => state.closeSheet);
   const openBook = useGlobalStore((state) => state.openBook);
   const { data: work, isLoading, isError } = useWork(workId, { fresh: true });
+  const setCompletion = useSetCompletion();
 
   if (!workId) return null;
 
@@ -134,7 +144,13 @@ export function WorkSheet() {
                   </div>
                   <ul className="flex flex-col gap-2">
                     {edition.files.map((file) => (
-                      <FileRow key={file.id} file={file} onRead={(f, fromStart) => openBook(work.id, f.id, { fromStart })} />
+                      <FileRow
+                        key={file.id}
+                        file={file}
+                        busy={setCompletion.isPending}
+                        onRead={(f, fromStart) => openBook(work.id, f.id, { fromStart })}
+                        onComplete={(f, completed) => setCompletion.mutate({ fileId: f.id, completed })}
+                      />
                     ))}
                   </ul>
                 </section>

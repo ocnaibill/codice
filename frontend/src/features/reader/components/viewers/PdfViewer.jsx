@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { authenticatedUrl } from '../../../../lib/api';
+import { completionFor } from '../../progressRules';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -31,7 +32,7 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress }) {
     if (onProgress) {
       timeoutRef.current = setTimeout(() => {
         const percent = numPages ? (newPage / numPages) * 100 : undefined;
-        const completed = numPages ? newPage >= numPages : undefined;
+        const completed = completionFor(percent);
         onProgress({ type: 'pdf', page: newPage - 1 }, { percent, completed })
           .catch((err) => console.error("Failed to save PDF reading progress:", err));
       }, 1000);

@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { authenticatedUrl } from '../../../../lib/api';
+import { markActivity } from '../../activity';
+import { completionFor } from '../../progressRules';
 
 export default function AudioViewer({ fileUrl, onProgress, initialProgress }) {
   const audioRef = useRef(null);
@@ -9,12 +11,13 @@ export default function AudioViewer({ fileUrl, onProgress, initialProgress }) {
   const [speed, setSpeed] = useState(1);
   const timeoutRef = useRef(null);
 
-  const saveProgress = (time, total, completed = false) => {
+  const saveProgress = (time, total, ended = false) => {
     if (!onProgress) return;
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
       const percent = total ? (time / total) * 100 : undefined;
-      onProgress({ type: 'audio', track: 0, ms: Math.round(time * 1000) }, { percent, completed })
+      // Reaching the end finishes it; going back never says it is not finished.
+      onProgress({ type: 'audio', track: 0, ms: Math.round(time * 1000) }, { percent, completed: ended ? true : completionFor(percent) })
         ?.catch?.((err) => console.error('Failed to save audio reading progress:', err));
     }, 1500);
   };
@@ -40,6 +43,7 @@ export default function AudioViewer({ fileUrl, onProgress, initialProgress }) {
     if (audioRef.current) {
       const time = audioRef.current.currentTime;
       setCurrentTime(time);
+      markActivity(); // audio that is playing is reading time
       saveProgress(time, audioRef.current.duration);
     }
   };

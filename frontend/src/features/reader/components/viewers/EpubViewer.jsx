@@ -131,7 +131,8 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
           if (timeoutRef.current) clearTimeout(timeoutRef.current);
           if (onProgress) {
             timeoutRef.current = setTimeout(() => {
-              onProgress({ type: 'epub', cfi })
+              // The end of the book finishes it; an EPUB has no page count, so nothing else says how far.
+              onProgress({ type: 'epub', cfi }, { completed: location.atEnd ? true : undefined })
                 ?.catch?.((err) => console.error('Failed to save progress:', err));
             }, 1000);
           }

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { authenticatedUrl } from '../../../../lib/api';
+import { completionFor } from '../../progressRules';
+import { getComicMode, saveComicMode } from '../../preferences';
 
 // Number of pages to preload ahead and behind
 const PRELOAD_COUNT = 2;
@@ -13,7 +15,12 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [readingDirection, setReadingDirection] = useState('ltr'); // 'ltr', 'rtl', 'webtoon', 'double'
+  // 'ltr', 'rtl', 'webtoon' or 'double', remembered from the last comic read on this device (DEC-078)
+  const [readingDirection, setDirection] = useState(getComicMode);
+  const setReadingDirection = (mode) => {
+    setDirection(mode);
+    saveComicMode(mode);
+  };
   const [pageStatus, setPageStatus] = useState({}); // { [pageNum]: 'loading'|'loaded'|'error' }
   const timeoutRef = useRef(null);
   const containerRef = useRef(null);
@@ -111,7 +118,7 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
     if (onProgress) {
       timeoutRef.current = setTimeout(() => {
         const percent = pages.length ? ((clampedPage + 1) / pages.length) * 100 : undefined;
-        const completed = pages.length ? clampedPage >= pages.length - 1 : undefined;
+        const completed = completionFor(percent);
         onProgress({ type: 'image', index: clampedPage }, { percent, completed })
           ?.catch?.((err) => console.error('Failed to save reading progress:', err));
       }, 1000);

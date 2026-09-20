@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../lib/api', () => ({
-  api: { get: vi.fn() },
+  api: { get: vi.fn(), put: vi.fn() },
   authenticatedUrl: (u) => u,
 }));
 
@@ -115,6 +115,19 @@ describe('WorkSheet', () => {
     const row = rowOf('cbz');
     expect(row.textContent).toContain('Arquivo ausente');
     expect(row.querySelectorAll('button').length).toBe(0);
+  });
+
+  it('marks a file finished, or reopens it, without opening it', async () => {
+    api.put.mockResolvedValue({ data: {} });
+    await open();
+    await act(async () => { [...rowOf('pdf').querySelectorAll('button')].find((b) => b.textContent === 'Marcar como concluído').click(); });
+    expect(api.put).toHaveBeenCalledWith('/progress/files/20/completion', { completed: true });
+    expect(useGlobalStore.getState().activeBookId).toBeNull();
+
+    // A file that is finished offers to reopen it instead.
+    expect([...rowOf('mp3').querySelectorAll('button')].some((b) => b.textContent === 'Marcar como concluído')).toBe(false);
+    await act(async () => { [...rowOf('mp3').querySelectorAll('button')].find((b) => b.textContent === 'Reabrir').click(); });
+    expect(api.put).toHaveBeenLastCalledWith('/progress/files/22/completion', { completed: false });
   });
 
   it('closes without opening anything', async () => {
