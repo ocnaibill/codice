@@ -17,6 +17,8 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
           <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px] font-bold uppercase text-zinc-300">{file.format || '?'}</span>
           {file.sizeBytes != null && <span className="text-xs text-zinc-500">{formatSize(file.sizeBytes)}</span>}
           {file.needsOcr && <span className="text-xs text-amber-400">Páginas sem texto (OCR ainda não roda)</span>}
+          {file.textStatus === 'ready' && <span className="text-xs text-zinc-500" title="O texto deste arquivo está indexado para a busca">texto indexado</span>}
+          {file.textStatus === 'failed' && <span className="text-xs text-amber-400" title="O arquivo abre, mas o texto não pôde ser lido para a busca">texto não lido</span>}
         </div>
         <span className="text-xs text-zinc-400">
           {file.completed ? 'Concluído' : percent > 0 ? `${percent}% lido` : started ? 'Em andamento' : 'Não iniciado'}

@@ -16,6 +16,7 @@ from analyzer import Analyzer, MediaStatus
 from pipeline import analyze_file, ensure_file
 from runner import JobRunner, JobsClient, new_owner_name, poll_once
 from health import Heartbeat
+from textindex.store import TextIndexer
 
 # 1. Loads variables from .env, trying multiple locations
 env_paths = ["../.env", ".env"]
@@ -113,7 +114,16 @@ def build_runner(db, client, heartbeat=None):
     covers_dir = os.path.join(storage_path, 'covers')
     os.makedirs(covers_dir, exist_ok=True)
 
+    indexer = TextIndexer(db, storage_path)
+
     def process(job, checkpoint):
+        if job.get('type') == 'extract_text':
+            # Reading the text is a job of its own: it never changes the status of the work, so a work
+            # that can be read stays readable while its text is being extracted (or if that fails).
+            print(f"\n📚 Text job {job['id']} (work {job['work_id']}, attempt {job['attempts']}/{job['max_attempts']})")
+            outcome = indexer.run(job['work_id'], force=bool(job['payload'].get('force')), checkpoint=checkpoint)
+            print(f"   📝 {outcome or 'nothing to read'}")
+            return outcome
         file_path = job['payload'].get('file_path')
         print(f"\n📥 Job {job['id']} (work {job['work_id']}, attempt {job['attempts']}/{job['max_attempts']})")
         print(f"   File: {file_path}")
@@ -123,20 +133,34 @@ def build_runner(db, client, heartbeat=None):
         checkpoint()
         return analyze_file(job['work_id'], file_path, extractor, analyzer, provider_registry, covers_dir, checkpoint)
 
+    def is_ingest(job):
+        return job.get('type', 'ingest') == 'ingest'
+
     def on_start(job):
+        if not is_ingest(job):
+            return
         analyzer.update_status(job['work_id'], MediaStatus.ANALYZING)
         publish(client, {"type": "WORK_ANALYZING", "work_id": job['work_id']})
 
     def on_success(job, metadata):
+        if not is_ingest(job):
+            print(f"✅ Text job {job['id']} completed.")
+            return
         analyzer.update_status(job['work_id'], MediaStatus.READY)
         publish(client, {"type": "WORK_READY", "work_id": job['work_id'], "title": metadata.title})
         print(f"✅ Job {job['id']} completed.")
 
     def on_failure(job, kind, message):
+        if not is_ingest(job):
+            print(f"   ❌ Text job {job['id']} failed: {message}")
+            return
         analyzer.update_status(job['work_id'], MediaStatus.ERROR, message)
         publish(client, {"type": "WORK_ERROR", "work_id": job['work_id'], "error": message})
 
     def on_retry(job, message):
+        if not is_ingest(job):
+            print(f"   🔁 Text job will retry: {message}")
+            return
         # Not final: the job waits and runs again, so the work goes back to queued.
         analyzer.update_status(job['work_id'], MediaStatus.QUEUED)
         print(f"   🔁 Will retry: {message}")

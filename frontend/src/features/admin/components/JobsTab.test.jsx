@@ -29,6 +29,12 @@ describe('JobsTab', () => {
     expect(view.buttonMatching(/Com falha\s*\(1\)/)).toBeTruthy();
   });
 
+  it('names the job that reads the text of a work, apart from the one that reads the file', async () => {
+    await open([job({ id: 3, type: 'extract_text', state: 'pending' })]);
+    expect(view.text()).toContain('Leitura do texto para busca');
+    expect(view.text()).not.toContain('Leitura do arquivo');
+  });
+
   it('retries a failed job', async () => {
     await open([job({ id: 7 })]);
     await view.click(view.button('Tentar de novo'));
