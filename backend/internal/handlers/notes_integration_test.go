@@ -329,6 +329,9 @@ func TestNotes_ExportInJSONAndByFilter(t *testing.T) {
 	if rec := s.do(ana, "GET", "/notes/export?format=pdf", ""); rec.Code != 400 {
 		t.Errorf("an unknown format: %d", rec.Code)
 	}
+	if md := s.do(ana, "GET", "/notes/export?workId="+fmt.Sprint(outro), "").Body.String(); !strings.Contains(md, "· 1 anotação\n") {
+		t.Errorf("the singular: %s", md)
+	}
 	if rec := s.do(ana, "GET", "/notes/export?tag=nao-existe", ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), "0 anotações") {
 		t.Errorf("nothing to export is an empty document, not an error: %d %s", rec.Code, rec.Body)
 	}

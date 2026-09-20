@@ -11,6 +11,9 @@ export const useGlobalStore = create((set) => ({
   activeBookId: null,
   activeFileId: null,
   fromStart: false,
+  // A place to open at (a note's locator), and a counter so that asking for the same place
+  // again in the same file reopens the viewer there.
+  seek: null,
   books: [],
 
   // Actions
@@ -18,9 +21,15 @@ export const useGlobalStore = create((set) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
   openWork: (id) => set({ sheetWorkId: id, activeBookId: null, activeFileId: null, adminOpen: false }),
   closeSheet: () => set({ sheetWorkId: null }),
-  openBook: (id, fileId = null, { fromStart = false } = {}) =>
-    set({ activeBookId: id, activeFileId: fileId, fromStart, sheetWorkId: null }),
-  closeBook: () => set({ activeBookId: null, activeFileId: null, fromStart: false, sheetWorkId: null, adminOpen: false }),
+  openBook: (id, fileId = null, { fromStart = false, locator = null } = {}) =>
+    set((state) => ({
+      activeBookId: id,
+      activeFileId: fileId,
+      fromStart,
+      seek: locator ? { locator, n: (state.seek?.n ?? 0) + 1 } : null,
+      sheetWorkId: null,
+    })),
+  closeBook: () => set({ activeBookId: null, activeFileId: null, fromStart: false, seek: null, sheetWorkId: null, adminOpen: false }),
   adminOpen: false,
   openAdmin: () => set({ adminOpen: true, activeBookId: null, activeFileId: null, sheetWorkId: null }),
   setBooks: (books) => set({ books }),

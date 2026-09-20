@@ -82,7 +82,11 @@ func markdownExport(notes []Note, now time.Time) string {
 	sort.SliceStable(order, func(i, j int) bool { return strings.ToLower(order[i]) < strings.ToLower(order[j]) })
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Anotações do Códice\n\nExportadas em %s · %d anotações\n", now.Format("2006-01-02"), len(notes))
+	count := fmt.Sprintf("%d anotações", len(notes))
+	if len(notes) == 1 {
+		count = "1 anotação"
+	}
+	fmt.Fprintf(&b, "# Anotações do Códice\n\nExportadas em %s · %s\n", now.Format("2006-01-02"), count)
 	for _, k := range order {
 		group := byWork[k]
 		first := group[0]

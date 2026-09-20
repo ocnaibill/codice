@@ -1,11 +1,11 @@
-import React, { lazy, Suspense, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { useWork } from '../api/useWork';
 import { useReadingHeartbeat } from '../api/useReadingHeartbeat';
 import { useFavoriteToggle } from '../api/useFavoriteToggle';
-import { useCreateNote } from '../api/useCreateNote';
 import { useFileProgress } from '../api/useFileProgress';
-import { findFile, languageName } from '../files';
+import { findFile, languageName, positionFromLocator } from '../files';
+import { NotesPanel } from './NotesPanel';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { authenticatedUrl } from '../../../lib/api';
 
@@ -31,20 +31,24 @@ export function Reader() {
   const progress = useFileProgress(file?.id);
   useReadingHeartbeat(activeBookId, file?.id);
   const favoriteToggle = useFavoriteToggle(activeBookId);
-  const createNote = useCreateNote(activeBookId);
-  const [showNoteForm, setShowNoteForm] = useState(false);
-  const [noteText, setNoteText] = useState('');
+  const [showNotes, setShowNotes] = useState(false);
+  const openBook = useGlobalStore((state) => state.openBook);
+  const seek = useGlobalStore((state) => state.seek);
 
-  const handleSaveNote = () => {
-    const trimmed = noteText.trim();
-    if (!trimmed) return;
-    createNote.mutate(trimmed, {
-      onSuccess: () => {
-        setNoteText('');
-        setShowNoteForm(false);
-      },
-    });
-  };
+  // Where the person is in this file, as a locator: what the viewers last reported, or the saved
+  // position until they report one. A note or bookmark made now is tied to it.
+  const currentLocator = useRef(null);
+  useEffect(() => {
+    currentLocator.current = fromStart ? null : (seek?.locator ?? progress.data?.locator ?? null);
+  }, [file?.id, fromStart, seek, progress.data]);
+  const saveProgress = progress.save;
+  const onProgress = useCallback(
+    (locator, extras) => {
+      currentLocator.current = locator;
+      return saveProgress(locator, extras);
+    },
+    [saveProgress]
+  );
 
   if (isLoading || (file && progress.isLoading)) {
     return (
@@ -75,8 +79,7 @@ export function Reader() {
   const fileUrl = file.url;
   // The saved position of this file, unless the person chose to start over. Older readers
   // understand it as text (a CFI, a page number, seconds): the server keeps that form in sync.
-  const initialProgress = fromStart ? undefined : progress.data?.position || undefined;
-  const onProgress = progress.save;
+  const initialProgress = seek ? positionFromLocator(seek.locator) : fromStart ? undefined : progress.data?.position || undefined;
 
   const renderViewer = () => {
     switch (format) {
@@ -147,11 +150,15 @@ export function Reader() {
             {book.isFavorite ? '★ Favorito' : '☆ Favoritar'}
           </button>
           <button
-            onClick={() => setShowNoteForm((v) => !v)}
-            className="p-2 rounded-md bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-all"
-            title="Salvar uma citação deste livro"
+            onClick={() => setShowNotes((v) => !v)}
+            className={`p-2 rounded-md border transition-all ${
+              showNotes
+                ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                : 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100'
+            }`}
+            title="Notas, destaques e marcadores deste livro"
           >
-            + Nota
+            ✎ Notas
           </button>
           <button
             onClick={closeBook}
@@ -163,38 +170,24 @@ export function Reader() {
         </div>
       </div>
 
-      {showNoteForm && (
-        <div className="px-6 py-3 border-b border-zinc-900 bg-zinc-950 flex flex-col gap-2">
-          <textarea
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            placeholder="Cole ou digite a citação que quer guardar..."
-            rows={3}
-            className="w-full rounded-md bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm p-3 outline-none focus:border-zinc-600"
-          />
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={() => setShowNoteForm(false)}
-              className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSaveNote}
-              disabled={createNote.isPending || !noteText.trim()}
-              className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-500 disabled:opacity-40"
-            >
-              Salvar nota
-            </button>
-          </div>
-        </div>
+      {showNotes && (
+        <NotesPanel
+          workId={book.id}
+          fileId={file.id}
+          getLocator={() => currentLocator.current}
+          onOpenAt={(note) => {
+            setShowNotes(false);
+            openBook(book.id, note.fileId, { locator: note.locator });
+          }}
+          onClose={() => setShowNotes(false)}
+        />
       )}
 
       {/* Dynamic Reader Router Viewport */}
       <div className="flex-1 overflow-y-auto bg-zinc-900/30">
         <Suspense fallback={<div className="flex justify-center p-10 text-zinc-500 animate-pulse">Initializing reading engine...</div>}>
           <ErrorBoundary>
-            {renderViewer()}
+            <React.Fragment key={`${file.id}-${seek?.n ?? 0}`}>{renderViewer()}</React.Fragment>
           </ErrorBoundary>
         </Suspense>
       </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findFile, languageName, formatSize } from './files';
+import { findFile, languageName, formatSize, positionFromLocator, placeLabel, parseTags } from './files';
 
 const work = {
   id: 1, fileId: 10, fileUrl: '/file/10', format: 'epub',
@@ -47,5 +47,33 @@ describe('labels', () => {
     expect(formatSize(500)).toBe('1 KB');
     expect(formatSize(5 * 1024 * 1024)).toBe('5.0 MB');
     expect(formatSize(null)).toBe('');
+  });
+});
+
+describe('locators', () => {
+  it('turns a locator into the position each viewer opens from', () => {
+    expect(positionFromLocator({ type: 'epub', cfi: 'epubcfi(/6/2)', href: 'a.xhtml' })).toBe('epubcfi(/6/2)');
+    expect(positionFromLocator({ type: 'epub', href: 'a.xhtml' })).toBe('a.xhtml');
+    expect(positionFromLocator({ type: 'pdf', page: 11 })).toBe('12'); // the PDF viewer counts from 1
+    expect(positionFromLocator({ type: 'image', index: 7 })).toBe('7'); // the comic viewer from 0
+    expect(positionFromLocator({ type: 'audio', track: 0, ms: 93500 })).toBe('93.5');
+    expect(positionFromLocator({ type: 'text', offset: 40 })).toBe('40');
+    expect(positionFromLocator(null)).toBeUndefined();
+    expect(positionFromLocator({ type: 'other' })).toBeUndefined();
+  });
+
+  it('says where a locator points', () => {
+    expect(placeLabel({ type: 'pdf', page: 11 })).toBe('PDF, página 12');
+    expect(placeLabel({ type: 'pdf', page: 11, label: 'xii' })).toBe('PDF, página xii');
+    expect(placeLabel({ type: 'audio', track: 1, ms: 125000 })).toBe('Áudio, faixa 2, 2:05');
+    expect(placeLabel({ type: 'image', index: 0 })).toBe('Imagem 1');
+    expect(placeLabel({ type: 'epub', cfi: 'x' })).toBe('EPUB, posição salva');
+    expect(placeLabel(null)).toBeNull();
+  });
+
+  it('splits typed tags', () => {
+    expect(parseTags(' a, b ,, c ')).toEqual(['a', 'b', 'c']);
+    expect(parseTags('')).toEqual([]);
+    expect(parseTags(undefined)).toEqual([]);
   });
 });
