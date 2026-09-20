@@ -204,7 +204,7 @@ func TestVerifyBackup_ConfirmsAnIntactPackageRehearsesARestoreAndRefusesADamaged
 		t.Fatalf("%v\n%s", err, out)
 	}
 	out, _, err = s.run("", "verify-backup", "--deep", pkg)
-	if err != nil || !strings.Contains(out, "Restore rehearsal") || !strings.Contains(out, "matches") {
+	if err != nil || !strings.Contains(out, "Restore rehearsal") || !strings.Contains(out, "matches") || !strings.Contains(out, "/s)") || !strings.Contains(out, "Reading the package plus") {
 		t.Fatalf("deep: %v\n%s", err, out)
 	}
 	raw, _ := os.ReadFile(pkg)
@@ -268,7 +268,7 @@ func TestRestore_IntoACleanDatabaseThenRefusesToReplaceItWithoutTheFlagAndTheTyp
 	if err != nil {
 		t.Fatalf("restore: %v", err)
 	}
-	for _, want := range []string{"Restored in", "2 accounts", "1 brought in", "1 verified", "sign in again"} {
+	for _, want := range []string{"Restored in", "2 accounts", "1 brought in", "1 verified", "sign in again", "time:", "read and checked", "database", "finishing"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the report does not say %q:\n%s", want, out)
 		}

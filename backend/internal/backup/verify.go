@@ -23,11 +23,12 @@ type VerifyOptions struct {
 
 // VerifyResult reports what the check found.
 type VerifyResult struct {
-	Manifest    Manifest
-	DumpEntries int
-	Encrypted   bool
-	Reading     time.Duration
-	Deep        *DeepResult
+	Manifest     Manifest
+	DumpEntries  int
+	Encrypted    bool
+	Reading      time.Duration
+	PackageBytes int64
+	Deep         *DeepResult
 }
 
 // DeepResult is the outcome of the rehearsal.
@@ -47,7 +48,7 @@ func Verify(ctx context.Context, o VerifyOptions) (VerifyResult, error) {
 		return res, err
 	}
 	defer pkg.Close()
-	res.Manifest, res.Encrypted, res.Reading = pkg.Manifest, pkg.Encrypted, time.Since(start)
+	res.Manifest, res.Encrypted, res.Reading, res.PackageBytes = pkg.Manifest, pkg.Encrypted, time.Since(start), pkg.Bytes
 
 	conn, err := parseConn(o.DatabaseURL)
 	if err != nil && (o.Deep || o.DatabaseURL != "") {

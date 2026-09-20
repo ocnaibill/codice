@@ -196,7 +196,7 @@ func verifyCmd(ctx context.Context, env Env, args []string, in io.Reader, out io
 		return err
 	}
 	m := res.Manifest
-	fmt.Fprintf(out, "The package is intact (read in %s).\n", res.Reading.Round(time.Millisecond))
+	fmt.Fprintf(out, "The package is intact: %s read and checked in %s (%s/s).\n", human(res.PackageBytes), res.Reading.Round(time.Millisecond), human(rate(res.PackageBytes, res.Reading)))
 	fmt.Fprintf(out, "  made: %s, schema %d, PostgreSQL %s%s\n", m.CreatedAt.Format(time.RFC3339), m.SchemaVersion, m.ServerVersion, map[bool]string{true: ", encrypted", false: ""}[res.Encrypted])
 	fmt.Fprintf(out, "  database: %d accounts, %d works, %d notes; the dump lists %d objects\n", m.Counts.Users, m.Counts.Works, m.Counts.Notes, res.DumpEntries)
 	fmt.Fprintf(out, "  files: %d listed", m.Files.Total)
@@ -207,6 +207,8 @@ func verifyCmd(ctx context.Context, env Env, args []string, in io.Reader, out io
 	if res.Deep != nil {
 		fmt.Fprintf(out, "Restore rehearsal: restored into a temporary database in %s and it matches (%d accounts, %d works, %d notes). The temporary database was dropped.\n",
 			res.Deep.Duration.Round(time.Millisecond), res.Deep.Restored.Users, res.Deep.Restored.Works, res.Deep.Restored.Notes)
+		fmt.Fprintf(out, "  Reading the package plus the database restore: about %s. The files are not part of this rehearsal: see \"ensaio de restauração\" in the README to time them.\n",
+			(res.Reading + res.Deep.Duration).Round(time.Millisecond))
 	}
 	return nil
 }
@@ -286,6 +288,10 @@ func restoreCmd(ctx context.Context, env Env, args []string, in io.Reader, out i
 	if res.KeptDatabase != "" {
 		fmt.Fprintf(out, "  the previous database was kept as %q. When you are sure, drop it with: DROP DATABASE %q;\n", res.KeptDatabase, res.KeptDatabase)
 	}
+	t := res.Timings
+	fmt.Fprintf(out, "  time: %s read and checked (%s, %s/s), %s files, %s database, %s finishing\n",
+		t.Read.Round(time.Millisecond), human(res.PackageBytes), human(rate(res.PackageBytes, t.Read)),
+		t.Files.Round(time.Millisecond), t.Database.Round(time.Millisecond), t.Finish.Round(time.Millisecond))
 	fmt.Fprintln(out, "Everyone has to sign in again, and app tokens and invitations must be issued again: none of them travel in a package.")
 	fmt.Fprintln(out, "Now start the API and the worker; the owner will see a notice that the instance was restored.")
 	return nil
@@ -338,4 +344,12 @@ func pruneCmd(args []string, out io.Writer) error {
 		fmt.Fprintf(out, "  %s %s\n", map[bool]string{true: "deleted", false: "would delete"}[*yes], n)
 	}
 	return nil
+}
+
+// rate is bytes per second, guarding against a zero duration on tiny inputs.
+func rate(n int64, d time.Duration) int64 {
+	if d <= 0 {
+		return 0
+	}
+	return int64(float64(n) / d.Seconds())
 }

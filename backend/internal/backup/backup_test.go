@@ -301,6 +301,14 @@ func TestRoundTrip_RestoresNotesFilesAndCoversIntoACleanInstance(t *testing.T) {
 	if out.FilesRestored != 3 || out.FilesVerified != 2 || out.FilesMissing != 0 || out.FilesMismatched != 0 || out.KeptDatabase != "" {
 		t.Errorf("result = %+v", out)
 	}
+	// The report says where the time went, so a bigger instance can be estimated from it.
+	tm := out.Timings
+	if out.PackageBytes != int64(len(pkg)) || tm.Read <= 0 || tm.Database <= 0 || tm.Files <= 0 || tm.Finish <= 0 {
+		t.Errorf("timings = %+v, package bytes = %d (package is %d)", tm, out.PackageBytes, len(pkg))
+	}
+	if sum := tm.Read + tm.Files + tm.Database + tm.Finish; sum > out.Duration || out.Duration-sum > 2*time.Second {
+		t.Errorf("the phases (%v) do not add up to the total (%v)", sum, out.Duration)
+	}
 	db := tg.open()
 	if got := scalar(t, db, `SELECT string_agg(quote, '|' ORDER BY quote) FROM notes`); got != "minha nota sobre Duna|minha nota sobre Neuromancer" {
 		t.Errorf("notes = %q", got)

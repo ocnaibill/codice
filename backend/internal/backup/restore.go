@@ -46,6 +46,20 @@ type RestoreResult struct {
 	Referenced      int // files that live in the operator's own folders: not checked here
 	Duration        time.Duration
 	Notes           []string
+	// PackageBytes is what was read. The four times below add up to Duration (give or
+	// take the connection setup) and say where a restore spends its time.
+	PackageBytes int64
+	Timings      RestoreTimings
+}
+
+// RestoreTimings splits a restore into its phases, to be scaled to a bigger instance:
+// reading is proportional to the package size, files to the bytes checked, the database
+// to the dump.
+type RestoreTimings struct {
+	Read     time.Duration // reading, decrypting and checking every byte of the package
+	Files    time.Duration // bringing the files in and checking each against its hash
+	Database time.Duration // restoring the database, checking it and swapping it in
+	Finish   time.Duration // migrating the schema and recording the restore
 }
 
 func randHex(n int) string {
@@ -229,12 +243,14 @@ func Restore(ctx context.Context, o RestoreOptions) (res RestoreResult, err erro
 	stage := filepath.Join(o.StorageRoot, ".restore-"+randHex(6))
 	defer os.RemoveAll(stage)
 
+	tRead := time.Now()
 	pkg, err := Read(o.In, ReadOptions{Passphrase: o.Passphrase, TmpDir: o.TmpDir, StageDir: stage})
 	if err != nil {
 		return res, err
 	}
 	defer pkg.Close()
-	res.Manifest = pkg.Manifest
+	res.Manifest, res.PackageBytes = pkg.Manifest, pkg.Bytes
+	res.Timings.Read = time.Since(tRead)
 
 	// The database dump must at least be listable before anything is changed.
 	if err := listDump(ctx, target, pkg.DumpPath, io.Discard); err != nil {
@@ -295,6 +311,7 @@ func Restore(ctx context.Context, o RestoreOptions) (res RestoreResult, err erro
 	}
 
 	// Files first: they only add. Orphans left by a later failure are harmless.
+	tFiles := time.Now()
 	if pkg.Manifest.IncludesFiles {
 		if _, serr := os.Stat(stage); serr == nil {
 			if err := installStaged(stage, o.StorageRoot, &res); err != nil {
@@ -303,6 +320,8 @@ func Restore(ctx context.Context, o RestoreOptions) (res RestoreResult, err erro
 		}
 	}
 	missing := checkFiles(o.StorageRoot, pkg.Files, o.SkipHash, &res)
+	res.Timings.Files = time.Since(tFiles)
+	tDB := time.Now()
 
 	// The database: into a new one, verified, then swapped in.
 	switch {
@@ -354,6 +373,8 @@ func Restore(ctx context.Context, o RestoreOptions) (res RestoreResult, err erro
 		res.KeptDatabase = kept
 	}
 
+	res.Timings.Database = time.Since(tDB)
+	tFinish := time.Now()
 	// The restored instance: bring the schema forward, and make the credentials safe.
 	db, err := target.open()
 	if err != nil {
@@ -366,6 +387,7 @@ func Restore(ctx context.Context, o RestoreOptions) (res RestoreResult, err erro
 	if err := afterRestore(ctx, db, pkg, missing, &res); err != nil {
 		return res, err
 	}
+	res.Timings.Finish = time.Since(tFinish)
 	res.Duration = time.Since(start)
 	return res, nil
 }

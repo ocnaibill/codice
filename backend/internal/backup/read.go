@@ -41,6 +41,20 @@ type Package struct {
 	DumpPath  string // the database dump, extracted to a temporary file
 	Encrypted bool
 	StageDir  string
+	// Bytes is how much of the input was read: with the time it took, the read speed,
+	// which is what to scale when estimating a restore of a bigger package.
+	Bytes int64
+}
+
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
 }
 
 // Close removes the temporary dump.
@@ -67,7 +81,8 @@ func validMember(name string) bool {
 // schema version. Nothing outside the temporary dump (and StageDir) is written, and a
 // member with an unsafe name, a link or a duplicate refuses the package.
 func Read(in io.Reader, o ReadOptions) (pkg *Package, err error) {
-	br := bufio.NewReaderSize(in, 1<<20)
+	counter := &countingReader{r: in}
+	br := bufio.NewReaderSize(counter, 1<<20)
 	encrypted := false
 	if head, _ := br.Peek(len(ageMagic)); bytes.Equal(head, ageMagic) {
 		encrypted = true
@@ -206,5 +221,6 @@ func Read(in io.Reader, o ReadOptions) (pkg *Package, err error) {
 	if len(pkg.Files) != m.Files.Total {
 		return nil, fmt.Errorf("%w: the list of files disagrees with the manifest", ErrCorrupt)
 	}
+	pkg.Bytes = counter.n
 	return pkg, nil
 }
