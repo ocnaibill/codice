@@ -43,6 +43,19 @@ type Work struct {
 	Retired         bool          `json:"retired,omitempty"`
 	Editions        []Edition     `json:"editions,omitempty"`
 	Metadata        *WorkMetadata `json:"metadata,omitempty"`
+	// Continue is where the calling user was last reading this work: the file they touched
+	// most recently, which is not always the primary one (spec 18.1). Null until they read.
+	Continue *ContinueFile `json:"continue"`
+}
+
+// ContinueFile is the file the caller read most recently in a work, with their position in it.
+type ContinueFile struct {
+	FileID          int64   `json:"fileId"`
+	Format          string  `json:"format,omitempty"`
+	URL             string  `json:"url,omitempty"`
+	Position        string  `json:"position,omitempty"`
+	PercentComplete float64 `json:"percentComplete"`
+	Completed       bool    `json:"completed"`
 }
 
 // Edition is one publication of a work: its language, publisher and date, and
@@ -117,12 +130,31 @@ const cardColumns = `
 	(f.user_id IS NOT NULL),
 	wp.file_id,
 	(w.retired_at IS NOT NULL),
-	COALESCE(wp.file_mode, '')`
+	COALESCE(wp.file_mode, ''),
+	lastrp.file_id, COALESCE(lastrp.format, ''), lastrp.path, COALESCE(lastrp.mode, ''),
+	COALESCE(lastrp.position, ''), COALESCE(lastrp.percent_complete, 0), (lastrp.completed_at IS NOT NULL)`
+
+// hasPosition is the condition for a reading_progress row (alias a) that says where the person
+// is, or that they finished. A row can exist for less: counting seconds of reading creates one
+// with no position, and opening a file is not the same as having begun it.
+func hasPosition(a string) string {
+	return "(" + a + ".position <> '' OR " + a + ".locator IS NOT NULL OR " + a + ".percent_complete > 0 OR " + a + ".completed_at IS NOT NULL)"
+}
 
 // cardJoins add the calling user's progress on the primary file and favorite flag.
-const cardJoins = `
+var cardJoins = `
 	LEFT JOIN reading_progress rp ON rp.file_id = wp.file_id AND rp.user_id = $1
-	LEFT JOIN favorites f ON f.work_id = w.id AND f.user_id = $1`
+	LEFT JOIN favorites f ON f.work_id = w.id AND f.user_id = $1
+	LEFT JOIN LATERAL (
+		SELECT r.file_id, r.position, r.percent_complete, r.completed_at, f2.format, l.path, l.mode
+		FROM reading_progress r
+		JOIN files f2 ON f2.id = r.file_id
+		JOIN editions e2 ON e2.id = f2.edition_id
+		LEFT JOIN LATERAL (SELECT path, mode FROM storage_locations WHERE file_id = f2.id ORDER BY id LIMIT 1) l ON TRUE
+		WHERE e2.work_id = w.id AND r.user_id = $1 AND f2.availability = 'available'
+		  AND ` + hasPosition("r") + `
+		ORDER BY r.updated_at DESC, r.file_id LIMIT 1
+	) lastrp ON TRUE`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -133,16 +165,26 @@ func scanWork(row rowScanner) (Work, error) {
 	var filePath sql.NullString
 	var fileID sql.NullInt64
 	var mode string
+	var lastFile sql.NullInt64
+	var lastPath sql.NullString
+	var last ContinueFile
+	var lastMode string
 	err := row.Scan(
 		&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format,
 		&work.Series, &work.SeriesIndex, &work.MediaStatus, pq.Array(&work.Tags),
 		&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
 		&fileID, &work.Retired, &mode,
+		&lastFile, &last.Format, &lastPath, &lastMode, &last.Position, &last.PercentComplete, &last.Completed,
 	)
 	if err != nil {
 		return work, err
 	}
 	work.FileURL = fileHref(fileID, mode, filePath.String)
+	if lastFile.Valid {
+		last.FileID = lastFile.Int64
+		last.URL = fileHref(lastFile, lastMode, lastPath.String)
+		work.Continue = &last
+	}
 	if fileID.Valid {
 		work.FileID = &fileID.Int64
 	}
@@ -199,7 +241,9 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 	if inProgressOnly {
-		whereClauses = append(whereClauses, "(rp.position IS NOT NULL AND rp.completed_at IS NULL)")
+		// In progress is decided by the file read last, in whatever edition or format: reading
+		// the English EPUB of a book whose primary file is the Portuguese one counts.
+		whereClauses = append(whereClauses, "(lastrp.file_id IS NOT NULL AND lastrp.completed_at IS NULL)")
 	}
 	if favoriteOnly {
 		whereClauses = append(whereClauses, "f.user_id IS NOT NULL")
@@ -303,7 +347,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		SELECT e.id, COALESCE(e.title, ''), COALESCE(e.language, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.publication_date, ''), COALESCE(e.isbn, ''), e.is_primary,
 		       f.id, COALESCE(f.format, ''), f.size_bytes, f.availability, l.path, l.mode,
-		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL), (rp.file_id IS NOT NULL),
+		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL), COALESCE(`+hasPosition("rp")+`, FALSE),
 		       COALESCE(tl.needs_ocr, FALSE), tl.pages_without_text
 		FROM editions e
 		LEFT JOIN files f ON f.edition_id = e.id

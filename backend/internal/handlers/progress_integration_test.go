@@ -240,3 +240,111 @@ func TestFileProgress_ThePlainTextWriteOfTheFirstReadersReplacesTheLocator(t *te
 		t.Errorf("the old locator would now point somewhere else: %d %+v", code, st)
 	}
 }
+
+func TestContinueReading_FollowsTheFileReadLastNotTheBooksPrimaryFile(t *testing.T) {
+	s := newCatalogStack(t)
+	work, epub, pdf := s.bookWithTwoFiles() // the epub is the primary file
+	other := s.addWork("Outro", "X", "outro.epub", "epub")
+
+	if got := s.list(ana, "?inProgress=true"); len(got.Data) != 0 {
+		t.Fatalf("nothing read yet: %v", ids(got.Data))
+	}
+	if w, _ := s.detail(ana, work); w.Continue != nil {
+		t.Errorf("nothing to continue: %+v", w.Continue)
+	}
+
+	// Ana reads only the PDF, the file that is not the primary one.
+	s.progress(ana, "PUT", pdf, `{"locator":{"type":"pdf","page":41},"percent":42}`)
+
+	got := s.list(ana, "?inProgress=true")
+	if len(got.Data) != 1 || got.Data[0].ID != work {
+		t.Fatalf("a work read in a non-primary file is in progress: %v", ids(got.Data))
+	}
+	c := got.Data[0].Continue
+	if c == nil || c.FileID != pdf || c.Format != "pdf" || c.Position != "42" || c.PercentComplete != 42 || c.Completed ||
+		!strings.Contains(c.URL, "duna.pdf") {
+		t.Errorf("continue = %+v", c)
+	}
+	// The card itself still speaks for the primary file, as decided.
+	if got.Data[0].FileID == nil || *got.Data[0].FileID != epub || got.Data[0].PercentComplete != 0 {
+		t.Errorf("the card is the primary file's: %+v", got.Data[0])
+	}
+	// Reading is personal: Bob has nothing to continue, and the other work is untouched.
+	if got := s.list(bob, "?inProgress=true"); len(got.Data) != 0 {
+		t.Errorf("bob: %v", ids(got.Data))
+	}
+	if w, _ := s.detail(bob, work); w.Continue != nil {
+		t.Errorf("bob's detail shows ana's reading: %+v", w.Continue)
+	}
+	if w, _ := s.detail(ana, other); w.Continue != nil {
+		t.Errorf("another work: %+v", w.Continue)
+	}
+
+	// Then she goes back to the EPUB: that is now the file to continue.
+	s.progress(ana, "PUT", epub, `{"locator":{"type":"epub","href":"ch2.xhtml"}}`)
+	if c := s.list(ana, "?inProgress=true").Data[0].Continue; c.FileID != epub || c.Format != "epub" {
+		t.Errorf("the latest activity wins: %+v", c)
+	}
+
+	// Finishing the file read last takes the work out of "in progress", even though the other
+	// file was left half way: the person is done with the book, not with a format.
+	s.progress(ana, "PUT", epub, `{"locator":{"type":"epub","href":"fim.xhtml"},"completed":true}`)
+	if got := s.list(ana, "?inProgress=true"); len(got.Data) != 0 {
+		t.Errorf("finished: %v", ids(got.Data))
+	}
+	if w, _ := s.detail(ana, work); w.Continue == nil || !w.Continue.Completed {
+		t.Errorf("the detail still says which file was last, and that it is finished: %+v", w.Continue)
+	}
+}
+
+func TestContinueReading_ASourceThatIsGoneIsNotOffered(t *testing.T) {
+	s := newCatalogStack(t)
+	work, epub, pdf := s.bookWithTwoFiles()
+	s.progress(ana, "PUT", epub, `{"locator":{"type":"epub","href":"a"}}`)
+	s.progress(ana, "PUT", pdf, `{"locator":{"type":"pdf","page":1}}`)
+	s.exec(`UPDATE files SET availability = 'missing' WHERE id = $1`, pdf)
+
+	// The PDF was read last but is missing from disk: the reader cannot be sent there.
+	w, _ := s.detail(ana, work)
+	if w.Continue == nil || w.Continue.FileID != epub {
+		t.Errorf("continue should fall back to a file that can be opened: %+v", w.Continue)
+	}
+}
+
+func TestContinueReading_OpeningAFileIsNotBeginningIt(t *testing.T) {
+	s := newCatalogStack(t)
+	work, epub, pdf := s.bookWithTwoFiles()
+	s.progress(ana, "PUT", pdf, `{"locator":{"type":"pdf","page":3},"percent":10}`)
+
+	// Twenty-five seconds with the EPUB open, without turning a page. That is reading time; it
+	// is not a position, so the PDF is still the file to continue.
+	rec := s.do(ana, "POST", fmt.Sprintf("/works/%d/reading-heartbeat", work), fmt.Sprintf(`{"seconds":25,"fileId":%d}`, epub))
+	if rec.Code != 200 {
+		t.Fatalf("heartbeat: %d", rec.Code)
+	}
+	if got := s.scalar(`SELECT reading_seconds FROM reading_progress WHERE user_id = $1 AND file_id = $2`, idAna, epub); got != "25" {
+		t.Fatalf("the time was counted on the file read: %q", got)
+	}
+	w, _ := s.detail(ana, work)
+	if w.Continue == nil || w.Continue.FileID != pdf {
+		t.Errorf("continue moved to a file with no position: %+v", w.Continue)
+	}
+	for _, e := range w.Editions {
+		for _, f := range e.Files {
+			if f.ID == epub && f.Started {
+				t.Errorf("a file that was only opened is not started")
+			}
+			if f.ID == pdf && !f.Started {
+				t.Errorf("the pdf has a position")
+			}
+		}
+	}
+	// And a book with nothing but open time is not "in progress" at all.
+	other := s.addWork("Outro", "X", "outro.epub", "epub")
+	s.do(ana, "POST", fmt.Sprintf("/works/%d/reading-heartbeat", other), `{"seconds":25}`)
+	for _, id := range ids(s.list(ana, "?inProgress=true").Data) {
+		if id == other {
+			t.Errorf("a book only opened is in progress")
+		}
+	}
+}
