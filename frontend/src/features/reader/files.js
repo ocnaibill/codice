@@ -90,3 +90,17 @@ export function whereYouAre(cont) {
   const format = (cont.format || '').toUpperCase();
   return percent > 0 ? `Você está em ${percent}% no ${format}${language}` : `Você está lendo o ${format}${language}`;
 }
+
+// How a candidate position was found, in words a person did not ask to learn the internals of.
+const METHOD_LABEL = {
+  text: 'mesmo trecho',
+  anchors: 'mesmos nomes e números',
+  structure: 'mesmo capítulo',
+};
+const CONFIDENCE_LABEL = { high: 'alta confiança', medium: 'confiança média', low: 'confiança baixa' };
+
+export function candidateLabel(candidate) {
+  const method = METHOD_LABEL[candidate?.method] ?? 'correspondência aproximada';
+  const confidence = CONFIDENCE_LABEL[candidate?.confidence] ?? '';
+  return confidence ? `${method}, ${confidence}` : method;
+}

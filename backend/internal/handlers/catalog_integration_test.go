@@ -119,6 +119,9 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Put("/progress/files/{id}/completion", prog.SetCompletion)
 	r.Post("/progress/files/{id}/opened", prog.Opened)
 	r.Put("/progress/works/{id}/finished", prog.SetWorkFinished)
+	eq := &EquivalenceHandler{DB: db}
+	r.Get("/progress/files/{id}/equivalent", eq.Find)
+	r.Post("/progress/files/{id}/equivalent/accept", eq.Accept)
 	r.Post("/works/{id}/reading-heartbeat", lib.ReadingHeartbeat)
 	r.Post("/works/{id}/favorite", fav.AddFavorite)
 	r.Delete("/works/{id}/favorite", fav.RemoveFavorite)

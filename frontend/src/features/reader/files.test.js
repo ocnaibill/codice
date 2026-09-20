@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findFile, languageName, formatSize, positionFromLocator, placeLabel, parseTags, completionText, whereYouAre } from './files';
+import { findFile, languageName, formatSize, positionFromLocator, placeLabel, parseTags, completionText, whereYouAre, candidateLabel } from './files';
 
 const work = {
   id: 1, fileId: 10, fileUrl: '/file/10', format: 'epub',
@@ -90,5 +90,13 @@ describe('reading summary texts', () => {
     expect(whereYouAre({ format: 'pdf', language: 'pt', percentComplete: 41.6 })).toBe('Você está em 42% no PDF (Português)');
     expect(whereYouAre({ format: 'epub', percentComplete: 0 })).toBe('Você está lendo o EPUB');
     expect(whereYouAre(null)).toBeNull();
+  });
+
+  it('names how a candidate position was found', () => {
+    expect(candidateLabel({ method: 'text', confidence: 'high' })).toBe('mesmo trecho, alta confiança');
+    expect(candidateLabel({ method: 'anchors', confidence: 'low' })).toBe('mesmos nomes e números, confiança baixa');
+    expect(candidateLabel({ method: 'structure', confidence: 'medium' })).toBe('mesmo capítulo, confiança média');
+    expect(candidateLabel({ method: 'unknown' })).toBe('correspondência aproximada');
+    expect(candidateLabel(undefined)).toBe('correspondência aproximada');
   });
 });

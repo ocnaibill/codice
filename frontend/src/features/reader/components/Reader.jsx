@@ -7,9 +7,11 @@ import { useFileProgress } from '../api/useFileProgress';
 import { findFile, languageName, positionFromLocator } from '../files';
 import { otherVersionsInProgress } from '../finishPrompt';
 import { useSetWorkFinished } from '../api/useCompletion';
+import { useAcceptEquivalentPosition, useEquivalentPosition } from '../api/useEquivalentPosition';
 import { api } from '../../../lib/api';
 import { NotesPanel } from './NotesPanel';
 import { FinishWorkPrompt } from './FinishWorkPrompt';
+import { EquivalentPositionPrompt } from './EquivalentPositionPrompt';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { authenticatedUrl } from '../../../lib/api';
 
@@ -58,6 +60,17 @@ export function Reader() {
   }, [file?.id, progress.data?.completed]);
   const workId = activeBookId;
   const fileId = file?.id;
+
+  // Another version of this book may be mid-way (DEC-079's "continue" file). Opening a different
+  // one from it, while it is still in progress, offers a one-time jump to where the wording puts
+  // it there (RF-042); asked once per opening, and never if there is nothing to offer.
+  const otherVersion = book?.inProgress && book.continue?.fileId && book.continue.fileId !== fileId ? book.continue : null;
+  const equivalent = useEquivalentPosition(fileId, otherVersion?.fileId);
+  const acceptEquivalent = useAcceptEquivalentPosition(fileId);
+  const [equivalentDeclined, setEquivalentDeclined] = useState(false);
+  const showEquivalentPrompt =
+    !!otherVersion && !equivalentDeclined && (equivalent.data?.status === 'found' || equivalent.data?.status === 'ambiguous');
+
   const askIfWorkIsFinished = useCallback(async () => {
     try {
       const { data: detail } = await api.get(`/works/${workId}`);
@@ -212,6 +225,25 @@ export function Reader() {
             openBook(book.id, note.fileId, { locator: note.locator });
           }}
           onClose={() => setShowNotes(false)}
+        />
+      )}
+
+      {showEquivalentPrompt && (
+        <EquivalentPositionPrompt
+          from={otherVersion}
+          sourceExcerpt={equivalent.data.sourceExcerpt}
+          status={equivalent.data.status}
+          candidates={equivalent.data.candidates}
+          busy={acceptEquivalent.isPending}
+          onDecline={() => setEquivalentDeclined(true)}
+          onAccept={(candidate) => {
+            acceptEquivalent.mutate({
+              sourceFileId: otherVersion.fileId, locator: candidate.locator,
+              method: candidate.method, confidence: candidate.confidence, precision: candidate.precision,
+            });
+            setEquivalentDeclined(true);
+            openBook(workId, fileId, { locator: candidate.locator });
+          }}
         />
       )}
 
