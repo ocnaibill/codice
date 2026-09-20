@@ -24,6 +24,9 @@ export function buildEpubProgress(location, percentageFromCfi) {
   if (typeof fraction === 'number' && Number.isFinite(fraction)) {
     percent = Math.round(clamp01(fraction) * 1000) / 10;
   }
+  // The end of the book is 100%, even when there is nothing to measure against (a book of one
+  // chapter starts and ends in the same place).
+  if (location.atEnd) percent = 100;
   const extras = { percent, completed: location.atEnd ? true : completionFor(percent) };
   return { locator, extras };
 }

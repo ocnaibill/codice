@@ -24,6 +24,12 @@ describe('buildEpubProgress', () => {
     expect(extras.completed).toBeUndefined();
   });
 
+  it('is 100% at the end of the book, even when the positions of the book are not known', () => {
+    // a book of one chapter starts and ends in the same place
+    expect(buildEpubProgress({ ...location(), atEnd: true }, () => null).extras).toEqual({ percent: 100, completed: true });
+    expect(buildEpubProgress({ ...location(), atEnd: true }, () => 0).extras.percent).toBe(100);
+  });
+
   it('is finished at the end of the book, or from 95% on, and says nothing before', () => {
     expect(buildEpubProgress({ ...location(), atEnd: true }, () => null).extras.completed).toBe(true);
     expect(buildEpubProgress(location(), () => 0.96).extras.completed).toBe(true);
