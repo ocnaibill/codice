@@ -81,3 +81,20 @@ func Version(db *sql.DB) (int64, error) {
 	}
 	return p.GetDBVersion(context.Background())
 }
+
+// LatestVersion is the newest schema version this program knows, from its embedded
+// migrations. A backup made by a newer program has a schema this one cannot restore.
+func LatestVersion() int64 {
+	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	if err != nil {
+		return 0
+	}
+	var latest int64
+	for _, e := range entries {
+		var v int64
+		if _, err := fmt.Sscanf(e.Name(), "%d_", &v); err == nil && v > latest {
+			latest = v
+		}
+	}
+	return latest
+}
