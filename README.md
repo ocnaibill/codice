@@ -50,24 +50,22 @@ Abra `http://localhost:8080`: na primeira visita você cria o **dono** da instâ
 
 O comando `codice-admin` (dentro da imagem da API) faz um pacote com o banco, a lista de todos os arquivos com seus hashes e, com `--include-files`, os arquivos e as capas. O banco e a lista saem do **mesmo instantâneo**, então concordam mesmo que alguém envie um livro durante o backup. **Sessões, tokens de aplicativo, convites e links de redefinição nunca entram no pacote**: uma restauração não pode reviver uma credencial que foi revogada depois do backup. Com uma frase-senha, o pacote é criptografado (com [age](https://age-encryption.org)); **guarde a frase fora do servidor**, porque sem ela o pacote não abre. Sem criptografia, o pacote guarda os hashes de senha e as notas de todo mundo.
 
-**Fazer um backup** (a pasta `/mnt/backups/codice` precisa existir; o comando roda com o seu usuário e grava o arquivo com permissão `600`, com o nome `codice-backup-AAAAMMDD-HHMMSS.tar.age`):
+**Fazer um backup.** O script `scripts/backup.sh` faz o pacote (banco, lista de arquivos **e os próprios arquivos**), grava-o com permissão `600` na pasta que você indicar, com o nome `codice-backup-AAAAMMDD-HHMMSS.tar.age`, e aplica a retenção (7 diários, 4 semanais e 3 mensais; `--daily`, `--weekly` e `--monthly` mudam isso). Um backup que falha não deixa arquivo parcial e sai com erro.
 
 ```bash
 export CODICE_BACKUP_PASSPHRASE='uma frase longa, guardada fora do servidor'
-docker compose -f docker-compose.full.yml run --rm --no-deps -T --user "$(id -u):$(id -g)" \
-  -e CODICE_BACKUP_PASSPHRASE -v /mnt/backups/codice:/backups \
-  backend codice-admin backup --dir /backups --include-files
+scripts/backup.sh /mnt/backups/codice
 ```
 
-Sem `--include-files`, o pacote leva só o banco e a lista de arquivos: use isso se você já copia a biblioteca com outra ferramenta (snapshots, restic, Borg). Se preferir mandar o pacote direto para outro lugar, `--out -` escreve na saída padrão (`... exec -T backend codice-admin backup --out - > arquivo`), e as mensagens vão para a saída de erro.
+O backup roda **como o usuário do contêiner (10001)**, que é dono da biblioteca: os arquivos são gravados com permissão `600` e só ele os lê. Por isso não rode o backup com `--user "$(id -u)"` (o comando recusa, dizendo que não consegue ler um arquivo, em vez de fazer um pacote sem a biblioteca). O pacote segue para um arquivo seu pela saída padrão (`codice-admin backup --out -`), e as mensagens vão para a saída de erro. Sem `--include-files`, o pacote leva só o banco e a lista de arquivos: use isso se você já copia a biblioteca com outra ferramenta (snapshots, restic, Borg); nesse caso chame `codice-admin backup` você mesmo.
 
-**Agendar.** O padrão é um por dia: em *Administração → Armazenamento* aparece a data do último backup, e ela fica vermelha depois de dois dias. Por exemplo, no `cron` (`crontab -e`), todo dia às 3h, guardando 7 diários, 4 semanais e 3 mensais:
+**Agendar.** O padrão é um por dia: em *Administração → Armazenamento* aparece a data do último backup, e ela fica vermelha depois de dois dias. Por exemplo, no `cron` (`crontab -e`), todo dia às 3h:
 
 ```
-0 3 * * * cd /caminho/do/codice && CODICE_BACKUP_PASSPHRASE="$(cat /etc/codice-frase)" docker compose -f docker-compose.full.yml run --rm --no-deps -T --user "$(id -u):$(id -g)" -e CODICE_BACKUP_PASSPHRASE -v /mnt/backups/codice:/backups backend sh -c 'codice-admin backup --dir /backups --include-files && codice-admin prune-backups --dir /backups --yes'
+0 3 * * * CODICE_BACKUP_PASSPHRASE="$(cat /etc/codice-frase)" /caminho/do/codice/scripts/backup.sh /mnt/backups/codice
 ```
 
-`prune-backups` só considera arquivos com o nome de um pacote e, sem `--yes`, só mostra o plano; ajuste com `--daily`, `--weekly` e `--monthly`. Um backup que falha não deixa arquivo parcial.
+A retenção só considera arquivos com o nome de um pacote e, chamada à mão (`codice-admin prune-backups`), sem `--yes` só mostra o plano.
 
 **Conferir sem restaurar.** `verify-backup` lê o pacote inteiro e confere cada hash contra o manifesto; com `--deep` ele **ensaia a restauração** num banco temporário (que apaga em seguida), compara o que voltou e diz quanto tempo levou. Faça isso de vez em quando: um backup que nunca foi restaurado não é uma garantia.
 
@@ -89,6 +87,38 @@ docker compose -f docker-compose.full.yml up -d
 Antes de tocar em qualquer coisa, o comando lê e confere o pacote **inteiro** (hashes, formato, versão do esquema, nomes de arquivo perigosos) e recusa um pacote corrompido, incompleto ou de um Códice mais novo. Os arquivos entram sem sobrescrever nenhum diferente; depois ele confere o hash de cada arquivo da lista (os que faltam ficam marcados como ausentes na biblioteca) e migra o esquema para a versão atual. Todos precisam entrar de novo, e tokens de aplicativo e convites precisam ser emitidos de novo; o dono vê um aviso de que a instância foi restaurada.
 
 Numa instância que **já tem dados**, a restauração é recusada até você pedir `--overwrite` (e digitar o nome do banco, a não ser que use `--yes`). Mesmo assim o banco atual **não é apagado**: é renomeado para `<banco>_before_restore_<hora>` e fica lá, e o comando diz como apagá-lo quando você tiver certeza. Pare a API e o worker antes (`docker compose ... stop backend worker frontend`): o comando recusa se houver alguém conectado.
+
+### Ensaio de restauração e quanto tempo ela leva
+
+Um backup só vale se você já viu a restauração funcionar, e o tempo dela (o seu RTO) depende do tamanho do **seu** acervo. Faça o ensaio num projeto de compose separado, com volumes, rede e porta próprios, sem tocar na instância que está no ar. Os segredos do ensaio podem ser outros (o pacote não os leva):
+
+```bash
+cat > /tmp/ensaio.env <<EOF
+POSTGRES_PASSWORD=$(openssl rand -hex 16)
+REDIS_PASSWORD=$(openssl rand -hex 16)
+JWT_SECRET=$(openssl rand -hex 32)
+CODICE_PORT=18081
+CODICE_SUBNET=172.30.78.0/24
+CODICE_FRONTEND_IP=172.30.78.10
+EOF
+E="docker compose -p codice-ensaio --env-file /tmp/ensaio.env -f docker-compose.full.yml"
+$E up -d postgres redis
+time $E run --rm --no-deps -T -e CODICE_BACKUP_PASSPHRASE backend \
+  codice-admin restore --in - < /mnt/backups/codice/codice-backup-AAAAMMDD-HHMMSS.tar.age
+$E up -d      # e abra http://127.0.0.1:18081: entre com a conta do dono e confira a biblioteca
+```
+
+O `time` é o tempo de restauração; o próprio comando também o divide (leitura e conferência do pacote, arquivos, banco). Para descartar o ensaio: `$E down -v` (o `-p codice-ensaio` garante que só os volumes do ensaio vão embora: confira que `$E` está definido antes). Se você só quer saber se o pacote está íntegro e quanto o banco leva, sem montar outra pilha, `verify-backup --deep` (acima) faz isso; ele **não** conta o tempo de gravar os arquivos.
+
+**O que medimos** (sintético, num Mac com Docker Desktop e PostgreSQL 16; o disco do seu servidor decide a maior parte):
+
+| Acervo | Pacote | Backup | Restauração |
+|---|---|---|---|
+| 1.500 obras, 188 MiB em arquivos de 128 KiB | 189 MiB | 0,5 s | 1,6 s (arquivos 0,5 s, banco 0,6 s) |
+| 20.000 obras, 200 mil notas, arquivos de 1 KiB | 41 MiB | 1,4 s | 5,2 s (arquivos 2,1 s, banco 1,5 s) |
+| 60.000 obras, 600 mil notas, arquivos de 1 KiB | 122 MiB | 6,6 s | 23,5 s (arquivos 14,0 s, banco 2,6 s) |
+
+A forma importa mais que os números: com **arquivos grandes** o tempo é o do disco (aqui, algumas centenas de MiB/s); com **muitos arquivos pequenos** é por arquivo (cerca de 0,25 ms cada, entre gravar e conferir o hash); o **banco** leva poucos segundos mesmo com centenas de milhares de registros; a criptografia soma uma fração de segundo fixa. Ou seja, para um acervo grande a restauração dura, na prática, o tempo de copiar os arquivos para o disco novo (num HDD ou numa rede, muito mais que aqui). **Ainda não foi medido com o acervo real do mantenedor.**
 
 **O que o pacote não tem, e você precisa guardar por conta própria:** o `.env` e os segredos (`JWT_SECRET`, senhas), a pasta `ldap/`, as pastas da sua biblioteca externa (modo referenciado), e o Redis (não guarda nada que se perca). **Versões:** o `pg_dump` precisa ser da mesma versão principal do servidor (a imagem já traz o cliente 15, igual ao `postgres:15` do compose); se você trocar a versão do PostgreSQL, troque o pacote `postgresql15-client` no `backend/Dockerfile`. O comando recusa fazer um backup com um `pg_dump` mais novo que o servidor, porque ele não restauraria. Fora de contêiner, use `go run ./cmd/codice-admin backup ...` (ou o binário) com `DATABASE_URL`, `CODICE_STORAGE_PATH` e, se preciso, `PG_DUMP` e `PG_RESTORE`.
 
@@ -118,7 +148,7 @@ services:
 
 Os contêineres rodam como o usuário 10001, então essa pasta precisa ser legível por ele (e gravável, se você quiser mover arquivos para dentro do acervo ou remover os originais).
 
-**Limites de hoje.** O OCR (só a detecção existe) não roda. O backup não agenda a si mesmo (só o comando existe), e a data do último backup aparece na interface só para os backups feitos nesta instância depois da última restauração.
+**Limites de hoje.** O OCR (só a detecção existe) não roda. O backup não agenda a si mesmo (o `cron` acima é seu), e a data do último backup aparece na interface só para os backups feitos nesta instância depois da última restauração.
 
 ## 🔐 Login com Authentik (LDAP)
 
@@ -209,7 +239,7 @@ Três detalhes que importam (foram confirmados num Authentik real):
 - **`LDAP_ID_ATTR=uid`.** É o identificador estável a que a conta é ligada. O padrão do Códice (`entryUUID`) não existe no Authentik. Como a ligação é por esse valor, renomear alguém no Authentik não cria conta nova nem perde a antiga.
 - **`LDAP_BIND_DN` mora sob `ou=users`** e usa o `cn` da conta de serviço.
 
-**Na pilha em Docker Compose** (seção acima) o outpost pode ser um serviço do próprio compose, do perfil `ldap`: sem porta publicada e acessível à API como `ldap-outpost:6636`. Crie a pasta `ldap/` (está no `.gitignore` e é montada só para leitura na API) com `outpost.env` (o token do outpost), `bind_password` (a senha da conta de serviço, numa linha) e `ca.pem` (o certificado do passo 4, que aqui deve ter o nome `ldap-outpost`), defina `AUTHENTIK_TAG`, `LDAP_URL=ldaps://ldap-outpost:6636`, `LDAP_BIND_PASSWORD_FILE=/app/ldap/bind_password` e `LDAP_CA_FILE=/app/ldap/ca.pem` no `.env` e suba com `docker compose -f docker-compose.full.yml --profile ldap up -d`. **A pilha em si foi testada de ponta a ponta; esse perfil do outpost não foi exercitado contra um Authentik real.**
+**Na pilha em Docker Compose** (seção acima) o outpost pode ser um serviço do próprio compose, do perfil `ldap`: sem porta publicada e acessível à API como `ldap-outpost:6636`. Crie a pasta `ldap/` (está no `.gitignore` e é montada só para leitura na API) com `outpost.env` (o token do outpost), `bind_password` (a senha da conta de serviço, numa linha) e `ca.pem` (o certificado do passo 4, que aqui deve ter o nome `ldap-outpost`), defina `AUTHENTIK_TAG`, `LDAP_URL=ldaps://ldap-outpost:6636`, `LDAP_BIND_PASSWORD_FILE=/app/ldap/bind_password` e `LDAP_CA_FILE=/app/ldap/ca.pem` no `.env` e suba com `docker compose -f docker-compose.full.yml --profile ldap up -d`. **O que foi testado, e o que falta.** Com um diretório LDAPS de teste no lugar do outpost (`backend/cmd/ldaptestd`, que responde como `ldap-outpost` na rede do compose, com certificado próprio) foi exercitado tudo que é do compose: a API lê a senha do arquivo, confia no `ca.pem` montado, alcança `ldap-outpost:6636`, "Testar conexão" passa, uma conta é criada no primeiro login (como leitor), senha errada dá 401 e, com o diretório fora do ar, quem entra por ele recebe o aviso próprio (503) enquanto o dono segue entrando. **Não foi exercitado com o contêiner do Authentik dentro do compose.** Para conferir na sua instalação, depois de criar `ldap/outpost.env`, `ldap/bind_password` e `ldap/ca.pem` e de preencher o `.env` como acima: `docker compose -f docker-compose.full.yml --profile ldap up -d`; o log do `ldap-outpost` deve mostrar `Starting LDAP SSL server` e nenhum `websocket: bad handshake`; o log da API, `LDAP sign-in enabled: ldaps://ldap-outpost:6636`; e *Administração → Login externo → Testar conexão* deve passar. Se falhar, a tabela abaixo diz onde olhar.
 
 ### 3. Conferir
 
