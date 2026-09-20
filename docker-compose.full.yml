@@ -123,6 +123,10 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CODICE_STORAGE_PATH: /app/storage
+      # How old the worker's heartbeat may be before it counts as unhealthy. Empty means the
+      # default, derived from the poll and lease times (90 s with the defaults).
+      WORKER_HEALTH_MAX_AGE: ${WORKER_HEALTH_MAX_AGE:-}
+    # The healthcheck itself is in the image (worker/Dockerfile).
     volumes:
       - codice_storage:/app/storage
     depends_on:

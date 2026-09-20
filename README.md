@@ -96,7 +96,7 @@ Numa instância que **já tem dados**, a restauração é recusada até você pe
 
 **Quem é o cliente.** O login tem limite de 10 tentativas por minuto por cliente. Atrás do nginx, a API só acredita no cabeçalho `X-Forwarded-For` que vem do contêiner do site (endereço fixo `CODICE_FRONTEND_IP`), então um cabeçalho forjado não escapa do limite. Se o seu proxy ou túnel roda **no próprio host**, as conexões dele chegam ao contêiner vindas do gateway da rede (o endereço `.1` de `CODICE_SUBNET`, por padrão `172.30.77.1`): sem avisar a API, todos os usuários dividiriam o mesmo limite. Nesse caso defina `CODICE_TRUSTED_PROXIES=172.30.77.10,172.30.77.1`, sabendo que isso significa "acredite no que o proxy do host disser". Se a sub-rede padrão colidir com uma rede sua, mude `CODICE_SUBNET` e `CODICE_FRONTEND_IP`.
 
-**Saúde.** `GET /healthz` (público) responde `ok`, `degraded` (o Redis caiu, mas nada se perde: os jobs vivem no PostgreSQL) ou `down` (sem banco, com HTTP 503), por componente e sem detalhes internos. É o que os healthchecks do Compose usam.
+**Saúde.** `GET /healthz` (público) responde `ok`, `degraded` (o Redis caiu, mas nada se perde: os jobs vivem no PostgreSQL) ou `down` (sem banco, com HTTP 503), por componente e sem detalhes internos. É o que o healthcheck da API usa. **O worker**, que não tem porta, escreve um arquivo de batimento a cada vez que conversa com sucesso com a fila de jobs (parado, a cada consulta; rodando um job, a cada renovação do lease), e o healthcheck da imagem confere a idade dele: o contêiner fica `unhealthy` quando o processo está vivo mas **não alcança o banco** (na configuração padrão, depois de cerca de 3 minutos), e volta a `healthy` sozinho quando o banco volta. Isso não detecta um job que trava enquanto o worker continua renovando o lease. O limite de idade (`WORKER_HEALTH_MAX_AGE`) é derivado dos tempos do worker e raramente precisa mudar.
 
 **Recuperar o acesso do dono** (só quem controla o servidor consegue):
 
@@ -118,7 +118,7 @@ services:
 
 Os contêineres rodam como o usuário 10001, então essa pasta precisa ser legível por ele (e gravável, se você quiser mover arquivos para dentro do acervo ou remover os originais).
 
-**Limites de hoje.** O worker não tem um healthcheck próprio. O OCR (só a detecção existe) não roda. O backup não agenda a si mesmo (só o comando existe), e a data do último backup aparece na interface só para os backups feitos nesta instância depois da última restauração.
+**Limites de hoje.** O OCR (só a detecção existe) não roda. O backup não agenda a si mesmo (só o comando existe), e a data do último backup aparece na interface só para os backups feitos nesta instância depois da última restauração.
 
 ## 🔐 Login com Authentik (LDAP)
 
