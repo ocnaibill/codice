@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../lib/api', () => ({
-  api: { get: vi.fn(), put: vi.fn() },
+  api: { get: vi.fn(), put: vi.fn(), post: vi.fn() },
 }));
 
 import { api } from '../../../lib/api';
@@ -39,6 +39,7 @@ const conflict = (state) => Object.assign(new Error('conflict'), { response: { s
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.post.mockResolvedValue({});
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -94,9 +95,17 @@ describe('useFileProgress', () => {
     expect(api.put).toHaveBeenCalledTimes(1);
   });
 
+  it('records that the file was opened, once, and nothing without a file', async () => {
+    api.get.mockResolvedValue({ data: { revision: 0 } });
+    await mount(7);
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith('/progress/files/7/opened');
+  });
+
   it('asks for nothing and saves nothing without a file', async () => {
     await mount(null);
     expect(api.get).not.toHaveBeenCalled();
+    expect(api.post).not.toHaveBeenCalled();
     let result;
     await act(async () => { result = await hook.save({ type: 'pdf', page: 1 }); });
     expect(result).toBeNull();

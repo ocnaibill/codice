@@ -130,6 +130,45 @@ describe('WorkSheet', () => {
     expect(api.put).toHaveBeenLastCalledWith('/progress/files/22/completion', { completed: false });
   });
 
+  it('says where the person is, how many times they finished it, and offers to finish the whole work', async () => {
+    work.inProgress = true;
+    work.continue = { fileId: 10, format: 'pdf', language: 'pt-BR', percentComplete: 42, completed: false };
+    work.completions = { total: 3, byFormat: { epub: 2, pdf: 1 } };
+    api.put.mockResolvedValue({ data: {} });
+    try {
+      await open();
+      const summary = container.querySelector('[aria-label="Sua leitura"]').textContent;
+      expect(summary).toContain('Você está em 42% no PDF (Português (Brasil))');
+      expect(summary).toContain('Terminada 3 vezes: 2 em EPUB, 1 em PDF');
+      await act(async () => { [...container.querySelectorAll('button')].find((b) => b.textContent === 'Marcar a obra toda como finalizada').click(); });
+      expect(api.put).toHaveBeenCalledWith('/progress/works/7/finished', { finished: true });
+    } finally {
+      delete work.inProgress; delete work.continue; delete work.completions;
+    }
+  });
+
+  it('shows a work marked as finished, and can undo it', async () => {
+    work.finished = true;
+    api.put.mockResolvedValue({ data: {} });
+    try {
+      await open();
+      expect(container.querySelector('[aria-label="Sua leitura"]').textContent).toContain('marcou a obra toda como finalizada');
+      await act(async () => { [...container.querySelectorAll('button')].find((b) => b.textContent === 'Desfazer').click(); });
+      expect(api.put).toHaveBeenCalledWith('/progress/works/7/finished', { finished: false });
+    } finally {
+      delete work.finished;
+    }
+  });
+
+  it('rereads a finished file: reopens it from scratch, then opens it from the start', async () => {
+    api.put.mockResolvedValue({ data: {} });
+    await open();
+    await act(async () => { [...rowOf('mp3').querySelectorAll('button')].find((b) => b.textContent === 'Reler').click(); });
+    await flush();
+    expect(api.put).toHaveBeenCalledWith('/progress/files/22/completion', { completed: false, restart: true });
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 22, fromStart: true });
+  });
+
   it('closes without opening anything', async () => {
     await open();
     await act(async () => { container.querySelector('[aria-label="Fechar"]').click(); });

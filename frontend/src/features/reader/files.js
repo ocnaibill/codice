@@ -71,3 +71,22 @@ export function placeLabel(locator) {
 export function parseTags(text) {
   return (text || '').split(',').map((t) => t.trim()).filter(Boolean);
 }
+
+// "Terminada 2 vezes: 1 em EPUB, 1 em PDF" (DEC-080), or null when it never was.
+export function completionText(completions) {
+  const total = completions?.total ?? 0;
+  if (!total) return null;
+  const parts = Object.entries(completions.byFormat ?? {})
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([format, n]) => `${n} em ${format.toUpperCase()}`);
+  return `Terminada ${total} ${total === 1 ? 'vez' : 'vezes'}: ${parts.join(', ')}`;
+}
+
+// "Você está em 42% no PDF (Português)": where the person is, in the version that counts.
+export function whereYouAre(cont) {
+  if (!cont) return null;
+  const percent = Math.round(cont.percentComplete || 0);
+  const language = cont.language ? ` (${languageName(cont.language)})` : '';
+  const format = (cont.format || '').toUpperCase();
+  return percent > 0 ? `Você está em ${percent}% no ${format}${language}` : `Você está lendo o ${format}${language}`;
+}

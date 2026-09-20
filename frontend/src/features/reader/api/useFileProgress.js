@@ -28,6 +28,13 @@ export function useFileProgress(fileId) {
     refetchOnWindowFocus: false,
   });
 
+  // Opening the file is recorded, so that "the version opened last" is known even when the person
+  // closes it without moving (DEC-079). Best effort: nothing depends on it succeeding.
+  useEffect(() => {
+    if (!fileId) return;
+    api.post(`/progress/files/${fileId}/opened`).catch(() => {});
+  }, [fileId]);
+
   const revision = useRef(0);
   useEffect(() => {
     if (query.data) revision.current = query.data.revision;

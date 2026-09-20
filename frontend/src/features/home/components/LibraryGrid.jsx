@@ -4,6 +4,7 @@ import iconActionDownload from '../../../assets/icons/card-action-download.svg';
 import { EmptyState, Skeleton } from '../../../components/ui/EmptyState';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { authenticatedUrl } from '../../../lib/api';
+import { readLabel, readTarget } from '../../reader/readTarget';
 
 const FORMAT_BADGE_STYLE = {
   MP3: 'bg-brand text-white',
@@ -54,7 +55,15 @@ function BookCard({ item, onOpen, onSheet }) {
         </div>
       </div>
       <div className="mt-3 flex items-center justify-between border-t border-surface-alt pt-2 px-1">
-        <button onClick={() => onOpen(item.id)} className="p-1" title="Ler o arquivo principal">
+        <button
+          onClick={() => {
+            const target = readTarget(item);
+            if (target.kind === 'sheet') onSheet(item.id);
+            else onOpen(item.id, target.fileId);
+          }}
+          className="p-1"
+          title={readLabel(item)}
+        >
           <img src={iconActionRead} alt="Ler" className="h-3 w-[15px]" />
         </button>
         {item.fileUrl ? (

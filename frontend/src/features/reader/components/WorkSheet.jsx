@@ -2,10 +2,10 @@ import React from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { authenticatedUrl } from '../../../lib/api';
 import { useWork } from '../api/useWork';
-import { useSetCompletion } from '../api/useCompletion';
-import { formatSize, languageName } from '../files';
+import { useSetCompletion, useSetWorkFinished } from '../api/useCompletion';
+import { completionText, formatSize, languageName, whereYouAre } from '../files';
 
-function FileRow({ file, onRead, onComplete, busy }) {
+function FileRow({ file, onRead, onComplete, onReread, busy }) {
   const percent = Math.round(file.percentComplete || 0);
   const started = file.started || percent > 0 || file.completed;
   const usable = file.availability === 'available' && !!file.url;
@@ -38,14 +38,25 @@ function FileRow({ file, onRead, onComplete, busy }) {
             >
               {started && !file.completed ? 'Continuar' : file.completed ? 'Abrir' : 'Ler'}
             </button>
-            {started && (
+            {file.completed ? (
               <button
-                onClick={() => onRead(file, true)}
-                className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
-                title="Abre do início; a sua posição só muda quando você avançar"
+                onClick={() => onReread(file)}
+                disabled={busy}
+                className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+                title="Começa outra leitura do início; a conclusão anterior continua na contagem"
               >
-                Do começo
+                Reler
               </button>
+            ) : (
+              started && (
+                <button
+                  onClick={() => onRead(file, true)}
+                  className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+                  title="Abre do início; a sua posição só muda quando você avançar"
+                >
+                  Do começo
+                </button>
+              )
             )}
             <button
               onClick={() => onComplete(file, !file.completed)}
@@ -74,6 +85,37 @@ function FileRow({ file, onRead, onComplete, busy }) {
 }
 
 /**
+ * Where the person is in this work, how many times they finished it, and the mark for the whole
+ * work (DEC-079, DEC-080). "You are at 42% in the PDF" is only information: to open another version
+ * they choose it below, at its own position or from the start.
+ */
+function ReadingSummary({ work, busy, onFinish }) {
+  const counted = completionText(work.completions);
+  const where = work.inProgress ? whereYouAre(work.continue) : null;
+  if (!counted && !where && !work.finished) return null;
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm" aria-label="Sua leitura">
+      {where && <p className="text-zinc-200">{where}</p>}
+      {counted && <p className="text-zinc-400">{counted}</p>}
+      {work.finished && <p className="text-zinc-400">Você marcou a obra toda como finalizada.</p>}
+      <div className="flex gap-3 pt-1 text-xs">
+        {work.finished ? (
+          <button onClick={() => onFinish(false)} disabled={busy} className="text-blue-400 hover:text-blue-300 disabled:opacity-40">
+            Desfazer
+          </button>
+        ) : (
+          work.inProgress && (
+            <button onClick={() => onFinish(true)} disabled={busy} className="text-zinc-500 hover:text-zinc-300 disabled:opacity-40">
+              Marcar a obra toda como finalizada
+            </button>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The sheet of a work (RF-041, DEC-028): its editions, their languages and the files of each,
  * with the reader's own position in every file, before the reader opens. Each file keeps its
  * own position, so choosing another one continues from *its* place or from the beginning.
@@ -84,6 +126,7 @@ export function WorkSheet() {
   const openBook = useGlobalStore((state) => state.openBook);
   const { data: work, isLoading, isError } = useWork(workId, { fresh: true });
   const setCompletion = useSetCompletion();
+  const setWorkFinished = useSetWorkFinished();
 
   if (!workId) return null;
 
@@ -126,6 +169,12 @@ export function WorkSheet() {
               {meta?.description && <p className="line-clamp-6 text-sm leading-relaxed text-zinc-400">{meta.description}</p>}
             </div>
 
+            <ReadingSummary
+              work={work}
+              busy={setWorkFinished.isPending}
+              onFinish={(finished) => setWorkFinished.mutate({ workId: work.id, finished })}
+            />
+
             {editions.length === 0 && <p className="text-sm text-zinc-500">Esta obra ainda não tem arquivos.</p>}
             {editions.map((edition) => {
               const details = [
@@ -150,6 +199,12 @@ export function WorkSheet() {
                         busy={setCompletion.isPending}
                         onRead={(f, fromStart) => openBook(work.id, f.id, { fromStart })}
                         onComplete={(f, completed) => setCompletion.mutate({ fileId: f.id, completed })}
+                        onReread={(f) =>
+                          setCompletion.mutate(
+                            { fileId: f.id, completed: false, restart: true },
+                            { onSuccess: () => openBook(work.id, f.id, { fromStart: true }) }
+                          )
+                        }
                       />
                     ))}
                   </ul>

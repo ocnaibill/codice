@@ -42,6 +42,7 @@ function InProgressCard({ item, onOpen }) {
           {(last?.format || item.format) && (
             <span className="absolute left-1 top-1 rounded-sm bg-[rgba(26,28,31,0.85)] px-1.5 py-0.5 font-body text-[10px] font-bold text-white">
               {(last?.format || item.format).toUpperCase()}
+              {last?.language ? ` · ${last.language.toUpperCase()}` : ''}
             </span>
           )}
         </div>

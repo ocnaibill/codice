@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findFile, languageName, formatSize, positionFromLocator, placeLabel, parseTags } from './files';
+import { findFile, languageName, formatSize, positionFromLocator, placeLabel, parseTags, completionText, whereYouAre } from './files';
 
 const work = {
   id: 1, fileId: 10, fileUrl: '/file/10', format: 'epub',
@@ -75,5 +75,20 @@ describe('locators', () => {
     expect(parseTags(' a, b ,, c ')).toEqual(['a', 'b', 'c']);
     expect(parseTags('')).toEqual([]);
     expect(parseTags(undefined)).toEqual([]);
+  });
+});
+
+describe('reading summary texts', () => {
+  it('counts the times a work was finished, by format, most first', () => {
+    expect(completionText({ total: 3, byFormat: { pdf: 1, epub: 2 } })).toBe('Terminada 3 vezes: 2 em EPUB, 1 em PDF');
+    expect(completionText({ total: 1, byFormat: { epub: 1 } })).toBe('Terminada 1 vez: 1 em EPUB');
+    expect(completionText({ total: 0, byFormat: {} })).toBeNull();
+    expect(completionText(undefined)).toBeNull();
+  });
+
+  it('says where the person is', () => {
+    expect(whereYouAre({ format: 'pdf', language: 'pt', percentComplete: 41.6 })).toBe('Você está em 42% no PDF (Português)');
+    expect(whereYouAre({ format: 'epub', percentComplete: 0 })).toBe('Você está lendo o EPUB');
+    expect(whereYouAre(null)).toBeNull();
   });
 });

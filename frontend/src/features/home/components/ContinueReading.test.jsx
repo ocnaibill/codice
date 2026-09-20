@@ -13,7 +13,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const work = {
   id: 7, title: 'Duna', author: 'Frank Herbert', coverUrl: '/c.jpg', tags: [], isFavorite: false,
   format: 'pdf', readingProgress: '3', percentComplete: 5, fileId: 10,
-  continue: { fileId: 11, format: 'epub', position: 'epubcfi(/6/2)', percentComplete: 30, completed: false },
+  continue: { fileId: 11, format: 'epub', language: 'en', position: 'epubcfi(/6/2)', percentComplete: 30, completed: false },
 };
 const plain = { id: 8, title: 'Outro', author: 'X', coverUrl: '/c.jpg', tags: [], format: 'cbz', readingProgress: '4', percentComplete: 50, fileId: 20, continue: null };
 
@@ -39,7 +39,7 @@ describe('ContinueReading', () => {
   it('shows the file read last, not the primary one, and opens exactly that file', async () => {
     await render([work]);
     const c = card('Duna');
-    expect(c.textContent).toContain('EPUB');
+    expect(c.textContent).toContain('EPUB · EN'); // the edition, so two EPUBs are told apart
     expect(c.textContent).not.toContain('PDF');
     expect(c.textContent).toContain('30%');
     expect(c.textContent).not.toContain('5%');

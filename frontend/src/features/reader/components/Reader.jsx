@@ -5,7 +5,11 @@ import { useReadingHeartbeat } from '../api/useReadingHeartbeat';
 import { useFavoriteToggle } from '../api/useFavoriteToggle';
 import { useFileProgress } from '../api/useFileProgress';
 import { findFile, languageName, positionFromLocator } from '../files';
+import { otherVersionsInProgress } from '../finishPrompt';
+import { useSetWorkFinished } from '../api/useCompletion';
+import { api } from '../../../lib/api';
 import { NotesPanel } from './NotesPanel';
+import { FinishWorkPrompt } from './FinishWorkPrompt';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { authenticatedUrl } from '../../../lib/api';
 
@@ -42,12 +46,40 @@ export function Reader() {
     currentLocator.current = fromStart ? null : (seek?.locator ?? progress.data?.locator ?? null);
   }, [file?.id, fromStart, seek, progress.data]);
   const saveProgress = progress.save;
+
+  // When this version is finished and another is still in progress, ask once whether the whole
+  // work is finished (DEC-080). It is asked when the file goes from not finished to finished, not
+  // every time a finished file saves its last page.
+  const [finishPrompt, setFinishPrompt] = useState(null);
+  const setWorkFinished = useSetWorkFinished();
+  const wasCompleted = useRef(false);
+  useEffect(() => {
+    wasCompleted.current = !!progress.data?.completed;
+  }, [file?.id, progress.data?.completed]);
+  const workId = activeBookId;
+  const fileId = file?.id;
+  const askIfWorkIsFinished = useCallback(async () => {
+    try {
+      const { data: detail } = await api.get(`/works/${workId}`);
+      const others = detail.finished ? [] : otherVersionsInProgress(detail, fileId);
+      if (others.length > 0) setFinishPrompt({ others });
+    } catch {
+      // Not asking is the safe way to fail.
+    }
+  }, [workId, fileId]);
+
   const onProgress = useCallback(
     (locator, extras) => {
       currentLocator.current = locator;
-      return saveProgress(locator, extras);
+      const saved = saveProgress(locator, extras);
+      saved?.then?.((state) => {
+        if (!state) return;
+        if (state.completed && !wasCompleted.current) askIfWorkIsFinished();
+        wasCompleted.current = !!state.completed;
+      });
+      return saved;
     },
-    [saveProgress]
+    [saveProgress, askIfWorkIsFinished]
   );
 
   if (isLoading || (file && progress.isLoading)) {
@@ -180,6 +212,16 @@ export function Reader() {
             openBook(book.id, note.fileId, { locator: note.locator });
           }}
           onClose={() => setShowNotes(false)}
+        />
+      )}
+
+      {finishPrompt && (
+        <FinishWorkPrompt
+          finished={`${(file.format || '').toUpperCase()}${file.edition?.language ? ` (${languageName(file.edition.language)})` : ''}: concluído.`}
+          others={finishPrompt.others}
+          busy={setWorkFinished.isPending}
+          onKeep={() => setFinishPrompt(null)}
+          onFinish={() => setWorkFinished.mutate({ workId, finished: true }, { onSuccess: () => setFinishPrompt(null) })}
         />
       )}
 
