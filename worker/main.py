@@ -14,7 +14,8 @@ from providers import ProviderRegistry
 from db import CodiceDatabase
 from analyzer import Analyzer, MediaStatus
 from pipeline import analyze_file, ensure_file
-from runner import JobRunner, JobsClient, new_owner_name
+from runner import JobRunner, JobsClient, new_owner_name, poll_once
+from health import Heartbeat
 
 # 1. Loads variables from .env, trying multiple locations
 env_paths = ["../.env", ".env"]
@@ -99,7 +100,7 @@ def wait_for_work(client, last_id):
     return last_id
 
 
-def build_runner(db, client):
+def build_runner(db, client, heartbeat=None):
     extractors = register_extractors()
     provider_registry = ProviderRegistry()
     analyzer = Analyzer(db)
@@ -144,23 +145,25 @@ def build_runner(db, client):
     print(f"🆔 Worker {owner}")
     jobs = JobsClient(db, owner, lease_seconds=LEASE_SECONDS, max_running=MAX_RUNNING)
     return JobRunner(jobs, process, on_start=on_start, on_success=on_success, on_failure=on_failure,
-                     on_retry=on_retry, heartbeat_every=max(1.0, LEASE_SECONDS / 4))
+                     on_retry=on_retry, heartbeat_every=max(1.0, LEASE_SECONDS / 4),
+                     on_heartbeat=(lambda job: heartbeat.beat("working", job['id'])) if heartbeat else None)
 
 
 def listen_for_tasks():
     db = CodiceDatabase()
     client = connect_redis()
-    runner = build_runner(db, client)
+    heartbeat = Heartbeat()
+    runner = build_runner(db, client, heartbeat)
+    heartbeat.beat("starting")
     last_id = '$'
 
     print("⏳ Python Worker waiting for jobs...")
     while True:
-        try:
-            if runner.run_one():
-                continue  # more may be waiting: look again before sleeping
-        except Exception as err:
+        outcome = poll_once(runner, heartbeat)
+        if outcome == "worked":
+            continue  # more may be waiting: look again before sleeping
+        if outcome == "error":
             # The database itself is unreachable: nothing to do but wait for it.
-            print(f"⚠️ Could not reach the job queue: {err}")
             time.sleep(POLL_SECONDS)
             continue
         last_id = wait_for_work(client, last_id)

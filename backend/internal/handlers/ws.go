@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -20,6 +21,12 @@ var upgrader = websocket.Upgrader{
 		origin := r.Header.Get("Origin")
 		if origin == "" {
 			// Allow requests without Origin header (CLI, curl, etc.)
+			return true
+		}
+		// A page served from the same host that receives this request is, by definition,
+		// the same origin: allowed wherever the app is opened (a name, an address of the
+		// local network, a tunnel). The socket still needs a valid ticket.
+		if u, err := url.Parse(origin); err == nil && u.Host != "" && strings.EqualFold(u.Host, r.Host) {
 			return true
 		}
 		// In production, validate against CORS_ALLOWED_ORIGINS

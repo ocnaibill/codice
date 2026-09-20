@@ -1,45 +1,72 @@
+# Códice, complete stack in containers.
+#
+#   cp .env.example .env      # then fill in the three required secrets below
+#   docker compose -f docker-compose.full.yml up -d --build
+#
+# Then open http://localhost:8080 (the port is CODICE_PORT). The first visit creates the
+# owner. Nothing is published to the network unless you say so: see CODICE_BIND.
+#
+# Required (compose refuses to start without them):
+#   POSTGRES_PASSWORD, REDIS_PASSWORD, JWT_SECRET
+# Use URL-safe values (for example `openssl rand -hex 24`): the first two are embedded in
+# connection URLs.
+
 services:
-  # 1. PostgreSQL Database
+  # 1. PostgreSQL. The source of truth for everything, including the job queue.
   postgres:
     image: postgres:15-alpine
-    container_name: codice_db
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-codice_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codice_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB:-codice_db}
-    # No published ports: only the backend and worker, on this Compose network,
-    # reach the database.
+    # No published ports: only the backend and worker, on this network, reach it.
     volumes:
       - codice_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 4s
+      retries: 12
     networks:
       - codice_network
     restart: unless-stopped
 
-  # 2. Redis Queue & PubSub
+  # 2. Redis. Only wakes the worker and relays live updates; losing it loses nothing.
   redis:
     image: redis:7-alpine
-    container_name: codice_redis
-    # Authentication is mandatory. Use a URL-safe value (for example
-    # `openssl rand -hex 24`), because it is embedded in REDIS_URL below.
-    # No published ports: only the backend and worker reach the queue.
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
     networks:
       - codice_network
     restart: unless-stopped
 
-  # 3. Go API Backend
+  # 3. Go API. Applies the database migrations when it starts.
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    container_name: codice_backend
     environment:
       APP_ENV: ${APP_ENV:-production}
-      DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD:-codice_secret}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
-      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CODICE_STORAGE_PATH: /app/storage
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      # Origins allowed to call the API from another site. The app itself is served from
+      # the same origin as the API, so this normally matters only for extra front ends.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8080}
+      # The proxies whose X-Forwarded-For is believed: ONLY the frontend container (nginx), at
+      # its fixed address. Not the whole network: its gateway (the host, or Docker's own port
+      # forwarding) is in it, and trusting the gateway would let anyone forge who they are and
+      # dodge the login rate limit. Without any value, every user would look like nginx and
+      # share one limit. If a reverse proxy or tunnel runs on the HOST in front of this stack,
+      # its connections arrive from the gateway (the .1 address of CODICE_SUBNET): add that
+      # address here, knowing it means "believe what the host's proxy says".
+      CODICE_TRUSTED_PROXIES: ${CODICE_TRUSTED_PROXIES:-${CODICE_FRONTEND_IP:-172.30.77.10}}
       PORT: "8080"
       # LDAP sign-in (optional). Leave LDAP_URL empty to keep it off; see the README.
       # The service account's password is read from a file, never from the environment.
@@ -53,15 +80,22 @@ services:
       LDAP_EMAIL_ATTR: ${LDAP_EMAIL_ATTR:-}
       LDAP_START_TLS: ${LDAP_START_TLS:-}
       LDAP_CA_FILE: ${LDAP_CA_FILE:-}
-    ports:
-      - "8080:8080"
+    # No published port: the browser reaches the API through the frontend container.
     volumes:
-      - ./uploads:/app/storage
+      # The library. A named volume keeps the right owner (the container runs as uid 10001).
+      # To keep files on a host folder instead, use a bind mount owned by uid 10001.
+      - codice_storage:/app/storage
       # Secrets and the CA certificate for LDAP live in ./ldap (not in git).
       - ./ldap:/app/ldap:ro
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     networks:
       - codice_network
     restart: unless-stopped
@@ -75,49 +109,70 @@ services:
     # instead of being required: pulling the placeholder fails and names the variable.
     image: ghcr.io/goauthentik/ldap:${AUTHENTIK_TAG:-set-AUTHENTIK_TAG}
     profiles: ["ldap"]
-    container_name: codice_ldap_outpost
     env_file: ./ldap/outpost.env
     networks:
       - codice_network
     restart: unless-stopped
 
-  # 4. Asynchronous Python Worker
+  # 4. Worker: reads new files, extracts metadata and covers.
   worker:
     build:
       context: ./worker
-      dockerfile: Dockerfile
-    container_name: codice_worker
     environment:
       APP_ENV: ${APP_ENV:-production}
-      DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD:-codice_secret}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
-      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CODICE_STORAGE_PATH: /app/storage
+      # How old the worker's heartbeat may be before it counts as unhealthy. Empty means the
+      # default, derived from the poll and lease times (90 s with the defaults).
+      WORKER_HEALTH_MAX_AGE: ${WORKER_HEALTH_MAX_AGE:-}
+    # The healthcheck itself is in the image (worker/Dockerfile).
     volumes:
-      - ./uploads:/app/storage
+      - codice_storage:/app/storage
     depends_on:
-      - postgres
-      - redis
+      # The backend creates and migrates the schema, so it must be up first.
+      backend:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     networks:
       - codice_network
     restart: unless-stopped
 
-  # 5. React Frontend App
+  # 5. Web app: static files plus a reverse proxy to the API. The only entry point.
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
-    container_name: codice_frontend
+    # Loopback by default. To reach it from other devices on your network, set
+    # CODICE_BIND=0.0.0.0. To publish it on the internet, put a reverse proxy or a
+    # tunnel in front and keep this on loopback.
     ports:
-      - "5173:80"
+      - "${CODICE_BIND:-127.0.0.1}:${CODICE_PORT:-8080}:8080"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     networks:
-      - codice_network
+      codice_network:
+        # Fixed, so the API can trust exactly this container and nothing else.
+        ipv4_address: ${CODICE_FRONTEND_IP:-172.30.77.10}
     restart: unless-stopped
 
 networks:
   codice_network:
     driver: bridge
+    ipam:
+      config:
+        # Fixed so the frontend can have a fixed address. If it clashes with a network you
+        # already use, set CODICE_SUBNET to another free /24 and CODICE_FRONTEND_IP to an
+        # address inside it (not the .1, which is the gateway).
+        - subnet: ${CODICE_SUBNET:-172.30.77.0/24}
 
 volumes:
   codice_pgdata:
+  codice_storage:

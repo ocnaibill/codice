@@ -27,7 +27,6 @@ type User struct {
 func (u User) dn() string { return "uid=" + u.Name + ",ou=people," + BaseDN }
 
 type Server struct {
-	t        testing.TB
 	srv      *ldap.Server
 	ln       net.Listener
 	mu       sync.Mutex
@@ -38,16 +37,29 @@ type Server struct {
 	Addr     string
 }
 
-// Start runs a directory on a free local port until the test ends.
-func Start(t testing.TB, users ...User) *Server {
-	t.Helper()
-	s := &Server{t: t, users: map[string]User{}}
+// New builds a directory that is not listening yet: Serve runs it. Start is the form for tests.
+func New(users ...User) *Server {
+	s := &Server{users: map[string]User{}}
 	for _, u := range users {
 		s.users[u.Name] = u
 	}
 	s.srv = ldap.NewServer()
 	s.srv.BindFunc("", s)
 	s.srv.SearchFunc("", s)
+	return s
+}
+
+// Serve answers on ln until it is closed. Give it a TLS listener for LDAPS.
+func (s *Server) Serve(ln net.Listener) error {
+	s.ln = ln
+	s.Addr = ln.Addr().String()
+	return s.srv.Serve(ln)
+}
+
+// Start runs a directory on a free local port until the test ends.
+func Start(t testing.TB, users ...User) *Server {
+	t.Helper()
+	s := New(users...)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

@@ -84,13 +84,15 @@ class JobRunner:
     """
 
     def __init__(self, jobs: JobsClient, process, on_start=None, on_success=None, on_failure=None,
-                 on_retry=None, heartbeat_every: float = 30.0):
+                 on_retry=None, heartbeat_every: float = 30.0, on_heartbeat=None):
         self.jobs = jobs
         self.process = process
         self.on_start = on_start or (lambda job: None)
         self.on_success = on_success or (lambda job, result: None)
         self.on_failure = on_failure or (lambda job, kind, message: None)
         self.on_retry = on_retry or (lambda job, message: None)
+        # Called after every successful lease heartbeat: proof the queue is reachable while a job runs.
+        self.on_heartbeat = on_heartbeat or (lambda job: None)
         self.heartbeat_every = heartbeat_every
 
     def run_one(self) -> bool:
@@ -110,6 +112,7 @@ class JobRunner:
                 except Exception as err:  # a database blip: the next beat tries again
                     print(f"   ⚠️ heartbeat failed: {err}")
                     continue
+                self.on_heartbeat(job)
                 if status == 'cancel':
                     stop_cancel.set()
                 elif status == 'lost':
@@ -153,3 +156,16 @@ class JobRunner:
         finally:
             done.set()
         return True
+
+
+def poll_once(runner, heartbeat):
+    """One turn of the worker's loop. Returns "worked" (a job ran), "idle" (nothing to do) or
+    "error" (the queue could not be reached). The heartbeat is written only when the queue
+    answered, so a worker that cannot reach it goes stale and the health check notices."""
+    try:
+        worked = runner.run_one()
+    except Exception as err:
+        print(f"⚠️ Could not reach the job queue: {err}")
+        return "error"
+    heartbeat.beat("idle")
+    return "worked" if worked else "idle"

@@ -321,3 +321,24 @@ func TestGetJWTSecret_MissingSecretIsFatalInAnyEnv(t *testing.T) {
 		})
 	}
 }
+
+func TestGetJWTSecret_RefusesTheAbsentAndThePublicPlaceholder(t *testing.T) {
+	for name, value := range map[string]string{
+		"unset":       "",
+		"placeholder": "CHANGE_THIS_TO_A_RANDOM_64_CHAR_STRING",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("JWT_SECRET", value)
+			defer func() {
+				if recover() == nil {
+					t.Errorf("JWT_SECRET=%q was accepted", value)
+				}
+			}()
+			GetJWTSecret()
+		})
+	}
+	t.Setenv("JWT_SECRET", "a-real-secret-0123456789abcdef0123456789abcdef")
+	if string(GetJWTSecret()) == "" {
+		t.Error("a real secret was refused")
+	}
+}

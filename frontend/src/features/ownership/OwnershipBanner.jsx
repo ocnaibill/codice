@@ -6,6 +6,7 @@ const ROLE = { admin: 'administrador', reader: 'leitor' };
 
 const NOTICE_TEXT = {
   owner_recovery_reset: () => 'Alguém com acesso ao servidor gerou um link de recuperação para a conta do dono. Todas as sessões do dono foram encerradas. Se não foi você, ou quem cuida do servidor, trate como um incidente.',
+  instance_restored: (details) => `A instância foi restaurada de um backup${details?.backupCreatedAt ? ` feito em ${new Date(details.backupCreatedAt).toLocaleString('pt-BR')}` : ''}. Tudo o que aconteceu depois dele se perdeu, e sessões, tokens de aplicativo e convites precisam ser emitidos de novo. Confira se está tudo como esperado.`,
   owner_recovery_transfer: (details) => `A titularidade foi transferida por um comando no servidor${details?.from ? `: de ${details.from} para ${details.to}` : ''}. O antigo dono passou a ser ${ROLE[details?.formerRole] || 'leitor'}.`,
 };
 

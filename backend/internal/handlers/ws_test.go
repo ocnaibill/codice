@@ -77,3 +77,33 @@ func TestHandleWS_ValidTicketPassesAuthentication(t *testing.T) {
 		t.Errorf("valid ticket rejected: %d", rec.Code)
 	}
 }
+
+func TestUpgrader_AllowsTheSameOriginAndStillChecksOthersAgainstTheList(t *testing.T) {
+	t.Setenv("CORS_ALLOWED_ORIGINS", "https://codice.example.com")
+	check := func(host, origin string) bool {
+		r := httptest.NewRequest("GET", "/ws", nil)
+		r.Host = host
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		return upgrader.CheckOrigin(r)
+	}
+	cases := []struct {
+		name         string
+		host, origin string
+		want         bool
+	}{
+		{"the listed origin", "codice.internal", "https://codice.example.com", true},
+		{"same origin, an address on the local network", "192.168.1.20:8080", "http://192.168.1.20:8080", true},
+		{"same origin, localhost", "localhost:8080", "http://localhost:8080", true},
+		{"same host, different case", "Codice.Home:8080", "http://codice.home:8080", true},
+		{"another site", "codice.internal", "https://evil.example", false},
+		{"same name, other port is another origin", "localhost:8080", "http://localhost:9999", false},
+		{"no Origin at all (a command-line client)", "localhost:8080", "", true},
+	}
+	for _, c := range cases {
+		if got := check(c.host, c.origin); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}

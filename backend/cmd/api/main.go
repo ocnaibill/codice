@@ -81,6 +81,17 @@ func main() {
 		log.Printf("LDAP sign-in enabled: %s", directoryHost)
 	}
 
+	// Behind a reverse proxy (nginx, a tunnel) every client would look like the proxy
+	// and share one login rate limit. Naming the proxies lets their X-Forwarded-For be
+	// believed, and only theirs.
+	trustedProxies, err := appMiddleware.ParseTrustedProxies(os.Getenv("CODICE_TRUSTED_PROXIES"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(trustedProxies) > 0 {
+		log.Printf("Trusting X-Forwarded-For from %d proxy range(s)", len(trustedProxies))
+	}
+
 	sessionStore := &sessions.Store{DB: db}
 	authenticator := appMiddleware.Authenticator{
 		Sessions: sessionStore.CheckSession,
@@ -152,9 +163,10 @@ func main() {
 		StoragePath: storagePath,
 		Mover:       mover,
 
-		Directory:     directory,
-		DirectoryHost: directoryHost,
-		DirectoryBase: directoryBase,
+		TrustedProxies: trustedProxies,
+		Directory:      directory,
+		DirectoryHost:  directoryHost,
+		DirectoryBase:  directoryBase,
 	})
 
 	// 5. Start HTTP Server

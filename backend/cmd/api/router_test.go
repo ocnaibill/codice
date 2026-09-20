@@ -72,6 +72,7 @@ type route struct{ method, path string }
 
 // Routes the specification reserves to owner and admin (DEC-003, RF-007).
 var staffRoutes = []route{
+	{"GET", "/admin/backup"},
 	{"GET", "/password-resets"},
 	{"POST", "/password-resets/" + someUUID + "/approve"},
 	{"POST", "/password-resets/" + someUUID + "/reject"},
@@ -290,4 +291,56 @@ func TestOwnerRecoveryIsNotReachableOverHTTP(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+func TestHealthz_IsPublicAndAnswersEvenWithoutADatabase(t *testing.T) {
+	rec := do(testRouter(t), "GET", "/healthz", "", "")
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"database":"down"`) {
+		t.Errorf("no database: %d %s (public, and honest about being down)", rec.Code, rec.Body.String())
+	}
+}
+
+func limited(h http.Handler, remote, xff string) int {
+	req := httptest.NewRequest("POST", "/auth/login", nil)
+	req.RemoteAddr = remote
+	if xff != "" {
+		req.Header.Set("X-Forwarded-For", xff)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code
+}
+
+func TestAuthRateLimit_ForgedHeadersCannotDodgeItWithoutATrustedProxy(t *testing.T) {
+	h := authRateLimiter(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
+	for i := 0; i < 10; i++ {
+		if code := limited(h, "203.0.113.9:1000", "1.1.1."+string(rune('0'+i))); code != 200 {
+			t.Fatalf("request %d: %d", i, code)
+		}
+	}
+	if code := limited(h, "203.0.113.9:1000", "9.9.9.9"); code != http.StatusTooManyRequests {
+		t.Errorf("an 11th request with a new forged address: %d, want 429", code)
+	}
+}
+
+func TestAuthRateLimit_BehindATrustedProxyClientsDoNotShareABudget(t *testing.T) {
+	trusted, err := middleware.ParseTrustedProxies("172.16.0.0/12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := authRateLimiter(trusted)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
+	proxy := "172.18.0.5:4000"
+	for i := 0; i < 10; i++ {
+		limited(h, proxy, "198.51.100.1")
+	}
+	if code := limited(h, proxy, "198.51.100.1"); code != http.StatusTooManyRequests {
+		t.Errorf("the eleventh request from one client: %d, want 429", code)
+	}
+	if code := limited(h, proxy, "198.51.100.2"); code != 200 {
+		t.Errorf("another client behind the same proxy: %d, want 200 (they must not share one budget)", code)
+	}
+	// A forged left-hand entry does not give an attacker a fresh budget.
+	if code := limited(h, proxy, "6.6.6.6, 198.51.100.1"); code != http.StatusTooManyRequests {
+		t.Errorf("forged left entry: %d, want 429", code)
+	}
 }
