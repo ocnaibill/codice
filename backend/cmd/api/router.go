@@ -61,6 +61,7 @@ func newRouter(d routerDeps) http.Handler {
 	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
+	progressHandler := &handlers.ProgressHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
 	statsHandler := &handlers.StatsHandler{DB: db}
 
@@ -123,6 +124,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Get("/works", libHandler.GetWorks)
 	r.With(auth).Get("/works/{id}", libHandler.GetWorkByID)
 	r.With(auth).Patch("/works/{id}/progress", libHandler.UpdateProgress)
+	r.With(auth).Get("/files/{id}/progress", progressHandler.Get)
+	r.With(auth).Put("/files/{id}/progress", progressHandler.Put)
 	r.With(auth).Post("/works/{id}/reading-heartbeat", libHandler.ReadingHeartbeat)
 
 	// Catalog administration

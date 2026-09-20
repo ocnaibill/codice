@@ -582,6 +582,9 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 		ON CONFLICT (user_id, file_id)
 		DO UPDATE SET
 			position = EXCLUDED.position,
+			-- A plain-text position says nothing a saved locator could still be right about.
+			locator = NULL,
+			locator_version = NULL,
 			percent_complete = CASE WHEN $6 THEN EXCLUDED.percent_complete ELSE reading_progress.percent_complete END,
 			completed_at = CASE
 				WHEN $5 THEN now()
