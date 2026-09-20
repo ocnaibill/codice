@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -135,5 +136,19 @@ func TestServePageFromZip_InvalidZip(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 for invalid zip, got %d", rec.Code)
+	}
+}
+
+func TestCoverPlaceholder_IsAPictureThatCannotRunAnything(t *testing.T) {
+	rec := httptest.NewRecorder()
+	CoverPlaceholder(rec, httptest.NewRequest("GET", "/covers/placeholder.svg", nil))
+	if rec.Code != 200 || rec.Header().Get("Content-Type") != "image/svg+xml" || !strings.HasPrefix(rec.Body.String(), "<svg") {
+		t.Fatalf("%d %q %.30q", rec.Code, rec.Header().Get("Content-Type"), rec.Body.String())
+	}
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "sandbox") {
+		t.Errorf("the picture must not be able to run anything: %q", csp)
+	}
+	if strings.Contains(rec.Body.String(), "<script") {
+		t.Error("no script in the picture")
 	}
 }

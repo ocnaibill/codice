@@ -3,7 +3,7 @@ import { useGlobalStore } from '../../../store/useGlobalStore';
 import { authenticatedUrl } from '../../../lib/api';
 
 export function FavoriteSeries({ items, total, isLoading }) {
-  const openBook = useGlobalStore((state) => state.openBook);
+  const openWork = useGlobalStore((state) => state.openWork);
 
   return (
     <div className="w-full rounded-lg bg-white p-4 shadow-[0px_1px_2px_rgba(0,0,0,0.06)]">
@@ -24,7 +24,7 @@ export function FavoriteSeries({ items, total, isLoading }) {
           {items.map((item) => (
             <button
               key={item.workId}
-              onClick={() => openBook(item.workId)}
+              onClick={() => openWork(item.workId)}
               className="flex items-center gap-3 rounded-[10px] border-[0.5px] border-border-hairline bg-surface/30 p-3 text-left hover:bg-surface/60"
             >
               <img src={authenticatedUrl(item.coverUrl)} alt={item.title} className="h-[46px] w-[35px] shrink-0 rounded-sm object-cover" />

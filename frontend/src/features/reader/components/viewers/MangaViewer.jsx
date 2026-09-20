@@ -1,19 +1,26 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { authenticatedUrl } from '../../../../lib/api';
+import { completionFor } from '../../progressRules';
+import { getComicMode, saveComicMode } from '../../preferences';
 
 // Number of pages to preload ahead and behind
 const PRELOAD_COUNT = 2;
 // Loading timeout per page in ms
 const PAGE_TIMEOUT = 30000;
 
-export default function MangaViewer({ fileUrl, bookId, initialProgress, workId }) {
+export default function MangaViewer({ fileUrl, onProgress, initialProgress, workId }) {
   const [pages, setPages] = useState([]);
   const [currentPage, setCurrentPage] = useState(
     initialProgress ? parseInt(initialProgress, 10) || 0 : 0
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [readingDirection, setReadingDirection] = useState('ltr'); // 'ltr', 'rtl', 'webtoon', 'double'
+  // 'ltr', 'rtl', 'webtoon' or 'double', remembered from the last comic read on this device (DEC-078)
+  const [readingDirection, setDirection] = useState(getComicMode);
+  const setReadingDirection = (mode) => {
+    setDirection(mode);
+    saveComicMode(mode);
+  };
   const [pageStatus, setPageStatus] = useState({}); // { [pageNum]: 'loading'|'loaded'|'error' }
   const timeoutRef = useRef(null);
   const containerRef = useRef(null);
@@ -108,17 +115,15 @@ export default function MangaViewer({ fileUrl, bookId, initialProgress, workId }
       clearTimeout(timeoutRef.current);
     }
 
-    if (bookId) {
+    if (onProgress) {
       timeoutRef.current = setTimeout(() => {
         const percent = pages.length ? ((clampedPage + 1) / pages.length) * 100 : undefined;
-        const completed = pages.length ? clampedPage >= pages.length - 1 : undefined;
-        import('../../../../lib/api').then(({ api }) => {
-          api.patch(`/works/${bookId}/progress`, { progress: clampedPage.toString(), percent, completed })
-            .catch((err) => console.error('Failed to save reading progress:', err));
-        });
+        const completed = completionFor(percent);
+        onProgress({ type: 'image', index: clampedPage }, { percent, completed })
+          ?.catch?.((err) => console.error('Failed to save reading progress:', err));
       }, 1000);
     }
-  }, [bookId, pages.length]);
+  }, [onProgress, pages.length]);
 
   useEffect(() => {
     return () => {

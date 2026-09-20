@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useScrollPosition } from '../../scrollPosition';
 import ReactMarkdown from 'react-markdown';
 import { api, authenticatedUrl } from '../../../../lib/api';
 
-export default function MarkdownViewer({ fileUrl, bookId, initialProgress }) {
+export default function MarkdownViewer({ fileUrl, onProgress, initialProgress }) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const textRef = useRef(null);
+  useScrollPosition({ ref: textRef, ready: !loading && !error, length: content.length, onProgress, initialProgress });
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +51,7 @@ export default function MarkdownViewer({ fileUrl, bookId, initialProgress }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto p-6">
-        <article className="prose prose-invert max-w-3xl mx-auto prose-headings:text-zinc-100 prose-p:text-zinc-300 prose-a:text-blue-400 prose-code:text-zinc-300 prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-zinc-800">
+        <article ref={textRef} className="prose prose-invert max-w-3xl mx-auto prose-headings:text-zinc-100 prose-p:text-zinc-300 prose-a:text-blue-400 prose-code:text-zinc-300 prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-zinc-800">
           <ReactMarkdown>{content}</ReactMarkdown>
         </article>
       </div>

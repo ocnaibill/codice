@@ -61,6 +61,7 @@ func newRouter(d routerDeps) http.Handler {
 	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
+	progressHandler := &handlers.ProgressHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
 	statsHandler := &handlers.StatsHandler{DB: db}
 
@@ -123,6 +124,11 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Get("/works", libHandler.GetWorks)
 	r.With(auth).Get("/works/{id}", libHandler.GetWorkByID)
 	r.With(auth).Patch("/works/{id}/progress", libHandler.UpdateProgress)
+	r.With(auth).Get("/progress/files/{id}", progressHandler.Get)
+	r.With(auth).Put("/progress/files/{id}", progressHandler.Put)
+	r.With(auth).Put("/progress/files/{id}/completion", progressHandler.SetCompletion)
+	r.With(auth).Post("/progress/files/{id}/opened", progressHandler.Opened)
+	r.With(auth).Put("/progress/works/{id}/finished", progressHandler.SetWorkFinished)
 	r.With(auth).Post("/works/{id}/reading-heartbeat", libHandler.ReadingHeartbeat)
 
 	// Catalog administration
@@ -215,6 +221,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Get("/favorites", favoritesHandler.GetFavorites)
 	r.With(auth).Post("/works/{id}/notes", notesHandler.CreateNote)
 	r.With(auth).Get("/notes", notesHandler.ListNotes)
+	r.With(auth).Get("/notes/export", notesHandler.ExportNotes)
+	r.With(auth).Patch("/notes/{id}", notesHandler.UpdateNote)
 	r.With(auth).Delete("/notes/{id}", notesHandler.DeleteNote)
 	r.With(auth).Get("/stats", statsHandler.GetStats)
 
@@ -259,6 +267,9 @@ func newRouter(d routerDeps) http.Handler {
 	if coverLookup == nil {
 		coverLookup = handlers.NewCoverLookup(db)
 	}
+	// The stand-in for a work with no cover. It is part of the program, not of the library:
+	// a fresh installation has no such file on disk.
+	r.With(authWithBasic).Get("/covers/placeholder.svg", handlers.CoverPlaceholder)
 	r.With(authWithBasic).Method("GET", "/covers/*", &handlers.FilesHandler{
 		Root: coversPath, Lookup: coverLookup,
 		CacheHeader: "public, max-age=604800, must-revalidate",

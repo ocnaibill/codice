@@ -3,10 +3,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AppShell } from './components/layout/AppShell';
 import { HomePage } from './pages/HomePage';
 import { Reader } from './features/reader/components/Reader';
+import { WorkSheet } from './features/reader/components/WorkSheet';
 import { useGlobalStore } from './store/useGlobalStore';
 import { UploadModal } from './features/upload/components/UploadModal';
 import { Auth } from './features/auth/components/Auth';
 import { useMe, isStaff } from './features/auth/api/useMe';
+import { setPreferenceOwner } from './features/reader/preferences';
 import { AdminPage } from './features/admin/AdminPage';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
 import { OwnershipBanner } from './features/ownership/OwnershipBanner';
@@ -44,6 +46,11 @@ function App() {
   const openAdmin = useGlobalStore((state) => state.openAdmin);
   const { data: me } = useMe(isAuthenticated);
   const staff = isStaff(me);
+
+  // Display preferences belong to the account that is signed in, not to the browser.
+  useEffect(() => {
+    setPreferenceOwner(isAuthenticated ? me?.id : null);
+  }, [isAuthenticated, me?.id]);
 
   useEffect(() => {
     const checkStatusAndToken = async () => {
@@ -262,6 +269,7 @@ function App() {
       <UploadModal />
       <OwnershipBanner me={me} />
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
+      <WorkSheet />
       {activeBookId ? (
         <Reader />
       ) : (

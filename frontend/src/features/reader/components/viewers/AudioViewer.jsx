@@ -1,7 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { api, authenticatedUrl } from '../../../../lib/api';
+import { authenticatedUrl } from '../../../../lib/api';
+import { markActivity } from '../../activity';
+import { completionFor } from '../../progressRules';
 
-export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
+export default function AudioViewer({ fileUrl, onProgress, initialProgress }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -9,14 +11,14 @@ export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
   const [speed, setSpeed] = useState(1);
   const timeoutRef = useRef(null);
 
-  const saveProgress = (time, total, completed = false) => {
-    if (!bookId) return;
+  const saveProgress = (time, total, ended = false) => {
+    if (!onProgress) return;
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
       const percent = total ? (time / total) * 100 : undefined;
-      api
-        .patch(`/works/${bookId}/progress`, { progress: time.toString(), percent, completed })
-        .catch((err) => console.error('Failed to save audio reading progress:', err));
+      // Reaching the end finishes it; going back never says it is not finished.
+      onProgress({ type: 'audio', track: 0, ms: Math.round(time * 1000) }, { percent, completed: ended ? true : completionFor(percent) })
+        ?.catch?.((err) => console.error('Failed to save audio reading progress:', err));
     }, 1500);
   };
 
@@ -41,6 +43,7 @@ export default function AudioViewer({ fileUrl, bookId, initialProgress }) {
     if (audioRef.current) {
       const time = audioRef.current.currentTime;
       setCurrentTime(time);
+      markActivity(); // audio that is playing is reading time
       saveProgress(time, audioRef.current.duration);
     }
   };

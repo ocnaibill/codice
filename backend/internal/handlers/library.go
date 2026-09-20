@@ -43,6 +43,36 @@ type Work struct {
 	Retired         bool          `json:"retired,omitempty"`
 	Editions        []Edition     `json:"editions,omitempty"`
 	Metadata        *WorkMetadata `json:"metadata,omitempty"`
+	// Continue is the version of the work that counts for the calling user (DEC-079): the one they
+	// opened last among those they have begun, an unfinished one before a finished one. Its position
+	// and percentage are also the ones the card shows. Null until they have read.
+	Continue *ContinueFile `json:"continue"`
+	// InProgress: there is a version to continue, and the work was not marked as finished.
+	InProgress bool `json:"inProgress"`
+	// Finished: the caller marked the whole work as finished (DEC-080).
+	Finished bool `json:"finished"`
+	// FileCount is how many files of the work can be opened: with more than one there is a choice.
+	FileCount int `json:"fileCount"`
+	// Completions, only in the detail: how many times the caller finished it, and in what format.
+	Completions *CompletionSummary `json:"completions,omitempty"`
+}
+
+// CompletionSummary is the history of finishing a work (DEC-080): "finished 2 times, 1 in EPUB and
+// 1 in PDF". A file finished again after being reopened counts again.
+type CompletionSummary struct {
+	Total    int            `json:"total"`
+	ByFormat map[string]int `json:"byFormat"`
+}
+
+// ContinueFile is the file the caller read most recently in a work, with their position in it.
+type ContinueFile struct {
+	FileID          int64   `json:"fileId"`
+	Format          string  `json:"format,omitempty"`
+	Language        string  `json:"language,omitempty"`
+	URL             string  `json:"url,omitempty"`
+	Position        string  `json:"position,omitempty"`
+	PercentComplete float64 `json:"percentComplete"`
+	Completed       bool    `json:"completed"`
 }
 
 // Edition is one publication of a work: its language, publisher and date, and
@@ -68,6 +98,9 @@ type FileInfo struct {
 	URL             string  `json:"url,omitempty"`
 	PercentComplete float64 `json:"percentComplete"`
 	Completed       bool    `json:"completed"`
+	// Started is true when the calling user has a saved position in this file, even if the
+	// viewer could not say how far along it is (an EPUB has no fixed page count).
+	Started bool `json:"started"`
 	// NeedsOCR is set for a PDF with pages that carry no text (RF-019);
 	// PagesWithoutText lists them, numbered from 1.
 	NeedsOCR         bool  `json:"needsOcr,omitempty"`
@@ -114,12 +147,44 @@ const cardColumns = `
 	(f.user_id IS NOT NULL),
 	wp.file_id,
 	(w.retired_at IS NOT NULL),
-	COALESCE(wp.file_mode, '')`
+	COALESCE(wp.file_mode, ''),
+	lastrp.file_id, COALESCE(lastrp.format, ''), lastrp.path, COALESCE(lastrp.mode, ''),
+	COALESCE(lastrp.position, ''), COALESCE(lastrp.percent_complete, 0), (lastrp.completed_at IS NOT NULL),
+	COALESCE(lastrp.language, ''), (wrs.work_id IS NOT NULL),
+	(SELECT count(*) FROM files fc JOIN editions ec ON ec.id = fc.edition_id
+	  WHERE ec.work_id = w.id AND fc.availability = 'available')`
+
+// hasPosition is the condition for a reading_progress row (alias a) that says where the person
+// is, or that they finished. A row can exist for less: counting seconds of reading creates one
+// with no position, and opening a file is not the same as having begun it.
+func hasPosition(a string) string {
+	return "(" + a + ".position <> '' OR " + a + ".locator IS NOT NULL OR " + a + ".percent_complete > 0 OR " + a + ".completed_at IS NOT NULL)"
+}
 
 // cardJoins add the calling user's progress on the primary file and favorite flag.
-const cardJoins = `
+var cardJoins = `
 	LEFT JOIN reading_progress rp ON rp.file_id = wp.file_id AND rp.user_id = $1
-	LEFT JOIN favorites f ON f.work_id = w.id AND f.user_id = $1`
+	LEFT JOIN favorites f ON f.work_id = w.id AND f.user_id = $1` + lastReadJoin
+
+// lastReadJoin adds, for the work w ($1 is the caller): wrs, the mark "the whole work is finished",
+// and lastrp, the version that counts (DEC-079). A version counts only after the person has begun it
+// (a position, a percentage or a completion: opening is not beginning) and only if it can still be
+// opened. Of those, one that is not finished comes before one that is, and then the one opened last
+// wins; the finished ones are what is left when nothing is in progress.
+var lastReadJoin = `
+	LEFT JOIN work_reading_state wrs ON wrs.work_id = w.id AND wrs.user_id = $1
+	LEFT JOIN LATERAL (
+		SELECT r.file_id, r.position, r.percent_complete, r.completed_at, f2.format, e2.language, l.path, l.mode
+		FROM reading_progress r
+		JOIN files f2 ON f2.id = r.file_id
+		JOIN editions e2 ON e2.id = f2.edition_id
+		LEFT JOIN LATERAL (SELECT path, mode FROM storage_locations WHERE file_id = f2.id ORDER BY id LIMIT 1) l ON TRUE
+		WHERE e2.work_id = w.id AND r.user_id = $1 AND f2.availability = 'available'
+		  AND ` + hasPosition("r") + `
+		ORDER BY (r.completed_at IS NOT NULL),
+		         GREATEST(COALESCE(r.last_opened_at, '-infinity'::timestamptz), r.updated_at) DESC, r.file_id
+		LIMIT 1
+	) lastrp ON TRUE`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -130,16 +195,32 @@ func scanWork(row rowScanner) (Work, error) {
 	var filePath sql.NullString
 	var fileID sql.NullInt64
 	var mode string
+	var lastFile sql.NullInt64
+	var lastPath sql.NullString
+	var last ContinueFile
+	var lastMode string
+	var finished bool
 	err := row.Scan(
 		&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format,
 		&work.Series, &work.SeriesIndex, &work.MediaStatus, pq.Array(&work.Tags),
 		&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
 		&fileID, &work.Retired, &mode,
+		&lastFile, &last.Format, &lastPath, &lastMode, &last.Position, &last.PercentComplete, &last.Completed,
+		&last.Language, &finished, &work.FileCount,
 	)
 	if err != nil {
 		return work, err
 	}
 	work.FileURL = fileHref(fileID, mode, filePath.String)
+	if lastFile.Valid {
+		last.FileID = lastFile.Int64
+		last.URL = fileHref(lastFile, lastMode, lastPath.String)
+		work.Continue = &last
+		// The card speaks for the version that counts, not for the primary file (DEC-079).
+		work.ReadingProgress, work.PercentComplete, work.Completed = last.Position, last.PercentComplete, last.Completed
+	}
+	work.Finished = finished
+	work.InProgress = work.Continue != nil && !work.Continue.Completed && !finished
 	if fileID.Valid {
 		work.FileID = &fileID.Int64
 	}
@@ -196,7 +277,10 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 	if inProgressOnly {
-		whereClauses = append(whereClauses, "(rp.position IS NOT NULL AND rp.completed_at IS NULL)")
+		// In progress is decided by the version that counts, in whatever edition or format: reading
+		// the English EPUB of a book whose primary file is the Portuguese one counts, and a work
+		// marked as finished is not.
+		whereClauses = append(whereClauses, "(lastrp.file_id IS NOT NULL AND lastrp.completed_at IS NULL AND wrs.work_id IS NULL)")
 	}
 	if favoriteOnly {
 		whereClauses = append(whereClauses, "f.user_id IS NOT NULL")
@@ -282,6 +366,12 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 	}
 	work.Editions = editions
 
+	if work.Completions, err = h.loadCompletions(r, userID, id); err != nil {
+		log.Println("Error fetching completions:", err)
+		http.Error(w, "Error fetching book", http.StatusInternalServerError)
+		return
+	}
+
 	meta, err := loadMetadata(r.Context(), h.DB, id)
 	if err != nil {
 		log.Println("Error fetching metadata:", err)
@@ -300,7 +390,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		SELECT e.id, COALESCE(e.title, ''), COALESCE(e.language, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.publication_date, ''), COALESCE(e.isbn, ''), e.is_primary,
 		       f.id, COALESCE(f.format, ''), f.size_bytes, f.availability, l.path, l.mode,
-		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL),
+		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL), COALESCE(`+hasPosition("rp")+`, FALSE),
 		       COALESCE(tl.needs_ocr, FALSE), tl.pages_without_text
 		FROM editions e
 		LEFT JOIN files f ON f.edition_id = e.id
@@ -324,11 +414,11 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		var size sql.NullInt64
 		var format, availability, filePath, mode sql.NullString
 		var percent float64
-		var completed sql.NullBool
+		var completed, started sql.NullBool
 		var needsOCR bool
 		var missing pq.Int64Array
 		if err := rows.Scan(&e.ID, &e.Title, &e.Language, &e.Publisher, &e.PublicationDate, &e.ISBN, &e.IsPrimary,
-			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &needsOCR, &missing); err != nil {
+			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &started, &needsOCR, &missing); err != nil {
 			return nil, err
 		}
 		i, seen := index[e.ID]
@@ -340,7 +430,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		}
 		if fileID.Valid {
 			fi := FileInfo{ID: fileID.Int64, Format: format.String, Availability: availability.String,
-				PercentComplete: percent, Completed: completed.Bool}
+				PercentComplete: percent, Completed: completed.Bool, Started: started.Bool}
 			if size.Valid {
 				fi.SizeBytes = &size.Int64
 			}
@@ -582,9 +672,12 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 		ON CONFLICT (user_id, file_id)
 		DO UPDATE SET
 			position = EXCLUDED.position,
+			-- A plain-text position says nothing a saved locator could still be right about.
+			locator = NULL,
+			locator_version = NULL,
 			percent_complete = CASE WHEN $6 THEN EXCLUDED.percent_complete ELSE reading_progress.percent_complete END,
 			completed_at = CASE
-				WHEN $5 THEN now()
+				WHEN $5 THEN COALESCE(reading_progress.completed_at, now())
 				WHEN $7 THEN NULL
 				ELSE reading_progress.completed_at
 			END,
@@ -595,6 +688,9 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 		log.Println("Error saving reading progress:", err)
 		http.Error(w, "Error saving isolated user reading progress", http.StatusInternalServerError)
 		return
+	}
+	if !completed {
+		(&ProgressHandler{DB: h.DB}).reopenWork(r, userID, fileID)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -860,4 +956,26 @@ func (h *LibraryHandler) purgeWork(w http.ResponseWriter, r *http.Request, id in
 func insideStorage(root, rel string) (string, bool) {
 	full := filepath.Join(root, rel)
 	return full, full != filepath.Clean(root) && isWithin(full, filepath.Clean(root))
+}
+
+// loadCompletions counts the times the caller finished a work, by format (DEC-080).
+func (h *LibraryHandler) loadCompletions(r *http.Request, userID string, workID int) (*CompletionSummary, error) {
+	rows, err := h.DB.QueryContext(r.Context(), `
+		SELECT COALESCE(NULLIF(format, ''), '?'), count(*) FROM reading_completions
+		WHERE user_id = $1 AND work_id = $2 GROUP BY 1`, userID, workID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sum := &CompletionSummary{ByFormat: map[string]int{}}
+	for rows.Next() {
+		var format string
+		var n int
+		if err := rows.Scan(&format, &n); err != nil {
+			return nil, err
+		}
+		sum.ByFormat[format] = n
+		sum.Total += n
+	}
+	return sum, rows.Err()
 }

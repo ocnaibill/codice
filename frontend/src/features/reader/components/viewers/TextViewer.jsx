@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { authenticatedUrl } from '../../../../lib/api';
+import { useScrollPosition } from '../../scrollPosition';
 
-export default function TextViewer({ fileUrl, bookId, initialProgress }) {
+export default function TextViewer({ fileUrl, onProgress, initialProgress }) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [fontSize, setFontSize] = useState(16);
+  const textRef = useRef(null);
+  useScrollPosition({ ref: textRef, ready: !loading && !error, length: content.length, onProgress, initialProgress });
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +58,7 @@ export default function TextViewer({ fileUrl, bookId, initialProgress }) {
           className="text-zinc-400 hover:text-white text-sm px-2">A+</button>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
-        <pre className="whitespace-pre-wrap font-sans leading-relaxed text-zinc-200 max-w-3xl mx-auto"
+        <pre ref={textRef} className="whitespace-pre-wrap font-sans leading-relaxed text-zinc-200 max-w-3xl mx-auto"
              style={{ fontSize: `${fontSize}px` }}>
           {content}
         </pre>

@@ -18,7 +18,12 @@ function pageLabel(format, progress) {
 }
 
 function InProgressCard({ item, onOpen }) {
-  const format = (item.format || '').toLowerCase();
+  // What to continue is the file read last, which is not always the book's primary one: someone
+  // reading the English EPUB of a book whose main file is the Portuguese one continues that.
+  const last = item.continue;
+  const format = (last?.format || item.format || '').toLowerCase();
+  const readingProgress = last ? last.position : item.readingProgress;
+  const percentComplete = last ? last.percentComplete : item.percentComplete;
   const isComic = COMIC_FORMATS.has(format);
   const isAudio = AUDIO_FORMATS.has(format);
   const color = isComic ? 'success' : 'brand';
@@ -26,17 +31,18 @@ function InProgressCard({ item, onOpen }) {
   const action = isComic
     ? { label: 'Abrir Visor', variant: 'outline' }
     : { label: isAudio ? 'Continuar Ouvindo' : 'Continuar Leitura', variant: 'solid' };
-  const location = pageLabel(format, item.readingProgress);
-  const genre = item.tags?.[0] || (item.format ? item.format.toUpperCase() : null);
+  const location = pageLabel(format, readingProgress);
+  const genre = item.tags?.[0] || (format ? format.toUpperCase() : null);
 
   return (
     <article className="relative flex w-full max-w-[320px] shrink-0 flex-col overflow-hidden rounded-lg bg-white p-4 shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.1),0px_2px_4px_-2px_rgba(0,0,0,0.1)]">
       <div className="flex w-full items-start gap-4">
         <div className="relative h-36 w-24 shrink-0 overflow-hidden rounded-sm bg-surface-alt shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]">
           <img src={authenticatedUrl(item.coverUrl)} alt={item.title} className="h-full w-full object-cover" />
-          {item.format && (
+          {(last?.format || item.format) && (
             <span className="absolute left-1 top-1 rounded-sm bg-[rgba(26,28,31,0.85)] px-1.5 py-0.5 font-body text-[10px] font-bold text-white">
-              {item.format.toUpperCase()}
+              {(last?.format || item.format).toUpperCase()}
+              {last?.language ? ` · ${last.language.toUpperCase()}` : ''}
             </span>
           )}
         </div>
@@ -63,12 +69,12 @@ function InProgressCard({ item, onOpen }) {
       <div className="mt-4 flex flex-col gap-1 pt-2">
         <div className="flex items-center justify-between font-body text-[11px] tracking-[0.44px]">
           <span className="text-ink-soft">{progressLabel}</span>
-          <span className={`font-bold ${isComic ? 'text-success' : 'text-brand'}`}>{Math.round(item.percentComplete)}%</span>
+          <span className={`font-bold ${isComic ? 'text-success' : 'text-brand'}`}>{Math.round(percentComplete)}%</span>
         </div>
-        <ProgressBar percent={item.percentComplete} color={color} />
+        <ProgressBar percent={percentComplete} color={color} />
         <div className="mt-2 flex items-center justify-end pt-1">
           <button
-            onClick={() => onOpen(item.id)}
+            onClick={() => onOpen(item.id, last?.fileId ?? null)}
             className={`flex items-center gap-1 rounded-sm px-3 py-1.5 font-body text-[11px] tracking-[0.44px] shadow-[0px_1px_1px_rgba(0,0,0,0.05)] ${
               action.variant === 'solid' ? 'bg-brand text-white' : 'bg-surface-alt text-ink'
             }`}
