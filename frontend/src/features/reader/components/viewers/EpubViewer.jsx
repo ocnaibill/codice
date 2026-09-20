@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ePub from 'epubjs';
 import { api } from '../../../../lib/api';
+import { buildEpubProgress } from '../../epubProgress';
 
 /**
  * EPUB Viewer using epubjs directly (not react-reader).
@@ -122,21 +123,39 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
         rendition.themes.fontSize(`${size}%`);
 
         // 8. Track location changes
+        //    Each one saves the exact place (CFI), the chapter and how far into it, and, once the
+        //    positions of the whole book are known, how far through the book (a percentage).
+        let lastLocation = null;
+        const percentageFromCfi = (cfi) =>
+          book.locations.length() > 0 ? book.locations.percentageFromCfi(cfi) : null;
+        const report = (location) => {
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          if (!onProgress) return;
+          timeoutRef.current = setTimeout(() => {
+            const progress = buildEpubProgress(location, percentageFromCfi);
+            if (progress) {
+              onProgress(progress.locator, progress.extras)
+                ?.catch?.((err) => console.error('Failed to save progress:', err));
+            }
+          }, 1000);
+        };
         rendition.on('relocated', (location) => {
           if (!location || !location.start) return;
-          const cfi = location.start.cfi;
-          setCurrentSection(cfi);
-
-          // Debounced progress save
-          if (timeoutRef.current) clearTimeout(timeoutRef.current);
-          if (onProgress) {
-            timeoutRef.current = setTimeout(() => {
-              // The end of the book finishes it; an EPUB has no page count, so nothing else says how far.
-              onProgress({ type: 'epub', cfi }, { completed: location.atEnd ? true : undefined })
-                ?.catch?.((err) => console.error('Failed to save progress:', err));
-            }, 1000);
-          }
+          setCurrentSection(location.start.cfi);
+          lastLocation = location;
+          report(location);
         });
+
+        // The positions of the whole book take a moment to compute: in the background, and the
+        // place the person is at is reported again when they are ready, now with a percentage.
+        book.locations
+          .generate(1600)
+          .then(() => {
+            if (!cancelled && lastLocation) report(lastLocation);
+          })
+          .catch(() => {
+            // Without them there is no percentage, and everything else works.
+          });
 
         // 9. Display the initial location
         //    - CFI strings ("epubcfi(...)") go straight to display()
