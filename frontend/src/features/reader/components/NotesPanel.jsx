@@ -205,7 +205,9 @@ export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose }) {
   return (
     <aside
       aria-label="Anotações"
-      className="fixed inset-y-0 right-0 z-30 flex w-full max-w-md flex-col gap-4 overflow-y-auto border-l border-zinc-800 bg-zinc-900 p-5 shadow-2xl"
+      // Above the toolbars of every viewer (they are z-50): on a phone the panel covers the page, and
+      // a toolbar drawn over its fields hides them.
+      className="fixed inset-y-0 right-0 z-[60] flex w-full max-w-md flex-col gap-4 overflow-y-auto border-l border-zinc-800 bg-zinc-900 p-5 shadow-2xl"
     >
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-zinc-100">Suas anotações</h2>

@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 vi.mock('../../../../lib/api', () => ({ authenticatedUrl: (u) => u }));
 
 import MangaViewer from './MangaViewer';
+import { setPreferenceOwner } from '../../preferences';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -22,6 +23,7 @@ const modeButton = () => [...container.querySelectorAll('button')].find((b) => /
 
 beforeEach(() => {
   localStorage.clear();
+  setPreferenceOwner('ana');
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -38,7 +40,7 @@ describe('MangaViewer reading mode', () => {
     expect(modeButton().textContent.trim()).toBe('LTR');
     await act(async () => { modeButton().click(); });
     expect(modeButton().textContent.trim()).toBe('RTL');
-    expect(localStorage.getItem('codice:comic-mode')).toBe('rtl');
+    expect(localStorage.getItem('codice:comic-mode:ana')).toBe('rtl');
 
     // Another comic, opened later: it starts in RTL.
     act(() => root.unmount());

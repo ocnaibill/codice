@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { getComicMode, saveComicMode } from './preferences';
+import { getComicMode, saveComicMode, setPreferenceOwner } from './preferences';
 
 describe('comic mode', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    setPreferenceOwner('ana');
+  });
   afterEach(() => vi.restoreAllMocks());
 
   it('starts left to right and is remembered from one comic to the next', () => {
@@ -13,10 +16,30 @@ describe('comic mode', () => {
     expect(getComicMode()).toBe('webtoon');
   });
 
+  it('belongs to the account: another person on the same browser starts from the default', () => {
+    saveComicMode('rtl');
+    setPreferenceOwner('bob');
+    expect(getComicMode()).toBe('ltr');
+    saveComicMode('webtoon');
+    setPreferenceOwner('ana');
+    expect(getComicMode()).toBe('rtl'); // and does not disturb ana's
+    setPreferenceOwner('bob');
+    expect(getComicMode()).toBe('webtoon');
+  });
+
+  it('remembers nothing when nobody is signed in', () => {
+    setPreferenceOwner(null);
+    saveComicMode('rtl');
+    expect(getComicMode()).toBe('ltr');
+    expect(localStorage.length).toBe(0);
+    setPreferenceOwner('ana');
+    expect(getComicMode()).toBe('ltr');
+  });
+
   it('ignores a mode it does not know, stored or offered', () => {
     saveComicMode('sideways');
     expect(getComicMode()).toBe('ltr');
-    localStorage.setItem('codice:comic-mode', 'zigzag');
+    localStorage.setItem('codice:comic-mode:ana', 'zigzag');
     expect(getComicMode()).toBe('ltr');
   });
 

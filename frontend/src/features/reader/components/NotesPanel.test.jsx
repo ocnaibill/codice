@@ -85,6 +85,12 @@ describe('NotesPanel', () => {
     expect(item(3).textContent).toContain('Marcador');
   });
 
+  it('is drawn above the toolbars of the viewers, which sit at z-50', async () => {
+    await render();
+    const layer = /\bz-\[(\d+)\]/.exec(container.querySelector('aside').className);
+    expect(layer && Number(layer[1])).toBeGreaterThan(50);
+  });
+
   it('shows the Markdown of a note as text, never as live HTML', async () => {
     await render();
     expect(item(1).querySelector('strong').textContent).toBe('Hobbes');
