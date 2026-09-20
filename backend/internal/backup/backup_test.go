@@ -244,6 +244,39 @@ func rewrite(t *testing.T, pkg []byte, edit func(name string, body []byte) (stri
 
 func keepAll(name string, body []byte) (string, []byte, bool) { return name, body, true }
 
+func TestBackup_TheExtractedTextIsNotInThePackageAndComesBackAsAJob(t *testing.T) {
+	s := newSource(t)
+	var file int64
+	if err := s.db.QueryRow(`SELECT id FROM files ORDER BY id LIMIT 1`).Scan(&file); err != nil {
+		t.Fatal(err)
+	}
+	var gen int
+	s.db.QueryRow(`SELECT text_extraction_begin($1)`, file).Scan(&gen)
+	s.exec(`INSERT INTO document_segments (file_id, generation, sequence, text, locator, locator_version)
+	        VALUES ($1, $2, 0, 'texto que se refaz', '{"type":"pdf","page":0}', 1)`, file, gen)
+	s.exec(`SELECT text_extraction_publish($1, $2, 1, 'abc', 'ready', 'native', 'pt')`, file, gen)
+	s.exec(`DELETE FROM jobs WHERE type = 'extract_text'`)
+
+	pkg, _ := s.backup(false, "")
+	tg := newTarget(t, s.dsn, false)
+	if _, err := tg.restore(pkg); err != nil {
+		t.Fatal(err)
+	}
+	db := tg.open()
+	for _, table := range derivedTables {
+		if n := scalar(t, db, `SELECT count(*) FROM `+table); n != "0" {
+			t.Errorf("%s is derived data and came back with %s rows", table, n)
+		}
+	}
+	// The files did come back, and every work of the library is queued to have its text read again.
+	if scalar(t, db, `SELECT count(*) FROM files`) != "2" {
+		t.Error("the files did not come back")
+	}
+	if got := scalar(t, db, `SELECT count(DISTINCT work_id) FROM jobs WHERE type = 'extract_text' AND state = 'pending' AND priority = -10`); got != "2" {
+		t.Errorf("extraction jobs after the restore: %s", got)
+	}
+}
+
 func TestCreate_PackageHoldsWhatItPromisesAndNoCredentials(t *testing.T) {
 	s := newSource(t)
 	pkg, res := s.backup(false, "")

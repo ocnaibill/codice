@@ -155,7 +155,7 @@ func Create(ctx context.Context, o CreateOptions) (Result, error) {
 	dumpPath := dump.Name()
 	defer os.Remove(dumpPath)
 	args := []string{"--format=custom", "--no-owner", "--no-privileges", "--snapshot=" + snapshot}
-	for _, t := range credentialTables {
+	for _, t := range append(append([]string{}, credentialTables...), derivedTables...) {
 		args = append(args, "--exclude-table-data=public."+t)
 	}
 	err = conn.run(ctx, "pg_dump", nil, dump, args...)

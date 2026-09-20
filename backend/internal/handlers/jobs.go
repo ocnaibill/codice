@@ -87,3 +87,41 @@ func (h *JobsHandler) act(w http.ResponseWriter, r *http.Request, action string,
 	}
 	w.WriteHeader(http.StatusOK)
 }
+
+// ExtractText asks for the text of a work's files to be read again (spec 15: an authorized person may
+// ask for it). The published text stays until the new one replaces it. The job goes ahead of the
+// scheduled ones (DEC-069, what a person asked for first), and asking twice while one is waiting
+// or running is one request.
+func (h *JobsHandler) ExtractText(w http.ResponseWriter, r *http.Request) {
+	workID, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
+	var jobID sql.NullInt64
+	err := h.DB.QueryRowContext(r.Context(), `
+		INSERT INTO jobs (type, work_id, payload, priority, created_by)
+		SELECT 'extract_text', w.id, '{"force": true}', 5, NULLIF($2, '')::uuid
+		FROM works w WHERE w.id = $1 AND w.retired_at IS NULL
+		ON CONFLICT (type, work_id) WHERE state IN ('pending', 'running') DO NOTHING
+		RETURNING id`, workID, currentUserID(r)).Scan(&jobID)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Either there is no such work, or a request is already waiting: the second is the same as the first.
+		var exists bool
+		if qerr := h.DB.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM works WHERE id = $1 AND retired_at IS NULL)`, workID).Scan(&exists); qerr != nil || !exists {
+			http.Error(w, "Book not found", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"queued": true, "alreadyQueued": true})
+		return
+	}
+	if err != nil {
+		log.Println("Error queueing text extraction:", err)
+		http.Error(w, "Error queueing the job", http.StatusInternalServerError)
+		return
+	}
+	if err := audit.Record(r.Context(), h.DB, currentUserID(r), "text.reprocess", "work", strconv.Itoa(workID), nil); err != nil {
+		log.Println("Could not audit text.reprocess", err)
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"queued": true, "jobId": jobID.Int64})
+}

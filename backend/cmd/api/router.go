@@ -62,6 +62,7 @@ func newRouter(d routerDeps) http.Handler {
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
 	progressHandler := &handlers.ProgressHandler{DB: db}
+	searchHandler := &handlers.SearchHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
 	statsHandler := &handlers.StatsHandler{DB: db}
 
@@ -123,6 +124,7 @@ func newRouter(d routerDeps) http.Handler {
 	// Protected Application Endpoints (any authenticated user)
 	r.With(auth).Get("/works", libHandler.GetWorks)
 	r.With(auth).Get("/works/{id}", libHandler.GetWorkByID)
+	r.With(auth).Get("/search", searchHandler.Search)
 	r.With(auth).Patch("/works/{id}/progress", libHandler.UpdateProgress)
 	r.With(auth).Get("/progress/files/{id}", progressHandler.Get)
 	r.With(auth).Put("/progress/files/{id}", progressHandler.Put)
@@ -163,6 +165,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Get("/admin/jobs", jobsHandler.List)
 	r.With(staff).Post("/admin/jobs/{id}/rerun", jobsHandler.Rerun)
 	r.With(staff).Post("/admin/jobs/{id}/cancel", jobsHandler.Cancel)
+	r.With(staff).Post("/admin/works/{id}/extract-text", jobsHandler.ExtractText)
 
 	// Storage administration (RF-044): preview, then confirm that exact preview
 	r.With(staff).Get("/admin/storage/reorganize", storageHandler.PreviewReorganize)

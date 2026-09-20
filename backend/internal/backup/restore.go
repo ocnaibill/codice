@@ -409,6 +409,17 @@ func afterRestore(ctx context.Context, db *sql.DB, pkg *Package, missing []int64
 			return err
 		}
 	}
+	// The extracted text was not in the package: ask for every work of the library to be read again,
+	// behind what people ask for. (A package from before the text existed gets the same request from
+	// the migration itself; asking twice is one job.)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO jobs (type, work_id, payload, priority)
+		SELECT DISTINCT 'extract_text', e.work_id, '{}'::jsonb, -10
+		FROM editions e JOIN files f ON f.edition_id = e.id
+		JOIN works w ON w.id = e.work_id AND w.retired_at IS NULL
+		ON CONFLICT (type, work_id) WHERE state IN ('pending', 'running') DO NOTHING`); err != nil {
+		return err
+	}
 	details := map[string]any{
 		"backupCreatedAt": pkg.Manifest.CreatedAt, "schemaVersion": pkg.Manifest.SchemaVersion,
 		"filesMissing": res.FilesMissing, "filesMismatched": res.FilesMismatched,

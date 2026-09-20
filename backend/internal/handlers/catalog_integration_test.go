@@ -100,6 +100,8 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/works/{id}/pages", pages.GetPages)
 	r.Post("/admin/storage/reorganize", storageAdmin.Reorganize)
 	r.Post("/admin/jobs/{id}/rerun", jobsAdmin.Rerun)
+	r.Post("/admin/works/{id}/extract-text", jobsAdmin.ExtractText)
+	r.Get("/search", (&SearchHandler{DB: db}).Search)
 	r.Post("/admin/jobs/{id}/cancel", jobsAdmin.Cancel)
 	r.Post("/works/bulk-import", upload.HandleBulkImport)
 	r.Get("/works", lib.GetWorks)
