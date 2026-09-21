@@ -2,6 +2,7 @@ package equivalence
 
 import (
 	"encoding/json"
+	"math"
 	"sort"
 )
 
@@ -35,6 +36,7 @@ const (
 	MethodText      = "text"      // the passage around the position was found in the destination
 	MethodStructure = "structure" // the chapter was matched by its title, its number or its place
 	MethodAnchors   = "anchors"   // names and numbers of the passage were found together
+	MethodSemantic  = "semantic"  // a configured local embedding model found the same meaning
 	Passage         = "passage"
 	ChapterOnly     = "chapter"
 	Approximate     = "approximate" // inside the right chapter, at the same fraction of the way through it
@@ -42,14 +44,17 @@ const (
 
 // Segment is a piece of a file's text with its address.
 type Segment struct {
-	ID       int64
-	Sequence int
-	Section  string
-	Chapter  string // the key of the chapter it is in (see Chapter.Key)
-	Text     string
-	Locator  json.RawMessage
-	Node     int    // the node of the file's outline it is in (see Node); only meaningful with an outline
-	Part     string // front, body or back, from the outline; empty when the file has none
+	ID                                                   int64
+	Sequence                                             int
+	Section                                              string
+	Chapter                                              string // the key of the chapter it is in (see Chapter.Key)
+	Text                                                 string
+	Locator                                              json.RawMessage
+	Node                                                 int    // the node of the file's outline it is in (see Node); only meaningful with an outline
+	Part                                                 string // front, body or back, from the outline; empty when the file has none
+	Embedding                                            []float32
+	EmbeddingProvider, EmbeddingModel, EmbeddingRevision string
+	EmbeddingPreprocessing                               int
 }
 
 // Candidate is a place in the destination that may be the one.
@@ -136,6 +141,72 @@ func ByAnchors(source Segment, candidates []Segment) []Candidate {
 		})
 	}
 	return keepBest(out)
+}
+
+const (
+	minSemanticSimilarity  = 0.60
+	highSemanticSimilarity = 0.75
+)
+
+// BySemantic uses only compatible vectors and requires a mutual nearest neighbour: the
+// destination must point back to the source among the eligible source segments.
+func BySemantic(source Segment, destination, sources []Segment) []Candidate {
+	if len(source.Embedding) == 0 {
+		return nil
+	}
+	compatible := func(s Segment) bool {
+		return len(s.Embedding) == len(source.Embedding) && s.EmbeddingProvider == source.EmbeddingProvider &&
+			s.EmbeddingModel == source.EmbeddingModel && s.EmbeddingRevision == source.EmbeddingRevision &&
+			s.EmbeddingPreprocessing == source.EmbeddingPreprocessing
+	}
+	best, bestScore := -1, -1.0
+	for i, candidate := range destination {
+		if compatible(candidate) {
+			if score := cosine(source.Embedding, candidate.Embedding); score > bestScore {
+				best, bestScore = i, score
+			}
+		}
+	}
+	if best < 0 || bestScore < minSemanticSimilarity {
+		return nil
+	}
+	back, backScore := -1, -1.0
+	for i, candidate := range sources {
+		if compatible(candidate) {
+			if score := cosine(destination[best].Embedding, candidate.Embedding); score > backScore {
+				back, backScore = i, score
+			}
+		}
+	}
+	if back < 0 || sources[back].ID != source.ID || backScore < minSemanticSimilarity {
+		return nil
+	}
+	confidence := Medium
+	if bestScore >= highSemanticSimilarity && backScore >= highSemanticSimilarity {
+		confidence = High
+	}
+	c := destination[best]
+	return []Candidate{{
+		Precision: Passage, Confidence: confidence, Method: MethodSemantic, Score: bestScore,
+		Locator: c.Locator, Section: c.Section, Excerpt: Excerpt(c.Text, excerptChars),
+		Evidence: map[string]any{"similarity": bestScore, "reverseSimilarity": backScore,
+			"provider": source.EmbeddingProvider, "model": source.EmbeddingModel,
+			"revision": source.EmbeddingRevision, "preprocessingVersion": source.EmbeddingPreprocessing,
+			"reverse": "agrees"},
+		sequence: c.Sequence, chapter: c.Chapter,
+	}}
+}
+
+func cosine(a, b []float32) float64 {
+	var dot, aa, bb float64
+	for i := range a {
+		x, y := float64(a[i]), float64(b[i])
+		dot, aa, bb = dot+x*y, aa+x*x, bb+y*y
+	}
+	if aa == 0 || bb == 0 {
+		return -1
+	}
+	return dot / math.Sqrt(aa*bb)
 }
 
 // keepBest orders candidates by score, drops one that is the neighbour of a better one (the same
@@ -231,7 +302,7 @@ const (
 	NotFound  = "not_found"
 )
 
-// Combine puts the evidence of the three methods together. A passage found in the very chapter that
+// Combine puts the available evidence together. A passage found in the very chapter that
 // the structure points to is one answer with two reasons; a chapter the passages do not mention is
 // a candidate of its own; names and numbers are only used when the wording gave nothing.
 func Combine(passages, anchors []Candidate, chapter *Candidate) Answer {

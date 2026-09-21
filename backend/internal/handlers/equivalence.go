@@ -40,7 +40,9 @@ func (h *EquivalenceHandler) aFile(ctx context.Context, id int64) (fileHandle, e
 	return f, err
 }
 
-const segmentColumns = `s.id, s.sequence, COALESCE(s.section, ''), s.origin, s.text, s.locator, s.locator_version, s.node`
+const segmentColumns = `s.id, s.sequence, COALESCE(s.section, ''), s.origin, s.text, s.locator, s.locator_version, s.node,
+	COALESCE(se.embedding, 'null'::jsonb), COALESCE(se.provider, ''), COALESCE(se.model, ''),
+	COALESCE(se.revision, ''), COALESCE(se.preprocessing_version, 0)`
 
 // publishedText returns one file's currently published text, in reading order, with the outline it
 // was published with (nil when the file has none).
@@ -57,6 +59,10 @@ func publishedText(ctx context.Context, db *sql.DB, fileID int64) (equivalence.F
 		SELECT `+segmentColumns+`
 		FROM document_segments s
 		JOIN text_extractions te ON te.file_id = s.file_id AND te.generation = s.generation
+		LEFT JOIN text_embedding_status es ON es.file_id = s.file_id AND es.generation = s.generation
+		LEFT JOIN document_segment_embeddings se ON se.document_segment_id = s.id
+		  AND se.provider = es.provider AND se.model = es.model AND se.revision = es.revision
+		  AND se.preprocessing_version = es.preprocessing_version
 		WHERE s.file_id = $1
 		ORDER BY s.sequence`, fileID)
 	if err != nil {
@@ -69,8 +75,13 @@ func publishedText(ctx context.Context, db *sql.DB, fileID int64) (equivalence.F
 		var loc []byte
 		var ver int
 		var node sql.NullInt64
-		if err := rows.Scan(&seg.ID, &seg.Sequence, &seg.Section, &origin, &seg.Text, &loc, &ver, &node); err != nil {
+		var vector []byte
+		if err := rows.Scan(&seg.ID, &seg.Sequence, &seg.Section, &origin, &seg.Text, &loc, &ver, &node,
+			&vector, &seg.EmbeddingProvider, &seg.EmbeddingModel, &seg.EmbeddingRevision, &seg.EmbeddingPreprocessing); err != nil {
 			return file, err
+		}
+		if string(vector) != "null" {
+			_ = json.Unmarshal(vector, &seg.Embedding)
 		}
 		seg.Locator = json.RawMessage(loc)
 		seg.Chapter = chapterKey(loc, seg.Section)
@@ -324,7 +335,7 @@ func (h *EquivalenceHandler) Accept(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var req AcceptRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Locator) == 0 ||
-		(req.Method != equivalence.MethodText && req.Method != equivalence.MethodAnchors && req.Method != equivalence.MethodStructure) ||
+		(req.Method != equivalence.MethodText && req.Method != equivalence.MethodAnchors && req.Method != equivalence.MethodStructure && req.Method != equivalence.MethodSemantic) ||
 		(req.Confidence != equivalence.Low && req.Confidence != equivalence.Medium && req.Confidence != equivalence.High) ||
 		(req.Precision != equivalence.Passage && req.Precision != equivalence.ChapterOnly && req.Precision != equivalence.Approximate) {
 		http.Error(w, "invalid acceptance", http.StatusBadRequest)

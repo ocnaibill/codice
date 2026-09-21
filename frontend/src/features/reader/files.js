@@ -96,6 +96,7 @@ const METHOD_LABEL = {
   text: 'mesmo trecho',
   anchors: 'mesmos nomes e números',
   structure: 'mesmo capítulo',
+  semantic: 'mesma passagem pelo sentido',
 };
 const CONFIDENCE_LABEL = { high: 'alta confiança', medium: 'confiança média', low: 'confiança baixa' };
 
