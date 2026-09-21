@@ -422,10 +422,11 @@ func TestAlign_ALevelWhoseNumbersAgreeBeatsAFinerOneThatOnlyHasTheCount(t *testi
 	}
 }
 
-// A chapter of `size` characters in the middle of a book of five.
-func fiveChapters(word string, size int) []bookNode {
+// A chapter of `size` characters in a book large enough for that chapter to remain below the
+// conservative share limit used by the approximation.
+func chapterBook(word string, size int) []bookNode {
 	var out []bookNode
-	for i := 1; i <= 12; i++ {
+	for i := 1; i <= 100; i++ {
 		chars := 1400
 		if i == 3 {
 			chars = size
@@ -437,8 +438,8 @@ func fiveChapters(word string, size int) []bookNode {
 
 func TestApproximate_TheSameFractionOfTheChapterWhateverTheLengthOfEachVersion(t *testing.T) {
 	// Chapter 3 is 10 segments in one version and 14 in the other (a translation runs longer).
-	sn, ss := book(fiveChapters("Capítulo", 7000)...)
-	dn, ds := book(fiveChapters("Chapter", 9800)...)
+	sn, ss := book(chapterBook("Capítulo", 7000)...)
+	dn, ds := book(chapterBook("Chapter", 9800)...)
 	// the source: the 8th segment of chapter 3 (two segments in each of chapters 1 and 2 come first)
 	at := 4 + 7
 	a := Align(sn, ss, dn, ds, at)
@@ -466,7 +467,7 @@ func TestApproximate_TheSameFractionOfTheChapterWhateverTheLengthOfEachVersion(t
 	}
 }
 
-func TestApproximate_ItIsOnlyAsSureAsTheAlignmentAndTheSizeOfWhatItAlignedTo(t *testing.T) {
+func TestApproximate_OnlyForASmallChapterWhoseNumbersConfirmTheAlignment(t *testing.T) {
 	small := mustAlign(t, flat("Capítulo", 12), flat("Chapter", 12), 2*3)
 	if c := small.Approximate(2 * 3); c == nil || c.Confidence != Medium {
 		t.Errorf("a short chapter that the numbers confirm is medium at best, an estimate: %+v", c)
@@ -475,8 +476,8 @@ func TestApproximate_ItIsOnlyAsSureAsTheAlignmentAndTheSizeOfWhatItAlignedTo(t *
 		return []bookNode{{word + " 1", 0, 4200, ""}, {word + " 2", 0, 4200, ""}, {word + " 3", 0, 4200, ""}}
 	}
 	big := mustAlign(t, parts("Livro"), parts("Book"), 7)
-	if c := big.Approximate(7); c == nil || c.Confidence != Low {
-		t.Errorf("an estimate inside a third of the book is low: %+v", c)
+	if c := big.Approximate(7); c != nil {
+		t.Errorf("an estimate inside a third of the book is not useful: %+v", c)
 	}
 	byNumber := mustAlign(t, flat("Capítulo", 7), func() []bookNode {
 		var short []bookNode
@@ -485,8 +486,8 @@ func TestApproximate_ItIsOnlyAsSureAsTheAlignmentAndTheSizeOfWhatItAlignedTo(t *
 		}
 		return short
 	}(), 4*2)
-	if c := byNumber.Approximate(4 * 2); c == nil || c.Confidence != Low {
-		t.Errorf("a number alone is low: %+v", c)
+	if c := byNumber.Approximate(4 * 2); c != nil {
+		t.Errorf("a number alone does not confirm that both books have the same chapters: %+v", c)
 	}
 }
 
@@ -497,7 +498,7 @@ func TestApproximate_NothingWhenTheSourceSegmentIsNotInItsChapter(t *testing.T) 
 	}
 }
 
-func TestApproximate_ACountThatNoNumberBacksIsLowEvenInAShortChapter(t *testing.T) {
+func TestApproximate_NothingWhenNumbersDoNotBackTheCountEvenInAShortChapter(t *testing.T) {
 	mk := func(word string) []bookNode {
 		var list []bookNode
 		for i := 0; i < 12; i++ {
@@ -509,7 +510,7 @@ func TestApproximate_ACountThatNoNumberBacksIsLowEvenInAShortChapter(t *testing.
 	if a == nil || a.Verified {
 		t.Fatalf("expected an unverified count: %+v", a)
 	}
-	if c := a.Approximate(6); c == nil || c.Confidence != Low {
+	if c := a.Approximate(6); c != nil {
 		t.Errorf("%+v", c)
 	}
 }

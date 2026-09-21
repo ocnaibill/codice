@@ -125,6 +125,22 @@ func TestFind_WhenNoPassageIsFoundAPlaceInTheChapterTheOutlinesPointToIsOffered(
 	}
 }
 
+func TestFind_WhenOnlyALargeStructuralPartMatchesItDoesNotOfferItsBeginning(t *testing.T) {
+	parts := func(word string) File {
+		nodes, segs := book(
+			bookNode{title: word + " 1", chars: 4200},
+			bookNode{title: word + " 2", chars: 4200},
+			bookNode{title: word + " 3", chars: 4200},
+		)
+		return File{Nodes: nodes, Segments: segs}
+	}
+	src, dst := parts("Livro"), parts("Book")
+	say(src, 7, "Um texto sem nomes nem números para ligar a nada do outro lado da tradução.")
+	if a := Find(src, dst, src.Segments[7]); a.Status != NotFound || len(a.Candidates) != 0 {
+		t.Fatalf("a matching book-sized part is not a useful reading position: %+v", a)
+	}
+}
+
 func TestFind_APositionInAPrefaceIsLookedForInThePrefaceOnly(t *testing.T) {
 	pref := bookNode{"Prefácio", 0, 1400, PartFront}
 	srcNodes, srcSegs := book(append([]bookNode{pref}, story2("Capítulo", 5)...)...)
