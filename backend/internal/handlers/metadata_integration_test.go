@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -242,5 +243,34 @@ func TestCandidates_AcceptRejectAndSettle(t *testing.T) {
 	// The audit trail names the decisions.
 	if got := s.scalar(`SELECT string_agg(action, ',' ORDER BY id) FROM audit_log WHERE action LIKE 'metadata.%'`); got != "metadata.accept,metadata.accept,metadata.accept,metadata.accept,metadata.reject" {
 		t.Errorf("audit trail = %q", got)
+	}
+}
+
+func TestNormalizeTag(t *testing.T) {
+	for in, want := range map[string]string{
+		"  Ficção   científica ": "Ficção científica",
+		"":                       "",
+		"Translated by Ebook Translator: https://translator.bookfere.com": "Translated by Ebook Translator",
+		strings.Repeat("x", 80):                           strings.Repeat("x", 50),
+		strings.Repeat("ç", 60):                           strings.Repeat("ç", 50), // characters, not bytes
+		strings.Repeat("x", 49) + ",,,,":                  strings.Repeat("x", 49),
+		strings.TrimSpace(strings.Repeat("palavra ", 30)): "palavra palavra palavra palavra palavra palavra",
+	} {
+		if got := normalizeTag(in); got != want {
+			t.Errorf("normalizeTag(%.40q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCandidates_AcceptingATagTooLongForTheColumnStoresItShortened(t *testing.T) {
+	s := newCatalogStack(t)
+	id := s.addWork("dune.epub", "", "d.epub", "epub")
+	long := s.addCandidate(id, "tags", `["Translated by Ebook Translator: https://translator.bookfere.com","Sci-Fi"]`, "openlibrary")
+	if code := s.decide(id, long, "accept"); code != 200 {
+		t.Fatalf("accept: %d", code)
+	}
+	got := s.scalar(`SELECT string_agg(t.name, '|' ORDER BY t.name) FROM work_tags wt JOIN tags t ON t.id = wt.tag_id WHERE wt.work_id = $1`, id)
+	if got != "Sci-Fi|Translated by Ebook Translator" {
+		t.Errorf("tags = %q", got)
 	}
 }
