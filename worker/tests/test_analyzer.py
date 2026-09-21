@@ -1,7 +1,7 @@
 """Tests for the analyzer's database writes, using a fake database that models a
 work's current values, locks and field provenance."""
 import json
-from analyzer import Analyzer, UPSERT_PRIMARY_EDITION_COVER
+from analyzer import Analyzer, UPSERT_PRIMARY_EDITION_COVER, clean_tag, MAX_TAG
 
 VALUE_NAMES = ['title', 'author', 'series', 'series_index', 'isbn', 'language', 'publisher',
                'publication_date', 'description']
@@ -201,3 +201,33 @@ class TestAuthor:
         assert db.matching("DELETE FROM work_contributors")[0][1] == (7,)
         insert = db.matching("INSERT INTO work_contributors")[0]
         assert insert[1] == (7, 99) and "'author', 0" in insert[0]
+
+
+class TestLongTags:
+    LONG = 'Translated by Ebook Translator: https://translator.bookfere.com'
+
+    def test_a_subject_the_column_cannot_hold_is_shortened_not_fatal(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, {'title': 'Duna', 'tags': [self.LONG, 'Sci-Fi']})
+        written = [p[0] for q, p in db.matching("INSERT INTO tags")]
+        assert written and all(len(t) <= MAX_TAG for t in written) and 'Sci-Fi' in written
+
+    def test_shortened_at_a_word_and_never_ending_on_punctuation(self):
+        assert clean_tag(self.LONG) == 'Translated by Ebook Translator'
+        assert clean_tag('palavra ' * 30) == 'palavra palavra palavra palavra palavra palavra'
+        assert not clean_tag('x' * 49 + ',,,,').endswith(',') and len(clean_tag('x' * 80)) == MAX_TAG
+
+    def test_a_tag_that_fits_is_left_alone_but_for_its_spaces(self):
+        assert clean_tag('  Ficção   científica ') == 'Ficção científica'
+        assert clean_tag('') == '' and clean_tag(None) == ''
+
+    def test_two_subjects_that_become_the_same_tag_are_written_once(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, {'title': 'Duna', 'tags': [self.LONG, self.LONG + ' (2)']})
+        assert len(db.matching("INSERT INTO tags")) == 1
+
+    def test_a_long_tag_suggested_by_a_provider_is_proposed_as_it_would_be_stored(self):
+        db = FakeDB()
+        Analyzer(db).save_candidates(7, {'tags': [self.LONG]}, 'openlibrary')
+        (params,) = candidates(db).values()
+        assert json.loads(params[2]) == ['Translated by Ebook Translator']

@@ -436,10 +436,32 @@ func (h *LibraryHandler) decideCandidate(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusOK)
 }
 
+// maxTagRunes is what tags.name holds (VARCHAR(50)).
+const maxTagRunes = 50
+
+// normalizeTag is a tag as the database can hold it: a suggestion is free text, and one the column
+// cannot hold must be shortened, not fail the decision. It is cut at a word when it can be and never
+// ends on punctuation. The worker does the same to the subjects of a file (analyzer.clean_tag).
+func normalizeTag(name string) string {
+	name = strings.Join(strings.Fields(name), " ")
+	runes := []rune(name)
+	if len(runes) <= maxTagRunes {
+		return name
+	}
+	cut := runes[:maxTagRunes]
+	for i := len(cut) - 1; i >= maxTagRunes/2; i-- {
+		if cut[i] == ' ' {
+			cut = cut[:i]
+			break
+		}
+	}
+	return strings.TrimRight(string(cut), " ,;:.-–—/")
+}
+
 // addTags links tags to a work, creating the ones that do not exist yet.
 func addTags(tx *sql.Tx, workID int, names []string) error {
 	for _, name := range names {
-		name = strings.TrimSpace(name)
+		name = normalizeTag(name)
 		if name == "" {
 			continue
 		}

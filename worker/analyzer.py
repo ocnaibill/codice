@@ -22,6 +22,24 @@ UPSERT_PRIMARY_EDITION_COVER = """
 """
 
 
+MAX_TAG = 50  # tags.name is VARCHAR(50)
+
+
+def clean_tag(name):
+    """A tag as the database can hold it. A book's subjects are free text (one EPUB lists "Translated by
+    Ebook Translator: https://translator.bookfere.com" as one), and a value the column cannot hold must
+    not fail the whole analysis of the file: it is shortened, at a word when it can be, and never ends
+    on punctuation."""
+    name = ' '.join(str(name or '').split())
+    if len(name) <= MAX_TAG:
+        return name
+    cut = name[:MAX_TAG]
+    space = cut.rfind(' ')
+    if space >= MAX_TAG // 2:
+        cut = cut[:space]
+    return cut.rstrip(' ,;:.-–—/')
+
+
 class MediaStatus(str, Enum):
     UNKNOWN = 'UNKNOWN'
     QUEUED = 'QUEUED'
@@ -213,7 +231,7 @@ class Analyzer:
             self.save_cover(work_id, metadata['cover_path'], metadata.get('title', ''))
 
         # Tags found in the file (Many-to-Many)
-        for tag_name in metadata.get('tags', []) or []:
+        for tag_name in dict.fromkeys(clean_tag(t) for t in metadata.get('tags', []) or []):
             if not tag_name:
                 continue
             self.db.execute(
@@ -275,7 +293,7 @@ class Analyzer:
                 continue
             propose(field, text)
 
-        tags = {t for t in (record.get('tags') or []) if t}
+        tags = {clean_tag(t) for t in (record.get('tags') or []) if clean_tag(t)}
         if tags:
             have = {r[0] for r in (self.db.fetchall(
                 "SELECT t.name FROM work_tags wt JOIN tags t ON t.id = wt.tag_id WHERE wt.work_id = %s",
