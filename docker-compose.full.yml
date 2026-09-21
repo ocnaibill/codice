@@ -118,6 +118,7 @@ services:
   worker:
     build:
       context: ./worker
+      target: runtime
     environment:
       APP_ENV: ${APP_ENV:-production}
       DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
@@ -133,6 +134,39 @@ services:
       # The backend creates and migrates the schema, so it must be up first.
       backend:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - codice_network
+    restart: unless-stopped
+
+  # Optional local semantic matching (#31). This separate worker starts idle; the owner enables it
+  # in the app, and only then does it download LaBSE. Reading and ingestion never wait for it.
+  embeddings:
+    build:
+      context: ./worker
+      target: embeddings
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      EMBEDDINGS_PROVIDER: labse
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-sentence-transformers/LaBSE}
+      EMBEDDINGS_MODEL_REVISION: ${EMBEDDINGS_MODEL_REVISION:-default}
+      WORKER_JOB_TYPES: embed_text
+      JOBS_MAX_CONCURRENT: ${EMBEDDINGS_MAX_CONCURRENT:-1}
+      WORKER_HEALTH_MAX_AGE: ${WORKER_HEALTH_MAX_AGE:-}
+    volumes:
+      - codice_model_cache:/home/codice/.cache
+    depends_on:
+      backend:
+        condition: service_healthy
+    # The first local model download can take several minutes; do not label the worker unhealthy
+    # while it is filling its persistent cache for the first time.
+    healthcheck:
+      start_period: 15m
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -176,3 +210,4 @@ networks:
 volumes:
   codice_pgdata:
   codice_storage:
+  codice_model_cache:

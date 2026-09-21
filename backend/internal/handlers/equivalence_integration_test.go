@@ -133,6 +133,40 @@ func TestEquivalence_NothingIsInventedWhenThereIsNoEvidence(t *testing.T) {
 	_ = work
 }
 
+func TestEquivalence_UsesCompatiblePublishedEmbeddingsWhenLexicalEvidenceFails(t *testing.T) {
+	s := newCatalogStack(t)
+	s.exec(`INSERT INTO settings (key, value) VALUES ('equivalence.embeddings', '{"enabled":true}')`)
+	_, source, dest := s.bookWithTwoFiles()
+	s.index(source, segment{text: "a jornada silenciosa atravessou o vale ao amanhecer", locator: `{"type":"epub","href":"c1.xhtml"}`})
+	s.index(dest,
+		segment{text: "the market closed after a day of ordinary trade", locator: `{"type":"pdf","page":0}`},
+		segment{text: "at dawn the quiet voyage crossed the valley", locator: `{"type":"pdf","page":1}`},
+	)
+	add := func(file int64, vectors string) {
+		s.t.Helper()
+		s.exec(fmt.Sprintf(`INSERT INTO document_segment_embeddings
+			(document_segment_id, provider, model, revision, preprocessing_version, dimensions, normalized, embedding)
+			SELECT id, 'test', 'multilingual', 'r1', 1, 2, true,
+			       (ARRAY[%s]::jsonb[])[sequence + 1]
+			FROM document_segments WHERE file_id = $1`, vectors), file)
+		s.exec(`INSERT INTO text_embedding_status
+			(file_id, generation, provider, model, revision, preprocessing_version, segment_count)
+			SELECT file_id, generation, 'test', 'multilingual', 'r1', 1, count(*)
+			FROM document_segments WHERE file_id = $1 GROUP BY file_id, generation`, file)
+	}
+	add(source, `'[1,0]'::jsonb`)
+	add(dest, `'[0,1]'::jsonb, '[0.99,0.01]'::jsonb`)
+	s.progress(ana, "PUT", source, `{"locator":{"type":"epub","href":"c1.xhtml"}}`)
+
+	code, r := s.equivalent(ana, dest, source)
+	if code != 200 || r.Status != "found" || len(r.Candidates) != 1 {
+		t.Fatalf("%d %+v", code, r)
+	}
+	if c := r.Candidates[0]; c.Method != "semantic" || c.Confidence != "high" || c.Evidence["reverse"] != "agrees" {
+		t.Fatalf("candidate = %+v", c)
+	}
+}
+
 func TestEquivalence_NoPositionInTheSourceIsNotFound(t *testing.T) {
 	s := newCatalogStack(t)
 	_, epub, pdf := s.bookWithTwoFiles()

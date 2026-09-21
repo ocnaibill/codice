@@ -2,6 +2,34 @@ package equivalence
 
 import "testing"
 
+func embedded(id int64, sequence int, vector []float32) Segment {
+	return Segment{ID: id, Sequence: sequence, Text: "semantic passage", Embedding: vector,
+		EmbeddingProvider: "test", EmbeddingModel: "multilingual", EmbeddingRevision: "r1", EmbeddingPreprocessing: 1}
+}
+
+func TestBySemantic_RequiresAMutualNearestCompatibleMatch(t *testing.T) {
+	source := embedded(1, 4, []float32{1, 0})
+	sources := []Segment{source, embedded(2, 5, []float32{0, 1})}
+	destination := []Segment{embedded(10, 8, []float32{.99, .01}), embedded(11, 9, []float32{0, 1})}
+	got := BySemantic(source, destination, sources)
+	if len(got) != 1 || got[0].Method != MethodSemantic || got[0].sequence != 8 || got[0].Evidence["reverse"] != "agrees" {
+		t.Fatalf("got %+v", got)
+	}
+	destination[0].EmbeddingModel = "another-model"
+	if got := BySemantic(source, destination, sources); len(got) != 0 {
+		t.Fatalf("incompatible vectors were compared: %+v", got)
+	}
+}
+
+func TestBySemantic_RejectsAOneWayNearestNeighbour(t *testing.T) {
+	source := embedded(1, 4, []float32{1, 0})
+	other := embedded(2, 5, []float32{.999, .001})
+	destination := []Segment{embedded(10, 8, []float32{.99, .01})}
+	if got := BySemantic(source, destination, []Segment{source, other}); len(got) != 0 {
+		t.Fatalf("got %+v", got)
+	}
+}
+
 func seg(seq int, chapter, text string) Segment {
 	return Segment{ID: int64(seq), Sequence: seq, Chapter: chapter, Text: text, Locator: []byte(`{}`)}
 }

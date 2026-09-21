@@ -21,6 +21,7 @@ beforeEach(() => {
     if (url === '/admin/backup') return { data: { lastBackup: null } };
     if (url === '/admin/duplicates' || url === '/admin/ocr' || url === '/users') return { data: { data: [] } };
     if (url === '/admin/ldap') return { data: { configured: false, host: '', baseDN: '', linkedAccounts: 0, policy: { allowCreate: false, revalidateHours: 24 } } };
+    if (url === '/admin/embeddings') return { data: { enabled: false, available: true, state: 'idle', model: 'sentence-transformers/LaBSE' } };
     throw new Error(`unexpected GET ${url}`);
   });
 });

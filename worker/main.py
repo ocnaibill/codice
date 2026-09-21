@@ -17,6 +17,7 @@ from pipeline import analyze_file, ensure_file
 from runner import JobRunner, JobsClient, new_owner_name, poll_once
 from health import Heartbeat
 from textindex.store import TextIndexer
+from embeddings import EmbeddingIndexer, SentenceTransformersProvider
 
 # 1. Loads variables from .env, trying multiple locations
 env_paths = ["../.env", ".env"]
@@ -115,6 +116,10 @@ def build_runner(db, client, heartbeat=None):
     os.makedirs(covers_dir, exist_ok=True)
 
     indexer = TextIndexer(db, storage_path)
+    embeddings = None
+    if os.getenv('EMBEDDINGS_PROVIDER', '').lower() in ('labse', 'sentence-transformers'):
+        embeddings = EmbeddingIndexer(db, SentenceTransformersProvider())
+        embeddings.enqueue_missing()
 
     def process(job, checkpoint):
         if job.get('type') == 'extract_text':
@@ -123,6 +128,11 @@ def build_runner(db, client, heartbeat=None):
             print(f"\n📚 Text job {job['id']} (work {job['work_id']}, attempt {job['attempts']}/{job['max_attempts']})")
             outcome = indexer.run(job['work_id'], force=bool(job['payload'].get('force')), checkpoint=checkpoint)
             print(f"   📝 {outcome or 'nothing to read'}")
+            return outcome
+        if job.get('type') == 'embed_text':
+            print(f"\n🧭 Embedding job {job['id']} (work {job['work_id']}, attempt {job['attempts']}/{job['max_attempts']})")
+            outcome = embeddings.run(job['work_id'], checkpoint=checkpoint) if embeddings else {}
+            print(f"   🧠 {outcome or 'nothing to embed'}")
             return outcome
         file_path = job['payload'].get('file_path')
         print(f"\n📥 Job {job['id']} (work {job['work_id']}, attempt {job['attempts']}/{job['max_attempts']})")
@@ -168,9 +178,16 @@ def build_runner(db, client, heartbeat=None):
     owner = new_owner_name()
     print(f"🆔 Worker {owner}")
     jobs = JobsClient(db, owner, lease_seconds=LEASE_SECONDS, max_running=MAX_RUNNING)
-    return JobRunner(jobs, process, on_start=on_start, on_success=on_success, on_failure=on_failure,
+    def on_job_heartbeat(job):
+        if heartbeat:
+            heartbeat.beat("working", job['id'])
+        if embeddings is not None:
+            embeddings.heartbeat()
+    runner = JobRunner(jobs, process, on_start=on_start, on_success=on_success, on_failure=on_failure,
                      on_retry=on_retry, heartbeat_every=max(1.0, LEASE_SECONDS / 4),
-                     on_heartbeat=(lambda job: heartbeat.beat("working", job['id'])) if heartbeat else None)
+                     on_heartbeat=on_job_heartbeat)
+    runner.embeddings = embeddings
+    return runner
 
 
 def listen_for_tasks():
@@ -190,6 +207,8 @@ def listen_for_tasks():
             # The database itself is unreachable: nothing to do but wait for it.
             time.sleep(POLL_SECONDS)
             continue
+        if runner.embeddings is not None:
+            runner.embeddings.enqueue_missing()
         last_id = wait_for_work(client, last_id)
 
 

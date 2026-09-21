@@ -98,6 +98,7 @@ describe('reading summary texts', () => {
     expect(candidateLabel({ method: 'structure', confidence: 'medium' })).toBe('mesmo capítulo, confiança média');
     expect(candidateLabel({ method: 'structure', precision: 'approximate', confidence: 'medium' })).toBe('posição aproximada no mesmo capítulo, confiança média');
     expect(candidateLabel({ method: 'structure', precision: 'chapter', confidence: 'high' })).toBe('mesmo capítulo, alta confiança');
+    expect(candidateLabel({ method: 'semantic', confidence: 'high' })).toBe('mesma passagem pelo sentido, alta confiança');
     expect(candidateLabel({ method: 'unknown' })).toBe('correspondência aproximada');
     expect(candidateLabel(undefined)).toBe('correspondência aproximada');
   });

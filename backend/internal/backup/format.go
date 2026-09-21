@@ -37,7 +37,7 @@ var credentialTables = []string{"sessions", "app_tokens", "invitations", "passwo
 // out of every package, because it is large, can be made again and is worth nothing without the files
 // it came from. A restored instance asks for it to be extracted anew (see afterRestore), so search is
 // back when that job has run, and a restore is as quick as the database without it.
-var derivedTables = []string{"document_segments", "text_extractions"}
+var derivedTables = []string{"document_segments", "text_extractions", "document_segment_embeddings", "text_embedding_status"}
 
 var (
 	ErrEncrypted       = errors.New("the package is encrypted: give the passphrase (CODICE_BACKUP_PASSPHRASE or --passphrase-file)")

@@ -266,7 +266,7 @@ func TestOwnerOnlyRoutes_ThatNeedTheDatabaseAreStillGuarded(t *testing.T) {
 	// Removing an authorised directory reaches the database once past the guard,
 	// so only the guard itself is checked here.
 	h := testRouter(t)
-	for _, rt := range []route{{"DELETE", "/admin/storage/roots/1"}, {"GET", "/admin/trash/policy/preview"}, {"DELETE", "/ownership/transfer"}, {"GET", "/admin/ldap"}, {"POST", "/admin/ldap/check"}} {
+	for _, rt := range []route{{"DELETE", "/admin/storage/roots/1"}, {"GET", "/admin/trash/policy/preview"}, {"DELETE", "/ownership/transfer"}, {"GET", "/admin/ldap"}, {"POST", "/admin/ldap/check"}, {"GET", "/admin/embeddings"}, {"PUT", "/admin/embeddings"}} {
 		for _, role := range []string{"admin", "reader"} {
 			if rec := do(h, rt.method, rt.path, tokenFor(t, role), ""); rec.Code != http.StatusForbidden {
 				t.Errorf("%s %s as %s: got %d, want 403", rt.method, rt.path, role, rec.Code)

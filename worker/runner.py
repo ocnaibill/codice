@@ -52,7 +52,8 @@ class JobsClient:
         self.owner = owner
         self.lease_seconds = lease_seconds
         self.max_running = max_running
-        self.types = list(types) if types is not None else list(self.JOB_TYPES)
+        configured = os.getenv('WORKER_JOB_TYPES', '')
+        self.types = list(types) if types is not None else ([v.strip() for v in configured.split(',') if v.strip()] or list(self.JOB_TYPES))
 
     def claim(self):
         row = self.db.fetchone(

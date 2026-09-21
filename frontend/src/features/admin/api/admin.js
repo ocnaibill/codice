@@ -29,6 +29,7 @@ export const useDuplicates = list('duplicates', '/admin/duplicates');
 export const useOcr = list('ocr', '/admin/ocr');
 export const useAccounts = list('accounts', '/users');
 export const useLdap = list('ldap', '/admin/ldap');
+export const useEmbeddings = list('embeddings', '/admin/embeddings');
 export const useInvitations = list('invitations', '/invitations');
 export const usePasswordResets = list('password-resets', '/password-resets');
 
@@ -86,4 +87,5 @@ export const useDeleteAccount = () =>
 export const useApproveReset = () => useAdminAction(async (id) => (await api.post(`/password-resets/${id}/approve`)).data);
 export const useRejectReset = () => useAdminAction((id) => api.post(`/password-resets/${id}/reject`));
 export const useSetLdapPolicy = () => useAdminAction(async (policy) => (await api.put('/admin/ldap/policy', policy)).data);
+export const useSetEmbeddings = () => useAdminAction(async (settings) => (await api.put('/admin/embeddings', settings)).data);
 export const useCheckLdap = () => useMutation({ mutationFn: async () => (await api.post('/admin/ldap/check')).data });

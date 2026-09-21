@@ -103,6 +103,9 @@ func Find(src, dst File, source Segment) Answer {
 	var anchors []Candidate
 	if len(passages) == 0 {
 		anchors = verify(ByAnchors(source, pool))
+		if len(anchors) == 0 {
+			anchors = BySemantic(source, pool, back)
+		}
 	}
 
 	var chapter *Candidate
