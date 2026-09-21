@@ -47,6 +47,8 @@ type Segment struct {
 	Chapter  string // the key of the chapter it is in (see Chapter.Key)
 	Text     string
 	Locator  json.RawMessage
+	Node     int    // the node of the file's outline it is in (see Node); only meaningful with an outline
+	Part     string // front, body or back, from the outline; empty when the file has none
 }
 
 // Candidate is a place in the destination that may be the one.

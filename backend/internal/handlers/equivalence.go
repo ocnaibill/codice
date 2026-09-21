@@ -40,10 +40,19 @@ func (h *EquivalenceHandler) aFile(ctx context.Context, id int64) (fileHandle, e
 	return f, err
 }
 
-const segmentColumns = `s.id, s.sequence, COALESCE(s.section, ''), s.origin, s.text, s.locator, s.locator_version`
+const segmentColumns = `s.id, s.sequence, COALESCE(s.section, ''), s.origin, s.text, s.locator, s.locator_version, s.node`
 
-// publishedSegments returns one file's currently published text, in reading order.
-func publishedSegments(ctx context.Context, db *sql.DB, fileID int64) ([]equivalence.Segment, error) {
+// publishedText returns one file's currently published text, in reading order, with the outline it
+// was published with (nil when the file has none).
+func publishedText(ctx context.Context, db *sql.DB, fileID int64) (equivalence.File, error) {
+	var file equivalence.File
+	var structure []byte
+	if err := db.QueryRowContext(ctx, `SELECT structure FROM text_extractions WHERE file_id = $1`, fileID).Scan(&structure); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return file, err
+	}
+	if len(structure) > 0 && json.Unmarshal(structure, &file.Nodes) != nil {
+		file.Nodes = nil // an outline that cannot be read is no outline
+	}
 	rows, err := db.QueryContext(ctx, `
 		SELECT `+segmentColumns+`
 		FROM document_segments s
@@ -51,23 +60,28 @@ func publishedSegments(ctx context.Context, db *sql.DB, fileID int64) ([]equival
 		WHERE s.file_id = $1
 		ORDER BY s.sequence`, fileID)
 	if err != nil {
-		return nil, err
+		return file, err
 	}
 	defer rows.Close()
-	var out []equivalence.Segment
 	for rows.Next() {
 		var seg equivalence.Segment
 		var origin string
 		var loc []byte
 		var ver int
-		if err := rows.Scan(&seg.ID, &seg.Sequence, &seg.Section, &origin, &seg.Text, &loc, &ver); err != nil {
-			return nil, err
+		var node sql.NullInt64
+		if err := rows.Scan(&seg.ID, &seg.Sequence, &seg.Section, &origin, &seg.Text, &loc, &ver, &node); err != nil {
+			return file, err
 		}
 		seg.Locator = json.RawMessage(loc)
 		seg.Chapter = chapterKey(loc, seg.Section)
-		out = append(out, seg)
+		seg.Node = equivalence.NoNode
+		if node.Valid && int(node.Int64) < len(file.Nodes) {
+			seg.Node = int(node.Int64)
+			seg.Part = file.Nodes[seg.Node].Part
+		}
+		file.Segments = append(file.Segments, seg)
 	}
-	return out, rows.Err()
+	return file, rows.Err()
 }
 
 // chapterKey is what tells two segments' chapters apart inside one file: an EPUB's chapter (its
@@ -90,27 +104,6 @@ func chapterKey(loc []byte, section string) string {
 	default:
 		return ""
 	}
-}
-
-// chapters groups a file's segments into the chapters they fall in, in the order they first
-// appear. A segment with no chapter key (chapterKey returns "") is not part of any chapter.
-func chapters(segments []equivalence.Segment) ([]equivalence.Chapter, map[int]int) {
-	var list []equivalence.Chapter
-	index := map[string]int{}
-	segmentChapter := map[int]int{} // segment sequence -> index into list
-	for _, s := range segments {
-		if s.Chapter == "" {
-			continue
-		}
-		i, ok := index[s.Chapter]
-		if !ok {
-			list = append(list, equivalence.Chapter{Key: s.Chapter, Title: s.Section, FirstSequence: s.Sequence, Locator: s.Locator, Excerpt: equivalence.Excerpt(s.Text, 200)})
-			i = len(list) - 1
-			index[s.Chapter] = i
-		}
-		segmentChapter[s.Sequence] = i
-	}
-	return list, segmentChapter
 }
 
 // nearestSegment is the segment of source that the given locator falls in or nearest to: the
@@ -277,12 +270,12 @@ func (h *EquivalenceHandler) Find(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	srcSegments, err := publishedSegments(ctx, h.DB, srcID)
+	srcFile, err := publishedText(ctx, h.DB, srcID)
 	if err == nil {
-		var more []equivalence.Segment
-		more, err = publishedSegments(ctx, h.DB, destID)
+		var destFile equivalence.File
+		destFile, err = publishedText(ctx, h.DB, destID)
 		if err == nil {
-			h.respond(w, sourceLocator, srcSegments, more)
+			h.respond(w, sourceLocator, srcFile, destFile)
 			return
 		}
 	}
@@ -290,25 +283,13 @@ func (h *EquivalenceHandler) Find(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Error finding an equivalent position", http.StatusInternalServerError)
 }
 
-func (h *EquivalenceHandler) respond(w http.ResponseWriter, sourceLocator json.RawMessage, srcSegments, destSegments []equivalence.Segment) {
-	source := nearestSegment(srcSegments, sourceLocator)
+func (h *EquivalenceHandler) respond(w http.ResponseWriter, sourceLocator json.RawMessage, src, dst equivalence.File) {
+	source := nearestSegment(src.Segments, sourceLocator)
 	if source == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"status": equivalence.NotFound})
 		return
 	}
-	srcChapters, srcIndex := chapters(srcSegments)
-	destChapters, _ := chapters(destSegments)
-
-	passages := equivalence.ByPassage(*source, destSegments)
-	var anchors []equivalence.Candidate
-	if len(passages) == 0 {
-		anchors = equivalence.ByAnchors(*source, destSegments)
-	}
-	var chapterCandidate *equivalence.Candidate
-	if i, ok := srcIndex[source.Sequence]; ok {
-		chapterCandidate = equivalence.ByStructure(i, srcChapters, destChapters)
-	}
-	answer := equivalence.Combine(passages, anchors, chapterCandidate)
+	answer := equivalence.Find(src, dst, *source)
 
 	out := make([]equivalenceOut, len(answer.Candidates))
 	for i, c := range answer.Candidates {

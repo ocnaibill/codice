@@ -18,7 +18,9 @@ type Chapter struct {
 }
 
 var (
-	chapterWord = regexp.MustCompile(`(?i)\b(?:cap[ií]tulo|capitulo|chapter|chapitre|kapitel|capitolo|cap\.?)\s+([0-9]+|[ivxlcdm]+|[\p{L}]+)\b`)
+	// "Book One", "Livro Primeiro" and "Part 2" number the big divisions of a book the way "Chapter 3"
+	// numbers the small ones.
+	chapterWord = regexp.MustCompile(`(?i)\b(?:cap[ií]tulo|capitulo|chapter|chapitre|kapitel|capitolo|cap\.?|livro|libro|livre|book|buch|libro|parte|part|partie)\s+([0-9]+|[ivxlcdm]+|[\p{L}]+)\b`)
 	numberWords = map[string]int{
 		// Portuguese, English, Spanish and French, one to twelve: what a chapter is called in the
 		// books that write it out.
@@ -26,6 +28,12 @@ var (
 		"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
 		"uno": 1, "dos": 2, "cuatro": 4, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10, "once": 11, "doce": 12,
 		"deux": 2, "trois": 3, "quatre": 4, "sept": 7, "huit": 8, "neuf": 9, "dix": 10, "onze_fr": 11, "douze": 12,
+		// The ordinals a book's parts are numbered with ("Livro Primeiro", "Book the Second"), one to ten.
+		"primeiro": 1, "primeira": 1, "segundo": 2, "segunda": 2, "terceiro": 3, "terceira": 3, "quarto": 4, "quarta": 4, "quinto": 5, "quinta": 5,
+		"sexto": 6, "sexta": 6, "setimo": 7, "setima": 7, "oitavo": 8, "oitava": 8, "nono": 9, "nona": 9, "decimo": 10, "decima": 10,
+		"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+		"primero": 1, "primera": 1, "tercero": 3, "tercera": 3, "cuarto": 4, "cuarta": 4, "septimo": 7, "octavo": 8, "noveno": 9,
+		"premier": 1, "premiere": 1, "deuxieme": 2, "troisieme": 3, "quatrieme": 4, "cinquieme": 5, "sixieme": 6,
 	}
 	romans = map[rune]int{'i': 1, 'v': 5, 'x': 10, 'l': 50, 'c': 100, 'd': 500, 'm': 1000}
 )
