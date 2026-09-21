@@ -90,20 +90,14 @@ func TestEquivalenceOutline_TheChapterInsideAFileOfManyIsFoundByTheProgressionAn
 	}
 }
 
-func TestEquivalenceOutline_WhenNothingInTheChapterIsSharedAPlaceInItIsOffered(t *testing.T) {
+func TestEquivalenceOutline_WhenOnlyALargeStructuralUnitMatchesNoPlaceIsOffered(t *testing.T) {
 	s := newCatalogStack(t)
 	epub, pdf := s.outlinedBook("Capítulo", "Chapter")
 	s.exec(`UPDATE document_segments SET text = $1 WHERE file_id = $2`, filler(2), epub) // no names anywhere
 	s.progress(ana, "PUT", epub, `{"locator":{"type":"epub","href":"all.xhtml","progression":0.5}}`)
 	_, r := s.equivalent(ana, pdf, epub)
-	if r.Status != "found" || len(r.Candidates) != 1 {
+	if r.Status != "not_found" || len(r.Candidates) != 0 {
 		t.Fatalf("%+v", r)
-	}
-	c := r.Candidates[0]
-	var loc map[string]any
-	json.Unmarshal(c.Locator, &loc)
-	if c.Method != "structure" || c.Precision != "approximate" || c.Section != "Chapter 3" || loc["page"] != float64(20) {
-		t.Errorf("%+v", c)
 	}
 }
 
