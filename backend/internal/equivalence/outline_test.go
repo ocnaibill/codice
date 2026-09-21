@@ -421,3 +421,95 @@ func TestAlign_ALevelWhoseNumbersAgreeBeatsAFinerOneThatOnlyHasTheCount(t *testi
 		t.Fatalf("got %+v", a)
 	}
 }
+
+// A chapter of `size` characters in the middle of a book of five.
+func fiveChapters(word string, size int) []bookNode {
+	var out []bookNode
+	for i := 1; i <= 12; i++ {
+		chars := 1400
+		if i == 3 {
+			chars = size
+		}
+		out = append(out, bookNode{title: fmt.Sprintf("%s %d", word, i), chars: chars})
+	}
+	return out
+}
+
+func TestApproximate_TheSameFractionOfTheChapterWhateverTheLengthOfEachVersion(t *testing.T) {
+	// Chapter 3 is 10 segments in one version and 14 in the other (a translation runs longer).
+	sn, ss := book(fiveChapters("Capítulo", 7000)...)
+	dn, ds := book(fiveChapters("Chapter", 9800)...)
+	// the source: the 8th segment of chapter 3 (two segments in each of chapters 1 and 2 come first)
+	at := 4 + 7
+	a := Align(sn, ss, dn, ds, at)
+	if a == nil {
+		t.Fatal("no alignment")
+	}
+	c := a.Approximate(at)
+	if c == nil || c.Precision != Approximate || c.Method != MethodStructure {
+		t.Fatalf("got %+v", c)
+	}
+	// (7 + ½) / 10 = 75% through the chapter: the segment of the 14 whose middle is nearest that is the 11th
+	if want := 4 + 10; c.Sequence() != want {
+		t.Errorf("landed on segment %d, want %d", c.Sequence(), want)
+	}
+	if got := c.Evidence["unitFraction"].(float64); got != 0.75 {
+		t.Errorf("unitFraction %v", got)
+	}
+	// The first segment of the source chapter is at the start of the destination one.
+	if first := a.Approximate(4); first.Sequence() != 4 {
+		t.Errorf("start of the chapter landed on %d", first.Sequence())
+	}
+	// And the last is at its end.
+	if last := a.Approximate(4 + 9); last.Sequence() != 4+13 {
+		t.Errorf("end of the chapter landed on %d", last.Sequence())
+	}
+}
+
+func TestApproximate_ItIsOnlyAsSureAsTheAlignmentAndTheSizeOfWhatItAlignedTo(t *testing.T) {
+	small := mustAlign(t, flat("Capítulo", 12), flat("Chapter", 12), 2*3)
+	if c := small.Approximate(2 * 3); c == nil || c.Confidence != Medium {
+		t.Errorf("a short chapter that the numbers confirm is medium at best, an estimate: %+v", c)
+	}
+	parts := func(word string) []bookNode {
+		return []bookNode{{word + " 1", 0, 4200, ""}, {word + " 2", 0, 4200, ""}, {word + " 3", 0, 4200, ""}}
+	}
+	big := mustAlign(t, parts("Livro"), parts("Book"), 7)
+	if c := big.Approximate(7); c == nil || c.Confidence != Low {
+		t.Errorf("an estimate inside a third of the book is low: %+v", c)
+	}
+	byNumber := mustAlign(t, flat("Capítulo", 7), func() []bookNode {
+		var short []bookNode
+		for _, n := range []int{1, 2, 3, 5, 6} {
+			short = append(short, bookNode{title: fmt.Sprintf("Chapter %d", n), chars: 1400})
+		}
+		return short
+	}(), 4*2)
+	if c := byNumber.Approximate(4 * 2); c == nil || c.Confidence != Low {
+		t.Errorf("a number alone is low: %+v", c)
+	}
+}
+
+func TestApproximate_NothingWhenTheSourceSegmentIsNotInItsChapter(t *testing.T) {
+	a := mustAlign(t, flat("Capítulo", 12), flat("Chapter", 12), 6)
+	if c := a.Approximate(9999); c != nil {
+		t.Errorf("got %+v", c)
+	}
+}
+
+func TestApproximate_ACountThatNoNumberBacksIsLowEvenInAShortChapter(t *testing.T) {
+	mk := func(word string) []bookNode {
+		var list []bookNode
+		for i := 0; i < 12; i++ {
+			list = append(list, bookNode{title: fmt.Sprintf("%s %s", word, strings.Repeat("z", i+1)), chars: 1400})
+		}
+		return list
+	}
+	a := mustAlign(t, mk("O caso"), mk("The case"), 6)
+	if a == nil || a.Verified {
+		t.Fatalf("expected an unverified count: %+v", a)
+	}
+	if c := a.Approximate(6); c == nil || c.Confidence != Low {
+		t.Errorf("%+v", c)
+	}
+}

@@ -259,3 +259,16 @@ func TestEquivalenceAccept_ValidatesItsInput(t *testing.T) {
 		t.Errorf("unknown file: %d", rec.Code)
 	}
 }
+
+func TestEquivalenceAccept_AnEstimateInsideTheChapterIsRecordedAsWhatItWas(t *testing.T) {
+	s := newCatalogStack(t)
+	_, epub, pdf := s.bookWithTwoFiles()
+	s.progress(ana, "PUT", epub, `{"locator":{"type":"epub","href":"c1.xhtml"}}`)
+	body := fmt.Sprintf(`{"sourceFileId":%d,"locator":{"type":"pdf","page":4},"method":"structure","confidence":"medium","precision":"approximate"}`, epub)
+	if rec := s.do(ana, "POST", fmt.Sprintf("/progress/files/%d/equivalent/accept", pdf), body); rec.Code != http.StatusCreated {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	if got := s.scalar(`SELECT match_precision FROM equivalent_position_acceptances WHERE user_id = $1`, idAna); got != "approximate" {
+		t.Errorf("recorded precision = %q", got)
+	}
+}

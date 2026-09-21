@@ -326,7 +326,7 @@ func (h *EquivalenceHandler) Accept(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Locator) == 0 ||
 		(req.Method != equivalence.MethodText && req.Method != equivalence.MethodAnchors && req.Method != equivalence.MethodStructure) ||
 		(req.Confidence != equivalence.Low && req.Confidence != equivalence.Medium && req.Confidence != equivalence.High) ||
-		(req.Precision != equivalence.Passage && req.Precision != equivalence.ChapterOnly) {
+		(req.Precision != equivalence.Passage && req.Precision != equivalence.ChapterOnly && req.Precision != equivalence.Approximate) {
 		http.Error(w, "invalid acceptance", http.StatusBadRequest)
 		return
 	}

@@ -110,6 +110,9 @@ func Find(src, dst File, source Segment) Answer {
 	case aligned != nil:
 		c := aligned.Candidate()
 		chapter = &c
+		if approx := aligned.Approximate(source.Sequence); approx != nil {
+			chapter = approx // the same chapter, and a place in it instead of its first line
+		}
 	case !src.hasOutline() && !dst.hasOutline():
 		// No outline on either side: the divisions are the files' own, and a file is not always a
 		// chapter (one may hold ten), so what they say is not trusted as far as an outline is.

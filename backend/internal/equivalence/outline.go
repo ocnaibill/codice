@@ -47,6 +47,15 @@ type Unit struct {
 	Number        int             // "Chapter 3", "Book One": 0 if the title does not say
 	HasNumber     bool
 	Run           int // the numbering run it is in: the numbers start over where a second book begins
+	Segs          []UnitSegment
+}
+
+// UnitSegment is one of the segments a unit is made of, in reading order.
+type UnitSegment struct {
+	Sequence int
+	Chars    int
+	Locator  json.RawMessage
+	Excerpt  string
 }
 
 // Division is the story of a file cut at one depth of its outline.
@@ -142,6 +151,7 @@ func BuildDivision(nodes []Node, segments []Segment, depth int) *Division {
 			div.Units = append(div.Units, unit)
 		}
 		div.Units[i].Chars += len(seg.Text)
+		div.Units[i].Segs = append(div.Units[i].Segs, UnitSegment{Sequence: seg.Sequence, Chars: len(seg.Text), Locator: seg.Locator, Excerpt: Excerpt(seg.Text, 200)})
 		div.of[seg.Sequence] = i
 	}
 
@@ -397,6 +407,57 @@ func (a *Alignment) Candidate() Candidate {
 			"numbersAgree": a.Verified, "from": a.Source.Units[a.SourceUnit].Title, "unitShare": math.Round(share*1000) / 1000,
 		},
 		sequence: unit.FirstSequence, chapter: unit.Key,
+	}
+}
+
+// Approximate is where in the destination's chapter the person probably is, when nothing in the
+// text says so: the source position is a fraction of the way through its chapter (by characters),
+// and translations of a chapter run about as long in every part, so the same fraction of the other
+// chapter is near. It is an estimate, offered as one (precision "approximate"): right when the
+// chapter is short, the more off the longer the chapter is, and only ever inside the chapter the
+// outlines agreed on.
+func (a *Alignment) Approximate(sourceSequence int) *Candidate {
+	src, dst := a.Source.Units[a.SourceUnit], a.Dest.Units[a.DestUnit]
+	if src.Chars == 0 || dst.Chars == 0 || len(dst.Segs) == 0 {
+		return nil
+	}
+	before, middle, found := 0, 0.0, false
+	for _, s := range src.Segs {
+		if s.Sequence == sourceSequence {
+			middle, found = float64(before)+float64(s.Chars)/2, true
+			break
+		}
+		before += s.Chars
+	}
+	if !found {
+		return nil
+	}
+	fraction := middle / float64(src.Chars)
+	best, bestDistance, cumulative := dst.Segs[0], 2.0, 0
+	for _, s := range dst.Segs {
+		centre := (float64(cumulative) + float64(s.Chars)/2) / float64(dst.Chars)
+		cumulative += s.Chars
+		if d := math.Abs(centre - fraction); d < bestDistance {
+			best, bestDistance = s, d
+		}
+	}
+	total := 0
+	for _, u := range a.Dest.Units {
+		total += u.Chars
+	}
+	confidence := Low
+	if a.Basis == BasisCount && a.Verified && float64(dst.Chars)/float64(total) <= coarseUnitShare {
+		confidence = Medium
+	}
+	return &Candidate{
+		Precision: Approximate, Confidence: confidence, Method: MethodStructure, Score: 1,
+		Locator: best.Locator, Section: dst.Title, Excerpt: best.Excerpt,
+		Evidence: map[string]any{
+			"reason": "same place in the outline, and the same fraction of the way through it", "basis": a.Basis, "divisions": a.Units,
+			"numbersAgree": a.Verified, "from": src.Title, "unitFraction": math.Round(fraction*1000) / 1000,
+			"unitShare": math.Round(float64(dst.Chars)/float64(total)*1000) / 1000,
+		},
+		sequence: best.Sequence, chapter: dst.Key,
 	}
 }
 

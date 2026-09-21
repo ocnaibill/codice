@@ -37,6 +37,7 @@ const (
 	MethodAnchors   = "anchors"   // names and numbers of the passage were found together
 	Passage         = "passage"
 	ChapterOnly     = "chapter"
+	Approximate     = "approximate" // inside the right chapter, at the same fraction of the way through it
 )
 
 // Segment is a piece of a file's text with its address.

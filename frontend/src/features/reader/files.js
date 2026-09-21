@@ -100,7 +100,8 @@ const METHOD_LABEL = {
 const CONFIDENCE_LABEL = { high: 'alta confiança', medium: 'confiança média', low: 'confiança baixa' };
 
 export function candidateLabel(candidate) {
-  const method = METHOD_LABEL[candidate?.method] ?? 'correspondência aproximada';
+  // An estimate inside the right chapter says so: it is not the passage, and it is not the chapter's start.
+  const method = candidate?.precision === 'approximate' ? 'posição aproximada no mesmo capítulo' : (METHOD_LABEL[candidate?.method] ?? 'correspondência aproximada');
   const confidence = CONFIDENCE_LABEL[candidate?.confidence] ?? '';
   return confidence ? `${method}, ${confidence}` : method;
 }

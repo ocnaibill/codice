@@ -114,13 +114,13 @@ func TestFind_ACandidateThatLeadsBackElsewhereIsDroppedWhenItRestsOnNamesAlone(t
 	}
 }
 
-func TestFind_WhenNoPassageIsFoundTheChapterTheOutlinesPointToIsOffered(t *testing.T) {
+func TestFind_WhenNoPassageIsFoundAPlaceInTheChapterTheOutlinesPointToIsOffered(t *testing.T) {
 	src, dst := story("Capítulo", 12), story("Chapter", 12) // twelve: a chapter is a small part of the book
 	say(src, 4, "Um texto sem nomes nem números para ligar a nada do outro lado da tradução.")
 	say(dst, 4, "Some text with no names or numbers to link to anything in the other version.")
 	a := Find(src, dst, src.Segments[4])
 	c := firstCandidate(t, a)
-	if a.Status != Found || c.Method != MethodStructure || c.Precision != ChapterOnly || c.Confidence != High || c.Section != "Chapter 3" {
+	if a.Status != Found || c.Method != MethodStructure || c.Precision != Approximate || c.Confidence != Medium || c.Section != "Chapter 3" {
 		t.Fatalf("got %+v", a)
 	}
 }
