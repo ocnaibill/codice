@@ -18,6 +18,9 @@ class DB:
     def execute(self, query, params=None):
         self.executed.append((query, params))
 
+    def fetchone(self, query, params=None):
+        return (True,)
+
     def fetchall(self, query, params=None):
         if 'SELECT f.id, tx.generation' in query:
             return [(7, 3)]

@@ -13,18 +13,39 @@ class SentenceTransformersProvider:
     def __init__(self, model=None, revision=None):
         self.model = model or os.getenv('EMBEDDINGS_MODEL', 'sentence-transformers/LaBSE')
         self.revision = revision or os.getenv('EMBEDDINGS_MODEL_REVISION', 'default')
-        from sentence_transformers import SentenceTransformer
-        self._encoder = SentenceTransformer(self.model, revision=None if self.revision == 'default' else self.revision)
+        self._encoder = None
 
     def encode(self, texts):
+        if self._encoder is None:
+            from sentence_transformers import SentenceTransformer
+            self._encoder = SentenceTransformer(self.model, revision=None if self.revision == 'default' else self.revision)
         return self._encoder.encode(texts, batch_size=BATCH, normalize_embeddings=True, show_progress_bar=False).tolist()
 
 
 class EmbeddingIndexer:
     def __init__(self, db, provider, log=print):
         self.db, self.provider, self.log = db, provider, log
+        self.state, self.error = 'idle', ''
+
+    def heartbeat(self, state=None, error=None):
+        if state is not None:
+            self.state = state
+        if error is not None:
+            self.error = error
+        value = json.dumps({'provider': self.provider.name, 'model': self.provider.model,
+                            'revision': self.provider.revision, 'state': self.state, 'error': self.error})
+        self.db.execute("""INSERT INTO settings (key, value) VALUES ('embeddings.worker', %s::jsonb)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""", (value,))
+
+    def enabled(self):
+        row = self.db.fetchone("""SELECT COALESCE(
+            (SELECT (value->>'enabled')::boolean FROM settings WHERE key = 'equivalence.embeddings'), false)""")
+        return bool(row and row[0])
 
     def enqueue_missing(self):
+        self.heartbeat()
+        if not self.enabled():
+            return
         self.db.execute("""
             INSERT INTO jobs (type, work_id, payload, priority)
             SELECT DISTINCT 'embed_text', e.work_id, '{}'::jsonb, -20
@@ -38,6 +59,19 @@ class EmbeddingIndexer:
         """, (self.provider.name, self.provider.model, self.provider.revision, PREPROCESSING_VERSION))
 
     def run(self, work_id, checkpoint=lambda: None):
+        if not self.enabled():
+            self.heartbeat('idle', '')
+            return {}
+        self.heartbeat('preparing', '')
+        try:
+            outcome = self._run(work_id, checkpoint)
+            self.heartbeat('ready')
+            return outcome
+        except Exception as err:
+            self.heartbeat('error', f'{type(err).__name__}: {err}'[:500])
+            raise
+
+    def _run(self, work_id, checkpoint=lambda: None):
         files = self.db.fetchall("""
             SELECT f.id, tx.generation FROM files f JOIN editions e ON e.id = f.edition_id
             JOIN text_extractions tx ON tx.file_id = f.id AND tx.status = 'ready'

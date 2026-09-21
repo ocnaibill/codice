@@ -67,6 +67,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	trashAdmin := &TrashHandler{Trash: &storage.Trash{DB: db, Root: storageDir}}
 	byID := &FileByIDHandler{DB: db, StorageRoot: storageDir}
 	pages := &PageHandler{DB: db}
+	embeddingsAdmin := &EmbeddingsAdminHandler{DB: db}
 
 	r := chi.NewRouter()
 	r.Use(identityFromHeaders)
@@ -103,6 +104,8 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Post("/admin/works/{id}/extract-text", jobsAdmin.ExtractText)
 	r.Get("/search", (&SearchHandler{DB: db}).Search)
 	r.Post("/admin/jobs/{id}/cancel", jobsAdmin.Cancel)
+	r.Get("/admin/embeddings", embeddingsAdmin.Get)
+	r.Put("/admin/embeddings", embeddingsAdmin.Set)
 	r.Post("/works/bulk-import", upload.HandleBulkImport)
 	r.Get("/works", lib.GetWorks)
 	r.Get("/works/{id}", lib.GetWorkByID)

@@ -10,20 +10,24 @@ RUN apt-get update \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
+
+FROM base AS embedding-dependencies
+COPY requirements-embeddings.txt .
+# This profile is CPU-only. Installing PyTorch from PyPI would also pull several gigabytes of CUDA
+# libraries that can never be used in the supported container.
+RUN pip install 'torch==2.14.0+cpu' --index-url https://download.pytorch.org/whl/cpu \
+ && pip install -r requirements-embeddings.txt
+
+FROM base AS runtime
 COPY --chown=codice:codice . .
 USER codice
 ENV CODICE_STORAGE_PATH=/app/storage
-# The worker has no port, so it writes a heartbeat file after every successful talk with the
-# job queue and this checks how old it is (see health.py). Unhealthy means it is running but
-# cannot reach the queue. The start period covers the first import and connection.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD ["python", "health.py"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD ["python", "health.py"]
 CMD ["python", "main.py"]
 
-FROM base AS embeddings
-USER root
-RUN pip install -r requirements-embeddings.txt
+FROM embedding-dependencies AS embeddings
+COPY --chown=codice:codice . .
 USER codice
-
-# The default build remains small. Compose selects the heavier stage only for the optional profile.
-FROM base AS runtime
+ENV CODICE_STORAGE_PATH=/app/storage
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD ["python", "health.py"]
+CMD ["python", "main.py"]

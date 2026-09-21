@@ -63,6 +63,7 @@ func publishedText(ctx context.Context, db *sql.DB, fileID int64) (equivalence.F
 		LEFT JOIN document_segment_embeddings se ON se.document_segment_id = s.id
 		  AND se.provider = es.provider AND se.model = es.model AND se.revision = es.revision
 		  AND se.preprocessing_version = es.preprocessing_version
+		  AND COALESCE((SELECT (value->>'enabled')::boolean FROM settings WHERE key = 'equivalence.embeddings'), false)
 		WHERE s.file_id = $1
 		ORDER BY s.sequence`, fileID)
 	if err != nil {

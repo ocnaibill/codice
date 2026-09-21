@@ -178,9 +178,14 @@ def build_runner(db, client, heartbeat=None):
     owner = new_owner_name()
     print(f"🆔 Worker {owner}")
     jobs = JobsClient(db, owner, lease_seconds=LEASE_SECONDS, max_running=MAX_RUNNING)
+    def on_job_heartbeat(job):
+        if heartbeat:
+            heartbeat.beat("working", job['id'])
+        if embeddings is not None:
+            embeddings.heartbeat()
     runner = JobRunner(jobs, process, on_start=on_start, on_success=on_success, on_failure=on_failure,
                      on_retry=on_retry, heartbeat_every=max(1.0, LEASE_SECONDS / 4),
-                     on_heartbeat=(lambda job: heartbeat.beat("working", job['id'])) if heartbeat else None)
+                     on_heartbeat=on_job_heartbeat)
     runner.embeddings = embeddings
     return runner
 

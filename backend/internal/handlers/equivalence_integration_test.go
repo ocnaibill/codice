@@ -135,6 +135,7 @@ func TestEquivalence_NothingIsInventedWhenThereIsNoEvidence(t *testing.T) {
 
 func TestEquivalence_UsesCompatiblePublishedEmbeddingsWhenLexicalEvidenceFails(t *testing.T) {
 	s := newCatalogStack(t)
+	s.exec(`INSERT INTO settings (key, value) VALUES ('equivalence.embeddings', '{"enabled":true}')`)
 	_, source, dest := s.bookWithTwoFiles()
 	s.index(source, segment{text: "a jornada silenciosa atravessou o vale ao amanhecer", locator: `{"type":"epub","href":"c1.xhtml"}`})
 	s.index(dest,

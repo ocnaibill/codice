@@ -5,6 +5,7 @@ import { TrashTab } from './components/TrashTab';
 import { DuplicatesTab } from './components/DuplicatesTab';
 import { AccountsTab } from './components/AccountsTab';
 import { LdapTab } from './components/LdapTab';
+import { EmbeddingsTab } from './components/EmbeddingsTab';
 
 const TABS = [
   ['jobs', 'Trabalhos'],
@@ -28,7 +29,7 @@ export function AdminPage({ isOwner, onClose }) {
         )}
       </div>
       <div role="tablist" className="mt-4 flex flex-wrap gap-1 border-b border-border-hairline">
-        {[...TABS, ...(isOwner ? [['ldap', 'Login externo']] : [])].map(([key, label]) => (
+        {[...TABS, ...(isOwner ? [['embeddings', 'IA local'], ['ldap', 'Login externo']] : [])].map(([key, label]) => (
           <button
             key={key}
             role="tab"
@@ -49,6 +50,7 @@ export function AdminPage({ isOwner, onClose }) {
         {tab === 'duplicates' && <DuplicatesTab />}
         {tab === 'accounts' && <AccountsTab isOwner={isOwner} />}
         {tab === 'ldap' && isOwner && <LdapTab />}
+        {tab === 'embeddings' && isOwner && <EmbeddingsTab />}
       </div>
     </div>
   );

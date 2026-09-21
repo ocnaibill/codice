@@ -118,6 +118,7 @@ services:
   worker:
     build:
       context: ./worker
+      target: runtime
     environment:
       APP_ENV: ${APP_ENV:-production}
       DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
@@ -141,10 +142,9 @@ services:
       - codice_network
     restart: unless-stopped
 
-  # Optional local semantic matching (#31). This is a separate worker so the normal image stays
-  # small and reading/ingestion never waits for the 1.9 GB LaBSE model.
+  # Optional local semantic matching (#31). This separate worker starts idle; the owner enables it
+  # in the app, and only then does it download LaBSE. Reading and ingestion never wait for it.
   embeddings:
-    profiles: ["embeddings"]
     build:
       context: ./worker
       target: embeddings
