@@ -413,12 +413,18 @@ func (a *Alignment) Candidate() Candidate {
 // Approximate is where in the destination's chapter the person probably is, when nothing in the
 // text says so: the source position is a fraction of the way through its chapter (by characters),
 // and translations of a chapter run about as long in every part, so the same fraction of the other
-// chapter is near. It is an estimate, offered as one (precision "approximate"): right when the
-// chapter is short, the more off the longer the chapter is, and only ever inside the chapter the
-// outlines agreed on.
+// chapter is near. It is only offered for a small chapter whose number confirms a count alignment;
+// larger or weaker structural units are not precise enough to be useful positions.
 func (a *Alignment) Approximate(sourceSequence int) *Candidate {
 	src, dst := a.Source.Units[a.SourceUnit], a.Dest.Units[a.DestUnit]
 	if src.Chars == 0 || dst.Chars == 0 || len(dst.Segs) == 0 {
+		return nil
+	}
+	total := 0
+	for _, u := range a.Dest.Units {
+		total += u.Chars
+	}
+	if total == 0 || a.Basis != BasisCount || !a.Verified || float64(dst.Chars)/float64(total) > coarseUnitShare {
 		return nil
 	}
 	before, middle, found := 0, 0.0, false
@@ -441,16 +447,8 @@ func (a *Alignment) Approximate(sourceSequence int) *Candidate {
 			best, bestDistance = s, d
 		}
 	}
-	total := 0
-	for _, u := range a.Dest.Units {
-		total += u.Chars
-	}
-	confidence := Low
-	if a.Basis == BasisCount && a.Verified && float64(dst.Chars)/float64(total) <= coarseUnitShare {
-		confidence = Medium
-	}
 	return &Candidate{
-		Precision: Approximate, Confidence: confidence, Method: MethodStructure, Score: 1,
+		Precision: Approximate, Confidence: Medium, Method: MethodStructure, Score: 1,
 		Locator: best.Locator, Section: dst.Title, Excerpt: best.Excerpt,
 		Evidence: map[string]any{
 			"reason": "same place in the outline, and the same fraction of the way through it", "basis": a.Basis, "divisions": a.Units,

@@ -108,11 +108,10 @@ func Find(src, dst File, source Segment) Answer {
 	var chapter *Candidate
 	switch {
 	case aligned != nil:
-		c := aligned.Candidate()
-		chapter = &c
-		if approx := aligned.Approximate(source.Sequence); approx != nil {
-			chapter = approx // the same chapter, and a place in it instead of its first line
-		}
+		// Structure alone is useful as a fallback only when it can place the reader near their
+		// position inside a small, numbered chapter. The beginning of a large part is not a useful
+		// answer merely because the outline identifies that part.
+		chapter = aligned.Approximate(source.Sequence)
 	case !src.hasOutline() && !dst.hasOutline():
 		// No outline on either side: the divisions are the files' own, and a file is not always a
 		// chapter (one may hold ten), so what they say is not trusted as far as an outline is.
