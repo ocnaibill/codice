@@ -9,11 +9,14 @@ Unicode in its composed form, control characters and runs of whitespace turned i
 a word broken by a hyphen at the end of a line in a PDF joined again, and paragraphs kept apart by a
 line break. Searching ignores case and accents in the database, so none of that is done to the text.
 Change any of it, or a limit, and EXTRACTOR_VERSION goes up: every file is read again.
+
+Version 2 adds the shape of the book (structure.py): each segment knows the node of the file's
+outline it is in, and the file's nodes are published with its text. A segment never spans two nodes.
 """
 from dataclasses import dataclass
 from typing import Optional
 
-EXTRACTOR_VERSION = 1
+EXTRACTOR_VERSION = 2
 
 # The version of the locator contract (backend/internal/locator). Segments carry it, so whoever reads
 # them knows how to read their addresses if the contract ever changes.
@@ -26,6 +29,7 @@ class Segment:
     locator: dict
     section: Optional[str] = None
     origin: str = 'native'
+    node: Optional[int] = None  # the index, in the file's structure, of the outline node it is in
 
 
 class Limits:

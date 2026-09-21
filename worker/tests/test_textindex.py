@@ -355,11 +355,11 @@ class TestIndexer:
         out = TextIndexer(db, str(storage)).run(9)
         assert out == {7: 'ready'}
         assert db.names() == ['text_extraction_begin', 'insert_many', 'text_extraction_publish']
-        file_id, generation, sequence, origin, section, text, locator, version = db.rows[0]
-        assert (file_id, generation, sequence, origin, version) == (7, 3, 0, 'native', 1)
+        file_id, generation, sequence, origin, section, text, locator, version, node = db.rows[0]
+        assert (file_id, generation, sequence, origin, version, node) == (7, 3, 0, 'native', 1, None)
         assert 'Texto de uma página' in text and json.loads(locator) == {'type': 'pdf', 'page': 0}
         publish = [c for c in db.calls if c[1] == 'text_extraction_publish'][0][2]
-        assert publish == (7, 3, EXTRACTOR_VERSION, 'aa', 'ready', 'pt')
+        assert publish == (7, 3, EXTRACTOR_VERSION, 'aa', 'ready', 'pt', None)  # a PDF with no bookmarks has no structure
 
     def test_a_file_with_no_text_is_published_as_empty_without_segments(self, storage):
         db = FakeDB([file_row(7, 'pdf', path='scan.pdf')])
