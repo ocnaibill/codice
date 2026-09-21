@@ -84,6 +84,18 @@ class TestClassify:
     def test_a_book_with_nothing_that_reads_as_a_story_is_all_around_it(self):
         assert set(self.parts(self.nodes(('Cover', 0, 10), ('Contents', 0, 100)))) == {'front'}
 
+    def test_a_book_whose_titles_are_all_in_arabic_is_told_apart_as_well(self):
+        nodes = self.nodes(('صفحة العنوان', 0, 0), ('صفحة حقوق الطبع والنشر', 0, 1832), ('إخلاص', 0, 186),
+                           ('الكتاب الأول - الكثبان الرملية', 0, 356311), ('الكتاب الثاني - معاذديب', 0, 282662), ('الكتاب الثالث - النبي', 0, 224498),
+                           ('الملاحق', 0, 38184), ('مصطلحات الإمبراطورية', 0, 34322), ('ملاحظات رسم الخرائط', 0, 1182), ('خاتمة بقلم بريان هربرت', 0, 20707))
+        assert self.parts(nodes) == ['front'] * 3 + ['body'] * 3 + ['back'] * 4
+
+    def test_the_writing_of_an_arabic_title_does_not_change_what_it_is(self):
+        # with vowel marks, an alef with a hamza, or a stretched (tatweel) word
+        for title in ('الْمَلَاحِق', 'الملاحـــق', 'ملاحق'):
+            assert structure._kind(title) == 'back', title
+        assert structure._kind('الفصل الأول') == 'neutral'
+
     def test_no_outline_is_no_nodes(self):
         assert structure.classify([]) == []
 

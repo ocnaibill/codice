@@ -20,7 +20,9 @@ type Chapter struct {
 var (
 	// "Book One", "Livro Primeiro" and "Part 2" number the big divisions of a book the way "Chapter 3"
 	// numbers the small ones.
-	chapterWord = regexp.MustCompile(`(?i)\b(?:cap[ií]tulo|capitulo|chapter|chapitre|kapitel|capitolo|cap\.?|livro|libro|livre|book|buch|libro|parte|part|partie)\s+([0-9]+|[ivxlcdm]+|[\p{L}]+)\b`)
+	// The edges are "not a letter or digit", not \b: in Go \b only knows ASCII, and a title in Arabic
+	// has no ASCII around its words.
+	chapterWord = regexp.MustCompile(`(?i)(?:^|[^\p{L}\p{N}])(?:cap[ií]tulo|capitulo|chapter|chapitre|kapitel|capitolo|cap\.?|livro|libro|livre|book|buch|libro|parte|part|partie|الفصل|فصل|الكتاب|كتاب|الجزء|جزء)\s+([\p{Nd}]+|[ivxlcdm]+|[\p{L}\p{M}]+)(?:$|[^\p{L}\p{N}])`)
 	numberWords = map[string]int{
 		// Portuguese, English, Spanish and French, one to twelve: what a chapter is called in the
 		// books that write it out.
@@ -34,6 +36,9 @@ var (
 		"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
 		"primero": 1, "primera": 1, "tercero": 3, "tercera": 3, "cuarto": 4, "cuarta": 4, "septimo": 7, "octavo": 8, "noveno": 9,
 		"premier": 1, "premiere": 1, "deuxieme": 2, "troisieme": 3, "quatrieme": 4, "cinquieme": 5, "sixieme": 6,
+		// Arabic, with its article and folded (an alef with a hamza is an alef, the vowel marks are gone).
+		"الاول": 1, "الاولى": 1, "الثاني": 2, "الثانيه": 2, "الثانية": 2, "الثالث": 3, "الثالثه": 3, "الثالثة": 3, "الرابع": 4, "الرابعه": 4, "الرابعة": 4,
+		"الخامس": 5, "السادس": 6, "السابع": 7, "الثامن": 8, "التاسع": 9, "العاشر": 10, "واحد": 1, "اثنان": 2, "ثلاثه": 3, "اربعه": 4,
 	}
 	romans = map[rune]int{'i': 1, 'v': 5, 'x': 10, 'l': 50, 'c': 100, 'd': 500, 'm': 1000}
 )
@@ -42,11 +47,11 @@ var (
 // três", in the languages above. A title with no such word has no number: a bare "3" or "III" might
 // be anything.
 func ChapterNumber(title string) (int, bool) {
-	match := chapterWord.FindStringSubmatch(title)
+	match := chapterWord.FindStringSubmatch(Fold(title)) // without accents or vowel marks: how a title is spelt is not what it says
 	if match == nil {
 		return 0, false
 	}
-	word := Fold(match[1])
+	word := asciiDigits(Fold(match[1]))
 	if n, err := strconv.Atoi(word); err == nil && n > 0 {
 		return n, true
 	}

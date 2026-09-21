@@ -29,7 +29,9 @@ SUBSTANTIAL_SHARE = 0.1
 
 def _fold(text):
     text = unicodedata.normalize('NFD', text or '')
-    return ''.join(c for c in text if unicodedata.category(c) != 'Mn').lower()
+    # Without the accents (and the vowel marks of Arabic and the tatweel that stretches a word), an alef
+    # with a hamza is an alef: the writing of a title does not tell two spellings apart.
+    return ''.join(c for c in text if unicodedata.category(c) != 'Mn' and c != '\u0640').lower()
 
 
 def _words(*words):
@@ -44,6 +46,8 @@ _FRONT = _words(
     r'epigrafe', r'contents', r'table of contents', r'sumario', r'indice\b', r'pref[aá]cio', r'preface', r'foreword',
     r'prologo', r'prologue', r'introduc', r'e-?text prepared', r'produced by', r'list of illustrations', r'lista de ilustra',
     r'note to the reader', r'nota (do|da|ao)', r'half.?title', r'frontispiece', r'praise for', r'also by', r'books by',
+    # Arabic: title page, copyright, dedication, contents, preface, introduction
+    r'(?:ال)?صفح[هة] (?:ال)?عنوان', r'(?:ال)?صفح[هة] حقوق', r'حقوق (?:ال)?طبع', r'(?:ال)?اهداء', r'(?:ال)?اخلاص', r'(?:ال)?محتويات', r'فهرس (?:ال)?محتويات', r'(?:ال)?مقدم[هة]', r'(?:ال)?تمهيد', r'(?:ال)?تقديم', r'(?:ال)?غلاف',
     r'other books', r'about this book', r'sobre este livro',
 )
 # What comes after it.
@@ -53,13 +57,15 @@ _BACK = _words(
     r'sobre o autor', r'licen[cs]e', r'errata', r'lista de erros', r'erros corrigidos', r'copyright notice',
     r'transcriber', r'nota do transcritor', r'full project gutenberg', r'project gutenberg', r'end\s*$', r'fim\s*$', r'maps?\s*$', r'mapas?\s*$', r'credits\s*$', r'creditos\s*$',
     r'permissions', r'discussion questions', r'reading group', r'excerpt from', r'sneak peek', r'newsletter',
+    # Arabic: appendices, terminology, glossary, index, notes, afterword, about the author, references
+    r'(?:ال)?ملاحق', r'(?:ال)?ملحق', r'(?:ال)?مصطلحات', r'(?:ال)?مسرد', r'(?:ال)?معجم', r'(?:ال)?فهرس\s*$', r'ملاحظات (?:رسم|ختامي[هة])', r'(?:ال)?خاتم[هة] بقلم', r'(?:ال)?كلم[هة] ختامي[هة]', r'عن (?:ال)?مؤلف', r'(?:ال)?مراجع\s*$', r'(?:ال)?هوامش\s*$',
 )
 # What may be at either end (the place decides).
-_EITHER = _words(r'acknowledg', r'agradecimentos', r'remerciements', r'agradecimientos')
+_EITHER = _words(r'acknowledg', r'agradecimentos', r'remerciements', r'agradecimientos', r'شكر')
 
 
 def _kind(title):
-    folded = re.sub(r'^[^a-z0-9]+', '', _fold(title))
+    folded = re.sub(r'^[\W_]+', '', _fold(title))  # Unicode-aware: a title in Arabic is not "nothing"
     if _EITHER.search(folded):
         return 'either'
     if _BACK.search(folded):

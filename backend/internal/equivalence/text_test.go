@@ -97,3 +97,16 @@ func equal(a, b []string) bool {
 	}
 	return true
 }
+
+func TestAnchors_ANumberIsTheSameNumberWhicheverDigitsWriteIt(t *testing.T) {
+	western := Anchors("In 1980 the club had 250 members and Barbicane spoke to Nicholl and Ardan.")
+	arabic := Anchors("في عام ١٩٨٠ كان للنادي ٢٥٠ عضوا")
+	for _, n := range []string{"1980", "250"} {
+		if _, ok := western[n]; !ok {
+			t.Errorf("Western: %s missing from %v", n, western)
+		}
+		if _, ok := arabic[n]; !ok {
+			t.Errorf("Arabic-Indic digits: %s missing from %v", n, arabic)
+		}
+	}
+}
