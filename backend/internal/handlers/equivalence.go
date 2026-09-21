@@ -119,24 +119,36 @@ func chapters(segments []equivalence.Segment) ([]equivalence.Chapter, map[int]in
 // (epub, pdf, text) are handled; the rest have nothing to match against.
 func nearestSegment(segments []equivalence.Segment, raw json.RawMessage) *equivalence.Segment {
 	var head struct {
-		Type   string `json:"type"`
-		Href   string `json:"href"`
-		Page   *int   `json:"page"`
-		Offset *int   `json:"offset"`
+		Type        string   `json:"type"`
+		Href        string   `json:"href"`
+		Progression *float64 `json:"progression"`
+		Page        *int     `json:"page"`
+		Offset      *int     `json:"offset"`
 	}
 	if json.Unmarshal(raw, &head) != nil {
 		return nil
 	}
 	switch head.Type {
 	case "epub":
+		// A file can hold many chapters' worth of text, so the place inside it (the progression a
+		// segment starts at) chooses the segment: the last one starting at or before it.
 		var best *equivalence.Segment
 		for i := range segments {
 			var loc struct {
-				Href string `json:"href"`
+				Href        string   `json:"href"`
+				Progression *float64 `json:"progression"`
 			}
-			if json.Unmarshal(segments[i].Locator, &loc) == nil && loc.Href == head.Href {
+			if json.Unmarshal(segments[i].Locator, &loc) != nil || loc.Href != head.Href {
+				continue
+			}
+			if best == nil {
+				best = &segments[i] // segments are in reading order: the start of the file
+			}
+			if head.Progression == nil {
+				break
+			}
+			if loc.Progression != nil && *loc.Progression <= *head.Progression {
 				best = &segments[i]
-				break // segments are in reading order: the first of the chapter is a fair anchor
 			}
 		}
 		return best
