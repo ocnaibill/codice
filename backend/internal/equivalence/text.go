@@ -98,7 +98,7 @@ func Anchors(text string) map[string]struct{} {
 		for j < len(runes) && (unicode.IsLetter(runes[j]) || unicode.IsDigit(runes[j]) || runes[j] == '\'' || runes[j] == '’') {
 			j++
 		}
-		token := string(runes[i:j])
+		token := asciiDigits(string(runes[i:j]))
 		switch {
 		case isNumber(token) && len(token) >= 2:
 			anchors[token] = struct{}{}
@@ -109,6 +109,26 @@ func Anchors(text string) map[string]struct{} {
 		i = j
 	}
 	return anchors
+}
+
+// asciiDigits writes the digits of Arabic (٠-٩) and of Persian and Urdu (۰-۹) as 0-9, so that a
+// number is the same number in a version that writes it with the other digits.
+func asciiDigits(s string) string {
+	changed := false
+	out := make([]rune, 0, len(s))
+	for _, r := range s {
+		switch {
+		case r >= '٠' && r <= '٩':
+			r, changed = '0'+(r-'٠'), true
+		case r >= '۰' && r <= '۹':
+			r, changed = '0'+(r-'۰'), true
+		}
+		out = append(out, r)
+	}
+	if !changed {
+		return s
+	}
+	return string(out)
 }
 
 func isNumber(s string) bool {

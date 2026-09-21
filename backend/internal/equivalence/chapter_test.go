@@ -57,3 +57,23 @@ func TestEqualCount_NeedsBothEnoughAndEqual(t *testing.T) {
 		t.Error("one chapter each proves nothing")
 	}
 }
+
+func TestChapterNumber_Arabic(t *testing.T) {
+	for title, want := range map[string]int{
+		"الكتاب الأول - الكثبان الرملية": 1,
+		"الكتاب الثاني - معاذديب":        2,
+		"الكتاب الثالث - النبي":          3,
+		"الفصل الرابع":                   4,
+		"الفَصْلُ الخامس":                5,  // vowel marks are not part of the word
+		"الفصل ٧":                        7,  // Arabic-Indic digits
+		"الفصل ۱۲":                       12, // Persian digits
+		"الفصل 3":                        3,
+	} {
+		if got, ok := ChapterNumber(title); !ok || got != want {
+			t.Errorf("ChapterNumber(%q) = %d, %v, want %d", title, got, ok, want)
+		}
+	}
+	if _, ok := ChapterNumber("الملاحق"); ok {
+		t.Error("an appendix has no number")
+	}
+}

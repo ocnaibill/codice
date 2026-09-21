@@ -18,10 +18,10 @@ BATCH = 200
 # The formats that have text to read. Comics and audio have none (until OCR, for comics); MOBI is not
 # read here.
 READERS = {
-    'epub': lambda path, checkpoint: epub_segments(path, checkpoint),
-    'pdf': lambda path, checkpoint: pdf_segments(path, checkpoint),
-    'txt': lambda path, checkpoint: plain_segments(path, 'txt', checkpoint),
-    'md': lambda path, checkpoint: plain_segments(path, 'md', checkpoint),
+    'epub': lambda path, checkpoint, out: epub_segments(path, checkpoint, out),
+    'pdf': lambda path, checkpoint, out: pdf_segments(path, checkpoint, out),
+    'txt': lambda path, checkpoint, out: plain_segments(path, 'txt', checkpoint),
+    'md': lambda path, checkpoint, out: plain_segments(path, 'md', checkpoint),
 }
 
 FILES_OF_WORK = """
@@ -88,8 +88,9 @@ class TextIndexer:
                 # Not here now (moved, or gone): nothing is published, and nothing is recorded as failed
                 # either, because it may be back the next time. The job says so.
                 raise FileNotFoundError(f'file {file_id} is not at its place')
-            count = self.write(file_id, generation, reader(full, checkpoint), checkpoint)
-            return self.publish(file_id, generation, sha, 'ready' if count else 'empty', language)
+            found = {}  # what a reader learns besides the segments: the shape of the book
+            count = self.write(file_id, generation, reader(full, checkpoint, found), checkpoint)
+            return self.publish(file_id, generation, sha, 'ready' if count else 'empty', language, found.get('structure'))
         except (ValueError, zipfile.BadZipFile) as err:
             # The file is what it is and will not read: recorded, and the job goes on to the next file.
             self.log(f'   ⚠️ text of file {file_id} could not be read: {err}')
@@ -100,7 +101,7 @@ class TextIndexer:
         rows, count = [], 0
         for sequence, seg in enumerate(segments):
             rows.append((file_id, generation, sequence, seg.origin, seg.section, seg.text,
-                         json.dumps(seg.locator, ensure_ascii=False), LOCATOR_VERSION))
+                         json.dumps(seg.locator, ensure_ascii=False), LOCATOR_VERSION, seg.node))
             count += 1
             if len(rows) >= BATCH:
                 self.flush(rows)
@@ -112,10 +113,11 @@ class TextIndexer:
 
     def flush(self, rows):
         self.db.insert_many(
-            "INSERT INTO document_segments (file_id, generation, sequence, origin, section, text, locator, locator_version) VALUES %s",
-            rows, template="(%s, %s, %s, %s, %s, %s, %s::jsonb, %s)")
+            "INSERT INTO document_segments (file_id, generation, sequence, origin, section, text, locator, locator_version, node) VALUES %s",
+            rows, template="(%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)")
 
-    def publish(self, file_id, generation, sha, status, language):
-        self.db.fetchone("SELECT text_extraction_publish(%s, %s, %s, %s, %s, 'native', %s)",
-                         (file_id, generation, self.version, sha, status, language))
+    def publish(self, file_id, generation, sha, status, language, structure=None):
+        self.db.fetchone("SELECT text_extraction_publish(%s, %s, %s, %s, %s, 'native', %s, %s::jsonb)",
+                         (file_id, generation, self.version, sha, status, language,
+                          json.dumps(structure, ensure_ascii=False) if structure else None))
         return status
