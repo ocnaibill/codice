@@ -427,3 +427,107 @@ class TestResolve:
         assert resolve('/data/lib', 'referenced', '/mnt/livros', '../../etc/passwd') is None
         assert resolve('/data/lib', 'referenced', None, 'a.epub') is None
         assert resolve('/data/lib', 'managed', None, '') is None
+
+
+# ── running headers and footers ──────────────────────────────────────
+
+def make_book_pdf(path, pages, header=None, footer=True, height=842):
+    """pages: the body of each page. header(n) is what page n carries at the top (None for nothing);
+    the page number is at the bottom. Blocks are placed by coordinates, so what is margin is known."""
+    doc = fitz.open()
+    for n, body in enumerate(pages):
+        page = doc.new_page(width=595, height=height)
+        top = header(n) if header else None
+        if top:
+            page.insert_text((60, 0.05 * height), top, fontsize=9)
+        page.insert_textbox(fitz.Rect(60, 0.14 * height, 540, 0.85 * height), body, fontsize=11)
+        if footer:
+            page.insert_text((290, 0.95 * height), str(n + 1), fontsize=9)
+    doc.save(str(path))
+    doc.close()
+
+
+def body(n):
+    return f'Texto único da página {n} com o bastante para contar como conteúdo do livro e mais nada.'
+
+
+def all_text(path, **kw):
+    return ' '.join(s.text for s in pdf_segments(str(path), **kw))
+
+
+class TestRunningHeaders:
+    def test_the_title_the_chapter_and_the_page_number_repeated_on_every_page_are_not_text(self, tmp_path):
+        path = tmp_path / 'a.pdf'
+        make_book_pdf(path, [body(n) for n in range(20)], header=lambda n: f'{n + 1} Frank Herbert')
+        text = all_text(path)
+        assert 'Frank Herbert' not in text
+        assert all(f'página {n}' in text for n in range(20))
+        rest = text
+        for n in range(20):
+            rest = rest.replace(body(n), '')
+        assert rest.strip() == ''  # nothing left over: no page number, no header
+
+    def test_a_header_that_alternates_between_two_things_is_removed_as_well(self, tmp_path):
+        path = tmp_path / 'a.pdf'
+        make_book_pdf(path, [body(n) for n in range(20)], header=lambda n: 'Dune' if n % 2 else f'{n} Frank Herbert')
+        text = all_text(path)
+        assert 'Dune' not in text and 'Frank Herbert' not in text
+
+    def test_garbage_after_the_header_words_does_not_hide_it(self, tmp_path):
+        path = tmp_path / 'a.pdf'
+        # the words after the first two are different on every page
+        make_book_pdf(path, [body(n) for n in range(20)], header=lambda n: f'Dune {n} ' + ' '.join(f'x{(n * 3 + i) % 11}' for i in range(5)))
+        text = all_text(path)
+        assert 'Dune' not in text and 'x1' not in text and 'x7' not in text
+
+    def test_what_only_one_page_has_in_the_margin_is_text(self, tmp_path):
+        path = tmp_path / 'a.pdf'
+        make_book_pdf(path, [body(n) for n in range(20)], header=lambda n: 'CAPÍTULO SETE' if n == 6 else 'Dune')
+        text = all_text(path)
+        assert 'CAPÍTULO SETE' in text and 'Dune' not in text
+
+    def test_something_on_a_few_pages_only_is_not_a_running_header(self, tmp_path):
+        path = tmp_path / 'a.pdf'
+        make_book_pdf(path, [body(n) for n in range(40)], header=lambda n: 'Interlúdio secreto' if n < 3 else None)
+        assert all_text(path).count('Interlúdio secreto') == 3
+
+    def test_two_headers_that_only_begin_alike_are_not_the_same_header(self, tmp_path):
+        path = tmp_path / 'a.pdf'
+        doc = fitz.open()
+        for n in range(20):
+            page = doc.new_page(width=595, height=842)
+            page.insert_text((60, 40), f'Dune {n}', fontsize=9)
+            if n in (3, 4, 5):
+                page.insert_text((60, 75), 'Dune wanderers', fontsize=9)
+            page.insert_textbox(fitz.Rect(60, 120, 540, 700), body(n), fontsize=11)
+        doc.save(str(path))
+        doc.close()
+        text = all_text(path)
+        assert text.count('Dune wanderers') == 3 and 'Dune 1' not in text
+
+    def test_a_short_document_has_too_few_pages_to_say_what_repeats(self, tmp_path):
+        path = tmp_path / 'a.pdf'
+        make_book_pdf(path, [body(n) for n in range(5)], header=lambda n: 'Dune')
+        assert all_text(path).count('Dune') == 5
+
+    def test_a_block_that_starts_in_the_margin_but_is_body_is_kept(self, tmp_path):
+        path = tmp_path / 'a.pdf'
+        doc = fitz.open()
+        for n in range(20):
+            page = doc.new_page(width=595, height=842)
+            # one block from the top of the page down into its middle, beginning with the same words on every page
+            page.insert_textbox(fitz.Rect(60, 30, 540, 500), f'Dune amanhece {n}. ' + ' '.join(body(n) for _ in range(6)), fontsize=11)
+        doc.save(str(path))
+        doc.close()
+        assert all_text(path).count('Dune amanhece') == 20
+
+    def test_a_page_with_nothing_but_a_header_and_a_number_is_empty(self, tmp_path):
+        path = tmp_path / 'a.pdf'
+        make_book_pdf(path, [body(n) if n != 9 else '' for n in range(20)], header=lambda n: 'Dune')
+        assert 9 not in {s.locator['page'] for s in pdf_segments(str(path))}
+
+    def test_the_bookmarks_and_the_pages_are_not_disturbed(self, tmp_path):
+        path = tmp_path / 'a.pdf'
+        make_book_pdf(path, [body(n) for n in range(20)], header=lambda n: 'Dune')
+        segs = list(pdf_segments(str(path)))
+        assert [s.locator['page'] for s in segs] == list(range(20))
