@@ -5,13 +5,18 @@ import os
 
 PREPROCESSING_VERSION = 1
 BATCH = 32
+DEFAULT_MODEL = 'sentence-transformers/LaBSE'
+SUPPORTED_MODELS = {
+    DEFAULT_MODEL,
+    'intfloat/multilingual-e5-small',
+}
 
 
 class SentenceTransformersProvider:
     name = 'sentence-transformers'
 
     def __init__(self, model=None, revision=None):
-        self.model = model or os.getenv('EMBEDDINGS_MODEL', 'sentence-transformers/LaBSE')
+        self.model = model or os.getenv('EMBEDDINGS_MODEL', DEFAULT_MODEL)
         self.revision = revision or os.getenv('EMBEDDINGS_MODEL_REVISION', 'default')
         self._encoder = None
 
@@ -19,13 +24,28 @@ class SentenceTransformersProvider:
         if self._encoder is None:
             from sentence_transformers import SentenceTransformer
             self._encoder = SentenceTransformer(self.model, revision=None if self.revision == 'default' else self.revision)
+        # E5 was trained with task prefixes. Equivalent-position matching is symmetric, so both
+        # sides use the same query prefix as recommended for symmetric similarity tasks.
+        if self.model == 'intfloat/multilingual-e5-small':
+            texts = [f'query: {text}' for text in texts]
         return self._encoder.encode(texts, batch_size=BATCH, normalize_embeddings=True, show_progress_bar=False).tolist()
 
 
 class EmbeddingIndexer:
-    def __init__(self, db, provider, log=print):
-        self.db, self.provider, self.log = db, provider, log
+    def __init__(self, db, provider, log=print, selectable=False):
+        self.db, self.provider, self.log, self.selectable = db, provider, log, selectable
         self.state, self.error = 'idle', ''
+
+    def select_configured_model(self):
+        if not self.selectable:
+            return
+        row = self.db.fetchone("""SELECT COALESCE(
+            (SELECT value->>'model' FROM settings WHERE key = 'equivalence.embeddings'), %s)""",
+                               (DEFAULT_MODEL,))
+        model = row[0] if row and row[0] in SUPPORTED_MODELS else DEFAULT_MODEL
+        if model != self.provider.model:
+            self.provider = SentenceTransformersProvider(model=model)
+            self.state, self.error = 'idle', ''
 
     def heartbeat(self, state=None, error=None):
         if state is not None:
@@ -43,6 +63,7 @@ class EmbeddingIndexer:
         return bool(row and row[0])
 
     def enqueue_missing(self):
+        self.select_configured_model()
         self.heartbeat()
         if not self.enabled():
             return
@@ -59,6 +80,7 @@ class EmbeddingIndexer:
         """, (self.provider.name, self.provider.model, self.provider.revision, PREPROCESSING_VERSION))
 
     def run(self, work_id, checkpoint=lambda: None):
+        self.select_configured_model()
         if not self.enabled():
             self.heartbeat('idle', '')
             return {}
