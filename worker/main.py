@@ -118,7 +118,7 @@ def build_runner(db, client, heartbeat=None):
     indexer = TextIndexer(db, storage_path)
     embeddings = None
     if os.getenv('EMBEDDINGS_PROVIDER', '').lower() in ('labse', 'sentence-transformers'):
-        embeddings = EmbeddingIndexer(db, SentenceTransformersProvider())
+        embeddings = EmbeddingIndexer(db, SentenceTransformersProvider(), selectable=True)
         embeddings.enqueue_missing()
 
     def process(job, checkpoint):
