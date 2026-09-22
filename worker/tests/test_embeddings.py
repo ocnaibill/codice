@@ -1,4 +1,4 @@
-from embeddings import EmbeddingIndexer
+from embeddings import EmbeddingIndexer, SentenceTransformersProvider
 
 
 class Provider:
@@ -47,3 +47,27 @@ def test_enqueue_missing_is_provider_and_version_specific():
     query, params = db.executed[-1]
     assert "'embed_text'" in query
     assert params == ('fake', 'multilingual-test', 'r1', 1)
+
+
+def test_e5_uses_the_symmetric_task_prefix():
+    class Encoder:
+        def encode(self, texts, **_options):
+            self.texts = texts
+            return type('Vectors', (), {'tolist': lambda self: [[1.0]]})()
+
+    provider = SentenceTransformersProvider(model='intfloat/multilingual-e5-small')
+    provider._encoder = Encoder()
+    provider.encode(['uma passagem'])
+    assert provider._encoder.texts == ['query: uma passagem']
+
+
+def test_selectable_indexer_follows_the_owner_model_choice():
+    class ConfigDB(DB):
+        def fetchone(self, query, params=None):
+            if "value->>'model'" in query:
+                return ('intfloat/multilingual-e5-small',)
+            return super().fetchone(query, params)
+
+    indexer = EmbeddingIndexer(ConfigDB(), SentenceTransformersProvider(), selectable=True)
+    indexer.select_configured_model()
+    assert indexer.provider.model == 'intfloat/multilingual-e5-small'
