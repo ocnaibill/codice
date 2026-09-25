@@ -18,7 +18,7 @@ export const useGlobalStore = create((set) => ({
 
   // Actions
   isUploadModalOpen: false,
-  setSearchQuery: (query) => set({ searchQuery: query }),
+  setSearchQuery: (query) => set({ searchQuery: query, ...(query.trim() ? { adminOpen: false } : {}) }),
   openWork: (id) => set({ sheetWorkId: id, activeBookId: null, activeFileId: null, adminOpen: false }),
   closeSheet: () => set({ sheetWorkId: null }),
   openBook: (id, fileId = null, { fromStart = false, locator = null } = {}) =>

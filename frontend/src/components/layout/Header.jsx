@@ -14,9 +14,10 @@ export function Header({ searchQuery, onSearchChange, onLogout, onChangePassword
         <img src={iconSearch} alt="" className="pointer-events-none absolute left-[14.5px] top-1/2 size-[15px] -translate-y-1/2" />
         <input
           type="text"
+          aria-label="Buscar no acervo"
           value={searchQuery}
           onChange={(e) => onSearchChange?.(e.target.value)}
-          placeholder="Buscar livros, mangás, autores, tags ou ISBN... [Ctrl+K]"
+          placeholder="Buscar obras, passagens e anotações..."
           className="w-full rounded-lg bg-surface py-[10px] pl-10 pr-4 font-body text-[13px] tracking-[0.065px] text-ink-soft placeholder-ink-soft/70 shadow-[inset_0px_1px_2px_0px_rgba(0,0,0,0.05)] outline-none"
         />
       </div>
