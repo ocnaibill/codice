@@ -3,6 +3,12 @@ import { create } from 'zustand';
 export const useGlobalStore = create((set) => ({
   // UI State
   searchQuery: '',
+  libraryView: 'all',
+  libraryPage: 1,
+  libraryViewMode: 'grid',
+  setLibraryView: (libraryView) => set({ libraryView, libraryPage: 1, searchQuery: '', adminOpen: false, activeBookId: null, activeFileId: null, sheetWorkId: null }),
+  setLibraryPage: (libraryPage) => set({ libraryPage }),
+  setLibraryViewMode: (libraryViewMode) => set({ libraryViewMode }),
   // The work whose sheet (edition, language and file choice) is open, if any.
   sheetWorkId: null,
   // What the reader has open: a work, one of its files, and whether to ignore the saved
