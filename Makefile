@@ -1,7 +1,7 @@
 # Códice — Test Runner
 # Run all tests for a specific stack or everything at once
 
-.PHONY: test test-backend test-worker test-frontend test-all watch
+.PHONY: test test-backend test-worker test-frontend test-all benchmark-equivalence watch
 
 GO ?= go
 NPM ?= npm
@@ -40,6 +40,10 @@ test-frontend:
 
 # Run all tests
 test-all: test
+
+# Optional and networked: downloads a SHA-256-pinned public-domain corpus into tmp/.
+benchmark-equivalence:
+	cd worker && $(PYTHON) ../benchmarks/equivalence/benchmark.py
 
 # Watch mode for frontend dev
 watch:
