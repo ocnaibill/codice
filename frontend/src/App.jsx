@@ -78,10 +78,15 @@ function App() {
 
   // The server no longer accepts our session (expired, revoked, blocked): back to login.
   useEffect(() => {
-    const onSessionLost = () => setIsAuthenticated(false);
+    const onSessionLost = () => {
+      queryClient.removeQueries({ queryKey: ['search'] });
+      queryClient.removeQueries({ queryKey: ['notes'] });
+      setSearchQuery('');
+      setIsAuthenticated(false);
+    };
     window.addEventListener(UNAUTHORIZED_EVENT, onSessionLost);
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onSessionLost);
-  }, []);
+  }, [queryClient, setSearchQuery]);
 
   // Covers, files and pages load via <img>/<audio>, which cannot send headers, so
   // they carry a short-lived asset token that api.js keeps renewed.
@@ -199,6 +204,9 @@ function App() {
     clearAssetToken();
     queryClient.removeQueries({ queryKey: ['me'] });
     queryClient.removeQueries({ queryKey: ['admin'] });
+    queryClient.removeQueries({ queryKey: ['search'] });
+    queryClient.removeQueries({ queryKey: ['notes'] });
+    setSearchQuery('');
     closeBook();
     setIsAuthenticated(false);
   };
@@ -282,7 +290,7 @@ function App() {
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >
-          {adminOpen && staff ? <AdminPage isOwner={me.role === 'owner'} onClose={closeBook} /> : <HomePage />}
+          {adminOpen && staff ? <AdminPage isOwner={me.role === 'owner'} onClose={closeBook} /> : <HomePage searchQuery={searchQuery} />}
         </AppShell>
       )}
     </div>

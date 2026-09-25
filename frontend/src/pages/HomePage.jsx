@@ -10,6 +10,7 @@ import { useStats } from '../features/home/api/useStats';
 import { useFavorites } from '../features/home/api/useFavorites';
 import { useNotes } from '../features/home/api/useNotes';
 import { useWorks } from '../features/library/api/useWorks';
+import { SearchPage } from '../features/search/SearchPage';
 
 const GRID_TITLES = {
   all: 'Adicionados Recentemente & Sincronizados',
@@ -18,7 +19,12 @@ const GRID_TITLES = {
   audio: 'Áudiolivros',
 };
 
-export function HomePage() {
+export function HomePage({ searchQuery = '' }) {
+  if (searchQuery.trim()) return <SearchPage query={searchQuery} />;
+  return <HomeDashboard />;
+}
+
+function HomeDashboard() {
   const { data: me } = useMe();
   const [formatFilter, setFormatFilter] = useState('all');
   const [viewMode, setViewMode] = useState('grid');
