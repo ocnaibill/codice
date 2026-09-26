@@ -63,6 +63,29 @@ describe('library hub', () => {
     expect(useGlobalStore.getState().libraryPage).toBe(1);
   });
 
+  it('does not show cards from the previous filter while the API loads', async () => {
+    let finishComics;
+    const originalGet = api.get.getMockImplementation();
+    api.get.mockImplementation((url) => {
+      if (url.includes('formatGroup=comics')) {
+        return new Promise((resolve) => { finishComics = resolve; });
+      }
+      return originalGet(url);
+    });
+    view = await mount(<HomePage />);
+    await flush();
+    expect(view.container.querySelector('.library-books').textContent).toContain('Duna');
+
+    await act(async () => useGlobalStore.getState().setLibraryView('comics'));
+    expect(view.container.querySelector('.library-books').textContent).not.toContain('Duna');
+
+    await act(async () => finishComics({
+      data: { data: [{ ...work, id: 2, title: 'Volume Um', format: 'cbz' }], total: 1, totalPages: 1, page: 1 },
+    }));
+    await flush();
+    expect(view.container.querySelector('.library-books').textContent).toContain('Volume Um');
+  });
+
   it('changes the rendered layout when list mode is selected', async () => {
     view = await mount(<HomePage />);
     await flush();

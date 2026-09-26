@@ -278,7 +278,7 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	if search != "" {
 		placeholder := fmt.Sprintf("$%d", argIdx)
 		whereClauses = append(whereClauses, "(LOWER(w.original_title) LIKE LOWER("+placeholder+") OR "+authorMatches(placeholder)+")")
-		args = append(args, "%"+search+"%")
+		args = append(args, catalogSearchPattern(search))
 		argIdx++
 	}
 	if inProgressOnly {

@@ -24,3 +24,13 @@ Esta fatia não entrega tema escuro, grafo, trilhas de leitura nem redesenho dos
 - Navegador: prévia isolada com componentes reais e respostas fictícias da API; larguras 320, 390, 768, 1024 e 1440 px sem transbordamento horizontal do documento. Exercitados menu mobile, filtro, grade/lista, paginação, busca e retorno ao acervo; Escape fecha o menu e devolve o foco.
 
 A prévia não usa o banco nem o acervo do mantenedor. Esses ensaios validam a interface e seus contratos simulados; não representam nova homologação de upload, leitura ou autenticação de ponta a ponta com o backend.
+
+## Ensaio com API e acervo reais — 26/09/2026
+
+- Pilha isolada `codice-hub-test` em `127.0.0.1:18091`, construída desta branch com PostgreSQL, Redis, API, worker e frontend. O ambiente fica ligado apenas ao loopback; as credenciais dos serviços estão em um arquivo local fora do repositório. Owner de teste: `admin`.
+- Quatro arquivos reais de Duna, EPUB/PDF em português e inglês, foram enviados e analisados. Onze arquivos **válidos** do corpus sintético do projeto foram adicionados para cobrir paginação e formatos ausentes em Duna: 15 obras no total, 12 livros/documentos e 3 quadrinhos. Não há áudio nessa base.
+- No navegador autenticado: capas das quatro versões reais carregaram; a busca por “Duna” encontrou as duas obras portuguesas e passagens indexadas; a página 2 do catálogo trouxe as três obras restantes; os filtros de livros, quadrinhos, áudio vazio, favoritos e em leitura responderam aos dados reais; a alternância grade/lista funcionou. Avançar uma página no EPUB português, fechar e usar “Continuar Leitura” reabriu na página salva. Marcar Duna como favorita a colocou no filtro pessoal.
+- Dois defeitos encontrados e corrigidos neste PR: `%` e `_` na busca do catálogo/OPDS eram tratados como curingas SQL; ao mudar filtro ou página, os cartões anteriores apareciam temporariamente sob o novo título. Os testes de integração e de frontend cobrem essas regressões.
+- `npm test`: 254 testes passaram; `npm run build`: aprovado, com aviso já conhecido de chunk principal acima de 500 kB. Os testes de integração `TestCatalog_ListFilters` e `TestOPDSFeedsListWorksWithTheirAuthors` passaram contra o PostgreSQL isolado de testes **antes** da limpeza solicitada pelo mantenedor. A base nova não foi usada como alvo de `TEST_DATABASE_URL`.
+
+Por solicitação do mantenedor, as antigas bases de desenvolvimento, de Duna e dos testes automatizados foram removidas após a pilha nova ficar saudável. O volume `codice-duna_codice_storage` e os quatro arquivos originais em Downloads foram preservados; o volume antigo não está montado na pilha nova. Não foi feito backup das bases antigas, pois eram dados de teste e a remoção foi explicitamente aprovada.

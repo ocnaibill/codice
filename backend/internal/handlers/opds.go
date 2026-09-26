@@ -154,7 +154,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 		WHERE w.retired_at IS NULL
 		  AND (LOWER(w.original_title) LIKE LOWER($1) OR `+authorMatches("$1")+`)
 		ORDER BY w.id DESC LIMIT 50
-	`, "%"+query+"%")
+	`, catalogSearchPattern(query))
 	if err != nil {
 		http.Error(w, "Error searching", http.StatusInternalServerError)
 		return

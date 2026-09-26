@@ -9,4 +9,15 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  // Point the dev UI at an existing local Códice installation without changing
+  // its CORS policy or exposing a second API origin to the browser.
+  server: process.env.CODICE_DEV_API_TARGET ? {
+    proxy: {
+      '^/(auth|works|stats|favorites|notes|search|progress|files|covers|ws|admin|users|invitations|password-resets|upload|ownership|metadata|healthz)(/|\\?|$)': {
+        target: process.env.CODICE_DEV_API_TARGET,
+        changeOrigin: true,
+        ws: true,
+      },
+    },
+  } : undefined,
 })
