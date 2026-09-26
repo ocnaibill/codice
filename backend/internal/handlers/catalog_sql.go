@@ -35,6 +35,12 @@ func authorMatches(placeholder string) string {
 		WHERE c.work_id = w.id AND c.role = 'author' AND LOWER(p.name) LIKE LOWER(` + placeholder + `))`
 }
 
+// A search term is literal text. Escape LIKE's wildcards before surrounding it
+// with the two wildcards that implement a substring search.
+func catalogSearchPattern(query string) string {
+	return "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query) + "%"
+}
+
 // isStaffRequest reports whether the caller is an owner or admin. The role comes
 // from the session (read from the database on every request).
 func isStaffRequest(r *http.Request) bool {

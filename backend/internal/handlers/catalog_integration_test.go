@@ -335,6 +335,8 @@ func TestCatalog_ListFilters(t *testing.T) {
 		"?search=dun":             {duna},
 		"?search=MOORE":           {watch}, // by author, case-insensitive
 		"?search=nada":            {},
+		"?search=%25":             {}, // '%' in a reader's query is text, not a LIKE wildcard
+		"?search=_":               {},
 		"?formatGroup=ebooks":     {duna},
 		"?formatGroup=comics":     {watch},
 		"?formatGroup=audio":      {audio},
@@ -825,5 +827,9 @@ func TestOPDSFeedsListWorksWithTheirAuthors(t *testing.T) {
 	rec = s.do(ana, "GET", "/opds/search?q=moore", "")
 	if !strings.Contains(rec.Body.String(), "Watchmen") || strings.Contains(rec.Body.String(), "Duna") {
 		t.Errorf("search by author: %s", rec.Body.String())
+	}
+	rec = s.do(ana, "GET", "/opds/search?q=%25", "")
+	if strings.Contains(rec.Body.String(), "Watchmen") || strings.Contains(rec.Body.String(), "Duna") {
+		t.Errorf("literal percent search matched unrelated works: %s", rec.Body.String())
 	}
 }
