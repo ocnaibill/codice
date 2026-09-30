@@ -77,6 +77,28 @@ afterEach(() => {
   useGlobalStore.getState().closeBook();
 });
 
+describe('Reader shell', () => {
+  it('shows real work and file information with accessible shared controls', async () => {
+    await open();
+    const header = container.querySelector('header');
+    expect(header.textContent).toContain('Duna');
+    expect(header.textContent).toContain('Frank Herbert');
+    expect(header.textContent).toContain('PDF');
+    expect(header.querySelector('[aria-label="Voltar ao acervo"]')).not.toBeNull();
+    expect(header.querySelector('[aria-label="Adicionar aos favoritos"]')).not.toBeNull();
+    expect(header.querySelector('[aria-label="Notas, destaques e marcadores deste livro"]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(header.textContent).not.toContain('Sincronizado');
+  });
+
+  it('keeps favorite and back actions connected to the existing behavior', async () => {
+    await open();
+    await act(async () => { container.querySelector('[aria-label="Adicionar aos favoritos"]').click(); });
+    expect(api.post).toHaveBeenCalledWith('/works/7/favorite');
+    await act(async () => { container.querySelector('[aria-label="Voltar ao acervo"]').click(); });
+    expect(useGlobalStore.getState().activeBookId).toBeNull();
+  });
+});
+
 describe('Reader: finishing a version while another is in progress (DEC-080)', () => {
   it('records the opening of the file', async () => {
     await open();
