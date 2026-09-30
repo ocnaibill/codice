@@ -21,7 +21,9 @@ Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz
 
 ## Estado em 19 de setembro de 2026
 
-**Hub responsivo (UI-01, 25/09/2026):** primeira fatia do design Stitch implementada no branch `codex/library-hub`: papel aquecido, fontes locais, navegação desktop/mobile, filtros, grade/lista e paginação. Validação e limites em [Hub Stitch](Codice_Hub_Stitch_2026-09-25.md). Tema escuro e demais telas permanecem fora desta fatia.
+**Hub responsivo (UI-01, 25/09/2026):** primeira fatia do design Stitch integrada à `main` pelo PR #50: papel aquecido, fontes locais, navegação desktop/mobile, filtros, grade/lista e paginação. Validação e limites em [Hub Stitch](Codice_Hub_Stitch_2026-09-25.md). Tema escuro e demais telas permanecem fora desta fatia. O PR #51 corrigiu a abertura de links de redefinição de senha quando já existe uma sessão local.
+
+**Ficha da obra (30/09/2026, em andamento em `feature/work-details-stitch`):** apresentação desktop/mobile da ficha adaptada às telas Stitch de Duna, mantendo edições, arquivos e progresso reais. A ficha não inventa avaliação, citação, capítulo, telemetria ou prévia do leitor quando esses dados não existem. Escopo e ensaio em [Ficha Stitch](Codice_Ficha_Stitch_2026-09-30.md).
 
 **Atualização após o merge:** o PR #6 já foi integrado à `main` (`83fc908`). A validação subsequente passou em 232 casos/subcasos Go (com PostgreSQL, nenhum ignorado), 82 testes Python e 54 testes frontend; build e `go vet` aprovados. API, worker e navegador foram exercitados com banco e arquivos sintéticos isolados. Correções locais: inicialização/reconexão sem Redis, atualização de obras pendentes sem WebSocket e propagação de falhas no Makefile. Consulte o relatório acima para o alcance e as pendências; esses resultados não homologam toda a especificação.
 

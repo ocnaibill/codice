@@ -106,6 +106,31 @@ describe('WorkSheet', () => {
     expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 10, fromStart: true });
   });
 
+  it('uses the current version for the prominent reading action', async () => {
+    work.inProgress = true;
+    work.continue = { fileId: 20, format: 'pdf', language: 'pt-BR', percentComplete: 12 };
+    try {
+      await open();
+      await act(async () => { buttons('Continuar leitura')[0].click(); });
+      expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 20, fromStart: false });
+    } finally {
+      delete work.inProgress; delete work.continue;
+    }
+  });
+
+  it('does not promise continuation when the current file is unavailable', async () => {
+    work.inProgress = true;
+    work.continue = { fileId: 21, format: 'cbz', language: 'pt-BR' };
+    try {
+      await open();
+      expect(buttons('Continuar leitura')).toHaveLength(0);
+      await act(async () => { buttons('Abrir leitor')[0].click(); });
+      expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 10, fromStart: false });
+    } finally {
+      delete work.inProgress; delete work.continue;
+    }
+  });
+
   it('opens a file that was never read from its start, with no "from the beginning" option', async () => {
     await open();
     expect(rowOf('pdf').querySelector('button').textContent).toBe('Ler');
@@ -177,5 +202,11 @@ describe('WorkSheet', () => {
     await open();
     await act(async () => { container.querySelector('[aria-label="Fechar"]').click(); });
     expect(useGlobalStore.getState()).toMatchObject({ sheetWorkId: null, activeBookId: null });
+  });
+
+  it('closes with Escape', async () => {
+    await open();
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(useGlobalStore.getState().sheetWorkId).toBeNull();
   });
 });
