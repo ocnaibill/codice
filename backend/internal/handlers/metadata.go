@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/audit"
+	"github.com/ocnaibill/codice/backend/internal/people"
 )
 
 // Provenance sources recorded next to a field's value.
@@ -486,9 +487,12 @@ const firstAuthorSQL = `
 	SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id
 	WHERE c.work_id = w.id AND c.role = 'author' ORDER BY c.position, p.name LIMIT 1`
 
-// setFirstAuthor makes name the work's first author, creating the person if
-// needed. Other contributors are left as they are.
+// setFirstAuthor makes name the work's first author, creating the person if needed. The person goes by
+// the name people say ("Herbert, Frank, author" is Frank Herbert) and what was written is kept as an
+// alias, so it still finds the work (#36). Other contributors are left as they are.
 func setFirstAuthor(ctx context.Context, tx *sql.Tx, workID int, name string) error {
+	written := strings.Join(strings.Fields(name), " ")
+	name, changed := people.NormalizeName(name)
 	var personID int
 	err := tx.QueryRowContext(ctx, `SELECT id FROM person WHERE name = $1`, name).Scan(&personID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -496,6 +500,11 @@ func setFirstAuthor(ctx context.Context, tx *sql.Tx, workID int, name string) er
 	}
 	if err != nil {
 		return err
+	}
+	if changed && written != name {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO person_alias (person_id, alias) VALUES ($1, $2) ON CONFLICT DO NOTHING`, personID, written); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM work_contributors WHERE work_id = $1 AND role = 'author' AND position = 0`, workID); err != nil {
 		return err

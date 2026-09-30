@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/ocnaibill/codice/backend/internal/audit"
+	"github.com/ocnaibill/codice/backend/internal/people"
 	"github.com/ocnaibill/codice/backend/internal/versions"
 	"golang.org/x/text/unicode/norm"
 )
@@ -114,7 +115,8 @@ func related(a, b work) string {
 	// as well, and an unknown author never counts.
 	ta, tb := NormalizeTitle(a.title), NormalizeTitle(b.title)
 	aa, ab := NormalizeTitle(a.author), NormalizeTitle(b.author)
-	if ta != "" && ta == tb && aa != "" && aa == ab {
+	// The same author, whichever way the name was written ("Herbert, Frank" and "Frank Herbert").
+	if ta != "" && ta == tb && aa != "" && (aa == ab || people.SameName(a.author, b.author)) {
 		return "title_author"
 	}
 	return ""

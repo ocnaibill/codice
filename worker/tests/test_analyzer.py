@@ -30,6 +30,7 @@ class FakeDB:
         if "w.title_lock" in query:
             return tuple(self.values[n] for n in VALUE_NAMES) + tuple(self.locks[n] for n in LOCK_NAMES)
         if "INSERT INTO person" in query:
+            self.statements.append((" ".join(query.split()), params))
             return (99,)
         if "SELECT id FROM tags" in query:
             return (1,)
@@ -231,3 +232,38 @@ class TestLongTags:
         Analyzer(db).save_candidates(7, {'tags': [self.LONG]}, 'openlibrary')
         (params,) = candidates(db).values()
         assert json.loads(params[2]) == ['Translated by Ebook Translator']
+
+
+class TestAuthorNames:
+    def author_inserts(self, db):
+        return [p for q, p in db.matching("INSERT INTO person (name)")]
+
+    def aliases(self, db):
+        return [p for q, p in db.matching("INSERT INTO person_alias")]
+
+    def test_a_catalogues_way_is_stored_as_the_name_people_say_and_what_was_written_is_an_alias(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, dict(NATIVE, author='Herbert, Frank, author'))
+        assert self.author_inserts(db) == [('Frank Herbert',)]
+        assert self.aliases(db) == [(99, 'Herbert, Frank, author')]
+        assert 'author' in db.recorded_sources()
+
+    def test_a_name_that_needs_no_fixing_gets_no_alias(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, dict(NATIVE, author='Frank Herbert'))
+        assert self.author_inserts(db) == [('Frank Herbert',)] and self.aliases(db) == []
+
+    def test_a_name_with_no_role_is_left_as_written(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, dict(NATIVE, author='Herbert, Frank'))
+        assert self.author_inserts(db) == [('Herbert, Frank',)] and self.aliases(db) == []
+
+    def test_reading_the_same_file_again_changes_nothing(self):
+        db = FakeDB(values={'author': 'Frank Herbert'}, sources={'author': 'file'})
+        Analyzer(db).save_metadata(7, dict(NATIVE, author='Herbert, Frank, author'))
+        assert self.author_inserts(db) == [] and self.aliases(db) == []
+
+    def test_an_unknown_author_is_not_a_person(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, dict(NATIVE, author='Unknown Author'))
+        assert self.author_inserts(db) == []
