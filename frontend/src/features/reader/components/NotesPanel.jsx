@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { downloadFile } from '../../../lib/download';
 import { useCreateNote, useDeleteNote, useUpdateNote, useWorkNotes } from '../api/useWorkNotes';
@@ -14,7 +14,7 @@ function reason(error, fallback) {
 }
 
 const fieldClass =
-  'w-full rounded-md bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm p-2 outline-none focus:border-zinc-600';
+  'w-full rounded-lg border border-border-hairline bg-white px-3 py-2.5 font-body text-sm text-ink placeholder:text-ink-faint outline-none focus:border-brand focus:ring-2 focus:ring-brand/15';
 
 /** The fields of a note: the passage kept from the book, the person's own words, tags. */
 function NoteFields({ quote, body, tags, onChange }) {
@@ -70,17 +70,21 @@ function NewNote({ workId, fileId, getLocator }) {
   const bookmark = () => create.mutate({ kind: 'bookmark', ...place });
 
   return (
-    <div className="flex flex-col gap-2 border-b border-zinc-800 pb-4">
+    <section aria-label="Nova anotação" className="rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="font-display text-xl text-ink">Nova anotação</h3>
+        <span className="rounded-md bg-surface-alt px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-ink-soft">Só sua</span>
+      </div>
       <NoteFields {...draft} onChange={(change) => setDraft((d) => ({ ...d, ...change }))} />
-      <p className="text-[11px] text-zinc-500">
+      <p className="mt-2 font-mono text-[11px] text-ink-soft">
         {locator ? `Fica ligada a: ${placeLabel(locator)}` : 'Sem ponto do arquivo ainda: avance uma página para ligar a nota a ele.'}
       </p>
-      {create.isError && <p className="text-xs text-red-400">{reason(create.error, 'Não foi possível salvar.')}</p>}
-      <div className="flex justify-between gap-2">
+      {create.isError && <p className="mt-2 text-xs text-red-700">{reason(create.error, 'Não foi possível salvar.')}</p>}
+      <div className="mt-3 flex justify-between gap-2">
         <button
           onClick={bookmark}
           disabled={create.isPending || !locator || !fileId}
-          className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+          className="min-h-10 rounded-lg border border-border-hairline bg-surface-alt px-3 py-2 text-xs font-medium text-ink-soft hover:bg-[#e5ddd1] disabled:opacity-40"
           title="Guarda só este ponto do arquivo"
         >
           🔖 Marcar aqui
@@ -88,12 +92,12 @@ function NewNote({ workId, fileId, getLocator }) {
         <button
           onClick={save}
           disabled={create.isPending || empty}
-          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+          className="min-h-10 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40"
         >
           Salvar nota
         </button>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -112,24 +116,24 @@ function NoteItem({ note, onOpenAt }) {
     );
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3" aria-label={`${KIND_LABEL[note.kind]} ${note.id}`}>
-      <div className="flex items-center justify-between text-[11px] text-zinc-500">
-        <span className="rounded bg-zinc-800 px-1.5 py-0.5 uppercase tracking-wide text-zinc-400">{KIND_LABEL[note.kind]}</span>
+    <li className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm" aria-label={`${KIND_LABEL[note.kind]} ${note.id}`}>
+      <div className="flex items-center justify-between gap-2 font-mono text-[11px] text-ink-soft">
+        <span className="rounded-md bg-brand/10 px-2 py-1 uppercase tracking-wide text-brand">{KIND_LABEL[note.kind]}</span>
         <span>{place ?? new Date(note.createdAt).toLocaleDateString('pt-BR')}</span>
       </div>
 
       {editing ? (
         <>
           <NoteFields {...draft} onChange={(change) => setDraft((d) => ({ ...d, ...change }))} />
-          {update.isError && <p className="text-xs text-red-400">{reason(update.error, 'Não foi possível salvar.')}</p>}
+          {update.isError && <p className="text-xs text-red-700">{reason(update.error, 'Não foi possível salvar.')}</p>}
           <div className="flex justify-end gap-2">
-            <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200">
+            <button onClick={() => setEditing(false)} className="min-h-10 px-3 py-2 text-xs text-ink-soft hover:text-ink">
               Cancelar
             </button>
             <button
               onClick={save}
               disabled={update.isPending}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+              className="min-h-10 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40"
             >
               Salvar
             </button>
@@ -137,42 +141,42 @@ function NoteItem({ note, onOpenAt }) {
         </>
       ) : (
         <>
-          {note.quote && <blockquote className="border-l-2 border-zinc-700 pl-3 text-sm italic text-zinc-300">{note.quote}</blockquote>}
+          {note.quote && <blockquote className="border-l-2 border-brand pl-3 font-display text-base italic leading-relaxed text-ink">{note.quote}</blockquote>}
           {/* Markdown, shown as text: raw HTML in it is not interpreted. */}
           {note.body && (
-            <div className="prose prose-invert prose-sm max-w-none text-sm text-zinc-200 [&_a]:text-blue-400">
+            <div className="prose prose-sm max-w-none rounded-lg bg-[#f5f0e9] p-3 font-body text-sm text-ink [&_a]:text-brand">
               <ReactMarkdown>{note.body}</ReactMarkdown>
             </div>
           )}
           {note.tags.length > 0 && (
             <p className="flex flex-wrap gap-1">
               {note.tags.map((tag) => (
-                <span key={tag} className="rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400">
+                <span key={tag} className="rounded-full bg-surface-alt px-2 py-1 font-mono text-[11px] text-ink-soft">
                   #{tag}
                 </span>
               ))}
             </p>
           )}
-          <div className="flex items-center gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-3 border-t border-border-hairline pt-3 text-xs">
             {note.fileId && note.locator && note.fileAvailable && (
-              <button onClick={() => onOpenAt(note)} className="text-blue-400 hover:text-blue-300">
+              <button onClick={() => onOpenAt(note)} className="min-h-9 rounded-md bg-brand/10 px-2.5 font-semibold text-brand hover:bg-brand/20">
                 Abrir neste ponto
               </button>
             )}
-            {note.locator && !note.fileAvailable && <span className="text-zinc-600">arquivo indisponível</span>}
-            <button onClick={() => setEditing(true)} className="ml-auto text-zinc-500 hover:text-zinc-300">
+            {note.locator && !note.fileAvailable && <span className="text-ink-faint">arquivo indisponível</span>}
+            <button onClick={() => setEditing(true)} className="ml-auto min-h-9 text-ink-soft hover:text-ink">
               Editar
             </button>
             {confirming ? (
               <button
                 onClick={() => remove.mutate(note.id)}
                 disabled={remove.isPending}
-                className="text-red-400 hover:text-red-300"
+                className="min-h-9 font-semibold text-red-700 hover:text-red-900"
               >
                 Confirmar exclusão
               </button>
             ) : (
-              <button onClick={() => setConfirming(true)} className="text-zinc-500 hover:text-red-400">
+              <button onClick={() => setConfirming(true)} className="min-h-9 text-ink-soft hover:text-red-700">
                 Excluir
               </button>
             )}
@@ -191,7 +195,32 @@ function NoteItem({ note, onOpenAt }) {
 export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose }) {
   const { data, isLoading, isError } = useWorkNotes(workId);
   const notes = data?.data ?? [];
+  const total = data?.total ?? notes.length;
   const [exportError, setExportError] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const closeButtonRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const filters = [
+    ['all', 'Todas'], ['note', 'Notas'], ['highlight', 'Destaques'], ['bookmark', 'Marcadores'],
+  ];
+  const filteredNotes = filter === 'all' ? notes : notes.filter((note) => note.kind === filter);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    closeButtonRef.current?.focus();
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        onCloseRef.current();
+      }
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, []);
 
   const exportAs = async (format) => {
     setExportError(false);
@@ -207,41 +236,78 @@ export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose }) {
       aria-label="Anotações"
       // Above the toolbars of every viewer (they are z-50): on a phone the panel covers the page, and
       // a toolbar drawn over its fields hides them.
-      className="fixed inset-y-0 right-0 z-[60] flex w-full max-w-md flex-col gap-4 overflow-y-auto border-l border-zinc-800 bg-zinc-900 p-5 shadow-2xl"
+      className="fixed inset-y-0 right-0 z-[60] flex w-full max-w-lg flex-col border-l border-border-hairline bg-[#faf8f4] font-body shadow-2xl"
     >
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-zinc-100">Suas anotações</h2>
-        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300" aria-label="Fechar anotações">
+      <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border-hairline bg-[#faf8f4] px-4 py-4 sm:px-5">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-brand">À margem da leitura</p>
+          <h2 className="mt-1 font-display text-3xl leading-none text-ink">Suas anotações</h2>
+          <p className="mt-1 text-xs text-ink-soft">
+            {total > notes.length
+              ? `${notes.length} de ${total} registros carregados`
+              : `${notes.length} ${notes.length === 1 ? 'registro privado' : 'registros privados'}`}
+          </p>
+        </div>
+        <button
+          ref={closeButtonRef}
+          onClick={onClose}
+          className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-surface-alt text-lg text-ink-soft hover:bg-border-hairline hover:text-ink"
+          aria-label="Fechar anotações"
+        >
           ✕
         </button>
+      </header>
+
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-5">
+        <NewNote workId={workId} fileId={fileId} getLocator={getLocator} />
+
+        <section aria-label="Anotações salvas">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="font-display text-xl text-ink">Marginalia do livro</h3>
+            <span className="rounded-md bg-surface-alt px-2 py-1 font-mono text-[11px] text-ink-soft">{notes.length}</span>
+          </div>
+          <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Filtrar anotações por tipo">
+            {filters.map(([kind, label]) => (
+              <button
+                key={kind}
+                onClick={() => setFilter(kind)}
+                aria-pressed={filter === kind}
+                className={`min-h-9 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${filter === kind ? 'bg-brand text-white' : 'bg-surface-alt text-ink-soft hover:bg-border-hairline hover:text-ink'}`}
+              >
+                {label} ({kind === 'all' ? notes.length : notes.filter((note) => note.kind === kind).length})
+              </button>
+            ))}
+          </div>
+
+          {isLoading && <p className="animate-pulse text-sm text-ink-soft">Carregando…</p>}
+          {isError && <p className="text-sm text-red-700">Não foi possível carregar as anotações.</p>}
+          {!isLoading && !isError && notes.length === 0 && (
+            <p className="rounded-xl border border-dashed border-border-hairline bg-white p-4 text-sm text-ink-soft">Nenhuma anotação neste livro ainda. Só você as vê.</p>
+          )}
+          {!isLoading && !isError && notes.length > 0 && filteredNotes.length === 0 && (
+            <p className="rounded-xl border border-dashed border-border-hairline bg-white p-4 text-sm text-ink-soft">Nenhum registro desse tipo neste livro.</p>
+          )}
+          <ul className="flex flex-col gap-3">
+            {filteredNotes.map((note) => (
+              <NoteItem key={note.id} note={note} onOpenAt={onOpenAt} />
+            ))}
+          </ul>
+        </section>
       </div>
 
-      <NewNote workId={workId} fileId={fileId} getLocator={getLocator} />
-
-      {isLoading && <p className="animate-pulse text-sm text-zinc-500">Carregando…</p>}
-      {isError && <p className="text-sm text-red-400">Não foi possível carregar as anotações.</p>}
-      {!isLoading && !isError && notes.length === 0 && (
-        <p className="text-sm text-zinc-500">Nenhuma anotação neste livro ainda. Só você as vê.</p>
-      )}
-      <ul className="flex flex-col gap-3">
-        {notes.map((note) => (
-          <NoteItem key={note.id} note={note} onOpenAt={onOpenAt} />
-        ))}
-      </ul>
-
       {notes.length > 0 && (
-        <div className="mt-auto flex flex-col gap-1 border-t border-zinc-800 pt-3">
-          <div className="flex items-center gap-3 text-xs text-zinc-500">
-            <span>Exportar as anotações deste livro:</span>
-            <button onClick={() => exportAs('md')} className="text-blue-400 hover:text-blue-300">
+        <footer className="flex shrink-0 flex-col gap-1 border-t border-border-hairline bg-[#faf8f4] px-4 py-3 sm:px-5">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-ink-soft">
+            <span>Exportar deste livro:</span>
+            <button onClick={() => exportAs('md')} className="min-h-9 font-semibold text-brand hover:underline">
               Markdown
             </button>
-            <button onClick={() => exportAs('json')} className="text-blue-400 hover:text-blue-300">
+            <button onClick={() => exportAs('json')} className="min-h-9 font-semibold text-brand hover:underline">
               JSON
             </button>
           </div>
-          {exportError && <p className="text-xs text-red-400">Não foi possível exportar.</p>}
-        </div>
+          {exportError && <p className="text-xs text-red-700">Não foi possível exportar.</p>}
+        </footer>
       )}
     </aside>
   );

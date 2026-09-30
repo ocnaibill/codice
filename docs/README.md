@@ -25,7 +25,9 @@ Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz
 
 **Ficha da obra (30/09/2026):** apresentação desktop/mobile da ficha adaptada às telas Stitch de Duna, integrada à `main` pelo PR #52, mantendo edições, arquivos e progresso reais. A ficha não inventa avaliação, citação, capítulo, telemetria ou prévia do leitor quando esses dados não existem. Escopo e ensaio em [Ficha Stitch](Codice_Ficha_Stitch_2026-09-30.md).
 
-**Leitor (30/09/2026, em andamento em `feature/reader-shell-stitch`):** moldura compartilhada clara e responsiva inspirada nas telas Stitch, sem trocar os mecanismos dos formatos. O tema escuro do EPUB foi corrigido para manter o texto legível inclusive em arquivos que definem preto no conteúdo. Escopo e ensaio em [Leitor Stitch](Codice_Leitor_Stitch_2026-09-30.md).
+**Leitor (30/09/2026):** moldura compartilhada clara e responsiva inspirada nas telas Stitch, integrada à `main` pelo PR #53, sem trocar os mecanismos dos formatos. O tema escuro do EPUB foi corrigido para manter o texto legível inclusive em arquivos que definem preto no conteúdo. Escopo e ensaio em [Leitor Stitch](Codice_Leitor_Stitch_2026-09-30.md).
+
+**Anotações no leitor (30/09/2026, em andamento em `feature/reader-notes-stitch`):** gaveta de notas adaptada às telas Stitch de Duna, com filtragem por tipo e preservação das ações e posições reais. Escopo e ensaio em [Anotações Stitch](Codice_Anotacoes_Stitch_2026-09-30.md).
 
 **Atualização após o merge:** o PR #6 já foi integrado à `main` (`83fc908`). A validação subsequente passou em 232 casos/subcasos Go (com PostgreSQL, nenhum ignorado), 82 testes Python e 54 testes frontend; build e `go vet` aprovados. API, worker e navegador foram exercitados com banco e arquivos sintéticos isolados. Correções locais: inicialização/reconexão sem Redis, atualização de obras pendentes sem WebSocket e propagação de falhas no Makefile. Consulte o relatório acima para o alcance e as pendências; esses resultados não homologam toda a especificação.
 

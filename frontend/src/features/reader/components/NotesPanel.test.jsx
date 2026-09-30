@@ -91,6 +91,26 @@ describe('NotesPanel', () => {
     expect(layer && Number(layer[1])).toBeGreaterThan(50);
   });
 
+  it('filters actual notes by type without changing the saved list', async () => {
+    await render();
+    const filters = container.querySelector('[aria-label="Filtrar anotações por tipo"]');
+    expect(filters.querySelector('[aria-pressed="true"]').textContent).toContain('Todas (3)');
+    await act(async () => { [...filters.querySelectorAll('button')].find((b) => b.textContent.includes('Marcadores')).click(); });
+    expect(item(1)).toBeNull();
+    expect(item(2)).toBeNull();
+    expect(item(3)).not.toBeNull();
+    await act(async () => { [...filters.querySelectorAll('button')].find((b) => b.textContent.includes('Todas')).click(); });
+    expect(item(1)).not.toBeNull();
+    expect(item(2)).not.toBeNull();
+  });
+
+  it('focuses the close control and closes with Escape', async () => {
+    await render();
+    expect(document.activeElement).toBe(field('Fechar anotações'));
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
   it('shows the Markdown of a note as text, never as live HTML', async () => {
     await render();
     expect(item(1).querySelector('strong').textContent).toBe('Hobbes');
