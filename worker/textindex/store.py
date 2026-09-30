@@ -97,7 +97,7 @@ class TextIndexer:
             detected = None if language or not count else self.detect(pieces)
             status = self.publish(file_id, generation, sha, 'ready' if count else 'empty', language or detected, found.get('structure'))
             if detected:
-                self.fill_language(file_id, detected)
+                self.suggest_language(file_id, detected)
             return status
         except (ValueError, zipfile.BadZipFile) as err:
             # The file is what it is and will not read: recorded, and the job goes on to the next file.
@@ -129,21 +129,19 @@ class TextIndexer:
             pieces = [pieces[int(i * step)] for i in range(SAMPLE_PIECES)]
         return detect_language('\n'.join(pieces))
 
-    def fill_language(self, file_id, language):
-        """Gives the edition of the file the language found in its text, but only when the edition has
-        none and nobody locked the field (#35). What a file declares, or a person says, is never replaced;
-        this is a guess from the text, and the provenance says so."""
-        row = self.db.fetchone(
-            """WITH target AS (
-                   SELECT e.id AS edition_id, e.work_id
-                   FROM files f JOIN editions e ON e.id = f.edition_id JOIN works w ON w.id = e.work_id
-                   WHERE f.id = %s AND COALESCE(e.language, '') = '' AND NOT w.language_lock)
-               UPDATE editions SET language = %s FROM target WHERE editions.id = target.edition_id
-               RETURNING target.work_id""", (file_id, language))
-        if row:
-            self.db.execute(
-                """INSERT INTO work_field_sources (work_id, field, source) VALUES (%s, 'language', 'detected')
-                   ON CONFLICT (work_id, field) DO UPDATE SET source = EXCLUDED.source, updated_at = now()""", (row[0],))
+    def suggest_language(self, file_id, language):
+        """Proposes the language found in the text of a file to whoever looks after the library (#35). It is
+        a guess, so it is a suggestion like the ones external providers make: nothing changes until an owner
+        or admin accepts it, and one that was rejected is not proposed again (the key is work, field, source
+        and value). Only for an edition with no language at all, that nobody locked, and only for the primary
+        edition of its work, because that is the edition a suggestion about a work applies to."""
+        self.db.execute(
+            """INSERT INTO metadata_candidates (work_id, field, value, source, evidence)
+               SELECT e.work_id, 'language', %s, 'detected', %s::jsonb
+               FROM files f JOIN editions e ON e.id = f.edition_id JOIN works w ON w.id = e.work_id
+               WHERE f.id = %s AND e.is_primary AND COALESCE(e.language, '') = '' AND NOT w.language_lock
+               ON CONFLICT (work_id, field, source, value) DO NOTHING""",
+            (language, json.dumps({'method': 'common words', 'from': 'the text of the file'}), file_id))
 
     def flush(self, rows):
         self.db.insert_many(

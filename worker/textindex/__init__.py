@@ -10,7 +10,8 @@ a word broken by a hyphen at the end of a line in a PDF joined again, and paragr
 line break. Searching ignores case and accents in the database, so none of that is done to the text.
 Change any of it, or a limit, and EXTRACTOR_VERSION goes up: every file is read again.
 
-Version 4 tells the language of a file from its text, when the file does not declare one (language.py).
+Version 4 tells the language of a file from its text, when the file does not declare one (language.py), and
+proposes it as a suggestion.
 
 Version 3 takes the soft hyphens (and other invisible characters inside a word) out of the text.
 

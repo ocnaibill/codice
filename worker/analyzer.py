@@ -148,9 +148,7 @@ class Analyzer:
         current = state['values'].get(field)
         if not current or cls._is_placeholder(field, current):
             return True
-        # Read from the file, or guessed from its text (textindex.store.fill_language): a later reading of what
-        # the file declares replaces a guess.
-        return state['sources'].get(field) in ('file', 'detected')
+        return state['sources'].get(field) == 'file'
 
     def _record_source(self, work_id: int, field: str, source: str):
         self.db.execute(

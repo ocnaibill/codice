@@ -565,49 +565,36 @@ class TestLanguageOfAFile:
     def publish_call(self, db):
         return [c for c in db.calls if c[1] == 'text_extraction_publish'][0][2]
 
-    def test_a_file_that_declares_no_language_gets_the_one_its_text_is_in(self, tmp_path):
+    def suggestions(self, db):
+        return [c for c in db.calls if c[1] == 'INSERT INTO metadata_candidates']
+
+    def test_a_file_that_declares_no_language_gets_one_suggested_from_its_text(self, tmp_path):
         make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + PT * 4 + '</p>'})
         db = FakeDB([file_row(7, 'epub', 'aa', '', path='b.epub')])
         TextIndexer(db, str(tmp_path)).run(9)
-        assert self.publish_call(db)[5] == 'pt'                       # the language of the published text
-        (update,) = [c for c in db.calls if c[1] == 'WITH target AS']
-        assert update[2] == (7, 'pt')
-        (source,) = [c for c in db.calls if c[1] == 'INSERT INTO work_field_sources']
-        assert source[2] == (1,)  # the work whose edition was filled
+        assert self.publish_call(db)[5] == 'pt'                        # the language of the published text
+        (suggestion,) = self.suggestions(db)
+        assert suggestion[2][0] == 'pt' and suggestion[2][2] == 7      # the language, and the file it is about
+        # Nothing about the edition is written: the suggestion waits for someone to accept it.
+        assert not [c for c in db.calls if c[1] in ('UPDATE editions', 'WITH target AS')]
 
-    def test_what_a_file_declares_is_never_replaced_by_a_guess(self, tmp_path):
+    def test_what_a_file_declares_is_never_second_guessed(self, tmp_path):
         make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + PT * 4 + '</p>'})
         db = FakeDB([file_row(7, 'epub', 'aa', 'en-GB', path='b.epub')])  # declared English, written in Portuguese
         TextIndexer(db, str(tmp_path)).run(9)
         assert self.publish_call(db)[5] == 'en-GB'
-        assert not [c for c in db.calls if c[1] == 'WITH target AS' or c[1] == 'INSERT INTO work_field_sources']
+        assert self.suggestions(db) == []
 
-    def test_a_text_it_cannot_tell_leaves_the_language_empty(self, tmp_path):
+    def test_a_text_it_cannot_tell_suggests_nothing(self, tmp_path):
         make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + 'xqz wvk jhg ' * 80 + '</p>'})
         db = FakeDB([file_row(7, 'epub', 'aa', '', path='b.epub')])
         TextIndexer(db, str(tmp_path)).run(9)
-        assert not self.publish_call(db)[5]
-        assert not [c for c in db.calls if c[1] == 'WITH target AS']
+        assert not self.publish_call(db)[5] and self.suggestions(db) == []
 
-    def test_a_file_with_no_text_has_no_language_to_tell(self, storage):
+    def test_a_file_with_no_text_has_no_language_to_suggest(self, storage):
         db = FakeDB([file_row(7, 'pdf', path='scan.pdf', language='')])
         TextIndexer(db, str(storage)).run(9)
-        assert not [c for c in db.calls if c[1] == 'WITH target AS']
-
-    def test_nothing_is_recorded_when_the_edition_already_has_a_language_or_it_is_locked(self, tmp_path):
-        make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + PT * 4 + '</p>'})
-        db = FakeDB([file_row(7, 'epub', 'aa', '', path='b.epub')])
-        original = db.fetchone
-
-        def fetchone(query, params=None):
-            if query.strip().startswith('WITH target AS'):  # the update found no edition to fill
-                db.calls.append(('fetchone', 'WITH target AS', params))
-                return None
-            return original(query, params)
-        db.fetchone = fetchone
-        TextIndexer(db, str(tmp_path)).run(9)
-        assert [c for c in db.calls if c[1] == 'WITH target AS']
-        assert not [c for c in db.calls if c[1] == 'INSERT INTO work_field_sources']
+        assert self.suggestions(db) == []
 
     def test_the_sample_is_spread_over_the_file_and_has_a_ceiling(self, monkeypatch):
         seen = []
