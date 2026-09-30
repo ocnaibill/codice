@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
+	"github.com/ocnaibill/codice/backend/internal/people"
 	"html"
 	"net/http"
 	"net/url"
@@ -64,7 +65,7 @@ func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Format(time.RFC3339)
 
 	rows, err := h.DB.Query(`
-		SELECT w.id, w.original_title, ` + authorLabel + `, COALESCE(wp.cover_url, ''),
+		SELECT w.id, w.original_title, ` + authorLabelFor(people.OrderFor(r.Context(), h.DB, currentUserID(r)).Effective) + `, COALESCE(wp.cover_url, ''),
 		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at, wp.file_id, COALESCE(wp.file_mode, '')
 		` + catalogFrom + `
 		WHERE w.retired_at IS NULL
@@ -148,7 +149,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Format(time.RFC3339)
 
 	rows, err := h.DB.Query(`
-		SELECT w.id, w.original_title, `+authorLabel+`, COALESCE(wp.cover_url, ''),
+		SELECT w.id, w.original_title, `+authorLabelFor(people.OrderFor(r.Context(), h.DB, currentUserID(r)).Effective)+`, COALESCE(wp.cover_url, ''),
 		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at, wp.file_id, COALESCE(wp.file_mode, '')
 		`+catalogFrom+`
 		WHERE w.retired_at IS NULL

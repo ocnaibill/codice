@@ -8,6 +8,8 @@ export function LibraryFilterBar({
   onFilterChange,
   viewMode,
   onViewModeChange,
+  sort = 'added',
+  onSortChange,
 }) {
   const filters = [
     { key: 'all', label: 'Todos', count: worksTotal },
@@ -33,6 +35,16 @@ export function LibraryFilterBar({
           </button>
         ))}
       </div>
+      {onSortChange && (
+        <label className="library-sort">
+          <span>Ordenar</span>
+          <select value={sort} onChange={(event) => onSortChange(event.target.value)} aria-label="Ordenar o acervo">
+            <option value="added">Mais recentes</option>
+            <option value="title">Título</option>
+            <option value="author">Autor</option>
+          </select>
+        </label>
+      )}
       <div
         className="library-view-toggle"
         role="group"

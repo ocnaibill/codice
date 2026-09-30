@@ -1,6 +1,6 @@
 import pytest
 
-from people import normalize_name
+from people import normalize_name, parse_name
 
 # The same vectors as backend/internal/people/people_test.go.
 VECTORS = [
@@ -35,3 +35,23 @@ def test_normalize_name(raw, want):
 
 def test_none_is_nothing():
     assert normalize_name(None) == ('', False)
+
+
+PARTS = [
+    ('Herbert, Frank, author', 'Frank Herbert', 'Herbert', 'Frank'),
+    ('Herbert, Frank (author)', 'Frank Herbert', 'Herbert', 'Frank'),
+    ('  García Márquez ,  Gabriel , autor ', 'Gabriel García Márquez', 'García Márquez', 'Gabriel'),
+    ('Saint-Exupéry, Antoine de, auteur', 'Antoine de Saint-Exupéry', 'Saint-Exupéry', 'Antoine de'),
+    ('Frank Herbert, author', 'Frank Herbert', None, None),     # a role, but nothing says the surname
+    ('Frank Herbert', 'Frank Herbert', None, None),             # depends on the culture
+    ('Herbert, Frank', 'Herbert, Frank', None, None),           # no role: not certain
+    ('Herbert, Frank, Schoenherr, John, author', 'Herbert, Frank, Schoenherr, John, author', None, None),
+    ('', '', None, None),
+]
+
+
+@pytest.mark.parametrize('raw,name,family,given', PARTS)
+def test_only_the_catalogues_way_with_a_role_says_which_is_the_surname(raw, name, family, given):
+    got = parse_name(raw)
+    assert got[:3] == (name, family, given)
+    assert got[3] == (name != raw)

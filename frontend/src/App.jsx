@@ -13,6 +13,7 @@ import { AdminPage } from './features/admin/AdminPage';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
 import { OwnershipBanner } from './features/ownership/OwnershipBanner';
 import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
+import { PreferencesModal } from './components/layout/PreferencesModal';
 import { ResetPassword } from './features/auth/components/ResetPassword';
 import { AcceptInvite } from './features/auth/components/AcceptInvite';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
@@ -24,6 +25,7 @@ function App() {
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [assetsReady, setAssetsReady] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
   // A link like /?invite=<secret> opens the sign-up page for that invitation.
   const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset'));
@@ -281,6 +283,7 @@ function App() {
       <UploadModal />
       <OwnershipBanner me={me} />
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
+      {preferencesOpen && <PreferencesModal onClose={() => setPreferencesOpen(false)} />}
       <WorkSheet />
       {activeBookId ? (
         <Reader />
@@ -291,6 +294,7 @@ function App() {
           onGoHome={closeBook}
           onLogout={handleLogout}
           onChangePassword={() => setChangingPassword(true)}
+          onOpenPreferences={() => setPreferencesOpen(true)}
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >

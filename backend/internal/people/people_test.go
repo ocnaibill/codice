@@ -55,3 +55,42 @@ func TestSameName(t *testing.T) {
 		}
 	}
 }
+
+func TestParse_OnlyTheCataloguesWayWithARoleSaysWhichIsTheSurname(t *testing.T) {
+	for _, c := range []struct{ in, name, family, given string }{
+		{"Herbert, Frank, author", "Frank Herbert", "Herbert", "Frank"},
+		{"Herbert, Frank (author)", "Frank Herbert", "Herbert", "Frank"},
+		{"  García Márquez ,  Gabriel , autor ", "Gabriel García Márquez", "García Márquez", "Gabriel"},
+		{"Saint-Exupéry, Antoine de, auteur", "Antoine de Saint-Exupéry", "Saint-Exupéry", "Antoine de"},
+		{"Frank Herbert, author", "Frank Herbert", "", ""}, // a role, but no way to tell the surname
+		{"Frank Herbert", "Frank Herbert", "", ""},         // depends on the culture
+		{"Herbert, Frank", "Herbert, Frank", "", ""},       // no role: not certain
+		{"Herbert, Frank, Schoenherr, John, author", "Herbert, Frank, Schoenherr, John, author", "", ""},
+		{"", "", "", ""},
+	} {
+		p := Parse(c.in)
+		if p.Name != c.name || p.Family != c.family || p.Given != c.given {
+			t.Errorf("Parse(%q) = %+v, want %q / %q / %q", c.in, p, c.name, c.family, c.given)
+		}
+	}
+}
+
+func TestSplitFromPair_AHumanSayingTheyAreTheSameWithACommaInOneSaysWhereTheSurnameEnds(t *testing.T) {
+	for _, c := range []struct {
+		a, b, family, given string
+		ok                  bool
+	}{
+		{"Herbert, Frank", "Frank Herbert", "Herbert", "Frank", true},
+		{"Frank Herbert", "Herbert, Frank", "Herbert", "Frank", true}, // either way round
+		{"García Márquez, Gabriel", "Gabriel García Márquez", "García Márquez", "Gabriel", true},
+		{"Herbert, Frank", "Frank, Herbert", "", "", false}, // both have a comma: nothing to learn
+		{"Frank Herbert", "Brian Herbert", "", "", false},
+		{"Herbert, Frank", "Herbert Frank", "", "", false}, // same words but the order does not fit "Given Family"
+		{"Plato", "Aristotle", "", "", false},
+	} {
+		f, g, ok := SplitFromPair(c.a, c.b)
+		if ok != c.ok || f != c.family || g != c.given {
+			t.Errorf("SplitFromPair(%q, %q) = %q, %q, %v", c.a, c.b, f, g, ok)
+		}
+	}
+}

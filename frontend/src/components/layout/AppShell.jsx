@@ -11,6 +11,7 @@ export function AppShell({
   onGoHome,
   onLogout,
   onChangePassword,
+  onOpenPreferences,
   canAdmin,
   onOpenAdmin,
   children,
@@ -63,6 +64,7 @@ export function AppShell({
           onSearchChange={onSearchChange}
           onLogout={onLogout}
           onChangePassword={onChangePassword}
+          onOpenPreferences={onOpenPreferences}
           canAdmin={canAdmin}
           onOpenAdmin={onOpenAdmin}
           onGoHome={goHome}

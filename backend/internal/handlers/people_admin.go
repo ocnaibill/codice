@@ -80,3 +80,69 @@ func (h *PeopleHandler) Merge(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
+
+// GetPreferences tells an account how names are shown to it (#64): its own choice, the library's default, and
+// what applies.
+func (h *PeopleHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, people.OrderFor(r.Context(), h.DB, currentUserID(r)))
+}
+
+// SetPreferences records an account's own choice of how names are shown; empty goes back to the library's.
+func (h *PeopleHandler) SetPreferences(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		NameOrder string `json:"nameOrder"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req); err != nil || (req.NameOrder != "" && !people.ValidOrder(req.NameOrder)) {
+		http.Error(w, "nameOrder is given_first, family_first or empty", http.StatusBadRequest)
+		return
+	}
+	if err := people.SetChoice(r.Context(), h.DB, currentUserID(r), req.NameOrder); err != nil {
+		log.Println("Error saving a name order:", err)
+		http.Error(w, "Error saving the preference", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, people.OrderFor(r.Context(), h.DB, currentUserID(r)))
+}
+
+// SetLibraryOrder records the library's default (the owner's).
+func (h *PeopleHandler) SetLibraryOrder(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		NameOrder string `json:"nameOrder"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req); err != nil || !people.ValidOrder(req.NameOrder) {
+		http.Error(w, "nameOrder is given_first or family_first", http.StatusBadRequest)
+		return
+	}
+	if err := people.SetLibraryOrder(r.Context(), h.DB, req.NameOrder, currentUserID(r)); err != nil {
+		log.Println("Error saving the library name order:", err)
+		http.Error(w, "Error saving the preference", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, people.OrderFor(r.Context(), h.DB, currentUserID(r)))
+}
+
+// SetName corrects, by hand, which words of a person's name are the surname and which are the given names, or
+// takes the division away (empty). The words have to be the ones the name already has (#64): this says which is
+// which, it does not rename anyone.
+func (h *PeopleHandler) SetName(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	var req struct {
+		Family string `json:"family"`
+		Given  string `json:"given"`
+	}
+	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req) != nil {
+		http.Error(w, "family and given are the parts of the name", http.StatusBadRequest)
+		return
+	}
+	switch err := people.SetParts(r.Context(), h.DB, id, req.Family, req.Given, currentUserID(r)); {
+	case errors.Is(err, people.ErrNotFound):
+		http.Error(w, "Person not found", http.StatusNotFound)
+	case errors.Is(err, people.ErrNotTheName):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	case err != nil:
+		log.Println("Error correcting a name:", err)
+		http.Error(w, "Error correcting the name", http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}

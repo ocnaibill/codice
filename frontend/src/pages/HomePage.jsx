@@ -12,6 +12,9 @@ import { useWorks } from '../features/library/api/useWorks';
 import { useGlobalStore } from '../store/useGlobalStore';
 import { SearchPage } from '../features/search/SearchPage';
 
+// "Adicionados recentemente" says how the catalog is sorted, so it only holds while it is: sorted by title or
+// by author the heading says that instead (the other views are named by what they hold, not by the order).
+const SORTED_TITLES = { title: 'Todas as obras, por título', author: 'Todas as obras, por autor' };
 const GRID_TITLES = {
   all: 'Adicionados recentemente',
   ebooks: 'Livros digitais',
@@ -42,6 +45,8 @@ function HomeDashboard() {
   const view = useGlobalStore((state) => state.libraryView);
   const page = useGlobalStore((state) => state.libraryPage);
   const viewMode = useGlobalStore((state) => state.libraryViewMode);
+  const sort = useGlobalStore((state) => state.librarySort);
+  const setSort = useGlobalStore((state) => state.setLibrarySort);
   const setView = useGlobalStore((state) => state.setLibraryView);
   const setPage = useGlobalStore((state) => state.setLibraryPage);
   const setViewMode = useGlobalStore((state) => state.setLibraryViewMode);
@@ -53,6 +58,7 @@ function HomeDashboard() {
     formatGroup: ['ebooks', 'comics', 'audio'].includes(view) ? view : 'all',
     inProgress: view === 'reading',
     favorite: view === 'favorites',
+    sort,
   });
   const favorites = useFavorites();
   const notes = useNotes({ limit: 3 });
@@ -96,6 +102,8 @@ function HomeDashboard() {
           onFilterChange={setView}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+          sort={sort}
+          onSortChange={setSort}
         />
         {grid.isError ? (
           <QueryError onRetry={() => grid.refetch()}>
@@ -107,7 +115,7 @@ function HomeDashboard() {
               items={grid.data?.data ?? []}
               isLoading={grid.isLoading}
               isFetching={grid.isFetching}
-              title={GRID_TITLES[view]}
+              title={(view === 'all' && SORTED_TITLES[sort]) || GRID_TITLES[view]}
               viewMode={viewMode}
               total={grid.data?.total}
             />

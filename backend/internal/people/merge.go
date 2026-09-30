@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/ocnaibill/codice/backend/internal/audit"
 )
@@ -209,6 +210,12 @@ func Merge(ctx context.Context, db *sql.DB, id int64, keep int, actor string) er
 	if err := tx.QueryRowContext(ctx, `SELECT count(DISTINCT work_id) FROM work_contributors WHERE person_id = $1`, other).Scan(&moved); err != nil {
 		return err
 	}
+	// A human saying these two are the same, with a comma in one of them, says where the surname ends.
+	if family, given, ok := SplitFromPair(keepName, otherName); ok {
+		if _, err := tx.ExecContext(ctx, `UPDATE person SET family_name = $2, given_name = $3 WHERE id = $1 AND family_name IS NULL`, keep, family, given); err != nil {
+			return err
+		}
+	}
 	for _, st := range []struct {
 		query string
 		args  []any
@@ -231,4 +238,64 @@ func Merge(ctx context.Context, db *sql.DB, id int64, keep int, actor string) er
 		return err
 	}
 	return tx.Commit()
+}
+
+// Resolve is the person a name written in a file stands for, created if it does not exist. The person goes by
+// the name people say, what was written is kept as an alias, and the surname and the given names are kept when
+// the writing says which is which for certain (#64). What is already known about a person is never replaced.
+func Resolve(ctx context.Context, tx *sql.Tx, raw string) (int, error) {
+	p := Parse(raw)
+	written := strings.Join(strings.Fields(raw), " ")
+	var id int
+	err := tx.QueryRowContext(ctx, `SELECT id FROM person WHERE name = $1`, p.Name).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = tx.QueryRowContext(ctx, `INSERT INTO person (name) VALUES ($1) RETURNING id`, p.Name).Scan(&id)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if p.Family != "" {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE person SET family_name = $2, given_name = $3 WHERE id = $1 AND family_name IS NULL`, id, p.Family, p.Given); err != nil {
+			return 0, err
+		}
+	}
+	if p.Changed && written != p.Name {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO person_alias (person_id, alias) VALUES ($1, $2) ON CONFLICT DO NOTHING`, id, written); err != nil {
+			return 0, err
+		}
+	}
+	return id, nil
+}
+
+// ErrNotTheName is for parts that are not the words the name has.
+var ErrNotTheName = errors.New("family and given must be made of the words of the name")
+
+// SetParts records which words of a person's name are the surname and which are the given names, for when it
+// was not known for certain (or was wrong). Empty parts take the division away. It never renames the person.
+func SetParts(ctx context.Context, db *sql.DB, id int, family, given, actor string) error {
+	family, given = strings.Join(strings.Fields(family), " "), strings.Join(strings.Fields(given), " ")
+	var name string
+	if err := db.QueryRowContext(ctx, `SELECT name FROM person WHERE id = $1`, id).Scan(&name); errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	if family == "" && given == "" {
+		if _, err := db.ExecContext(ctx, `UPDATE person SET family_name = NULL, given_name = NULL WHERE id = $1`, id); err != nil {
+			return err
+		}
+		return audit.Record(ctx, db, actor, "person.parts", "person", fmt.Sprint(id), map[string]any{"family": "", "given": ""})
+	}
+	if family == "" || Key(family+" "+given) != Key(name) {
+		return ErrNotTheName
+	}
+	var g any
+	if given != "" {
+		g = given
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE person SET family_name = $2, given_name = $3 WHERE id = $1`, id, family, g); err != nil {
+		return err
+	}
+	return audit.Record(ctx, db, actor, "person.parts", "person", fmt.Sprint(id), map[string]any{"family": family, "given": given})
 }

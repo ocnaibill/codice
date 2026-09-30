@@ -207,3 +207,55 @@ func TestMigrate_AWorkThatHadBothSpellingsKeepsOneAuthor(t *testing.T) {
 		t.Errorf("persons left with a role in their name: %d", n)
 	}
 }
+
+// A person keeps the surname and the given names only when it is certain which is which: the catalogue's
+// way with a role, found in the aliases (#64).
+func TestMigrate_NamePartsAreLearnedOnlyFromWhatIsCertain(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.MigrateTo(db, 28); err != nil {
+		t.Fatal(err)
+	}
+	mk := func(name string, aliases ...string) int {
+		var id int
+		if err := db.QueryRow(`INSERT INTO person (name) VALUES ($1) RETURNING id`, name).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range aliases {
+			if _, err := db.Exec(`INSERT INTO person_alias (person_id, alias) VALUES ($1, $2)`, id, a); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return id
+	}
+	herbert := mk("Frank Herbert", "Herbert, Frank, author")
+	paren := mk("Gabriel García Márquez", "García Márquez, Gabriel (autor)")
+	noRole := mk("Brian Herbert", "Herbert, Brian")           // a comma but no role: not certain
+	plain := mk("Ursula K. Le Guin")                          // no alias at all
+	wrong := mk("Isaac Asimov", "Clarke, Arthur, author")     // an alias that is not this person's name
+	roleOnly := mk("Jules Verne", "Jules Verne, author")      // a role, but nothing says the surname
+	list := mk("Plato", "Plato, Aristotle, Socrates, author") // more than one person
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[int]string{
+		herbert: "Herbert|Frank", paren: "García Márquez|Gabriel",
+		noRole: "|", plain: "|", wrong: "|", roleOnly: "|", list: "|",
+	} {
+		var family, given sql.NullString
+		db.QueryRow(`SELECT family_name, given_name FROM person WHERE id = $1`, id).Scan(&family, &given)
+		if got := family.String + "|" + given.String; got != want {
+			t.Errorf("person %d: %q, want %q", id, got, want)
+		}
+	}
+	if _, err := db.Exec(`UPDATE person SET family_name = NULL, given_name = 'X' WHERE id = $1`, plain); err == nil {
+		t.Error("given names with no surname were accepted")
+	}
+	if _, err := db.Exec(`UPDATE users SET name_order = 'whatever'`); err == nil {
+		// no users exist, so this cannot fail on the value: check the constraint directly
+		var n int
+		db.QueryRow(`SELECT count(*) FROM pg_constraint WHERE conrelid = 'users'::regclass AND pg_get_constraintdef(oid) LIKE '%family_first%'`).Scan(&n)
+		if n != 1 {
+			t.Error("name_order has no constraint on its values")
+		}
+	}
+}

@@ -99,6 +99,7 @@ var staffRoutes = []route{
 	{"GET", "/admin/people/merges"},
 	{"POST", "/admin/people/merges/1/merge"},
 	{"POST", "/admin/people/merges/1/dismiss"},
+	{"PUT", "/admin/people/1/name"},
 	{"GET", "/admin/trash"},
 	{"POST", "/admin/trash/empty"},
 	{"GET", "/admin/trash/policy"},
@@ -124,6 +125,7 @@ var ownerRoutes = []route{
 	{"PUT", "/admin/trash/policy"},
 	{"POST", "/admin/trash/policy/apply"},
 	{"POST", "/admin/storage/roots"},
+	{"PUT", "/admin/name-order"},
 	{"PUT", "/users/" + someUUID + "/role"},
 }
 
@@ -178,6 +180,8 @@ func TestAuthRoutes_RequireASession(t *testing.T) {
 	h := testRouter(t)
 	for _, rt := range []route{
 		{"GET", "/auth/me"},
+		{"GET", "/auth/preferences"},
+		{"PUT", "/auth/preferences"},
 		{"GET", "/ownership/transfer"},
 		{"POST", "/ownership/transfer/accept"},
 		{"POST", "/ownership/transfer/decline"},
