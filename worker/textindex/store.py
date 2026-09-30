@@ -10,11 +10,14 @@ import os
 import zipfile
 
 from . import EXTRACTOR_VERSION, LOCATOR_VERSION
+from .language import detect as detect_language
 from .epub import epub_segments
 from .pdf import pdf_segments
 from .plain import plain_segments
 
 BATCH = 200
+SAMPLE_PIECE = 300       # characters taken from the start of each segment, to tell the language
+SAMPLE_PIECES = 1200     # segments the sample is made from, spread over the whole file
 # The formats that have text to read. Comics and audio have none (until OCR, for comics); MOBI is not
 # read here.
 READERS = {
@@ -89,17 +92,24 @@ class TextIndexer:
                 # either, because it may be back the next time. The job says so.
                 raise FileNotFoundError(f'file {file_id} is not at its place')
             found = {}  # what a reader learns besides the segments: the shape of the book
-            count = self.write(file_id, generation, reader(full, checkpoint, found), checkpoint)
-            return self.publish(file_id, generation, sha, 'ready' if count else 'empty', language, found.get('structure'))
+            pieces = []  # and a sample of the text, to tell the language when the file does not
+            count = self.write(file_id, generation, reader(full, checkpoint, found), checkpoint, pieces)
+            detected = None if language or not count else self.detect(pieces)
+            status = self.publish(file_id, generation, sha, 'ready' if count else 'empty', language or detected, found.get('structure'))
+            if detected:
+                self.fill_language(file_id, detected)
+            return status
         except (ValueError, zipfile.BadZipFile) as err:
             # The file is what it is and will not read: recorded, and the job goes on to the next file.
             self.log(f'   ⚠️ text of file {file_id} could not be read: {err}')
             self.db.execute("SELECT text_extraction_fail(%s, %s, %s, %s)", (file_id, self.version, sha, str(err)[:500]))
             return 'failed'
 
-    def write(self, file_id, generation, segments, checkpoint):
+    def write(self, file_id, generation, segments, checkpoint, pieces=None):
         rows, count = [], 0
         for sequence, seg in enumerate(segments):
+            if pieces is not None:
+                pieces.append(seg.text[:SAMPLE_PIECE])
             rows.append((file_id, generation, sequence, seg.origin, seg.section, seg.text,
                          json.dumps(seg.locator, ensure_ascii=False), LOCATOR_VERSION, seg.node))
             count += 1
@@ -110,6 +120,30 @@ class TextIndexer:
         if rows:
             self.flush(rows)
         return count
+
+    @staticmethod
+    def detect(pieces):
+        """The language of a file, from a sample spread over all of it (None when it cannot be told)."""
+        if len(pieces) > SAMPLE_PIECES:
+            step = len(pieces) / SAMPLE_PIECES
+            pieces = [pieces[int(i * step)] for i in range(SAMPLE_PIECES)]
+        return detect_language('\n'.join(pieces))
+
+    def fill_language(self, file_id, language):
+        """Gives the edition of the file the language found in its text, but only when the edition has
+        none and nobody locked the field (#35). What a file declares, or a person says, is never replaced;
+        this is a guess from the text, and the provenance says so."""
+        row = self.db.fetchone(
+            """WITH target AS (
+                   SELECT e.id AS edition_id, e.work_id
+                   FROM files f JOIN editions e ON e.id = f.edition_id JOIN works w ON w.id = e.work_id
+                   WHERE f.id = %s AND COALESCE(e.language, '') = '' AND NOT w.language_lock)
+               UPDATE editions SET language = %s FROM target WHERE editions.id = target.edition_id
+               RETURNING target.work_id""", (file_id, language))
+        if row:
+            self.db.execute(
+                """INSERT INTO work_field_sources (work_id, field, source) VALUES (%s, 'language', 'detected')
+                   ON CONFLICT (work_id, field) DO UPDATE SET source = EXCLUDED.source, updated_at = now()""", (row[0],))
 
     def flush(self, rows):
         self.db.insert_many(

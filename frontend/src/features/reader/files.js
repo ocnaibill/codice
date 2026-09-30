@@ -14,7 +14,8 @@ export function findFile(work, fileId) {
   return null;
 }
 
-const LANGUAGE_NAMES = { pt: 'Português', 'pt-BR': 'Português (Brasil)', en: 'Inglês', es: 'Espanhol', fr: 'Francês', de: 'Alemão', it: 'Italiano', ja: 'Japonês' };
+const LANGUAGE_NAMES = { pt: 'Português', 'pt-BR': 'Português (Brasil)', en: 'Inglês', es: 'Espanhol', fr: 'Francês', de: 'Alemão', it: 'Italiano', ja: 'Japonês',
+  nl: 'Holandês', ar: 'Árabe', ru: 'Russo', el: 'Grego', he: 'Hebraico', ko: 'Coreano', zh: 'Chinês', th: 'Tailandês', hi: 'Hindi' };
 
 export function languageName(code) {
   if (!code) return null;

@@ -10,6 +10,8 @@ a word broken by a hyphen at the end of a line in a PDF joined again, and paragr
 line break. Searching ignores case and accents in the database, so none of that is done to the text.
 Change any of it, or a limit, and EXTRACTOR_VERSION goes up: every file is read again.
 
+Version 4 tells the language of a file from its text, when the file does not declare one (language.py).
+
 Version 3 takes the soft hyphens (and other invisible characters inside a word) out of the text.
 
 Version 2 adds the shape of the book (structure.py): each segment knows the node of the file's
@@ -18,7 +20,7 @@ outline it is in, and the file's nodes are published with its text. A segment ne
 from dataclasses import dataclass
 from typing import Optional
 
-EXTRACTOR_VERSION = 3
+EXTRACTOR_VERSION = 4
 
 # The version of the locator contract (backend/internal/locator). Segments carry it, so whoever reads
 # them knows how to read their addresses if the contract ever changes.

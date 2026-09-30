@@ -40,6 +40,9 @@ describe('labels', () => {
     expect(languageName('pt-BR')).toBe('Português (Brasil)');
     expect(languageName('es-MX')).toBe('Espanhol');
     expect(languageName('tlh')).toBe('tlh');
+    // Every language the text detector can answer (worker/textindex/language.py) has a name.
+    const detected = { en: 'Inglês', pt: 'Português', es: 'Espanhol', fr: 'Francês', it: 'Italiano', de: 'Alemão', nl: 'Holandês', ko: 'Coreano', ja: 'Japonês', zh: 'Chinês', ar: 'Árabe', ru: 'Russo', el: 'Grego', he: 'Hebraico', th: 'Tailandês', hi: 'Hindi' };
+    for (const [code, name] of Object.entries(detected)) expect(languageName(code)).toBe(name);
     expect(languageName('')).toBeNull();
   });
 

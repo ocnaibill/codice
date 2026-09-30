@@ -552,3 +552,67 @@ class TestSoftHyphensEndToEnd:
         (seg,) = list(epub_segments(str(path)))
         assert 'retirou-se' in seg.text and 'Paul-Muad’Dib' in seg.text and 'constantinopla' in seg.text
         assert '­' not in seg.text
+
+
+# ── the language of a file, from its text (#35) ──────────────────────
+
+PT = ('Era uma manhã clara e fria de abril, e os relógios davam treze horas. O homem que tinha descido das montanhas '
+      'caminhava devagar pela estrada, e pensava que as pessoas da aldeia não sabiam o que ia acontecer com elas quando '
+      'chegasse o inverno e o rio estivesse gelado, como já tinha acontecido uma vez no tempo do seu pai. ')
+
+
+class TestLanguageOfAFile:
+    def publish_call(self, db):
+        return [c for c in db.calls if c[1] == 'text_extraction_publish'][0][2]
+
+    def test_a_file_that_declares_no_language_gets_the_one_its_text_is_in(self, tmp_path):
+        make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + PT * 4 + '</p>'})
+        db = FakeDB([file_row(7, 'epub', 'aa', '', path='b.epub')])
+        TextIndexer(db, str(tmp_path)).run(9)
+        assert self.publish_call(db)[5] == 'pt'                       # the language of the published text
+        (update,) = [c for c in db.calls if c[1] == 'WITH target AS']
+        assert update[2] == (7, 'pt')
+        (source,) = [c for c in db.calls if c[1] == 'INSERT INTO work_field_sources']
+        assert source[2] == (1,)  # the work whose edition was filled
+
+    def test_what_a_file_declares_is_never_replaced_by_a_guess(self, tmp_path):
+        make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + PT * 4 + '</p>'})
+        db = FakeDB([file_row(7, 'epub', 'aa', 'en-GB', path='b.epub')])  # declared English, written in Portuguese
+        TextIndexer(db, str(tmp_path)).run(9)
+        assert self.publish_call(db)[5] == 'en-GB'
+        assert not [c for c in db.calls if c[1] == 'WITH target AS' or c[1] == 'INSERT INTO work_field_sources']
+
+    def test_a_text_it_cannot_tell_leaves_the_language_empty(self, tmp_path):
+        make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + 'xqz wvk jhg ' * 80 + '</p>'})
+        db = FakeDB([file_row(7, 'epub', 'aa', '', path='b.epub')])
+        TextIndexer(db, str(tmp_path)).run(9)
+        assert not self.publish_call(db)[5]
+        assert not [c for c in db.calls if c[1] == 'WITH target AS']
+
+    def test_a_file_with_no_text_has_no_language_to_tell(self, storage):
+        db = FakeDB([file_row(7, 'pdf', path='scan.pdf', language='')])
+        TextIndexer(db, str(storage)).run(9)
+        assert not [c for c in db.calls if c[1] == 'WITH target AS']
+
+    def test_nothing_is_recorded_when_the_edition_already_has_a_language_or_it_is_locked(self, tmp_path):
+        make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + PT * 4 + '</p>'})
+        db = FakeDB([file_row(7, 'epub', 'aa', '', path='b.epub')])
+        original = db.fetchone
+
+        def fetchone(query, params=None):
+            if query.strip().startswith('WITH target AS'):  # the update found no edition to fill
+                db.calls.append(('fetchone', 'WITH target AS', params))
+                return None
+            return original(query, params)
+        db.fetchone = fetchone
+        TextIndexer(db, str(tmp_path)).run(9)
+        assert [c for c in db.calls if c[1] == 'WITH target AS']
+        assert not [c for c in db.calls if c[1] == 'INSERT INTO work_field_sources']
+
+    def test_the_sample_is_spread_over_the_file_and_has_a_ceiling(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr(store_module, 'detect_language', lambda text: seen.append(text) or 'pt')
+        pieces = [f'parte{i}' for i in range(5000)]
+        assert TextIndexer.detect(pieces) == 'pt'
+        used = seen[0].split('\n')
+        assert len(used) == store_module.SAMPLE_PIECES and used[0] == 'parte0' and int(used[-1][5:]) > 4000  # to the end
