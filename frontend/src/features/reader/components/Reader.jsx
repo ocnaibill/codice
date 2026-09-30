@@ -97,23 +97,23 @@ export function Reader() {
 
   if (isLoading || (file && progress.isLoading)) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center bg-zinc-950">
-        <span className="text-zinc-500 animate-pulse font-medium">Loading book details...</span>
+      <div className="flex h-dvh items-center justify-center bg-[#faf8f4]">
+        <span className="animate-pulse font-body text-sm text-ink-soft">Carregando o livro…</span>
       </div>
     );
   }
 
   if (isError || !book || !file?.url || file.availability === 'missing') {
     return (
-      <div className="flex h-[calc(100vh-4rem)] flex-col items-center justify-center bg-zinc-950 gap-4">
-        <span className="text-red-400 font-medium">
-          {file?.availability === 'missing' ? 'Este arquivo não está mais no disco do servidor.' : 'Error: File not found on server.'}
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-[#faf8f4] px-6 text-center">
+        <span className="font-body text-sm font-medium text-red-700">
+          {file?.availability === 'missing' ? 'Este arquivo não está mais no disco do servidor.' : 'Não foi possível abrir este arquivo.'}
         </span>
-        <button 
-          onClick={closeBook} 
-          className="text-sm font-medium bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-md hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+        <button
+          onClick={closeBook}
+          className="min-h-11 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-light"
         >
-          Back to Library
+          Voltar ao acervo
         </button>
       </div>
     );
@@ -150,70 +150,75 @@ export function Reader() {
       case 'azw':
       case 'azw3':
         return (
-          <div className="flex flex-col items-center justify-center h-full gap-4 text-zinc-400">
-            <p>MOBI/AZW files cannot be viewed in the browser.</p>
+          <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center text-ink-soft">
+            <p>Este formato MOBI/AZW não pode ser lido no navegador.</p>
             <a href={authenticatedUrl(fileUrl)}
                download
-               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500">
-              Download File
+               className="rounded-lg bg-brand px-4 py-2 text-white hover:bg-brand-light">
+              Baixar arquivo
             </a>
           </div>
         );
       default:
         return (
-          <div className="text-zinc-400 text-center mt-10 font-medium">
-            File format (.{format}) is not supported yet by the reader.
+          <div className="mt-10 px-6 text-center font-medium text-ink-soft">
+            O leitor ainda não oferece suporte ao formato .{format}.
           </div>
         );
     }
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] bg-zinc-950">
-      {/* Sticky Reader Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-zinc-900 bg-zinc-950 shadow-sm z-10 sticky top-0">
-        <div>
-          <h2 className="text-zinc-200 font-medium">{book.title}</h2>
-          <p className="text-xs text-zinc-500">
-            {book.author}
-            {' · '}
-            {format.toUpperCase()}
-            {file.edition?.language ? ` · ${languageName(file.edition.language)}` : ''}
-          </p>
+    <div className="flex h-dvh min-h-[320px] flex-col bg-[#faf8f4]">
+      <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-border-hairline bg-[#faf8f4]/95 px-3 py-2 shadow-sm backdrop-blur-md sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            onClick={closeBook}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg bg-surface-alt text-xl text-ink hover:bg-border-hairline"
+            aria-label="Voltar ao acervo"
+            title="Voltar ao acervo"
+          >
+            ←
+          </button>
+          <div className="min-w-0">
+            <p className="truncate font-mono text-[10px] uppercase tracking-widest text-ink-faint">
+              {book.author} · {format.toUpperCase()}{file.edition?.language ? ` · ${languageName(file.edition.language)}` : ''}
+            </p>
+            <h2 className="truncate font-display text-xl leading-tight text-ink sm:text-2xl">{book.title}</h2>
+          </div>
         </div>
-        <div className="flex gap-4 items-center">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <button
             onClick={() => favoriteToggle.mutate(!book.isFavorite)}
             disabled={favoriteToggle.isPending}
-            className={`p-2 rounded-md border transition-all ${
+            className={`flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm transition-all disabled:opacity-50 ${
               book.isFavorite
-                ? 'bg-amber-500/10 border-amber-600/60 text-amber-400'
-                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                ? 'bg-brand/10 text-brand'
+                : 'bg-surface-alt text-ink-soft hover:bg-border-hairline hover:text-ink'
             }`}
+            aria-label={book.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+            aria-pressed={!!book.isFavorite}
             title={book.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
           >
-            {book.isFavorite ? '★ Favorito' : '☆ Favoritar'}
+            <span aria-hidden="true">{book.isFavorite ? '★' : '☆'}</span>
+            <span className="hidden sm:inline">{book.isFavorite ? 'Favorito' : 'Favoritar'}</span>
           </button>
           <button
             onClick={() => setShowNotes((v) => !v)}
-            className={`p-2 rounded-md border transition-all ${
+            className={`flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm transition-all ${
               showNotes
-                ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
-                : 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100'
+                ? 'bg-brand text-white'
+                : 'bg-surface-alt text-ink-soft hover:bg-border-hairline hover:text-ink'
             }`}
+            aria-expanded={showNotes}
+            aria-label="Notas, destaques e marcadores deste livro"
             title="Notas, destaques e marcadores deste livro"
           >
-            ✎ Notas
-          </button>
-          <button
-            onClick={closeBook}
-            className="p-2 rounded-md bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-all"
-            title="Close reader"
-          >
-            ✕ Close
+            <span aria-hidden="true">✎</span>
+            <span className="hidden sm:inline">Notas</span>
           </button>
         </div>
-      </div>
+      </header>
 
       {showNotes && (
         <NotesPanel
@@ -258,8 +263,8 @@ export function Reader() {
       )}
 
       {/* Dynamic Reader Router Viewport */}
-      <div className="flex-1 overflow-y-auto bg-zinc-900/30">
-        <Suspense fallback={<div className="flex justify-center p-10 text-zinc-500 animate-pulse">Initializing reading engine...</div>}>
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[#eae5dc]">
+        <Suspense fallback={<div className="flex justify-center p-10 text-sm text-ink-soft animate-pulse">Preparando o leitor…</div>}>
           <ErrorBoundary>
             <React.Fragment key={`${file.id}-${seek?.n ?? 0}`}>{renderViewer()}</React.Fragment>
           </ErrorBoundary>

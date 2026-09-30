@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ePub from 'epubjs';
 import { api } from '../../../../lib/api';
 import { buildEpubProgress } from '../../epubProgress';
+import { applyEpubTheme } from '../../epubThemes';
 
 /**
  * EPUB Viewer using epubjs directly (not react-reader).
@@ -17,7 +18,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
   const [toc, setToc] = useState([]);
   const [showToc, setShowToc] = useState(false);
   const [size, setSize] = useState(100);
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState('light');
   const [currentSection, setCurrentSection] = useState('');
 
   const viewerRef = useRef(null);
@@ -44,24 +45,6 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
       (s) => s.href === clean || s.href.endsWith('/' + clean),
     );
     return section || null;
-  }, []);
-
-  // ── Theme helpers ────────────────────────────────────────────────
-  const applyTheme = useCallback((rendition, t) => {
-    if (!rendition) return;
-    const themes = {
-      light: {
-        body: { background: '#f4f4f5', color: '#18181b' },
-        a: { color: '#2563eb' },
-      },
-      dark: {
-        body: { background: '#09090b', color: '#a1a1aa' },
-        a: { color: '#3b82f6' },
-      },
-    };
-    rendition.themes.register('light', themes.light);
-    rendition.themes.register('dark', themes.dark);
-    rendition.themes.select(t);
   }, []);
 
   // ── Initialise book + rendition ──────────────────────────────────
@@ -119,7 +102,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
         renditionRef.current = rendition;
 
         // 7. Themes + font size
-        applyTheme(rendition, 'dark');
+        applyEpubTheme(rendition, 'light');
         rendition.themes.fontSize(`${size}%`);
 
         // 8. Track location changes
@@ -224,8 +207,8 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
 
   // ── Theme changes (re-apply on toggle) ────────────────────────
   useEffect(() => {
-    applyTheme(renditionRef.current, theme);
-  }, [theme, applyTheme]);
+    applyEpubTheme(renditionRef.current, theme);
+  }, [theme]);
 
   // ── Font size ────────────────────────────────────────────────────
   const changeSize = (newSize) => {
@@ -274,7 +257,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
 
   // ── Render ───────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col items-center min-h-full w-full">
+    <div className="flex min-h-full w-full flex-col items-center">
       {/* Floating Reader Toolbar */}
       <div className="sticky top-0 z-50 flex items-center justify-between bg-zinc-900/90 backdrop-blur px-6 py-3 rounded-full mb-6 border border-zinc-800 shadow-xl w-full max-w-md">
         {/* Font Size Controls */}
@@ -341,7 +324,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
       )}
 
       {/* Reader Container with optional TOC sidebar */}
-      <div className="relative w-full max-w-4xl h-[75vh] md:h-[80vh]">
+      <div className="relative h-[calc(100dvh-8.75rem)] min-h-[240px] w-full max-w-4xl">
         {/* TOC Sidebar */}
         {showToc && toc.length > 0 && (
           <div className="absolute inset-y-0 left-0 w-64 z-40 bg-zinc-900/95 backdrop-blur border-r border-zinc-800 overflow-y-auto rounded-l-md shadow-2xl">
