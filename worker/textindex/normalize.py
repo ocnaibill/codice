@@ -5,6 +5,12 @@ import unicodedata
 # Control characters (including the two the search uses to mark a match), the line and paragraph
 # separators, the zero-width ones and the byte order mark.
 _CONTROL = re.compile(r'[\x00-\x1f\x7f-\x9f  ​-‍⁠﻿]')
+# Invisible characters that are not between two words but inside one: a soft hyphen (a hint where a line
+# may break, which a book puts inside words and in compounds: "retirou\u00ad-se"), the word joiner and a
+# byte order mark found in the middle of a text. They are removed, not turned into a space, or the word is
+# cut in two and cannot be searched. The zero-width space (and joiners) stay as they were: in a script
+# with no spaces it is what separates the words.
+_INVISIBLE = re.compile('[\u00ad\u2060\ufeff]')
 _SPACES = re.compile(r'[ \t  -   　]+')
 _SENTENCE_END = re.compile(r'(?<=[.!?…])\s+')
 
@@ -15,13 +21,16 @@ HARD_MAX_CHARS = 2400  # ...and never longer
 def clean(text: str) -> str:
     """One paragraph: composed Unicode, no control characters, single spaces, trimmed."""
     text = unicodedata.normalize('NFC', text)
+    text = _INVISIBLE.sub('', text)
     text = _CONTROL.sub(' ', text)
     return _SPACES.sub(' ', text).strip()
 
 
 def dehyphenate(text: str) -> str:
     """Joins a word that a PDF broke with a hyphen at the end of a line: "constan-\\ntinopla". Only when
-    the next line goes on in lower case, so a real dash or a list is left alone."""
+    the next line goes on in lower case, so a real dash or a list is left alone. A soft hyphen at the end of
+    a line is never a real one, and always joins."""
+    text = re.sub(r'(?<=\w)\u00ad\s*\n\s*', '', text)
     return re.sub(r'(?<=\w)-\n(?=[a-zà-ÿ])', '', text)
 
 

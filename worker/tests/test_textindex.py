@@ -27,6 +27,18 @@ class TestClean:
     def test_removes_control_characters_including_the_search_markers(self):
         assert normalize.clean('a\x02b\x03c\x00d​e') == 'a b c d e'.replace(' ', ' ')
 
+    def test_a_soft_hyphen_inside_a_word_is_removed_not_turned_into_a_space(self):
+        assert normalize.clean('retirou\u00ad-se e Paul\u00ad-Muad’Dib') == 'retirou-se e Paul-Muad’Dib'
+        assert normalize.clean('cons\u00adtan\u00adti\u00adno\u00adpla') == 'constantinopla'
+        assert normalize.clean('a\u2060b\ufeffc') == 'abc'
+
+    def test_a_zero_width_space_still_separates_words(self):
+        assert normalize.clean('ab\u200bcd') == 'ab cd'
+
+    def test_a_soft_hyphen_at_the_end_of_a_pdf_line_joins_the_word_even_before_a_capital(self):
+        assert normalize.dehyphenate('constan\u00ad\ntinopla') == 'constantinopla'
+        assert normalize.dehyphenate('Kon\u00ad\nStantin') == 'KonStantin'
+
     def test_joins_words_broken_by_a_hyphen_only_when_the_line_goes_on_in_lower_case(self):
         assert normalize.dehyphenate('constan-\ntinopla') == 'constantinopla'
         assert normalize.dehyphenate('bio-\nGrafia') == 'bio-\nGrafia'   # a real hyphen before a name
@@ -531,3 +543,12 @@ class TestRunningHeaders:
         make_book_pdf(path, [body(n) for n in range(20)], header=lambda n: 'Dune')
         segs = list(pdf_segments(str(path)))
         assert [s.locator['page'] for s in segs] == list(range(20))
+
+
+class TestSoftHyphensEndToEnd:
+    def test_an_epub_with_soft_hyphens_inside_its_words_yields_searchable_text(self, tmp_path):
+        path = tmp_path / 'b.epub'
+        make_epub(path, {'c.xhtml': '<p>O velho retirou­-se e Paul­-Muad’Dib seguiu cons&shy;tan&shy;ti&shy;no&shy;pla.</p>'})
+        (seg,) = list(epub_segments(str(path)))
+        assert 'retirou-se' in seg.text and 'Paul-Muad’Dib' in seg.text and 'constantinopla' in seg.text
+        assert '­' not in seg.text
