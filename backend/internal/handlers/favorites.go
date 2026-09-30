@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/ocnaibill/codice/backend/internal/people"
 	"log"
 	"net/http"
 )
@@ -80,7 +81,7 @@ func (h *FavoritesHandler) GetFavorites(w http.ResponseWriter, r *http.Request) 
 		SELECT
 			w.id,
 			w.original_title,
-			` + authorLabel + `,
+			` + authorLabelFor(people.OrderFor(r.Context(), h.DB, userID).Effective) + `,
 			COALESCE(wp.cover_url, '') as cover_url,
 			` + label("w") + ` as series_label,
 			(
@@ -97,7 +98,9 @@ func (h *FavoritesHandler) GetFavorites(w http.ResponseWriter, r *http.Request) 
 		JOIN works w ON w.id = f.work_id
 		LEFT JOIN work_primary wp ON wp.work_id = w.id
 		LEFT JOIN LATERAL (
-			SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name) AS names
+			SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name) AS names,
+			       string_agg(CASE WHEN p.family_name IS NULL THEN p.name ELSE p.family_name || COALESCE(', ' || p.given_name, '') END,
+			                  '; ' ORDER BY c.position, p.name) AS names_family
 			FROM work_contributors c JOIN person p ON p.id = c.person_id
 			WHERE c.work_id = w.id AND c.role = 'author'
 		) au ON TRUE

@@ -5,9 +5,11 @@ export const useGlobalStore = create((set) => ({
   searchQuery: '',
   libraryView: 'all',
   libraryPage: 1,
+  librarySort: 'added', // 'added' (newest first), 'title' or 'author' (as the account shows names, #64)
   libraryViewMode: 'grid',
   setLibraryView: (libraryView) => set({ libraryView, libraryPage: 1, searchQuery: '', adminOpen: false, activeBookId: null, activeFileId: null, sheetWorkId: null }),
   setLibraryPage: (libraryPage) => set({ libraryPage }),
+  setLibrarySort: (librarySort) => set({ librarySort, libraryPage: 1 }),
   setLibraryViewMode: (libraryViewMode) => set({ libraryViewMode }),
   // The work whose sheet (edition, language and file choice) is open, if any.
   sheetWorkId: null,

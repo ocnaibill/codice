@@ -30,6 +30,20 @@ describe('account menu', () => {
     expect(logout).toHaveBeenCalledTimes(1);
   });
 
+  it('opens the preferences from the menu', async () => {
+    const preferences = vi.fn();
+    view = await mount(<Header onOpenPreferences={preferences} />);
+    await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));
+    await view.click(view.button('Preferências'));
+    expect(preferences).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no preferences item when nothing handles it', async () => {
+    view = await mount(<Header />);
+    await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));
+    expect(view.button('Preferências')).toBeUndefined();
+  });
+
   it('does not sign out just for opening the menu', async () => {
     const logout = vi.fn();
     view = await mount(<Header onLogout={logout} />);

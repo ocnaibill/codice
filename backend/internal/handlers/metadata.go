@@ -491,20 +491,9 @@ const firstAuthorSQL = `
 // the name people say ("Herbert, Frank, author" is Frank Herbert) and what was written is kept as an
 // alias, so it still finds the work (#36). Other contributors are left as they are.
 func setFirstAuthor(ctx context.Context, tx *sql.Tx, workID int, name string) error {
-	written := strings.Join(strings.Fields(name), " ")
-	name, changed := people.NormalizeName(name)
-	var personID int
-	err := tx.QueryRowContext(ctx, `SELECT id FROM person WHERE name = $1`, name).Scan(&personID)
-	if errors.Is(err, sql.ErrNoRows) {
-		err = tx.QueryRowContext(ctx, `INSERT INTO person (name) VALUES ($1) RETURNING id`, name).Scan(&personID)
-	}
+	personID, err := people.Resolve(ctx, tx, name)
 	if err != nil {
 		return err
-	}
-	if changed && written != name {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO person_alias (person_id, alias) VALUES ($1, $2) ON CONFLICT DO NOTHING`, personID, written); err != nil {
-			return err
-		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM work_contributors WHERE work_id = $1 AND role = 'author' AND position = 0`, workID); err != nil {
 		return err

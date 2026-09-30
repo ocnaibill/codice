@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"github.com/ocnaibill/codice/backend/internal/people"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -20,19 +21,32 @@ const catalogFrom = `
 	FROM works w
 	LEFT JOIN work_primary wp ON wp.work_id = w.id
 	LEFT JOIN LATERAL (
-		SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name) AS names
+		SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name) AS names,
+		       string_agg(CASE WHEN p.family_name IS NULL THEN p.name ELSE p.family_name || COALESCE(', ' || p.given_name, '') END,
+		                  '; ' ORDER BY c.position, p.name) AS names_family
 		FROM work_contributors c JOIN person p ON p.id = c.person_id
 		WHERE c.work_id = w.id AND c.role = 'author'
 	) au ON TRUE`
 
-// authorLabel is the author text shown for a work; absence is stated, never invented.
+// authorLabel is the author text shown for a work, given names first; absence is stated, never invented.
 const authorLabel = `COALESCE(au.names, 'Unknown Author')`
+
+// authorLabelFor is the same for the order a person prefers (#64): "Herbert, Frank" puts the surname first
+// where it is known, and leaves a name whose parts are not known as it is. Only presentation.
+func authorLabelFor(order string) string {
+	if order == people.FamilyFirst {
+		return `COALESCE(au.names_family, 'Unknown Author')`
+	}
+	return authorLabel
+}
 
 // authorMatches reports, for the placeholder given, whether any author of the
 // work matches a LIKE pattern.
 func authorMatches(placeholder string) string {
 	return `EXISTS (SELECT 1 FROM work_contributors c JOIN person p ON p.id = c.person_id
 		WHERE c.work_id = w.id AND c.role = 'author' AND (LOWER(p.name) LIKE LOWER(` + placeholder + `)
+		   -- the name as it is shown with the surname first, whichever order the person who searches prefers
+		   OR (p.family_name IS NOT NULL AND LOWER(p.family_name || COALESCE(', ' || p.given_name, '')) LIKE LOWER(` + placeholder + `))
 		   OR EXISTS (SELECT 1 FROM person_alias a WHERE a.person_id = p.id AND LOWER(a.alias) LIKE LOWER(` + placeholder + `))))`
 }
 
@@ -91,4 +105,19 @@ func fileHref(fileID sql.NullInt64, mode, rel string) string {
 		return ""
 	}
 	return filesURL(rel)
+}
+
+// catalogOrderBy is how the catalog is sorted: the newest first (what it always was), by title, or by author in
+// the order the caller prefers (#64), so that a person who reads "Herbert, Frank" finds it among the Hs. Names
+// are compared without accents or case, works with no author come last, and every sort ends in the same way so
+// that a page never repeats or skips a work.
+func catalogOrderBy(sort, order string) string {
+	key := func(expr string) string { return "unaccent(lower(" + expr + "))" }
+	switch sort {
+	case "title":
+		return key("w.original_title") + ", w.id DESC"
+	case "author":
+		return "(au.names IS NULL), " + key(authorLabelFor(order)) + ", " + key("w.original_title") + ", w.id DESC"
+	}
+	return "w.id DESC"
 }

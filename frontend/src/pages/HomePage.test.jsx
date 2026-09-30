@@ -23,6 +23,7 @@ const work = {
 beforeEach(() => {
   useGlobalStore.getState().setLibraryView('all');
   useGlobalStore.getState().setLibraryViewMode('grid');
+  useGlobalStore.getState().setLibrarySort('added');
   Element.prototype.scrollIntoView = vi.fn();
   api.get.mockReset().mockImplementation(async (url) => {
     if (url === '/auth/me')
@@ -51,6 +52,26 @@ beforeEach(() => {
 afterEach(() => view?.unmount());
 
 describe('library hub', () => {
+  it('sorts the catalog by the author when asked, from the first page, and keeps the sort across categories', async () => {
+    view = await mount(<HomePage />);
+    await flush();
+    await view.click(view.button('Próxima'));
+    const select = document.body.querySelector('select[aria-label="Ordenar o acervo"]');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+      setter.call(select, 'author');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&sort=author');
+    expect(view.text()).toContain('Todas as obras, por autor');
+    expect(view.text()).not.toContain('Adicionados recentemente');
+    expect(useGlobalStore.getState().librarySort).toBe('author');
+    await view.click(view.buttonMatching(/^Mangás & HQs/));
+    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&formatGroup=comics&sort=author');
+    expect(view.text()).toContain('Mangás & HQs'); // a category is named by what it holds
+  });
+
   it('paginates the catalog and resets to page one when its category changes', async () => {
     view = await mount(<HomePage />);
     await flush();

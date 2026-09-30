@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ocnaibill/codice/backend/internal/people"
 	"io"
 	"log"
 	"net/http"
@@ -131,6 +132,12 @@ func currentUserID(r *http.Request) string {
 func workIDParam(r *http.Request) (int, bool) {
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	return id, err == nil && id > 0
+}
+
+// cardColumnsFor are the columns of a Work as the catalog shows it, with the author in the order the caller
+// prefers.
+func cardColumnsFor(order string) string {
+	return strings.Replace(cardColumns, authorLabel, authorLabelFor(order), 1)
 }
 
 // cardColumns are the columns of a Work as the catalog shows it. $1 is the
@@ -307,8 +314,9 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "SELECT " + cardColumns + catalogFrom + cardJoins + whereSQL +
-		fmt.Sprintf(" ORDER BY w.id DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	order := people.OrderFor(r.Context(), h.DB, userID).Effective
+	query := "SELECT " + cardColumnsFor(order) + catalogFrom + cardJoins + whereSQL +
+		fmt.Sprintf(" ORDER BY %s LIMIT $%d OFFSET $%d", catalogOrderBy(r.URL.Query().Get("sort"), order), argIdx, argIdx+1)
 	args = append(args, limit, offset)
 
 	rows, err := h.DB.Query(query, args...)
@@ -349,7 +357,8 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := currentUserID(r)
 
-	work, err := scanWork(h.DB.QueryRow("SELECT "+cardColumns+catalogFrom+cardJoins+" WHERE w.id = $2", userID, id))
+	order := people.OrderFor(r.Context(), h.DB, userID).Effective
+	work, err := scanWork(h.DB.QueryRow("SELECT "+cardColumnsFor(order)+catalogFrom+cardJoins+" WHERE w.id = $2", userID, id))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Book not found", http.StatusNotFound)

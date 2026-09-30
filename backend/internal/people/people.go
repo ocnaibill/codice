@@ -59,11 +59,22 @@ func stripParenthesisedRole(name string) (string, bool) {
 	return name, false
 }
 
-// NormalizeName is the name a person goes by, from what a file wrote, and whether it is different from it.
-func NormalizeName(raw string) (name string, changed bool) {
+// Parsed is what a written name says about a person.
+type Parsed struct {
+	Name    string // the name people say ("Frank Herbert")
+	Family  string // the surname, only when the writing says so for certain
+	Given   string // the given names, with Family
+	Changed bool   // Name is not what was written
+}
+
+// Parse reads a name as a file wrote it. The surname and the given names are told apart **only when the
+// writing says which is which for certain**: the catalogue's way with a role ("Herbert, Frank, author").
+// Anything else (including "Frank Herbert", where which word is the surname depends on the culture) is
+// left undivided, and is shown as it is whatever the order a person prefers (#64).
+func Parse(raw string) Parsed {
 	clean := strings.Join(strings.Fields(raw), " ")
 	if clean == "" {
-		return "", raw != ""
+		return Parsed{Changed: raw != ""}
 	}
 	name, hadRole := stripParenthesisedRole(clean)
 	parts := splitParts(name)
@@ -71,17 +82,41 @@ func NormalizeName(raw string) (name string, changed bool) {
 		parts, hadRole = parts[:len(parts)-1], true
 	}
 	if !hadRole {
-		return clean, clean != raw
+		return Parsed{Name: clean, Changed: clean != raw}
 	}
 	switch len(parts) {
 	case 1:
 		name = parts[0]
+		return Parsed{Name: name, Changed: name != raw}
 	case 2: // "Sobrenome, Nome"
 		name = parts[1] + " " + parts[0]
-	default: // more than that is a list, or a name with a suffix: not clear, so not touched
-		return clean, clean != raw
+		return Parsed{Name: name, Family: parts[0], Given: parts[1], Changed: name != raw}
 	}
-	return name, name != raw
+	// more than that is a list, or a name with a suffix: not clear, so not touched
+	return Parsed{Name: clean, Changed: clean != raw}
+}
+
+// NormalizeName is the name a person goes by, from what a file wrote, and whether it is different from it.
+func NormalizeName(raw string) (name string, changed bool) {
+	p := Parse(raw)
+	return p.Name, p.Changed
+}
+
+// SplitFromPair tells the surname from the given names when a person has been written both ways and a
+// human decided they are the same ("Herbert, Frank" and "Frank Herbert"): the comma says where the surname
+// ends. It is the only case besides a role that is certain, because someone confirmed the two are one.
+func SplitFromPair(a, b string) (family, given string, ok bool) {
+	for _, pair := range [][2]string{{a, b}, {b, a}} {
+		comma, plain := pair[0], pair[1]
+		parts := splitParts(comma)
+		if len(parts) != 2 || strings.Contains(plain, ",") {
+			continue
+		}
+		if Key(comma) != "" && Key(comma) == Key(plain) && fold(parts[1]+" "+parts[0]) == fold(plain) {
+			return parts[0], parts[1], true
+		}
+	}
+	return "", "", false
 }
 
 // Key is a name as a set of words, whichever order they come in: what two spellings of a person have in

@@ -6,6 +6,7 @@ import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 import { Invitations } from './Invitations';
 import { PasswordResets } from './PasswordResets';
 import { TransferOwnership } from './TransferOwnership';
+import { LibraryNameOrder } from './LibraryNameOrder';
 
 const ROLE = { owner: 'Dono', admin: 'Administrador', reader: 'Leitor' };
 
@@ -93,6 +94,7 @@ export function AccountsTab({ isOwner }) {
     </Section>
     <PasswordResets />
     <Invitations isOwner={isOwner} />
+    {isOwner && <LibraryNameOrder />}
     {isOwner && <TransferOwnership />}
     </div>
   );

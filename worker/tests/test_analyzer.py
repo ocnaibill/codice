@@ -236,7 +236,7 @@ class TestLongTags:
 
 class TestAuthorNames:
     def author_inserts(self, db):
-        return [p for q, p in db.matching("INSERT INTO person (name)")]
+        return [p for q, p in db.matching("INSERT INTO person (name")]
 
     def aliases(self, db):
         return [p for q, p in db.matching("INSERT INTO person_alias")]
@@ -244,24 +244,31 @@ class TestAuthorNames:
     def test_a_catalogues_way_is_stored_as_the_name_people_say_and_what_was_written_is_an_alias(self):
         db = FakeDB()
         Analyzer(db).save_metadata(7, dict(NATIVE, author='Herbert, Frank, author'))
-        assert self.author_inserts(db) == [('Frank Herbert',)]
+        assert self.author_inserts(db) == [('Frank Herbert', 'Herbert', 'Frank')]   # the surname is known: the writing says so
         assert self.aliases(db) == [(99, 'Herbert, Frank, author')]
         assert 'author' in db.recorded_sources()
 
     def test_a_name_that_needs_no_fixing_gets_no_alias(self):
         db = FakeDB()
         Analyzer(db).save_metadata(7, dict(NATIVE, author='Frank Herbert'))
-        assert self.author_inserts(db) == [('Frank Herbert',)] and self.aliases(db) == []
+        assert self.author_inserts(db) == [('Frank Herbert', None, None)] and self.aliases(db) == []
 
     def test_a_name_with_no_role_is_left_as_written(self):
         db = FakeDB()
         Analyzer(db).save_metadata(7, dict(NATIVE, author='Herbert, Frank'))
-        assert self.author_inserts(db) == [('Herbert, Frank',)] and self.aliases(db) == []
+        assert self.author_inserts(db) == [('Herbert, Frank', None, None)] and self.aliases(db) == []
 
     def test_reading_the_same_file_again_changes_nothing(self):
         db = FakeDB(values={'author': 'Frank Herbert'}, sources={'author': 'file'})
         Analyzer(db).save_metadata(7, dict(NATIVE, author='Herbert, Frank, author'))
         assert self.author_inserts(db) == [] and self.aliases(db) == []
+
+    def test_the_surname_already_known_is_not_replaced(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, dict(NATIVE, author='Herbert, Frank, author'))
+        (query, _), = [(q, p) for q, p in db.matching("INSERT INTO person (name")]
+        assert "COALESCE(person.family_name, EXCLUDED.family_name)" in query
+        assert "CASE WHEN person.family_name IS NULL THEN EXCLUDED.given_name ELSE person.given_name END" in query
 
     def test_an_unknown_author_is_not_a_person(self):
         db = FakeDB()

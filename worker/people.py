@@ -24,12 +24,14 @@ def _parts(name):
     return [' '.join(p.split()) for p in name.split(',') if p.strip()]
 
 
-def normalize_name(raw):
-    """(the name a person goes by, whether it differs from what was written)."""
+def parse_name(raw):
+    """(name, family, given, changed): the name people say and, only when the writing says for certain which
+    words are the surname (the catalogue's way with a role: "Herbert, Frank, author"), the surname and the
+    given names. Anything else is left undivided (#64)."""
     raw = raw or ''
     clean = ' '.join(raw.split())
     if not clean:
-        return '', raw != ''
+        return '', None, None, raw != ''
     name, had_role = clean, False
     match = re.match(r'^(.+?)\s*\(([^()]*)\)$', name)
     if match and _fold(match.group(2)) in ROLES:
@@ -38,11 +40,17 @@ def normalize_name(raw):
     if len(parts) > 1 and _fold(parts[-1]) in ROLES:
         parts, had_role = parts[:-1], True
     if not had_role:
-        return clean, clean != raw
+        return clean, None, None, clean != raw
     if len(parts) == 1:
-        name = parts[0]
-    elif len(parts) == 2:  # "Sobrenome, Nome"
+        return parts[0], None, None, parts[0] != raw
+    if len(parts) == 2:  # "Sobrenome, Nome"
         name = f'{parts[1]} {parts[0]}'
-    else:  # more than that is a list, or a name with a suffix: not clear, so not touched
-        return clean, clean != raw
-    return name, name != raw
+        return name, parts[0], parts[1], name != raw
+    # more than that is a list, or a name with a suffix: not clear, so not touched
+    return clean, None, None, clean != raw
+
+
+def normalize_name(raw):
+    """(the name a person goes by, whether it differs from what was written)."""
+    name, _family, _given, changed = parse_name(raw)
+    return name, changed

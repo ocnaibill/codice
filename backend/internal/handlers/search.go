@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"github.com/ocnaibill/codice/backend/internal/people"
 	"log"
 	"net/http"
 	"strconv"
@@ -89,7 +90,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		WITH q AS (SELECT websearch_to_tsquery('codice_simple', $1) AS tsq),
 		page AS (
 			SELECT s.id, s.text, s.section, s.origin, s.locator, s.locator_version, s.sequence,
-			       w.id AS work_id, w.original_title, `+authorLabel+` AS author,
+			       w.id AS work_id, w.original_title, `+authorLabelFor(people.OrderFor(r.Context(), h.DB, currentUserID(r)).Effective)+` AS author,
 			       f.id AS file_id, COALESCE(f.format, '') AS format, COALESCE(e.language, '') AS language,
 			       ts_rank_cd(s.tsv, q.tsq) AS rank
 			FROM q
@@ -99,7 +100,9 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 			JOIN editions e ON e.id = f.edition_id
 			JOIN works w ON w.id = e.work_id AND w.retired_at IS NULL
 			LEFT JOIN LATERAL (
-				SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name) AS names
+				SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name) AS names,
+				       string_agg(CASE WHEN p.family_name IS NULL THEN p.name ELSE p.family_name || COALESCE(', ' || p.given_name, '') END,
+				                  '; ' ORDER BY c.position, p.name) AS names_family
 				FROM work_contributors c JOIN person p ON p.id = c.person_id
 				WHERE c.work_id = w.id AND c.role = 'author'
 			) au ON TRUE

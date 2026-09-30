@@ -9,7 +9,7 @@ from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
 
-from people import normalize_name
+from people import parse_name
 
 
 # The cover is stored on the work's primary edition. Since the data model allows
@@ -213,13 +213,16 @@ class Analyzer:
         # A catalogue's way of writing a name ("Herbert, Frank, author") is stored as the name people say,
         # and what the file wrote is kept as an alias (#36).
         written = metadata.get('author')
-        author, renamed = normalize_name(written) if written and written != 'Unknown Author' else ('', False)
+        author, family, given, renamed = parse_name(written) if written and written != 'Unknown Author' else ('', None, None, False)
         if author and self._may_fill(state, 'author') and author != state['values'].get('author'):
+            # What is already known about the person is not replaced: the surname is learned once.
             author_id = self.db.fetchone(
-                """INSERT INTO person (name) VALUES (%s)
-                   ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+                """INSERT INTO person (name, family_name, given_name) VALUES (%s, %s, %s)
+                   ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name,
+                       family_name = COALESCE(person.family_name, EXCLUDED.family_name),
+                       given_name = CASE WHEN person.family_name IS NULL THEN EXCLUDED.given_name ELSE person.given_name END
                    RETURNING id""",
-                (author,))
+                (author, family, given))
             if author_id and renamed:
                 self.db.execute(
                     "INSERT INTO person_alias (person_id, alias) VALUES (%s, %s) ON CONFLICT DO NOTHING",
