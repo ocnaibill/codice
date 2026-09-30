@@ -28,6 +28,7 @@ function App() {
   const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset'));
   const leaveLink = () => {
+    localStorage.removeItem('codice_token');
     window.history.replaceState(null, '', window.location.pathname);
     setInviteToken(null);
     setResetToken(null);
@@ -62,7 +63,10 @@ function App() {
           setIsFirstRun(true);
         } else {
           const token = localStorage.getItem('codice_token');
-          if (token) {
+          // A reset link always shows the reset form, even when there is a stored
+          // session. That session is cleared when returning to the login page.
+          const hasResetLink = new URLSearchParams(window.location.search).has('reset');
+          if (token && !hasResetLink) {
             setIsAuthenticated(true);
           }
         }
