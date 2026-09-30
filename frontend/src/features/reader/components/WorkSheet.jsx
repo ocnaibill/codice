@@ -3,6 +3,9 @@ import { useGlobalStore } from '../../../store/useGlobalStore';
 import { authenticatedUrl } from '../../../lib/api';
 import { useWork } from '../api/useWork';
 import { useSetCompletion, useSetWorkFinished } from '../api/useCompletion';
+import { reasonOf, useSplitEdition } from '../api/useVersions';
+import { isStaff, useMe } from '../../auth/api/useMe';
+import { JoinVersionsDialog } from './JoinVersionsDialog';
 import { completionText, formatSize, languageName, whereYouAre } from '../files';
 import { WorkCover } from '../../../components/ui/WorkCover';
 
@@ -132,6 +135,19 @@ export function WorkSheet() {
   const { data: work, isLoading, isError } = useWork(workId, { fresh: true });
   const setCompletion = useSetCompletion();
   const setWorkFinished = useSetWorkFinished();
+  // Putting the files of one book under one work, and taking them out again, is for owner and admin (#37).
+  const staff = isStaff(useMe().data);
+  const openWork = useGlobalStore((state) => state.openWork);
+  const splitEdition = useSplitEdition();
+  const [joining, setJoining] = React.useState(false);
+  const [splitting, setSplitting] = React.useState(null); // the edition waiting for a yes
+  const [notice, setNotice] = React.useState(null);
+
+  React.useEffect(() => {
+    setJoining(false);
+    setSplitting(null);
+    setNotice(null);
+  }, [workId]);
 
   React.useEffect(() => {
     if (!workId) return undefined;
@@ -227,9 +243,31 @@ export function WorkSheet() {
               onFinish={(finished) => setWorkFinished.mutate({ workId: work.id, finished })}
             />
 
-            <div>
-              <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">Acervo digital</p>
-              <h3 className="font-display text-2xl text-ink sm:text-3xl">Edições e arquivos</h3>
+            {notice && (
+              <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border-l-4 border-success bg-surface-alt p-4 text-sm text-ink">
+                <span>{notice.text}</span>
+                {notice.workId && (
+                  <button onClick={() => openWork(notice.workId)} className="font-semibold text-brand hover:text-brand-light">
+                    Abrir essa obra
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">Acervo digital</p>
+                <h3 className="font-display text-2xl text-ink sm:text-3xl">Edições e arquivos</h3>
+              </div>
+              {staff && (
+                <button
+                  onClick={() => setJoining(true)}
+                  className="min-h-10 rounded-lg border border-border-hairline bg-white px-4 py-2 text-xs text-ink hover:bg-surface-alt"
+                  title="Esta obra é outra versão de um livro que já está no acervo: os arquivos ficam todos sob uma obra só"
+                >
+                  Juntar com outra obra…
+                </button>
+              )}
             </div>
             {editions.length === 0 && <p className="text-sm text-ink-faint">Esta obra ainda não tem arquivos.</p>}
             {editions.map((edition) => {
@@ -246,7 +284,53 @@ export function WorkSheet() {
                     {edition.isPrimary && (
                       <span className="rounded bg-success/10 px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-success">Principal</span>
                     )}
+                    {staff && editions.length > 1 && splitting !== edition.id && (
+                      <button
+                        onClick={() => setSplitting(edition.id)}
+                        className="ml-auto min-h-10 text-xs text-ink-soft hover:text-brand"
+                        title="Tira esta edição desta obra: volta para a obra de onde veio, ou vira uma obra nova"
+                      >
+                        Separar em obra própria
+                      </button>
+                    )}
                   </div>
+                  {splitting === edition.id && (
+                    <div className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 text-sm text-ink" aria-label="Confirmar a separação">
+                      <p>
+                        Separar esta edição? Ela volta para a obra de onde veio, se houver, ou vira uma obra nova.
+                        As notas e as conclusões dos arquivos dela vão junto.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          disabled={splitEdition.isPending}
+                          onClick={() =>
+                            splitEdition.mutate(
+                              { editionId: edition.id },
+                              {
+                                onSuccess: (result) => {
+                                  setSplitting(null);
+                                  setNotice({
+                                    workId: result.workId,
+                                    text: result.restored ? 'Edição separada: ela voltou para a obra de onde veio.' : 'Edição separada em uma obra nova.',
+                                  });
+                                },
+                                onError: (error) => {
+                                  setSplitting(null);
+                                  setNotice({ text: reasonOf(error, 'Não foi possível separar a edição.') });
+                                },
+                              }
+                            )
+                          }
+                          className="min-h-10 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40"
+                        >
+                          Separar
+                        </button>
+                        <button onClick={() => setSplitting(null)} className="min-h-10 px-4 py-2 text-xs text-ink-soft hover:text-brand">
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <ul className="flex flex-col gap-3">
                     {edition.files.map((file) => (
                       <FileRow
@@ -271,6 +355,16 @@ export function WorkSheet() {
         )}
         </div>
       </div>
+      {joining && work && (
+        <JoinVersionsDialog
+          work={work}
+          onClose={() => setJoining(false)}
+          onJoined={(targetId) => {
+            setJoining(false);
+            openWork(targetId); // this work is retired now: the sheet goes to the one that has its files
+          }}
+        />
+      )}
     </div>
   );
 }
