@@ -4,6 +4,7 @@ import { authenticatedUrl } from '../../../lib/api';
 import { useWork } from '../api/useWork';
 import { useSetCompletion, useSetWorkFinished } from '../api/useCompletion';
 import { completionText, formatSize, languageName, whereYouAre } from '../files';
+import { WorkCover } from '../../../components/ui/WorkCover';
 
 function FileRow({ file, onRead, onComplete, onReread, busy }) {
   const percent = Math.round(file.percentComplete || 0);
@@ -11,23 +12,23 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
   const usable = file.availability === 'available' && !!file.url;
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+    <li className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm text-zinc-200">
-          <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px] font-bold uppercase text-zinc-300">{file.format || '?'}</span>
-          {file.sizeBytes != null && <span className="text-xs text-zinc-500">{formatSize(file.sizeBytes)}</span>}
-          {file.needsOcr && <span className="text-xs text-amber-400">Páginas sem texto (OCR ainda não roda)</span>}
-          {file.textStatus === 'ready' && <span className="text-xs text-zinc-500" title="O texto deste arquivo está indexado para a busca">texto indexado</span>}
-          {file.textStatus === 'failed' && <span className="text-xs text-amber-400" title="O arquivo abre, mas o texto não pôde ser lido para a busca">texto não lido</span>}
+        <div className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">
+          <span className="rounded bg-brand/10 px-2 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-brand">{file.format || '?'}</span>
+          {file.sizeBytes != null && <span className="font-mono text-[11px] text-ink-faint">{formatSize(file.sizeBytes)}</span>}
+          {file.needsOcr && <span className="text-xs text-amber-800">Páginas sem texto (OCR ainda não roda)</span>}
+          {file.textStatus === 'ready' && <span className="text-xs text-success" title="O texto deste arquivo está indexado para a busca">texto indexado</span>}
+          {file.textStatus === 'failed' && <span className="text-xs text-amber-800" title="O arquivo abre, mas o texto não pôde ser lido para a busca">texto não lido</span>}
         </div>
-        <span className="text-xs text-zinc-400">
+        <span className="shrink-0 font-mono text-[11px] text-ink-soft">
           {file.completed ? 'Concluído' : percent > 0 ? `${percent}% lido` : started ? 'Em andamento' : 'Não iniciado'}
         </span>
       </div>
 
       {started && (
-        <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-800">
-          <div className="h-full rounded-full bg-blue-500" style={{ width: `${file.completed ? 100 : percent}%` }} />
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-alt">
+          <div className="h-full rounded-full bg-brand" style={{ width: `${file.completed ? 100 : percent}%` }} />
         </div>
       )}
 
@@ -36,7 +37,7 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
           <>
             <button
               onClick={() => onRead(file, false)}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
+              className="min-h-10 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-light"
             >
               {started && !file.completed ? 'Continuar' : file.completed ? 'Abrir' : 'Ler'}
             </button>
@@ -44,7 +45,7 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
               <button
                 onClick={() => onReread(file)}
                 disabled={busy}
-                className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+                className="min-h-10 rounded-lg border border-border-hairline bg-surface px-4 py-2 text-xs text-ink hover:bg-surface-alt disabled:opacity-40"
                 title="Começa outra leitura do início; a conclusão anterior continua na contagem"
               >
                 Reler
@@ -53,7 +54,7 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
               started && (
                 <button
                   onClick={() => onRead(file, true)}
-                  className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+                  className="min-h-10 rounded-lg border border-border-hairline bg-surface px-4 py-2 text-xs text-ink hover:bg-surface-alt"
                   title="Abre do início; a sua posição só muda quando você avançar"
                 >
                   Do começo
@@ -63,21 +64,21 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
             <button
               onClick={() => onComplete(file, !file.completed)}
               disabled={busy}
-              className="ml-auto text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-40"
+              className="min-h-10 text-xs text-ink-soft hover:text-brand disabled:opacity-40 sm:ml-auto"
               title={file.completed ? 'Volta a contar como em leitura; a posição é mantida' : 'Conta como lido, sem precisar abrir'}
             >
               {file.completed ? 'Reabrir' : 'Marcar como concluído'}
             </button>
             <a
               href={authenticatedUrl(file.url)}
-              className="text-xs text-zinc-500 hover:text-zinc-300"
+              className="inline-flex min-h-10 items-center text-xs text-ink-soft hover:text-brand"
               title="Baixar o arquivo"
             >
               Baixar
             </a>
           </>
         ) : (
-          <span className="text-xs text-red-400">
+          <span className="text-xs text-red-700">
             {file.availability === 'blocked' ? 'Arquivo bloqueado' : 'Arquivo ausente no servidor'}
           </span>
         )}
@@ -96,18 +97,19 @@ function ReadingSummary({ work, busy, onFinish }) {
   const where = work.inProgress ? whereYouAre(work.continue) : null;
   if (!counted && !where && !work.finished) return null;
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm" aria-label="Sua leitura">
-      {where && <p className="text-zinc-200">{where}</p>}
-      {counted && <p className="text-zinc-400">{counted}</p>}
-      {work.finished && <p className="text-zinc-400">Você marcou a obra toda como finalizada.</p>}
+    <div className="flex flex-col gap-2 rounded-xl border-l-4 border-brand bg-surface-alt p-4 text-sm" aria-label="Sua leitura">
+      <span className="font-mono text-[11px] font-semibold uppercase tracking-widest text-brand">Sua leitura</span>
+      {where && <p className="text-ink">{where}</p>}
+      {counted && <p className="text-ink-soft">{counted}</p>}
+      {work.finished && <p className="text-ink-soft">Você marcou a obra toda como finalizada.</p>}
       <div className="flex gap-3 pt-1 text-xs">
         {work.finished ? (
-          <button onClick={() => onFinish(false)} disabled={busy} className="text-blue-400 hover:text-blue-300 disabled:opacity-40">
+          <button onClick={() => onFinish(false)} disabled={busy} className="text-brand hover:text-brand-light disabled:opacity-40">
             Desfazer
           </button>
         ) : (
           work.inProgress && (
-            <button onClick={() => onFinish(true)} disabled={busy} className="text-zinc-500 hover:text-zinc-300 disabled:opacity-40">
+            <button onClick={() => onFinish(true)} disabled={busy} className="text-ink-soft hover:text-brand disabled:opacity-40">
               Marcar a obra toda como finalizada
             </button>
           )
@@ -126,50 +128,98 @@ export function WorkSheet() {
   const workId = useGlobalStore((state) => state.sheetWorkId);
   const closeSheet = useGlobalStore((state) => state.closeSheet);
   const openBook = useGlobalStore((state) => state.openBook);
+  const closeButtonRef = React.useRef(null);
   const { data: work, isLoading, isError } = useWork(workId, { fresh: true });
   const setCompletion = useSetCompletion();
   const setWorkFinished = useSetWorkFinished();
+
+  React.useEffect(() => {
+    if (!workId) return undefined;
+    const previousFocus = document.activeElement;
+    closeButtonRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') closeSheet();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      previousFocus?.focus?.();
+    };
+  }, [workId, closeSheet]);
 
   if (!workId) return null;
 
   const meta = work?.metadata;
   const editions = work?.editions ?? [];
+  const files = editions.flatMap((edition) => edition.files);
+  const canRead = (file) => file?.availability === 'available' && !!file.url;
+  const leadFile = files.find((file) => file.id === work?.continue?.fileId && canRead(file))
+    ?? editions.find((edition) => edition.isPrimary)?.files.find(canRead)
+    ?? files.find(canRead);
+  const canContinue = work?.inProgress && leadFile?.id === work?.continue?.fileId;
+  const leadEdition = editions.find((edition) => edition.files.some((file) => file.id === leadFile?.id));
+  const leadDetails = [
+    leadEdition && languageName(leadEdition.language),
+    leadEdition?.publisher,
+    leadEdition?.publicationDate,
+    leadFile?.format?.toUpperCase(),
+  ].filter(Boolean);
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-label="Ficha da obra">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-zinc-100">{work?.title ?? 'Carregando…'}</h2>
-            {work && <p className="text-sm text-zinc-400">{work.author}</p>}
-            {meta?.series && (
-              <p className="text-xs text-zinc-500">
-                {meta.series}
-                {meta.seriesIndex ? ` · ${meta.seriesIndex}` : ''}
-              </p>
-            )}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label="Ficha da obra">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-[#faf8f4] shadow-2xl sm:max-h-[92vh] sm:h-auto sm:max-w-5xl sm:rounded-2xl">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border-hairline bg-[#faf8f4] px-4 py-3 sm:px-6">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">Biblioteca / Ficha da obra</p>
+            <h2 className="truncate font-display text-2xl text-ink sm:text-3xl">{work?.title ?? 'Carregando…'}</h2>
           </div>
-          <button onClick={closeSheet} className="text-zinc-500 hover:text-zinc-300" aria-label="Fechar">
+          <button ref={closeButtonRef} onClick={closeSheet} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-xl text-ink-soft hover:bg-surface-alt hover:text-brand" aria-label="Fechar">
             ✕
           </button>
         </div>
 
-        {isLoading && <p className="animate-pulse text-sm text-zinc-500">Carregando a obra…</p>}
-        {isError && <p className="text-sm text-red-400">Não foi possível abrir esta obra.</p>}
+        <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+        {isLoading && <p className="animate-pulse text-sm text-ink-faint">Carregando a obra…</p>}
+        {isError && <p className="text-sm text-red-700">Não foi possível abrir esta obra.</p>}
 
         {work && (
-          <div className="flex flex-col gap-5">
-            <div className="flex gap-4">
-              {work.coverUrl && (
-                <img
-                  src={authenticatedUrl(work.coverUrl)}
-                  alt=""
-                  className="h-40 w-28 shrink-0 rounded object-cover"
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                />
-              )}
-              {meta?.description && <p className="line-clamp-6 text-sm leading-relaxed text-zinc-400">{meta.description}</p>}
-            </div>
+          <div className="flex flex-col gap-7">
+            <section className="relative overflow-hidden rounded-2xl bg-surface-alt p-4 shadow-sm sm:p-6">
+              <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-brand/5 blur-3xl" />
+              <div className="relative grid gap-5 md:grid-cols-[minmax(170px,230px)_minmax(0,1fr)] md:gap-8">
+                <div className="mx-auto w-36 sm:w-44 md:mx-0 md:w-full">
+                  <WorkCover item={work} className="aspect-[2/3] w-full rounded-lg object-cover shadow-lg" />
+                </div>
+                <div className="min-w-0 space-y-4">
+                  <div>
+                    {meta?.series && (
+                      <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-widest text-brand">
+                        {meta.series}{meta.seriesIndex ? ` · Livro ${meta.seriesIndex}` : ''}
+                      </p>
+                    )}
+                    <h3 className="font-display text-4xl leading-tight text-ink sm:text-5xl">{work.title}</h3>
+                    <p className="mt-1 font-body text-sm font-semibold text-brand sm:text-base">{work.author}</p>
+                  </div>
+                  {leadDetails.length > 0 && (
+                    <div className="flex flex-wrap gap-2" aria-label="Dados da edição em foco">
+                      {leadDetails.map((detail, index) => (
+                        <span key={`${detail}-${index}`} className="rounded-full bg-white px-3 py-1 font-mono text-[11px] text-ink-soft shadow-sm">{detail}</span>
+                      ))}
+                    </div>
+                  )}
+                  {meta?.description && <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink-soft sm:text-base">{meta.description}</p>}
+                  {!meta?.description && <p className="text-sm text-ink-soft">Escolha uma edição abaixo ou abra o arquivo em que você estava lendo.</p>}
+                  {leadFile && (
+                    <button
+                      onClick={() => openBook(work.id, leadFile.id, { fromStart: false })}
+                      className="min-h-11 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-light"
+                    >
+                      {canContinue ? 'Continuar leitura' : 'Abrir leitor'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </section>
 
             <ReadingSummary
               work={work}
@@ -177,7 +227,11 @@ export function WorkSheet() {
               onFinish={(finished) => setWorkFinished.mutate({ workId: work.id, finished })}
             />
 
-            {editions.length === 0 && <p className="text-sm text-zinc-500">Esta obra ainda não tem arquivos.</p>}
+            <div>
+              <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">Acervo digital</p>
+              <h3 className="font-display text-2xl text-ink sm:text-3xl">Edições e arquivos</h3>
+            </div>
+            {editions.length === 0 && <p className="text-sm text-ink-faint">Esta obra ainda não tem arquivos.</p>}
             {editions.map((edition) => {
               const details = [
                 languageName(edition.language),
@@ -186,14 +240,14 @@ export function WorkSheet() {
                 edition.isbn && `ISBN ${edition.isbn}`,
               ].filter(Boolean);
               return (
-                <section key={edition.id} className="flex flex-col gap-2" aria-label={`Edição ${edition.id}`}>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-medium text-zinc-200">{details.length ? details.join(' · ') : 'Edição sem detalhes'}</h3>
+                <section key={edition.id} className="flex flex-col gap-3" aria-label={`Edição ${edition.id}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-semibold text-ink">{details.length ? details.join(' · ') : 'Edição sem detalhes'}</h4>
                     {edition.isPrimary && (
-                      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">Principal</span>
+                      <span className="rounded bg-success/10 px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-success">Principal</span>
                     )}
                   </div>
-                  <ul className="flex flex-col gap-2">
+                  <ul className="flex flex-col gap-3">
                     {edition.files.map((file) => (
                       <FileRow
                         key={file.id}
@@ -215,6 +269,7 @@ export function WorkSheet() {
             })}
           </div>
         )}
+        </div>
       </div>
     </div>
   );
