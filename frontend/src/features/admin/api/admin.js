@@ -26,6 +26,7 @@ export const useBackup = list('backup', '/admin/backup');
 export const useOrphans = list('orphans', '/admin/storage/orphans');
 export const useTrash = list('trash', '/admin/trash');
 export const useDuplicates = list('duplicates', '/admin/duplicates');
+export const usePeopleMerges = list('people-merges', '/admin/people/merges');
 export const useOcr = list('ocr', '/admin/ocr');
 export const useAccounts = list('accounts', '/users');
 export const useLdap = list('ldap', '/admin/ldap');
@@ -75,6 +76,10 @@ export const useScanDuplicates = () => useAdminAction(() => api.post('/admin/dup
 export const useDismissDuplicate = () => useAdminAction((id) => api.post(`/admin/duplicates/${id}/dismiss`));
 export const useLinkDuplicate = () =>
   useAdminAction(({ id, keep }) => api.post(`/admin/duplicates/${id}/link`, { keep, confirm: true }));
+
+export const useMergePeople = () =>
+  useAdminAction(({ id, keep }) => api.post(`/admin/people/merges/${id}/merge`, { keep, confirm: true }));
+export const useDismissPeopleMerge = () => useAdminAction((id) => api.post(`/admin/people/merges/${id}/dismiss`));
 
 export const useBlockAccount = () => useAdminAction((id) => api.post(`/users/${id}/block`));
 export const useUnblockAccount = () => useAdminAction((id) => api.post(`/users/${id}/unblock`));

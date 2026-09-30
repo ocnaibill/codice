@@ -3,6 +3,7 @@ import {
   useDuplicates, useScanDuplicates, useDismissDuplicate, useLinkDuplicate, useOcr, describeError,
 } from '../api/admin';
 import { ConfirmDialog } from './ConfirmDialog';
+import { PeopleMerges } from './PeopleMerges';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 
 const REASON = { isbn: 'Mesmo ISBN', title_author: 'Mesmo título e autor' };
@@ -102,6 +103,7 @@ export function DuplicatesTab() {
   return (
     <div className="flex flex-col gap-5">
       <Duplicates />
+      <PeopleMerges />
       <Ocr />
     </div>
   );
