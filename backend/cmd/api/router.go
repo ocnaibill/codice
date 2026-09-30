@@ -59,6 +59,7 @@ func newRouter(d routerDeps) http.Handler {
 	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
 	dupesHandler := &handlers.DuplicatesHandler{DB: db}
 	versionsHandler := &handlers.VersionsHandler{DB: db}
+	peopleHandler := &handlers.PeopleHandler{DB: db}
 	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
@@ -209,6 +210,10 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/admin/works/{id}/join", versionsHandler.Join)
 	r.With(staff).Post("/admin/works/{id}/not-same-as", versionsHandler.NotTheSame)
 	r.With(staff).Post("/admin/editions/{id}/split", versionsHandler.Split)
+	// People who may be the same person: the system proposes, an admin decides (#36).
+	r.With(staff).Get("/admin/people/merges", peopleHandler.List)
+	r.With(staff).Post("/admin/people/merges/{id}/merge", peopleHandler.Merge)
+	r.With(staff).Post("/admin/people/merges/{id}/dismiss", peopleHandler.Dismiss)
 
 	// Accounts: owner and admins list and block (the policy decides who may act on
 	// whom); only the owner changes roles.

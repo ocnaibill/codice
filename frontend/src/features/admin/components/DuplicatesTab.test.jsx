@@ -19,6 +19,7 @@ async function open(pairs = [pair], ocr = []) {
   api.get.mockImplementation(async (url) => {
     if (url === '/admin/duplicates') return { data: { data: pairs } };
     if (url === '/admin/ocr') return { data: { data: ocr } };
+    if (url === '/admin/people/merges') return { data: { data: [] } };
     throw new Error(`unexpected GET ${url}`);
   });
   api.post.mockResolvedValue({});
