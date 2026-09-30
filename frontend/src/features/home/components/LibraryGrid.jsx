@@ -1,78 +1,76 @@
-import iconCheck from '../../../assets/icons/card-check.svg';
 import iconActionRead from '../../../assets/icons/card-action-read.svg';
 import iconActionDownload from '../../../assets/icons/card-action-download.svg';
 import { EmptyState, Skeleton } from '../../../components/ui/EmptyState';
+import { WorkCover } from '../../../components/ui/WorkCover';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { authenticatedUrl } from '../../../lib/api';
 import { readLabel, readTarget } from '../../reader/readTarget';
-
-const FORMAT_BADGE_STYLE = {
-  MP3: 'bg-brand text-white',
-  M4B: 'bg-brand text-white',
-  M4A: 'bg-brand text-white',
-};
+import { formatCount } from '../utils/format';
 
 const STATUS_LABEL = {
-  READY: 'Pronto',
+  READY: 'Pronto para ler',
+  UNKNOWN: 'Aguardando análise',
   ANALYZING: 'Processando',
   QUEUED: 'Na fila',
   ERROR: 'Erro ao processar',
 };
 
 function BookCard({ item, onOpen, onSheet }) {
-  const statusLabel = STATUS_LABEL[item.mediaStatus] ?? item.mediaStatus;
   const isReady = item.mediaStatus === 'READY' || !item.mediaStatus;
-
   return (
-    <article className="flex w-[145px] shrink-0 flex-col justify-between rounded bg-white p-2 shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
-      <div className="flex flex-col gap-2">
+    <article className="library-book">
+      <div className="library-book-body">
         <button
           onClick={() => onSheet(item.id)}
           title="Ver edições e arquivos"
-          className="relative block overflow-hidden rounded-sm bg-surface-alt shadow-[inset_0px_2px_4px_0px_rgba(0,0,0,0.05)]"
+          className="library-book-cover"
         >
-          <img src={authenticatedUrl(item.coverUrl)} alt={item.title} className="h-[194px] w-full object-cover" />
+          <WorkCover item={item} />
           {item.format && (
-            <span
-              className={`absolute left-1.5 top-1.5 rounded-sm px-1 py-0.5 font-body text-[9px] font-bold ${
-                FORMAT_BADGE_STYLE[item.format.toUpperCase()] ?? 'bg-[rgba(26,28,31,0.9)] text-white'
-              }`}
-            >
+            <span className="absolute left-1.5 top-1.5 rounded-sm bg-ink/90 px-1.5 py-1 font-mono text-[9px] text-white">
               {item.format.toUpperCase()}
             </span>
           )}
         </button>
-        <div className="flex flex-col px-1">
-          <p className={`flex items-center gap-1 font-body text-[11px] ${isReady ? 'text-success' : 'text-ink-faint'}`}>
-            {isReady && <img src={iconCheck} alt="" className="size-2.5" />}
-            {statusLabel}
+        <div className="library-book-meta">
+          <p
+            className="library-book-status"
+            style={!isReady ? { color: 'var(--color-ink-soft)' } : undefined}
+          >
+            {STATUS_LABEL[item.mediaStatus] ??
+              item.mediaStatus ??
+              'Pronto para ler'}
           </p>
-          <h4 className="pt-0.5 truncate font-body text-base font-bold text-ink">{item.title}</h4>
-          <p className="truncate font-body text-[13px] tracking-[0.065px] text-ink-soft">{item.author}</p>
+          <h3 title={item.title}>{item.title}</h3>
+          <p className="library-author">{item.author}</p>
           {item.tags?.length > 0 && (
-            <p className="truncate pt-1 font-body text-[11px] tracking-[0.44px] text-ink-faint">{item.tags.join(' • ')}</p>
+            <p className="library-book-tags">{item.tags.join(' · ')}</p>
           )}
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-between border-t border-surface-alt pt-2 px-1">
+      <div className="library-book-actions">
         <button
           onClick={() => {
             const target = readTarget(item);
             if (target.kind === 'sheet') onSheet(item.id);
             else onOpen(item.id, target.fileId);
           }}
-          className="p-1"
           title={readLabel(item)}
+          aria-label={`${readLabel(item)}: ${item.title}`}
         >
-          <img src={iconActionRead} alt="Ler" className="h-3 w-[15px]" />
+          <img src={iconActionRead} alt="" className="h-4 w-5" />
         </button>
         {item.fileUrl ? (
-          <a href={authenticatedUrl(item.fileUrl)} className="p-1" title="Baixar">
-            <img src={iconActionDownload} alt="Baixar" className="size-3" />
+          <a
+            href={authenticatedUrl(item.fileUrl)}
+            title="Baixar"
+            aria-label={`Baixar: ${item.title}`}
+          >
+            <img src={iconActionDownload} alt="" className="size-4" />
           </a>
         ) : (
-          <span className="p-1 opacity-30" title="Arquivo ainda não disponível">
-            <img src={iconActionDownload} alt="Baixar" className="size-3" />
+          <span className="opacity-30" title="Arquivo ainda não disponível">
+            <img src={iconActionDownload} alt="" className="size-4" />
           </span>
         )}
       </div>
@@ -80,25 +78,48 @@ function BookCard({ item, onOpen, onSheet }) {
   );
 }
 
-export function LibraryGrid({ items, isLoading, title = 'Adicionados Recentemente & Sincronizados' }) {
+export function LibraryGrid({
+  items,
+  isLoading,
+  isFetching,
+  title = 'Adicionados recentemente',
+  viewMode = 'grid',
+  total,
+}) {
   const openBook = useGlobalStore((state) => state.openBook);
   const openWork = useGlobalStore((state) => state.openWork);
-
   return (
-    <section className="flex w-full flex-col gap-4">
-      <h2 className="font-display text-2xl font-medium tracking-[-0.12px] text-ink">{title}</h2>
+    <section aria-busy={!!(isLoading || isFetching)}>
+      <div className="library-section-heading">
+        <h2>{title}</h2>
+        {total != null && (
+          <span className="library-eyebrow">
+            [ {formatCount(total)} obras ]
+          </span>
+        )}
+      </div>
       {isLoading ? (
-        <div className="flex flex-wrap gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-[280px] w-[145px]" />
+        <div className="library-books" data-view={viewMode}>
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton
+              key={i}
+              className={
+                viewMode === 'list' ? 'h-28 w-full' : 'h-[300px] w-full'
+              }
+            />
           ))}
         </div>
       ) : items.length === 0 ? (
         <EmptyState>Nenhuma obra encontrada nessa categoria ainda.</EmptyState>
       ) : (
-        <div className="flex flex-wrap justify-center gap-3 sm:justify-start">
+        <div className="library-books" data-view={viewMode}>
           {items.map((item) => (
-            <BookCard key={item.id} item={item} onOpen={openBook} onSheet={openWork} />
+            <BookCard
+              key={item.id}
+              item={item}
+              onOpen={openBook}
+              onSheet={openWork}
+            />
           ))}
         </div>
       )}

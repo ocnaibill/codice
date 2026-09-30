@@ -32,6 +32,5 @@ export const useWorks = ({
     refetchInterval: (query) => query.state.data?.data?.some(
       (work) => ['UNKNOWN', 'QUEUED', 'ANALYZING'].includes(work.mediaStatus)
     ) ? 3000 : false,
-    placeholderData: (previousData) => previousData, // Keep previous data while fetching next page
   });
 };

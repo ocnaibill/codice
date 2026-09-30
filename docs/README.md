@@ -21,6 +21,8 @@ Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz
 
 ## Estado em 19 de setembro de 2026
 
+**Hub responsivo (UI-01, 25/09/2026):** primeira fatia do design Stitch implementada no branch `codex/library-hub`: papel aquecido, fontes locais, navegação desktop/mobile, filtros, grade/lista e paginação. Validação e limites em [Hub Stitch](Codice_Hub_Stitch_2026-09-25.md). Tema escuro e demais telas permanecem fora desta fatia.
+
 **Atualização após o merge:** o PR #6 já foi integrado à `main` (`83fc908`). A validação subsequente passou em 232 casos/subcasos Go (com PostgreSQL, nenhum ignorado), 82 testes Python e 54 testes frontend; build e `go vet` aprovados. API, worker e navegador foram exercitados com banco e arquivos sintéticos isolados. Correções locais: inicialização/reconexão sem Redis, atualização de obras pendentes sem WebSocket e propagação de falhas no Makefile. Consulte o relatório acima para o alcance e as pendências; esses resultados não homologam toda a especificação.
 
 **Fase 0 (preparar o terreno): concluída.** Corpus sintético em `testdata/`, script `scripts/reset-dev-db.sh` (simulação por padrão) e trabalho local salvo em `chore/salvar-trabalho-local`.

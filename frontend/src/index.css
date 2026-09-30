@@ -1,4 +1,7 @@
-@import url("https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,300&display=swap");
+@import "@fontsource-variable/newsreader";
+@import "@fontsource-variable/newsreader/wght-italic.css";
+@import "@fontsource-variable/plus-jakarta-sans";
+@import "@fontsource-variable/jetbrains-mono";
 @import "tailwindcss";
 
 @theme {
@@ -13,8 +16,9 @@
   --color-success: #3a6758;
   --color-border-hairline: #d7d7d8;
 
-  --font-display: "Newsreader", ui-serif, Georgia, serif;
-  --font-body: "Liberation Serif", "Times New Roman", Times, serif;
+  --font-display: "Newsreader Variable", ui-serif, Georgia, serif;
+  --font-body: "Plus Jakarta Sans Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 }
 
 body {

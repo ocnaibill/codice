@@ -84,11 +84,13 @@ describe('who sees the administration', () => {
   it('shows the header button only to them, and it opens the area', async () => {
     const open = vi.fn();
     view = await mount(<Header canAdmin onOpenAdmin={open} />);
+    await view.click(view.container.querySelector('[aria-label="Minha conta"]'));
     await view.click(view.button('Administração'));
     expect(open).toHaveBeenCalledTimes(1);
     view.unmount();
 
     view = await mount(<Header canAdmin={false} onOpenAdmin={open} />);
+    await view.click(view.container.querySelector('[aria-label="Minha conta"]'));
     expect(view.button('Administração')).toBeUndefined();
   });
 
