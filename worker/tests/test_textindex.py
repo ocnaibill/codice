@@ -552,3 +552,54 @@ class TestSoftHyphensEndToEnd:
         (seg,) = list(epub_segments(str(path)))
         assert 'retirou-se' in seg.text and 'Paul-Muad’Dib' in seg.text and 'constantinopla' in seg.text
         assert '­' not in seg.text
+
+
+# ── the language of a file, from its text (#35) ──────────────────────
+
+PT = ('Era uma manhã clara e fria de abril, e os relógios davam treze horas. O homem que tinha descido das montanhas '
+      'caminhava devagar pela estrada, e pensava que as pessoas da aldeia não sabiam o que ia acontecer com elas quando '
+      'chegasse o inverno e o rio estivesse gelado, como já tinha acontecido uma vez no tempo do seu pai. ')
+
+
+class TestLanguageOfAFile:
+    def publish_call(self, db):
+        return [c for c in db.calls if c[1] == 'text_extraction_publish'][0][2]
+
+    def suggestions(self, db):
+        return [c for c in db.calls if c[1] == 'INSERT INTO metadata_candidates']
+
+    def test_a_file_that_declares_no_language_gets_one_suggested_from_its_text(self, tmp_path):
+        make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + PT * 4 + '</p>'})
+        db = FakeDB([file_row(7, 'epub', 'aa', '', path='b.epub')])
+        TextIndexer(db, str(tmp_path)).run(9)
+        assert self.publish_call(db)[5] == 'pt'                        # the language of the published text
+        (suggestion,) = self.suggestions(db)
+        assert suggestion[2][0] == 'pt' and suggestion[2][2] == 7      # the language, and the file it is about
+        # Nothing about the edition is written: the suggestion waits for someone to accept it.
+        assert not [c for c in db.calls if c[1] in ('UPDATE editions', 'WITH target AS')]
+
+    def test_what_a_file_declares_is_never_second_guessed(self, tmp_path):
+        make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + PT * 4 + '</p>'})
+        db = FakeDB([file_row(7, 'epub', 'aa', 'en-GB', path='b.epub')])  # declared English, written in Portuguese
+        TextIndexer(db, str(tmp_path)).run(9)
+        assert self.publish_call(db)[5] == 'en-GB'
+        assert self.suggestions(db) == []
+
+    def test_a_text_it_cannot_tell_suggests_nothing(self, tmp_path):
+        make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + 'xqz wvk jhg ' * 80 + '</p>'})
+        db = FakeDB([file_row(7, 'epub', 'aa', '', path='b.epub')])
+        TextIndexer(db, str(tmp_path)).run(9)
+        assert not self.publish_call(db)[5] and self.suggestions(db) == []
+
+    def test_a_file_with_no_text_has_no_language_to_suggest(self, storage):
+        db = FakeDB([file_row(7, 'pdf', path='scan.pdf', language='')])
+        TextIndexer(db, str(storage)).run(9)
+        assert self.suggestions(db) == []
+
+    def test_the_sample_is_spread_over_the_file_and_has_a_ceiling(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr(store_module, 'detect_language', lambda text: seen.append(text) or 'pt')
+        pieces = [f'parte{i}' for i in range(5000)]
+        assert TextIndexer.detect(pieces) == 'pt'
+        used = seen[0].split('\n')
+        assert len(used) == store_module.SAMPLE_PIECES and used[0] == 'parte0' and int(used[-1][5:]) > 4000  # to the end
