@@ -268,3 +268,16 @@ func TestLink_RefusesWhenAWorkWasRetiredMeanwhile(t *testing.T) {
 		t.Errorf("a pair with a retired work is still listed: %+v", pending)
 	}
 }
+
+func TestDetect_TheSameAuthorWrittenAnotherWayIsTheSameAuthor(t *testing.T) {
+	e := newEnv(t)
+	a := e.work("Dune", "Frank Herbert", "", "epub", "a.epub")
+	b := e.work("Dune", "Herbert, Frank", "", "pdf", "b.pdf")
+	c := e.work("Dune", "Brian Herbert", "", "epub", "c.epub")
+	if n, err := dupes.DetectAll(ctx, e.db); err != nil || n != 1 {
+		t.Fatalf("pairs = %d, %v", n, err)
+	}
+	if got := e.pairs(); got != itoa(a)+"-"+itoa(b)+":title_author:pending" {
+		t.Errorf("pairs = %q (another Herbert, %d, must not be proposed)", got, c)
+	}
+}

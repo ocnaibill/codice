@@ -9,6 +9,8 @@ from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
 
+from people import normalize_name
+
 
 # The cover is stored on the work's primary edition. Since the data model allows
 # several editions per work, the conflict target is the "one primary edition per
@@ -208,14 +210,20 @@ class Analyzer:
             self._record_source(work_id, field, 'file')
 
         # Author: same rule, resolved through the person table.
-        author = metadata.get('author')
-        if author and author != 'Unknown Author' and self._may_fill(state, 'author') \
-                and author != state['values'].get('author'):
+        # A catalogue's way of writing a name ("Herbert, Frank, author") is stored as the name people say,
+        # and what the file wrote is kept as an alias (#36).
+        written = metadata.get('author')
+        author, renamed = normalize_name(written) if written and written != 'Unknown Author' else ('', False)
+        if author and self._may_fill(state, 'author') and author != state['values'].get('author'):
             author_id = self.db.fetchone(
                 """INSERT INTO person (name) VALUES (%s)
                    ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
                    RETURNING id""",
                 (author,))
+            if author_id and renamed:
+                self.db.execute(
+                    "INSERT INTO person_alias (person_id, alias) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (author_id[0], ' '.join(written.split())))
             if author_id:
                 self.db.execute(
                     "DELETE FROM work_contributors WHERE work_id = %s AND role = 'author' AND position = 0",
