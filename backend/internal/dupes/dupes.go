@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/ocnaibill/codice/backend/internal/audit"
+	"github.com/ocnaibill/codice/backend/internal/versions"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -292,11 +293,10 @@ func Dismiss(ctx context.Context, db *sql.DB, id int64, actor string) error {
 	return audit.Record(ctx, db, actor, "duplicate.dismiss", "duplicate", fmt.Sprint(id), nil)
 }
 
-// Link makes the other work part of keep: its editions and files become
-// editions of the kept work (not primary), and its notes, favorites, tags and
-// identifiers move over. Reading positions belong to files, which keep their ids,
-// so they are untouched. The other work record is then deleted. This is the one
-// irreversible step, so it only runs on an explicit decision of an admin.
+// Link makes the other work part of keep: its editions and files become editions of the kept work (not
+// primary), and what people did with it as a whole moves over (versions.JoinTx). The other work is then
+// retired, not deleted, so the decision can be undone by separating its editions. Reading positions belong
+// to files, which keep their ids, so they are untouched.
 func Link(ctx context.Context, db *sql.DB, id int64, keep int, actor string) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -319,36 +319,15 @@ func Link(ctx context.Context, db *sql.DB, id int64, keep int, actor string) err
 	if keep == a {
 		other = b
 	}
-	var active int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM works WHERE id IN ($1, $2) AND retired_at IS NULL`, keep, other).Scan(&active); err != nil {
-		return err
-	}
-	if active != 2 {
+	res, err := versions.JoinTx(ctx, tx, keep, other, actor)
+	switch {
+	case errors.Is(err, versions.ErrRetired), errors.Is(err, versions.ErrNotFound):
 		return ErrRetired
-	}
-
-	var moved int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM editions WHERE work_id = $1`, other).Scan(&moved); err != nil {
+	case err != nil:
 		return err
 	}
-	for _, q := range []string{
-		`UPDATE editions SET work_id = $1, is_primary = FALSE WHERE work_id = $2`,
-		`UPDATE notes SET work_id = $1 WHERE work_id = $2`,
-		`INSERT INTO favorites (user_id, work_id, created_at) SELECT user_id, $1, created_at FROM favorites WHERE work_id = $2 ON CONFLICT DO NOTHING`,
-		`INSERT INTO work_tags (work_id, tag_id) SELECT $1, tag_id FROM work_tags WHERE work_id = $2 ON CONFLICT DO NOTHING`,
-		`INSERT INTO work_identifiers (work_id, identifier_type, identifier_value)
-		   SELECT $1, identifier_type, identifier_value FROM work_identifiers WHERE work_id = $2 ON CONFLICT DO NOTHING`,
-	} {
-		if _, err := tx.ExecContext(ctx, q, keep, other); err != nil {
-			return err
-		}
-	}
-	// The pair record goes with the other work (cascade); the audit entry keeps the story.
 	if err := audit.Record(ctx, tx, actor, "duplicate.link", "work", fmt.Sprint(keep),
-		map[string]any{"absorbed": other, "editions": moved}); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM works WHERE id = $1`, other); err != nil {
+		map[string]any{"absorbed": other, "editions": res.Editions}); err != nil {
 		return err
 	}
 	return tx.Commit()

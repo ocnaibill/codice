@@ -115,3 +115,35 @@ func TestOCRListing_ReportsPagesWithoutText(t *testing.T) {
 		t.Errorf("a PDF with a text layer is flagged")
 	}
 }
+
+// Linking used to delete the absorbed work, and what hung from it by cascade went with it: the history
+// of what people finished, their "whole work finished" mark, the record of equivalent positions they
+// accepted and its authors. The files and their own progress survived, which hid it.
+func TestDuplicatesAPI_LinkKeepsWhatThePeopleHadDoneWithTheAbsorbedWork(t *testing.T) {
+	s := newCatalogStack(t)
+	keep := s.addWork("Duna", "Frank Herbert", "a.epub", "epub")
+	absorbed := s.addWork("Dune", "Herbert, Frank, author", "b.pdf", "pdf")
+	pdf := s.primaryFile(absorbed)
+	if code := s.do(ana, "PUT", fmt.Sprintf("/progress/files/%d/completion", pdf), `{"completed":true}`).Code; code != 200 {
+		t.Fatalf("completion: %d", code)
+	}
+	if code := s.do(ana, "PUT", fmt.Sprintf("/progress/works/%d/finished", absorbed), `{"finished":true}`).Code; code != 200 {
+		t.Fatalf("finished: %d", code)
+	}
+	s.exec(`INSERT INTO duplicate_candidates (work_a, work_b, reason) VALUES ($1, $2, 'title_author')`, keep, absorbed)
+	var id int64
+	s.db.QueryRow(`SELECT id FROM duplicate_candidates`).Scan(&id)
+
+	if code := s.do(admin, "POST", fmt.Sprintf("/admin/duplicates/%d/link", id), fmt.Sprintf(`{"keep":%d,"confirm":true}`, keep)).Code; code != 204 {
+		t.Fatalf("link: %d", code)
+	}
+	if got := s.scalar(`SELECT count(*) FROM reading_completions WHERE work_id = $1`, keep); got != "1" {
+		t.Errorf("the history of what was finished: %s completions on the kept work, want 1", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM work_reading_state WHERE work_id = $1 AND finished_at IS NOT NULL`, keep); got != "1" {
+		t.Errorf("the whole-work-finished mark was lost: %s", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM work_contributors WHERE work_id = $1`, keep); got != "2" {
+		t.Errorf("the authors of both works: %s, want 2", got)
+	}
+}

@@ -84,10 +84,14 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/file/{id}", byID.ServeHTTP)
 	r.Get("/admin/ocr", (&OCRHandler{DB: db}).List)
 	dup := &DuplicatesHandler{DB: db}
+	ver := &VersionsHandler{DB: db}
 	r.Get("/admin/duplicates", dup.List)
 	r.Post("/admin/duplicates/scan", dup.Scan)
 	r.Post("/admin/duplicates/{id}/dismiss", dup.Dismiss)
 	r.Post("/admin/duplicates/{id}/link", dup.Link)
+	r.Post("/admin/works/{id}/join", ver.Join)
+	r.Post("/admin/works/{id}/not-same-as", ver.NotTheSame)
+	r.Post("/admin/editions/{id}/split", ver.Split)
 	r.Get("/admin/trash", trashAdmin.List)
 	r.Post("/admin/trash/{id}/restore", trashAdmin.Restore)
 	r.Delete("/admin/trash/{id}", trashAdmin.Delete)
