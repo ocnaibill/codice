@@ -84,8 +84,9 @@ func NormalizeName(raw string) (name string, changed bool) {
 	return name, name != raw
 }
 
-// key is a name as a set of words, whichever order they come in.
-func key(name string) string {
+// Key is a name as a set of words, whichever order they come in: what two spellings of a person have in
+// common.
+func Key(name string) string {
 	var words []string
 	for _, w := range strings.FieldsFunc(fold(strings.ReplaceAll(name, ",", " ")), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
 		if !roles[w] {
@@ -103,6 +104,6 @@ func key(name string) string {
 // SameName says whether two names are made of the same words in any order: "Herbert, Frank" and "Frank
 // Herbert". It is a hint for someone to decide on, never proof (two people may share their words).
 func SameName(a, b string) bool {
-	ka, kb := key(a), key(b)
+	ka, kb := Key(a), Key(b)
 	return ka != "" && ka == kb
 }

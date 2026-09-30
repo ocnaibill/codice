@@ -11,6 +11,7 @@ import (
 
 	"github.com/ocnaibill/codice/backend/internal/dupes"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
+	"github.com/ocnaibill/codice/backend/internal/people"
 	"github.com/ocnaibill/codice/backend/internal/storage"
 )
 
@@ -29,7 +30,7 @@ func fileJobHandlers(db *sql.DB, mover *storage.Mover) map[string]jobs.Handler {
 			}
 			return err
 		},
-		// Look for works that may be the same book. It only proposes.
+		// Look for works that may be the same book, and people that may be the same person. It only proposes.
 		"dedupe": func(ctx context.Context, j jobs.Claimed) error {
 			var err error
 			if j.WorkID != nil {
@@ -37,6 +38,10 @@ func fileJobHandlers(db *sql.DB, mover *storage.Mover) map[string]jobs.Handler {
 			} else {
 				_, err = dupes.DetectAll(ctx, db)
 			}
+			if err != nil {
+				return err
+			}
+			_, err = people.Detect(ctx, db)
 			return err
 		},
 		// Move a referenced file into the managed storage, then remove the original
