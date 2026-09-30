@@ -5,7 +5,7 @@ Uses OpenLibrary's search API.
 """
 import requests
 from typing import Optional
-from .base import BaseProvider, MetadataRecord
+from .base import BaseProvider, Credit, MetadataRecord
 
 
 class OpenLibraryProvider(BaseProvider):
@@ -16,6 +16,16 @@ class OpenLibraryProvider(BaseProvider):
     @property
     def name(self) -> str:
         return 'OpenLibrary'
+
+    @staticmethod
+    def _credits(doc: dict) -> list:
+        """Every author of the work. `author_key` names each one, in the same order as `author_name`;
+        when the two lists do not line up, which key belongs to whom is not known, so none is used."""
+        names = [n.strip() for n in (doc.get('author_name') or []) if isinstance(n, str) and n.strip()]
+        keys = doc.get('author_key') or []
+        paired = len(keys) == len(doc.get('author_name') or []) and len(names) == len(keys)
+        return [Credit(name, ids={'openlibrary': str(keys[i])} if paired and keys[i] else {})
+                for i, name in enumerate(names)]
 
     def search(self, query: str) -> Optional[MetadataRecord]:
         if not query:
@@ -35,8 +45,8 @@ class OpenLibraryProvider(BaseProvider):
             record = MetadataRecord(source=self.name)
 
             record.title = doc.get('title')
-            authors = doc.get('author_name', [])
-            record.author = authors[0] if authors else None
+            record.credits = self._credits(doc)
+            record.author = record.credits[0].name if record.credits else None
             record.publisher = doc.get('publisher', [None])[0] if doc.get('publisher') else None
             record.language = doc.get('language', [None])[0] if doc.get('language') else None
             record.publication_date = doc.get('first_publish_year')

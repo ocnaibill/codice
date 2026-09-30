@@ -53,6 +53,7 @@ class SearchHandler(BaseHTTPRequestHandler):
                 "source": r.source,
                 "title": r.title,
                 "author": r.author,
+                "credits": [c.as_dict() for c in r.credits],
                 "series": r.series,
                 "series_index": r.series_index,
                 "isbn": r.isbn,

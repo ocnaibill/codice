@@ -4,7 +4,7 @@ Uses mocked HTTP responses to test each provider's parsing.
 """
 import pytest
 from unittest.mock import patch, MagicMock
-from providers.base import MetadataRecord
+from providers.base import Credit, MetadataRecord
 from providers.google_books import GoogleBooksProvider
 from providers.openlibrary import OpenLibraryProvider
 from providers.comicvine import ComicVineProvider
@@ -144,3 +144,68 @@ class TestProviderRegistry:
         registry = ProviderRegistry()
         provider_names = [p.name for p in registry._providers['cbz']]
         assert 'ComicVine' in provider_names
+
+def _openlibrary(doc):
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"docs": [doc]}
+    with patch('providers.openlibrary.requests.get', return_value=response):
+        return OpenLibraryProvider().search("Good Omens")
+
+
+class TestCredits:
+    def test_open_library_reads_every_author_with_the_key_of_each(self):
+        result = _openlibrary({"title": "Good Omens", "author_name": ["Terry Pratchett", "Neil Gaiman"],
+                               "author_key": ["OL25712A", "OL53305A"]})
+        assert [c.name for c in result.credits] == ["Terry Pratchett", "Neil Gaiman"]
+        assert [c.ids for c in result.credits] == [{"openlibrary": "OL25712A"}, {"openlibrary": "OL53305A"}]
+        assert result.author == "Terry Pratchett"  # the first one stays what `author` has always been
+
+    def test_open_library_uses_no_key_when_the_lists_do_not_line_up(self):
+        # Which key belongs to which name is not known, so none is given: a wrong identifier is worse than none.
+        result = _openlibrary({"title": "T", "author_name": ["A One", "B Two"], "author_key": ["OL1A"]})
+        assert [c.name for c in result.credits] == ["A One", "B Two"]
+        assert all(c.ids == {} for c in result.credits)
+
+    def test_open_library_without_keys_still_names_the_authors(self):
+        result = _openlibrary({"title": "T", "author_name": ["A One"]})
+        assert result.credits == [Credit("A One")]
+
+    def test_open_library_with_a_blank_name_does_not_shift_the_keys_of_the_others(self):
+        result = _openlibrary({"title": "T", "author_name": ["A One", " ", "C Three"],
+                               "author_key": ["OL1A", "OL2A", "OL3A"]})
+        assert [c.name for c in result.credits] == ["A One", "C Three"]
+        assert [c.ids for c in result.credits] == [{}, {}]  # the lists no longer line up once a name is dropped
+
+    def test_open_library_without_authors_has_none(self):
+        result = _openlibrary({"title": "Anonymous"})
+        assert result.credits == [] and result.author is None
+
+    @patch('providers.google_books.requests.get')
+    def test_google_books_reads_every_author_and_no_identifier(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"items": [
+            {"volumeInfo": {"title": "T", "authors": ["A One", "  ", "B Two"]}}]}))
+        result = GoogleBooksProvider().search("T")
+        assert result.credits == [Credit("A One"), Credit("B Two")]
+        assert result.author == "A One"
+
+    @patch('providers.comicvine.requests.get')
+    def test_comicvine_keeps_the_role_and_id_of_each_credit(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"results": [{
+            "name": "Batman #1", "issue_number": "1", "volume": {"name": "Batman"},
+            "person_credits": [{"id": 11, "name": "Penciller Person", "role": "penciller"},
+                               {"id": 12, "name": "Writer Person", "role": "writer, inker"},
+                               {"name": "No Id", "role": ""}]}]}))
+        provider = ComicVineProvider()
+        provider.api_key = 'k'
+        provider.base_url = 'https://comicvine.gamespot.com/api'
+        result = provider.search("Batman")
+        assert [(c.name, c.role, c.ids) for c in result.credits] == [
+            ("Penciller Person", "penciller", {"comicvine": "11"}),
+            ("Writer Person", "writer, inker", {"comicvine": "12"}),
+            ("No Id", None, {})]
+
+    def test_a_credit_leaves_out_what_the_provider_did_not_say(self):
+        assert Credit("A One").as_dict() == {"name": "A One"}
+        assert Credit("A One", "writer", {"openlibrary": "OL1A"}).as_dict() == {
+            "name": "A One", "role": "writer", "ids": {"openlibrary": "OL1A"}}

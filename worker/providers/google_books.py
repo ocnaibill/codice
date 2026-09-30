@@ -6,7 +6,7 @@ Uses the Google Books v1 API to search for book metadata by title/ISBN.
 import os
 import requests
 from typing import Optional
-from .base import BaseProvider, MetadataRecord
+from .base import BaseProvider, Credit, MetadataRecord
 
 
 class GoogleBooksProvider(BaseProvider):
@@ -39,8 +39,9 @@ class GoogleBooksProvider(BaseProvider):
             record = MetadataRecord(source=self.name)
 
             record.title = volume.get('title')
-            authors = volume.get('authors', [])
-            record.author = authors[0] if authors else None
+            record.credits = [Credit(a.strip()) for a in (volume.get('authors') or [])
+                              if isinstance(a, str) and a.strip()]
+            record.author = record.credits[0].name if record.credits else None
             record.publisher = volume.get('publisher')
             record.language = volume.get('language')
             record.description = volume.get('description')

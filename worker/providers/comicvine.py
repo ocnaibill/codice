@@ -6,7 +6,7 @@ Requires COMICVINE_API_KEY environment variable.
 import os
 import requests
 from typing import Optional
-from .base import BaseProvider, MetadataRecord
+from .base import BaseProvider, Credit, MetadataRecord
 
 
 class ComicVineProvider(BaseProvider):
@@ -72,6 +72,10 @@ class ComicVineProvider(BaseProvider):
 
             # Author from person_credits (role=writer/penciller/artist)
             credits = issue.get('person_credits', []) or []
+            record.credits = [
+                Credit(c['name'].strip(), role=(c.get('role') or '').strip() or None,
+                       ids={'comicvine': str(c['id'])} if c.get('id') else {})
+                for c in credits if isinstance(c.get('name'), str) and c['name'].strip()]
             if credits:
                 # Prefer writer, then penciller, then artist
                 for role_priority in ('writer', 'penciller', 'artist'):

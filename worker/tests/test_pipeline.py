@@ -64,6 +64,28 @@ class TestPipeline:
         # Provenance says what was read from the file, and nothing from the provider.
         assert set(db.recorded_sources().values()) == {'file'}
 
+    def test_the_credits_of_a_provider_travel_as_evidence_of_the_suggestion(self):
+        import json
+        from providers.base import Credit
+        db = FakeDB()
+        credits = [Credit('Frank Herbert', ids={'openlibrary': 'OL79034A'}), Credit('John Schoenherr', 'illustrator')]
+        run(db, meta(), FakeProviders(record(credits=credits)))
+        rows = db.matching("INSERT INTO metadata_candidates")
+        assert rows
+        for q, p in rows:
+            evidence = json.loads(p[-1])
+            assert evidence['credits'] == [
+                {'name': 'Frank Herbert', 'ids': {'openlibrary': 'OL79034A'}},
+                {'name': 'John Schoenherr', 'role': 'illustrator'}]
+            assert evidence['query'] == 'Duna'
+
+    def test_a_record_without_credits_leaves_the_evidence_as_it_was(self):
+        import json
+        db = FakeDB()
+        run(db, meta(), FakeProviders(record()))
+        for q, p in db.matching("INSERT INTO metadata_candidates"):
+            assert 'credits' not in json.loads(p[-1])
+
     def test_a_provider_cover_is_used_only_when_the_file_has_none(self):
         no_cover = FakeDB()
         providers = FakeProviders(record())
