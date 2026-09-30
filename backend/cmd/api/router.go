@@ -58,6 +58,7 @@ func newRouter(d routerDeps) http.Handler {
 	usersHandler := &handlers.UsersHandler{DB: db, Disconnect: d.WS.DisconnectUser}
 	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
 	dupesHandler := &handlers.DuplicatesHandler{DB: db}
+	versionsHandler := &handlers.VersionsHandler{DB: db}
 	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
@@ -204,6 +205,10 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/admin/duplicates/scan", dupesHandler.Scan)
 	r.With(staff).Post("/admin/duplicates/{id}/dismiss", dupesHandler.Dismiss)
 	r.With(staff).Post("/admin/duplicates/{id}/link", dupesHandler.Link)
+	// Putting the files of one book under one work by hand, and taking them out again (#37).
+	r.With(staff).Post("/admin/works/{id}/join", versionsHandler.Join)
+	r.With(staff).Post("/admin/works/{id}/not-same-as", versionsHandler.NotTheSame)
+	r.With(staff).Post("/admin/editions/{id}/split", versionsHandler.Split)
 
 	// Accounts: owner and admins list and block (the policy decides who may act on
 	// whom); only the owner changes roles.

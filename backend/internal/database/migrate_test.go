@@ -2,6 +2,7 @@ package database_test
 
 import (
 	"database/sql"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -79,3 +80,43 @@ func TestMigrate_ConcurrentInstancesDoNotRace(t *testing.T) {
 		}
 	}
 }
+
+// Joining files by hand (migration 00025) can be rolled back and applied again, and what it added is
+// taken away without touching the pairs the system itself proposed.
+func TestMigrate_JoiningVersionsCanBeRolledBackAndReapplied(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	a, _, _ := testdb.AddWork(t, db, testdb.Work{Title: "A", Path: "a.epub", Format: "epub"})
+	b, _, _ := testdb.AddWork(t, db, testdb.Work{Title: "B", Path: "b.epub", Format: "epub"})
+	c, _, _ := testdb.AddWork(t, db, testdb.Work{Title: "C", Path: "c.epub", Format: "epub"})
+	for _, q := range []string{
+		`INSERT INTO duplicate_candidates (work_a, work_b, reason, state) VALUES (` + itoa(a) + `, ` + itoa(b) + `, 'manual', 'dismissed')`,
+		`INSERT INTO duplicate_candidates (work_a, work_b, reason, state) VALUES (` + itoa(a) + `, ` + itoa(c) + `, 'isbn', 'pending')`,
+		`UPDATE editions SET former_work_id = ` + itoa(b) + ` WHERE work_id = ` + itoa(a),
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if err := database.RollbackTo(db, 24); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	var n int
+	db.QueryRow(`SELECT count(*) FROM duplicate_candidates`).Scan(&n)
+	if n != 1 {
+		t.Errorf("after rolling back, pairs = %d, want only the one the system proposed", n)
+	}
+	if _, err := db.Exec(`INSERT INTO duplicate_candidates (work_a, work_b, reason) VALUES (` + itoa(b) + `, ` + itoa(c) + `, 'manual')`); err == nil {
+		t.Error("a manual pair was accepted by the schema before the migration")
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("reapply: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO duplicate_candidates (work_a, work_b, reason, state) VALUES (` + itoa(b) + `, ` + itoa(c) + `, 'manual', 'linked')`); err != nil {
+		t.Errorf("after reapplying: %v", err)
+	}
+}
+
+func itoa(n int) string { return fmt.Sprint(n) }

@@ -214,8 +214,12 @@ func TestLink_MergesEverythingThatBelongsToThePeopleAndKeepsTheBytes(t *testing.
 		t.Fatal(err)
 	}
 	// One work with two editions and two files; the PDF's own file keeps its id.
-	if e.scalar(`SELECT count(*) FROM works`) != "1" {
-		t.Error("the absorbed work is still there")
+	// The absorbed work is retired, not deleted: what it was can be put back by separating its editions.
+	if e.scalar(`SELECT count(*) FROM works WHERE retired_at IS NULL`) != "1" || e.scalar(`SELECT count(*) FROM works`) != "2" {
+		t.Error("the absorbed work should be retired, and only it")
+	}
+	if got := e.scalar(`SELECT retired_at IS NOT NULL FROM works WHERE id = $1`, pdf); got != "true" {
+		t.Error("the absorbed work is still active")
 	}
 	if got := e.scalar(`SELECT count(*) || '/' || count(*) FILTER (WHERE is_primary) FROM editions WHERE work_id = $1`, epub); got != "2/1" {
 		t.Errorf("editions/primary = %s, want 2/1 (the kept work's own edition stays primary)", got)
@@ -238,8 +242,11 @@ func TestLink_MergesEverythingThatBelongsToThePeopleAndKeepsTheBytes(t *testing.
 	if got := e.scalar(`SELECT details->>'absorbed' FROM audit_log WHERE action = 'duplicate.link'`); got != itoa(pdf) {
 		t.Errorf("audit = %q", got)
 	}
-	if e.scalar(`SELECT count(*) FROM duplicate_candidates`) != "0" {
+	if e.scalar(`SELECT count(*) FROM duplicate_candidates WHERE state = 'pending'`) != "0" {
 		t.Error("the resolved pair is still listed")
+	}
+	if got := e.scalar(`SELECT state FROM duplicate_candidates`); got != "linked" {
+		t.Errorf("the pair is remembered as %q, not as linked", got)
 	}
 }
 
