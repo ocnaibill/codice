@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -272,5 +273,54 @@ func TestCandidates_AcceptingATagTooLongForTheColumnStoresItShortened(t *testing
 	got := s.scalar(`SELECT string_agg(t.name, '|' ORDER BY t.name) FROM work_tags wt JOIN tags t ON t.id = wt.tag_id WHERE wt.work_id = $1`, id)
 	if got != "Sci-Fi|Translated by Ebook Translator" {
 		t.Errorf("tags = %q", got)
+	}
+}
+
+func TestCandidates_AnAuthorWrittenTheCataloguesWayIsStoredAsTheNameAndKeepsWhatWasWrittenAsAnAlias(t *testing.T) {
+	s := newCatalogStack(t)
+	id := s.addWork("dune.pdf", "", "d.pdf", "pdf")
+	cand := s.addCandidate(id, "author", "Herbert, Frank, author", "openlibrary")
+	if code := s.decide(id, cand, "accept"); code != 200 {
+		t.Fatalf("accept: %d", code)
+	}
+	if got := s.scalar(`SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id WHERE c.work_id = $1`, id); got != "Frank Herbert" {
+		t.Errorf("author = %q", got)
+	}
+	if got := s.scalar(`SELECT string_agg(a.alias, '|') FROM person_alias a JOIN person p ON p.id = a.person_id WHERE p.name = 'Frank Herbert'`); got != "Herbert, Frank, author" {
+		t.Errorf("aliases = %q", got)
+	}
+	// Accepting it again, or another work by the same author, reuses the person and adds nothing twice.
+	other := s.addWork("Outro", "", "o.pdf", "pdf")
+	c2 := s.addCandidate(other, "author", "Herbert, Frank, author", "google_books")
+	s.decide(other, c2, "accept")
+	if got := s.scalar(`SELECT count(*) FROM person WHERE name = 'Frank Herbert'`); got != "1" {
+		t.Errorf("persons = %s", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM person_alias`); got != "1" {
+		t.Errorf("aliases = %s", got)
+	}
+	// A name with no role is stored as it was written (no guess), with no alias.
+	third := s.addWork("Terceiro", "", "t.pdf", "pdf")
+	c3 := s.addCandidate(third, "author", "Herbert, Frank", "openlibrary")
+	s.decide(third, c3, "accept")
+	if got := s.scalar(`SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id WHERE c.work_id = $1`, third); got != "Herbert, Frank" {
+		t.Errorf("a name with no role = %q", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM person_alias`); got != "1" {
+		t.Errorf("an unchanged name got an alias: %s", got)
+	}
+}
+
+func TestCatalogSearch_FindsAWorkByWhatTheFileWroteForItsAuthor(t *testing.T) {
+	s := newCatalogStack(t)
+	id := s.addWork("Dune", "Frank Herbert", "d.pdf", "pdf")
+	s.exec(`INSERT INTO person_alias (person_id, alias) SELECT p.id, 'Herbert, Frank, author' FROM person p WHERE p.name = 'Frank Herbert'`)
+	for _, q := range []string{"Herbert, Frank", "frank herbert", "author"} {
+		if w := s.list(ana, "?search="+url.QueryEscape(q)); len(w.Data) != 1 || w.Data[0].ID != id {
+			t.Errorf("searching %q found %+v", q, w.Data)
+		}
+	}
+	if w := s.list(ana, "?search="+url.QueryEscape("Gibson")); len(w.Data) != 0 {
+		t.Errorf("found something that is not there: %+v", w.Data)
 	}
 }

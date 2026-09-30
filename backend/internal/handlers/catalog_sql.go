@@ -32,7 +32,8 @@ const authorLabel = `COALESCE(au.names, 'Unknown Author')`
 // work matches a LIKE pattern.
 func authorMatches(placeholder string) string {
 	return `EXISTS (SELECT 1 FROM work_contributors c JOIN person p ON p.id = c.person_id
-		WHERE c.work_id = w.id AND c.role = 'author' AND LOWER(p.name) LIKE LOWER(` + placeholder + `))`
+		WHERE c.work_id = w.id AND c.role = 'author' AND (LOWER(p.name) LIKE LOWER(` + placeholder + `)
+		   OR EXISTS (SELECT 1 FROM person_alias a WHERE a.person_id = p.id AND LOWER(a.alias) LIKE LOWER(` + placeholder + `))))`
 }
 
 // A search term is literal text. Escape LIKE's wildcards before surrounding it

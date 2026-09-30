@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ocnaibill/codice/backend/internal/database"
+	"github.com/ocnaibill/codice/backend/internal/people"
 	"github.com/ocnaibill/codice/backend/internal/testdb"
 )
 
@@ -120,3 +121,89 @@ func TestMigrate_JoiningVersionsCanBeRolledBackAndReapplied(t *testing.T) {
 }
 
 func itoa(n int) string { return fmt.Sprint(n) }
+
+// The names that were stored before #36 are fixed by the migration with the same rule as
+// people.NormalizeName, and what they were is kept as an alias.
+func TestMigrate_StoredAuthorNamesAreFixedLikePeopleNormalizeName(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.MigrateTo(db, 25); err != nil {
+		t.Fatal(err)
+	}
+	inputs := []string{
+		"Herbert, Frank, author", "Herbert, Frank, Author", "  Herbert ,  Frank ,  author  ", "Herbert, Frank, author.",
+		"García Márquez, Gabriel, autor", "Saint-Exupéry, Antoine de, auteur", "Schoenherr, John, illustrator",
+		"Macedo, Henrique de, tradutor", "Brown, Dan, éditeur", "Frank Herbert, author", "Frank Herbert (author)", "Herbert, Frank (author)",
+		"Frank Herbert", "Herbert, Frank", "Plato, Aristotle", "Frank Herbert, Brian Herbert",
+		"Herbert, Frank, Schoenherr, John, author", "King, Martin Luther, Jr., author", "author",
+	}
+	ids := map[string]int{}
+	for _, in := range inputs {
+		var id int
+		if err := db.QueryRow(`INSERT INTO person (name) VALUES ($1) RETURNING id`, in).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		ids[in] = id
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range inputs {
+		want, _ := people.NormalizeName(in)
+		if want == "Frank Herbert" && in != "Frank Herbert" {
+			continue // the spellings of a person that already exists go into it: checked below
+		}
+		var got string
+		if err := db.QueryRow(`SELECT name FROM person WHERE id = $1`, ids[in]).Scan(&got); err != nil {
+			t.Errorf("%q: the person is gone: %v", in, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("%q became %q, want %q", in, got, want)
+		}
+		var aliases int
+		db.QueryRow(`SELECT count(*) FROM person_alias WHERE person_id = $1 AND alias = $2`, ids[in], in).Scan(&aliases)
+		if (want != in) != (aliases == 1) {
+			t.Errorf("%q: alias count %d, name changed = %v", in, aliases, want != in)
+		}
+	}
+	// Eight inputs are Frank Herbert: one person, with every other spelling as an alias.
+	var people_, aliases int
+	db.QueryRow(`SELECT count(*) FROM person WHERE name = 'Frank Herbert'`).Scan(&people_)
+	if people_ != 1 {
+		t.Fatalf("persons called Frank Herbert = %d, want 1", people_)
+	}
+	db.QueryRow(`SELECT count(*) FROM person_alias a JOIN person p ON p.id = a.person_id WHERE p.name = 'Frank Herbert'`).Scan(&aliases)
+	if aliases != 7 { // the spellings that are not "Frank Herbert" itself
+		t.Errorf("aliases of Frank Herbert = %d, want 7", aliases)
+	}
+}
+
+func TestMigrate_AWorkThatHadBothSpellingsKeepsOneAuthor(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.MigrateTo(db, 25); err != nil {
+		t.Fatal(err)
+	}
+	a, _, _ := testdb.AddWork(t, db, testdb.Work{Title: "Dune", Path: "a.epub", Format: "epub", Author: "Herbert, Frank, author"})
+	b, _, _ := testdb.AddWork(t, db, testdb.Work{Title: "Duna", Path: "b.epub", Format: "epub", Author: "Frank Herbert"})
+	var kept int
+	db.QueryRow(`SELECT id FROM person WHERE name = 'Frank Herbert'`).Scan(&kept)
+	if _, err := db.Exec(`INSERT INTO work_contributors (work_id, person_id, role, position) SELECT $1, id, 'author', 1 FROM person WHERE name = 'Herbert, Frank, author'`, b); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	db.QueryRow(`SELECT count(*) FROM work_contributors WHERE work_id = $1 AND person_id = $2`, b, kept).Scan(&n)
+	if n != 1 {
+		t.Errorf("the work that had both spellings has %d author rows, want 1", n)
+	}
+	db.QueryRow(`SELECT count(*) FROM work_contributors WHERE work_id = $1 AND person_id = $2`, a, kept).Scan(&n)
+	if n != 1 {
+		t.Errorf("the other work's author = %d, want 1", n)
+	}
+	db.QueryRow(`SELECT count(*) FROM person WHERE name LIKE '%author%'`).Scan(&n)
+	if n != 0 {
+		t.Errorf("persons left with a role in their name: %d", n)
+	}
+}
