@@ -259,3 +259,43 @@ func TestMigrate_NamePartsAreLearnedOnlyFromWhatIsCertain(t *testing.T) {
 		}
 	}
 }
+
+func TestMigrate_PersonAuthorityRollsBackAndReappliesAndDeletingAPersonTakesItsKeys(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO person (id, name) VALUES (1, 'Frank Herbert'), (2, 'Frank P. Herbert')`,
+		`INSERT INTO person_authority (person_id, scheme, value) VALUES (1, 'openlibrary', 'OL1A'), (2, 'openlibrary', 'OL1A')`,
+		`INSERT INTO person_merge_candidates (person_a, person_b, reason, evidence) VALUES (1, 2, 'authority', '{"scheme":"openlibrary"}')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO person_merge_candidates (person_a, person_b, reason) VALUES (1, 3, 'guess')`); err == nil {
+		t.Error("the schema accepted a reason nobody defined")
+	}
+	if _, err := db.Exec(`DELETE FROM person WHERE id = 2`); err != nil {
+		t.Fatal(err)
+	}
+	var keys, pairs int
+	db.QueryRow(`SELECT count(*) FROM person_authority`).Scan(&keys)
+	db.QueryRow(`SELECT count(*) FROM person_merge_candidates`).Scan(&pairs)
+	if keys != 1 || pairs != 0 {
+		t.Errorf("after deleting a person: keys = %d, pairs = %d, want 1 and 0", keys, pairs)
+	}
+	if err := database.RollbackTo(db, 29); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	if tableExists(t, db, "person_authority") {
+		t.Error("the table is still there after rolling back")
+	}
+	if _, err := db.Exec(`SELECT reason FROM person_merge_candidates`); err == nil {
+		t.Error("the reason column is still there after rolling back")
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("reapply: %v", err)
+	}
+}

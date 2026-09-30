@@ -347,8 +347,9 @@ func (h *LibraryHandler) decideCandidate(w http.ResponseWriter, r *http.Request,
 	}
 
 	var field, value, source string
-	err = tx.QueryRow(`SELECT field, value, source FROM metadata_candidates
-		WHERE id = $1 AND work_id = $2 AND state = 'pending' FOR UPDATE`, candID, workID).Scan(&field, &value, &source)
+	var evidence []byte
+	err = tx.QueryRow(`SELECT field, value, source, evidence FROM metadata_candidates
+		WHERE id = $1 AND work_id = $2 AND state = 'pending' FOR UPDATE`, candID, workID).Scan(&field, &value, &source, &evidence)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Candidate not found", http.StatusNotFound)
 		return
@@ -408,6 +409,12 @@ func (h *LibraryHandler) decideCandidate(w http.ResponseWriter, r *http.Request,
 				return
 			}
 			details["changes"] = auditDetails(changes)
+			if field == "author" {
+				if err := recordAuthorAuthority(r.Context(), tx, value, source, evidence); err != nil {
+					http.Error(w, "Error recording author identity", http.StatusInternalServerError)
+					return
+				}
+			}
 			// The field is settled: dismiss the other proposals for it.
 			if _, err := tx.Exec(`UPDATE metadata_candidates SET state = 'rejected', decided_at = now()
 				WHERE work_id = $1 AND field = $2 AND state = 'pending' AND id <> $3`, workID, field, candID); err != nil {
@@ -486,6 +493,21 @@ func addTags(tx *sql.Tx, workID int, names []string) error {
 const firstAuthorSQL = `
 	SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id
 	WHERE c.work_id = w.id AND c.role = 'author' ORDER BY c.position, p.name LIMIT 1`
+
+// recordAuthorAuthority keeps, for the person an accepted author stands for, the identifiers the source gave
+// that author in the record the suggestion came from. A human accepting the name is what ties the identifier
+// to the person; a name the record does not credit, or credits twice, brings none.
+func recordAuthorAuthority(ctx context.Context, tx *sql.Tx, name, source string, evidence []byte) error {
+	ids := people.IDsFor(evidence, name)
+	if len(ids) == 0 {
+		return nil
+	}
+	personID, err := people.Resolve(ctx, tx, name)
+	if err != nil {
+		return err
+	}
+	return people.RecordAuthority(ctx, tx, personID, source, ids)
+}
 
 // setFirstAuthor makes name the work's first author, creating the person if needed. The person goes by
 // the name people say ("Herbert, Frank, author" is Frank Herbert) and what was written is kept as an
