@@ -2,8 +2,9 @@ import React, { useRef, useState, useEffect } from 'react';
 import { authenticatedUrl } from '../../../../lib/api';
 import { markActivity } from '../../activity';
 import { completionFor } from '../../progressRules';
+import { audioPlaceProblem } from '../../placeCheck';
 
-export default function AudioViewer({ fileUrl, onProgress, initialProgress }) {
+export default function AudioViewer({ fileUrl, onProgress, initialProgress, onPlaceFailed }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -59,7 +60,10 @@ export default function AudioViewer({ fileUrl, onProgress, initialProgress }) {
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
       if (initialProgress) {
-        audioRef.current.currentTime = parseFloat(initialProgress) || 0;
+        // A point past the end is said, not hidden by starting from the beginning.
+        const problem = audioPlaceProblem(initialProgress, audioRef.current.duration);
+        if (problem) onPlaceFailed?.({ reason: problem });
+        else audioRef.current.currentTime = parseFloat(initialProgress) || 0;
       }
     }
   };

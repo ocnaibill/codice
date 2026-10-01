@@ -35,14 +35,18 @@ export const useGlobalStore = create((set) => ({
   // The sheet of a work opens over whatever is on screen, the notes included.
   openWork: (id) => set({ sheetWorkId: id, activeBookId: null, activeFileId: null, adminOpen: false }),
   closeSheet: () => set({ sheetWorkId: null }),
-  openBook: (id, fileId = null, { fromStart = false, locator = null } = {}) =>
+  // `context` says what asked for the place ({ quote } of a note, or of a search hit), for when the place cannot be
+  // opened and the reader has to say what it was.
+  openBook: (id, fileId = null, { fromStart = false, locator = null, context = null } = {}) =>
     set((state) => ({
       activeBookId: id,
       activeFileId: fileId,
       fromStart,
-      seek: locator ? { locator, n: (state.seek?.n ?? 0) + 1 } : null,
+      seek: locator ? { locator, context, n: (state.seek?.n ?? 0) + 1 } : null,
       sheetWorkId: null,
     })),
+  // The place asked for could not be opened: open at the saved position instead.
+  clearSeek: () => set({ seek: null }),
   // Closing the book goes back to what it was opened from, the screen of every note included.
   closeBook: () => set({ activeBookId: null, activeFileId: null, fromStart: false, seek: null, sheetWorkId: null, adminOpen: false }),
   adminOpen: false,

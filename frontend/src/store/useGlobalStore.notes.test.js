@@ -39,3 +39,23 @@ describe('the screen of every note (#13)', () => {
     expect(state()).toMatchObject({ activeBookId: null, notesOpen: false });
   });
 });
+
+describe('the place a book is opened at (#14)', () => {
+  it('keeps what asked for it, for when the place cannot be opened', () => {
+    state().openBook(3, 30, { locator: { type: 'pdf', page: 11 }, context: { kind: 'note', quote: 'Fear' } });
+    expect(state().seek).toMatchObject({ locator: { type: 'pdf', page: 11 }, context: { kind: 'note', quote: 'Fear' }, n: 1 });
+    state().openBook(3, 30, { locator: { type: 'pdf', page: 11 } });
+    expect(state().seek).toMatchObject({ context: null, n: 2 });
+  });
+
+  it('has no place when none was asked for', () => {
+    state().openBook(3, 30, { context: { kind: 'note' } });
+    expect(state().seek).toBeNull();
+  });
+
+  it('forgets the place asked for, to open at the saved position instead, and leaves the book open', () => {
+    state().openBook(3, 30, { locator: { type: 'pdf', page: 11 } });
+    state().clearSeek();
+    expect(state()).toMatchObject({ seek: null, activeBookId: 3, activeFileId: 30 });
+  });
+});
