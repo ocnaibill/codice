@@ -6,6 +6,7 @@ Uses the Google Books v1 API to search for book metadata by title/ISBN.
 import os
 import requests
 from typing import Optional
+from .gate import scrub
 from .base import BaseProvider, Credit, MetadataRecord
 
 
@@ -72,5 +73,5 @@ class GoogleBooksProvider(BaseProvider):
             return record
 
         except Exception as e:
-            print(f"   ⚠️ Google Books API error: {e}")
+            print(f"   ⚠️ Google Books API error: {scrub(e, self.api_key)}")
             return None

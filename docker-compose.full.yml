@@ -127,6 +127,10 @@ services:
       # How old the worker's heartbeat may be before it counts as unhealthy. Empty means the
       # default, derived from the poll and lease times (90 s with the defaults).
       WORKER_HEALTH_MAX_AGE: ${WORKER_HEALTH_MAX_AGE:-}
+      # API keys of the external metadata providers (#68). Empty means none: the provider is then limited (Google
+      # Books) or cannot work (ComicVine). They only matter once the owner turns the provider on in the app.
+      GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY:-}
+      COMICVINE_API_KEY: ${COMICVINE_API_KEY:-}
     # The healthcheck itself is in the image (worker/Dockerfile).
     volumes:
       - codice_storage:/app/storage

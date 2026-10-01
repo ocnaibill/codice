@@ -6,6 +6,7 @@ Requires COMICVINE_API_KEY environment variable.
 import os
 import requests
 from typing import Optional
+from .gate import scrub
 from .base import BaseProvider, Credit, MetadataRecord
 
 
@@ -31,7 +32,6 @@ class ComicVineProvider(BaseProvider):
             return None
 
         print(f"   🔎 ComicVine: searching for '{query}'")
-        print(f"   🔑 ComicVine: using API key {self.api_key[:8]}...{self.api_key[-4:]}")
 
         try:
             params = {
@@ -45,7 +45,7 @@ class ComicVineProvider(BaseProvider):
             resp = requests.get(f'{self.base_url}/search', params=params, headers=headers, timeout=10)
             print(f"   🌐 ComicVine: HTTP {resp.status_code}")
             if resp.status_code != 200:
-                print(f"   ⚠️ ComicVine: non-200 response: {resp.text[:200]}")
+                print(f"   ⚠️ ComicVine: non-200 response: {scrub(resp.text[:200], self.api_key)}")
                 return None
 
             data = resp.json()
@@ -105,5 +105,5 @@ class ComicVineProvider(BaseProvider):
             return record
 
         except Exception as e:
-            print(f"   ⚠️ ComicVine API error: {e}")
+            print(f"   ⚠️ ComicVine API error: {scrub(e, self.api_key)}")
             return None

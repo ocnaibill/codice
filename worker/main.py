@@ -11,7 +11,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 from extractors import EpubExtractor, PdfExtractor, CbzExtractor, CbrExtractor, TxtExtractor, AudiobookExtractor, MobiExtractor
 from extractors.base import BaseExtractor
 from providers import ProviderRegistry
-from providers.gate import db_gate
+from providers.gate import db_gate, report_keys
 from db import CodiceDatabase
 from analyzer import Analyzer, MediaStatus
 from pipeline import analyze_file, ensure_file
@@ -194,6 +194,7 @@ def build_runner(db, client, heartbeat=None):
 
 def listen_for_tasks():
     db = CodiceDatabase()
+    report_keys(db)  # which API keys this worker has: the administration says so before a provider is turned on
     client = connect_redis()
     heartbeat = Heartbeat()
     runner = build_runner(db, client, heartbeat)

@@ -326,3 +326,96 @@ class TestTheGate:
         db.value = {'openlibrary': False}
         assert gate('openlibrary') is False
         assert db.reads == 2
+
+
+class FakeStateDB:
+    def __init__(self, boom=False):
+        self.boom, self.statements = boom, []
+
+    def execute(self, query, params=()):
+        if self.boom:
+            raise RuntimeError('database down')
+        self.statements.append((' '.join(query.split()), params))
+
+
+class TestApiKeys:
+    def test_a_key_is_configured_only_when_it_is_set_to_something(self):
+        from providers.gate import key_configured
+        assert key_configured('comicvine', {'COMICVINE_API_KEY': 'abc'}) is True
+        for value in ('', '   ', None):
+            assert key_configured('comicvine', {'COMICVINE_API_KEY': value}) is False
+        assert key_configured('comicvine', {}) is False
+        assert key_configured('google_books', {'COMICVINE_API_KEY': 'abc'}) is False  # each its own variable
+        assert key_configured('google_books', {'GOOGLE_BOOKS_API_KEY': 'k'}) is True
+
+    def test_the_worker_tells_whether_each_key_is_set_and_never_the_key(self):
+        import json
+        from providers.gate import report_keys
+        db = FakeStateDB()
+        state = report_keys(db, {'COMICVINE_API_KEY': 'super-secret-value', 'GOOGLE_BOOKS_API_KEY': ''})
+        assert state == {'google_books': False, 'comicvine': True}
+        (query, params), = db.statements
+        assert 'INSERT INTO settings' in query and 'ON CONFLICT (key) DO UPDATE' in query
+        assert params[0] == 'metadata.providers.keys'
+        assert json.loads(params[1]) == {'google_books': False, 'comicvine': True}
+        assert 'super-secret-value' not in str(db.statements)
+
+    def test_a_worker_that_does_not_analyse_files_says_nothing_so_it_cannot_overwrite_the_one_that_does(self):
+        from providers.gate import asks_providers, report_keys
+        db = FakeStateDB()
+        assert report_keys(db, {'WORKER_JOB_TYPES': 'embed_text'}) is None
+        assert report_keys(db, {'WORKER_JOB_TYPES': 'extract_text, embed_text'}) is None
+        assert db.statements == []
+        for env in ({}, {'WORKER_JOB_TYPES': ''}, {'WORKER_JOB_TYPES': 'ingest'}, {'WORKER_JOB_TYPES': 'embed_text, ingest'}):
+            assert asks_providers(env) is True, env
+        assert report_keys(db, {'WORKER_JOB_TYPES': 'ingest', 'GOOGLE_BOOKS_API_KEY': 'k'}) == {'google_books': True, 'comicvine': False}
+
+    def test_failing_to_tell_never_stops_the_worker(self):
+        from providers.gate import report_keys
+        assert report_keys(FakeStateDB(boom=True), {}) == {'google_books': False, 'comicvine': False}
+
+    def test_the_worker_tells_it_at_start(self):
+        from tests.test_text_job import load_main
+        main = load_main()
+        told = []
+
+        class Stop(Exception):
+            pass
+
+        def boom(*args, **kwargs):
+            raise Stop()
+
+        with patch.object(main, 'CodiceDatabase', lambda: 'db'), patch.object(main, 'report_keys', lambda db: told.append(db)), \
+                patch.object(main, 'connect_redis', boom):
+            with pytest.raises(Stop):
+                main.listen_for_tasks()
+        assert told == ['db']
+
+    def test_scrub_takes_the_secret_out_of_a_text_and_leaves_the_rest(self):
+        from providers.gate import scrub
+        assert scrub('GET /v1?q=Duna&key=abc123 failed', 'abc123') == 'GET /v1?q=Duna&key=*** failed'
+        assert scrub('nothing here', 'abc123', '', None, '  ') == 'nothing here'
+        assert scrub(ValueError('url=k1&x=k2'), 'k1', 'k2') == 'url=***&x=***'
+
+    @patch('providers.comicvine.requests.get')
+    def test_comicvine_never_writes_any_part_of_its_key_to_the_log(self, mock_get, capsys):
+        mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"results": []}))
+        provider = ComicVineProvider()
+        provider.api_key = 'SECRETKEY-1234567890'
+        provider.search('Batman')
+        mock_get.side_effect = RuntimeError('Max retries url: /api/search?api_key=SECRETKEY-1234567890&query=Batman')
+        provider.search('Batman')
+        mock_get.side_effect = None
+        mock_get.return_value = MagicMock(status_code=401, text='bad key SECRETKEY-1234567890')
+        provider.search('Batman')
+        out = capsys.readouterr().out
+        assert 'SECRET' not in out and '7890' not in out and 'ComicVine API error' in out and 'non-200' in out
+
+    @patch('providers.google_books.requests.get')
+    def test_google_books_never_writes_its_key_to_the_log(self, mock_get, capsys):
+        mock_get.side_effect = RuntimeError('Max retries url: /v1/volumes?q=Duna&key=SECRETKEY-1234567890')
+        provider = GoogleBooksProvider()
+        provider.api_key = 'SECRETKEY-1234567890'
+        provider.search('Duna')
+        out = capsys.readouterr().out
+        assert 'SECRET' not in out and '7890' not in out and 'Google Books API error' in out and 'key=***' in out
