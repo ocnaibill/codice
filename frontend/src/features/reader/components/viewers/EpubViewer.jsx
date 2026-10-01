@@ -3,6 +3,7 @@ import ePub from 'epubjs';
 import { api } from '../../../../lib/api';
 import { buildEpubProgress } from '../../epubProgress';
 import { applyEpubTheme } from '../../epubThemes';
+import { epubPlaceProblem } from '../../placeCheck';
 
 /**
  * EPUB Viewer using epubjs directly (not react-reader).
@@ -12,7 +13,7 @@ import { applyEpubTheme } from '../../epubThemes';
  * displaying sections whose TOC-hrefs don't match the OPF-relative spine
  * hrefs.  By driving epubjs ourselves we side-step all of that.
  */
-export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
+export default function EpubViewer({ fileUrl, onProgress, initialProgress, locator, onPlaceFailed }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [toc, setToc] = useState([]);
@@ -141,26 +142,40 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress }) {
           });
 
         // 9. Display the initial location
-        //    - CFI strings ("epubcfi(...)") go straight to display()
-        //    - Raw hrefs from old progress data need resolving through
-        //      the spine because TOC hrefs and spine hrefs may differ
+        //    - CFI strings ("epubcfi(...)") are opened where they point, if the book still has that chapter
+        //      and it is still the one the place was saved in
+        //    - Raw hrefs from old progress data need resolving through the spine because TOC hrefs and
+        //      spine hrefs may differ
         //    - No progress → display() with no args = first linear item
+        //    A place that cannot be opened is said (onPlaceFailed), and the start is shown: never in silence.
+        const failPlace = async (reason) => {
+          console.warn('[EpubViewer] Could not open the place asked for:', reason);
+          await rendition.display();
+          onPlaceFailed?.({ reason });
+        };
         try {
           if (initialProgress && initialProgress.startsWith('epubcfi(')) {
-            console.log('[EpubViewer] Displaying CFI:', initialProgress);
-            await rendition.display(initialProgress);
+            let section = null;
+            try {
+              section = book.spine.get(initialProgress);
+            } catch {
+              section = null;
+            }
+            const problem = epubPlaceProblem({ section, locator });
+            if (problem) await failPlace(problem);
+            else {
+              try {
+                await rendition.display(initialProgress);
+              } catch {
+                await failPlace('Não foi possível abrir este ponto no EPUB: o arquivo pode ter mudado.');
+              }
+            }
           } else if (initialProgress) {
             // Legacy raw-href progress – resolve to spine
             const section = resolveToSpine(book, initialProgress);
-            if (section) {
-              console.log('[EpubViewer] Resolved progress to spine href:', section.href);
-              await rendition.display(section.href);
-            } else {
-              console.warn('[EpubViewer] Could not resolve saved progress, showing first page');
-              await rendition.display();
-            }
+            if (section) await rendition.display(section.href);
+            else await failPlace('O capítulo onde o ponto estava não existe mais neste EPUB: o arquivo pode ter mudado.');
           } else {
-            console.log('[EpubViewer] No saved progress, displaying first section');
             await rendition.display();
           }
         } catch (displayErr) {

@@ -1,3 +1,4 @@
+import { imagePlaceProblem } from '../../placeCheck';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { authenticatedUrl } from '../../../../lib/api';
 import { completionFor } from '../../progressRules';
@@ -8,7 +9,7 @@ const PRELOAD_COUNT = 2;
 // Loading timeout per page in ms
 const PAGE_TIMEOUT = 30000;
 
-export default function MangaViewer({ fileUrl, onProgress, initialProgress, workId }) {
+export default function MangaViewer({ fileUrl, onProgress, initialProgress, workId, onPlaceFailed }) {
   const [pages, setPages] = useState([]);
   const [currentPage, setCurrentPage] = useState(
     initialProgress ? parseInt(initialProgress, 10) || 0 : 0
@@ -24,6 +25,9 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
   const [pageStatus, setPageStatus] = useState({}); // { [pageNum]: 'loading'|'loaded'|'error' }
   const timeoutRef = useRef(null);
   const containerRef = useRef(null);
+  // Read when the page list arrives, not reasons to ask for it again.
+  const placeRef = useRef({ initialProgress, onPlaceFailed });
+  placeRef.current = { initialProgress, onPlaceFailed };
 
   // Fetch page list from backend
   useEffect(() => {
@@ -50,6 +54,12 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
         if (!cancelled) {
           setPages(data);
           setLoading(false);
+          // An image the file does not have is said, not hidden by showing another one.
+          const problem = imagePlaceProblem(placeRef.current.initialProgress, data.length);
+          if (problem) {
+            setCurrentPage(0);
+            placeRef.current.onPlaceFailed?.({ reason: problem });
+          }
         }
       } catch (err) {
         if (!cancelled) {

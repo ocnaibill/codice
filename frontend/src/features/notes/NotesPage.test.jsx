@@ -212,7 +212,7 @@ describe('NotesPage: every note of the person (#13)', () => {
   it('reopens the file at the place of the note', async () => {
     await open([note(1, { fileId: 70, workId: 7, locator: { type: 'pdf', page: 11 } })]);
     await view.click(view.button('Abrir neste ponto'));
-    expect(openBook).toHaveBeenCalledWith(7, 70, { locator: { type: 'pdf', page: 11 } });
+    expect(openBook).toHaveBeenCalledWith(7, 70, { locator: { type: 'pdf', page: 11 }, context: { kind: 'note', quote: 'Trecho 1' } });
   });
 
   it('exports what the filters leave, after review', async () => {

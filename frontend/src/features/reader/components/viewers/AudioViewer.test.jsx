@@ -69,3 +69,44 @@ describe('AudioViewer', () => {
     expect(onProgress.mock.calls.at(-1)[1].completed).toBe(true);
   });
 });
+
+describe('AudioViewer: a point that is not there (#14)', () => {
+  async function open(initialProgress, onPlaceFailed) {
+    await act(async () => { root.render(<AudioViewer fileUrl="/a.mp3" onProgress={vi.fn()} initialProgress={initialProgress} onPlaceFailed={onPlaceFailed} />); });
+    const audio = container.querySelector('audio');
+    Object.defineProperty(audio, 'duration', { value: 100, configurable: true });
+    Object.defineProperty(audio, 'currentTime', { value: 0, configurable: true, writable: true });
+    await act(async () => { audio.dispatchEvent(new Event('loadedmetadata')); });
+    return audio;
+  }
+
+  it('goes to the point saved when it is inside the audio, and says nothing', async () => {
+    const onPlaceFailed = vi.fn();
+    const audio = await open('42.5', onPlaceFailed);
+    expect(audio.currentTime).toBe(42.5);
+    expect(onPlaceFailed).not.toHaveBeenCalled();
+  });
+
+  it('stays at the start and says so when the point is past the end', async () => {
+    const onPlaceFailed = vi.fn();
+    const audio = await open('500', onPlaceFailed);
+    expect(audio.currentTime).toBe(0);
+    expect(onPlaceFailed).toHaveBeenCalledWith({ reason: 'O ponto passa do fim do áudio.' });
+  });
+
+  it('says so when the point is not a time, and works with nobody listening', async () => {
+    const onPlaceFailed = vi.fn();
+    await open('abc', onPlaceFailed);
+    expect(onPlaceFailed).toHaveBeenCalledWith({ reason: 'O ponto pedido não é válido.' });
+    act(() => root.unmount());
+    root = createRoot(container);
+    const audio = await open('500', undefined);
+    expect(audio.currentTime).toBe(0);
+  });
+
+  it('asks for nothing when nothing was asked for', async () => {
+    const onPlaceFailed = vi.fn();
+    await open(undefined, onPlaceFailed);
+    expect(onPlaceFailed).not.toHaveBeenCalled();
+  });
+});

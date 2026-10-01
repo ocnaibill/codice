@@ -4,7 +4,7 @@ import { useWork } from '../api/useWork';
 import { useReadingHeartbeat } from '../api/useReadingHeartbeat';
 import { useFavoriteToggle } from '../api/useFavoriteToggle';
 import { useFileProgress } from '../api/useFileProgress';
-import { findFile, languageName, positionFromLocator } from '../files';
+import { findFile, languageName, placeLabel, positionFromLocator } from '../files';
 import { otherVersionsInProgress } from '../finishPrompt';
 import { useSetWorkFinished } from '../api/useCompletion';
 import { useAcceptEquivalentPosition, useEquivalentPosition } from '../api/useEquivalentPosition';
@@ -12,6 +12,7 @@ import { api } from '../../../lib/api';
 import { NotesPanel } from './NotesPanel';
 import { FinishWorkPrompt } from './FinishWorkPrompt';
 import { EquivalentPositionPrompt } from './EquivalentPositionPrompt';
+import { PlaceNotice } from './PlaceNotice';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { authenticatedUrl } from '../../../lib/api';
 
@@ -40,6 +41,7 @@ export function Reader() {
   const [showNotes, setShowNotes] = useState(false);
   const openBook = useGlobalStore((state) => state.openBook);
   const seek = useGlobalStore((state) => state.seek);
+  const clearSeek = useGlobalStore((state) => state.clearSeek);
 
   // Where the person is in this file, as a locator: what the viewers last reported, or the saved
   // position until they report one. A note or bookmark made now is tied to it.
@@ -48,6 +50,30 @@ export function Reader() {
     currentLocator.current = fromStart ? null : (seek?.locator ?? progress.data?.locator ?? null);
   }, [file?.id, fromStart, seek, progress.data]);
   const saveProgress = progress.save;
+
+  // A place that cannot be opened is said, not hidden (RF-014). When it was asked for (a note, a search hit), the
+  // reader goes on to the position the person had saved and says what the place was; the person may then stay or
+  // open from the start. When it is the saved position itself, the start is what is shown, and that is said.
+  const [placeNotice, setPlaceNotice] = useState(null);
+  const askedRef = useRef(null);
+  askedRef.current = { seek, saved: progress.data?.locator ?? null };
+  const onPlaceFailed = useCallback(
+    ({ reason }) => {
+      const { seek: asked, saved } = askedRef.current;
+      if (asked) {
+        setPlaceNotice({ kind: asked.context?.kind ?? 'note', label: placeLabel(asked.locator), reason, quote: asked.context?.quote ?? '' });
+        clearSeek(); // the viewer opens again, at the saved position
+      } else {
+        setPlaceNotice((current) =>
+          current
+            ? { ...current, also: `A posição que você tinha salva também não pôde ser aberta (${reason}). Abrimos do começo.` }
+            : { kind: 'saved', label: placeLabel(saved), reason: `${reason} Abrimos do começo.` }
+        );
+      }
+    },
+    [clearSeek]
+  );
+  useEffect(() => setPlaceNotice(null), [file?.id]);
 
   // When this version is finished and another is still in progress, ask once whether the whole
   // work is finished (DEC-080). It is asked when the file goes from not finished to finished, not
@@ -126,26 +152,27 @@ export function Reader() {
   // understand it as text (a CFI, a page number, seconds): the server keeps that form in sync.
   const initialProgress = seek ? positionFromLocator(seek.locator) : fromStart ? undefined : progress.data?.position || undefined;
 
+  const place = { onPlaceFailed, locator: seek ? seek.locator : fromStart ? null : progress.data?.locator ?? null };
   const renderViewer = () => {
     switch (format) {
       case 'pdf':
-        return <PdfViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} />;
+        return <PdfViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} {...place} />;
       case 'epub':
-        return <EpubViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} />;
+        return <EpubViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} {...place} />;
       case 'cbz':
       case 'cbr':
-        return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} />;
+        return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} {...place} />;
       case 'txt':
-        return <TextViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} />;
+        return <TextViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} {...place} />;
       case 'md':
-        return <MarkdownViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} />;
+        return <MarkdownViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} {...place} />;
       case 'mp3':
       case 'm4a':
       case 'm4b':
       case 'ogg':
       case 'wav':
       case 'flac':
-        return <AudioViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} />;
+        return <AudioViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} {...place} />;
       case 'mobi':
       case 'azw':
       case 'azw3':
@@ -227,7 +254,7 @@ export function Reader() {
           getLocator={() => currentLocator.current}
           onOpenAt={(note) => {
             setShowNotes(false);
-            openBook(book.id, note.fileId, { locator: note.locator });
+            openBook(book.id, note.fileId, { locator: note.locator, context: { kind: 'note', quote: note.quote } });
           }}
           onClose={() => setShowNotes(false)}
         />
@@ -247,7 +274,18 @@ export function Reader() {
               method: candidate.method, confidence: candidate.confidence, precision: candidate.precision,
             });
             setEquivalentDeclined(true);
-            openBook(workId, fileId, { locator: candidate.locator });
+            openBook(workId, fileId, { locator: candidate.locator, context: { kind: 'equivalent' } });
+          }}
+        />
+      )}
+
+      {placeNotice && (
+        <PlaceNotice
+          notice={placeNotice}
+          onStay={() => setPlaceNotice(null)}
+          onFromStart={() => {
+            setPlaceNotice(null);
+            openBook(workId, fileId, { fromStart: true });
           }}
         />
       )}
@@ -266,7 +304,7 @@ export function Reader() {
       <div className="min-h-0 flex-1 overflow-y-auto bg-[#eae5dc]">
         <Suspense fallback={<div className="flex justify-center p-10 text-sm text-ink-soft animate-pulse">Preparando o leitor…</div>}>
           <ErrorBoundary>
-            <React.Fragment key={`${file.id}-${seek?.n ?? 0}`}>{renderViewer()}</React.Fragment>
+            <React.Fragment key={`${file.id}-${seek?.n ?? 0}-${fromStart}`}>{renderViewer()}</React.Fragment>
           </ErrorBoundary>
         </Suspense>
       </div>

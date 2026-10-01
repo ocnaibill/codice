@@ -106,7 +106,7 @@ export function SearchPage({ query }) {
               <p className="text-xs text-ink-soft">{hit.format?.toUpperCase()}{hit.language ? ` · ${hit.language.toUpperCase()}` : ''}{hit.section ? ` · ${hit.section}` : ''} · {hit.origin === 'ocr' ? 'OCR' : 'Texto do arquivo'}</p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-ink"><HighlightedSnippet text={hit.snippet} matches={hit.matches} /></p>
               <div className="mt-2 flex gap-4 text-xs text-brand">
-                <button type="button" onClick={() => openBook(hit.workId, hit.fileId, { locator: hit.locator })} className="hover:underline">Abrir neste ponto</button>
+                <button type="button" onClick={() => openBook(hit.workId, hit.fileId, { locator: hit.locator, context: { kind: 'search', quote: hit.snippet || '' } })} className="hover:underline">Abrir neste ponto</button>
                 {!scope && <button type="button" onClick={() => chooseScope(hit)} className="hover:underline">Buscar só nesta obra</button>}
               </div>
             </li>)}</ul>}
@@ -124,7 +124,7 @@ export function SearchPage({ query }) {
               {note.body && <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{note.body}</p>}
               {note.tags?.length > 0 && <p className="mt-1 text-xs text-ink-soft">{note.tags.join(' · ')}</p>}
               {note.sourceAvailable && note.fileAvailable && note.fileId && note.locator
-                ? <button type="button" onClick={() => openBook(note.workId, note.fileId, { locator: note.locator })} className="mt-2 text-xs text-brand hover:underline">Abrir neste ponto</button>
+                ? <button type="button" onClick={() => openBook(note.workId, note.fileId, { locator: note.locator, context: { kind: 'note', quote: note.quote } })} className="mt-2 text-xs text-brand hover:underline">Abrir neste ponto</button>
                 : <p className="mt-2 text-xs text-ink-soft">{note.sourceAvailable ? 'Anotação sem posição para abrir' : 'Fonte indisponível'}</p>}
             </li>)}</ul>}
       {active && <Pager page={notesPage} hasMore={(notesPage + 1) * PAGE_SIZE < (notes.data?.total ?? 0)} onPageChange={setNotesPage} />}

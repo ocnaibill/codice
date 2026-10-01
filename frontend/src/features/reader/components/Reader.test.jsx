@@ -181,6 +181,7 @@ describe('Reader: offering an equivalent position in another version (RF-042)', 
     expect(state.activeBookId).toBe(7);
     expect(state.activeFileId).toBe(10);
     expect(state.seek?.locator).toEqual({ type: 'epub', href: 'c3.xhtml' });
+    expect(state.seek?.context).toEqual({ kind: 'equivalent' }); // so that a place that cannot be opened says what it was
   });
 
   it('declining leaves the file at its own saved position, with no acceptance recorded', async () => {

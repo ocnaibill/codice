@@ -55,7 +55,15 @@ it('renders catalog, passage and personal notes safely, and opens the exact file
   expect(container.querySelector('[aria-label="Anotações"]').textContent).toContain('<script>não executar</script>');
   const passage = container.querySelector('[aria-label="Passagens"]');
   await act(async () => passage.querySelector('button').click());
-  expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 10, seek: { locator } });
+  expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 10, seek: { locator, context: { kind: 'search', quote: 'O 💫 universo <script>!' } } });
+});
+
+it('says, when the reader cannot open the place, that it was a search hit or a note', async () => {
+  await act(async () => root.render(<QueryClientProvider client={client}><SearchPage query="universo" /></QueryClientProvider>));
+  await flush();
+  const notes = container.querySelector('[aria-label="Anotações"]');
+  await act(async () => [...notes.querySelectorAll('button')].find((b) => b.textContent === 'Abrir neste ponto').click());
+  expect(useGlobalStore.getState().seek).toMatchObject({ locator, context: { kind: 'note', quote: 'universo' } });
 });
 
 it('limits passages and notes to a selected work and reports files without searchable text', async () => {

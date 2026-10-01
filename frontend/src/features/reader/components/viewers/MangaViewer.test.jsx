@@ -67,3 +67,30 @@ describe('MangaViewer reading mode', () => {
     expect(backExtras.completed).toBeUndefined(); // going back says nothing about finishing
   });
 });
+
+describe('MangaViewer: an image that is not there (#14)', () => {
+  it('says so, and shows the first image, when the place asked for is past the last', async () => {
+    const onPlaceFailed = vi.fn();
+    await open({ initialProgress: '9', onPlaceFailed });
+    expect(onPlaceFailed).toHaveBeenCalledTimes(1);
+    expect(onPlaceFailed).toHaveBeenCalledWith({ reason: 'A imagem 10 não existe: o arquivo tem 3 imagens.' });
+    expect(container.textContent).toContain('1 / 3');
+  });
+
+  it('opens the image that was asked for when it is there, and says nothing', async () => {
+    const onPlaceFailed = vi.fn();
+    await open({ initialProgress: '2', onPlaceFailed });
+    expect(onPlaceFailed).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('3 / 3');
+  });
+
+  it('says nothing when nothing was asked for, and works with nobody listening', async () => {
+    const onPlaceFailed = vi.fn();
+    await open({ onPlaceFailed });
+    expect(onPlaceFailed).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ initialProgress: '9' });
+    expect(container.textContent).toContain('1 / 3');
+  });
+});

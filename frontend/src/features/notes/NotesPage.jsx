@@ -133,7 +133,7 @@ export function NotesPage() {
               showSource
               onFilterWork={(n) => setWork({ id: n.workId, title: n.workTitle })}
               onFilterTag={setTag}
-              onOpenAt={(n) => openBook(n.workId, n.fileId, { locator: n.locator })}
+              onOpenAt={(n) => openBook(n.workId, n.fileId, { locator: n.locator, context: { kind: 'note', quote: n.quote } })}
             />
           ))}
         </ul>
