@@ -98,6 +98,8 @@ export function SearchPage({ query }) {
 
     <section aria-label="Passagens" className="rounded-lg bg-white p-5 shadow-sm">
       <h2 className="font-display text-xl text-ink">Passagens</h2>
+      {!!passages.data?.data?.length && passages.data.mode === 'stem' && <p className="mt-1 text-xs text-ink-soft">Inclui outras formas das palavras (“correr” acha “corrida”). Para a palavra exata, use aspas.</p>}
+      {!!passages.data?.data?.length && passages.data.mode === 'exact' && <p className="mt-1 text-xs text-ink-soft">Busca exata: só as palavras como estão escritas.</p>}
       {!active || passages.isLoading ? <p className="mt-3 text-sm text-ink-soft">Buscando passagens…</p>
         : passages.isError ? <p role="alert" className="mt-3 text-sm text-red-700">Não foi possível buscar passagens.</p>
           : !passages.data?.data?.length ? <p className="mt-3 text-sm text-ink-soft">Nenhuma passagem encontrada.</p>
