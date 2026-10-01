@@ -21,6 +21,7 @@ async function open({ isOwner = true, cleanups = [], orphans = [], last = null }
     if (url === '/admin/storage/roots') return { data: { roots: [{ id: 2, path: '/mnt/livros' }], managed: '/data/uploads' } };
     if (url === '/admin/storage/cleanups') return { data: { data: cleanups } };
     if (url === '/admin/storage/orphans') return { data: { data: orphans } };
+    if (url === '/admin/jobs') return { data: { data: [], counts: {} } };
     if (url === '/admin/storage/referenced') return { data: { data: [], total: 0, summary: { ok: 0, missing: 0, conflict: 0 } } };
     if (url === '/admin/storage/reorganize') return { data: plan };
     if (url === '/admin/backup') return { data: { lastBackup } };

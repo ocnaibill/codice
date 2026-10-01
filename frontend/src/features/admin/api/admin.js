@@ -40,7 +40,7 @@ export const REFERENCED_PAGE = 50;
 
 /** A page of the referenced files, narrowed by directory, state and text (#15). While a transfer of one of them is
  *  waiting or running, it asks again, so the state moves on its own. */
-export function useReferenced({ rootId, state, q, page }) {
+export function useReferenced({ rootId, state, q, page }, { live = false } = {}) {
   return useQuery({
     queryKey: ['admin', 'referenced', { rootId, state, q, page }],
     queryFn: async () => {
@@ -52,8 +52,21 @@ export function useReferenced({ rootId, state, q, page }) {
     },
     placeholderData: keepPreviousData,
     staleTime: 0,
+    // Asks again while something that changes it is going on: a transfer of one of its files, or a scan (`live`).
     refetchInterval: (query) =>
-      query.state.data?.data?.some((f) => f.transfer && (f.transfer.state === 'pending' || f.transfer.state === 'running')) ? 3000 : false,
+      live || query.state.data?.data?.some((f) => f.transfer && (f.transfer.state === 'pending' || f.transfer.state === 'running')) ? 3000 : false,
+  });
+}
+
+/** Whether a scan of a folder is waiting or running. A scan ends after it was asked for, so the screens that show
+ *  what it catalogues ask again, every couple of seconds, while this is true. Asks only for scans, so a flood of other
+ *  jobs (the ingestion of the books it finds) cannot push one out of the page. */
+export function useScanActivity() {
+  return useQuery({
+    queryKey: ['admin', 'scan-activity'],
+    queryFn: async () => ((await api.get('/admin/jobs', { params: { type: 'scan', limit: 10 } })).data.data || []).some((j) => j.state === 'pending' || j.state === 'running'),
+    staleTime: 0,
+    refetchInterval: (query) => (query.state.data ? 2500 : false),
   });
 }
 

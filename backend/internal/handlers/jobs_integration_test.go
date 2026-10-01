@@ -40,6 +40,22 @@ func TestJobsAdmin_ListRerunAndCancel(t *testing.T) {
 	// A worker fails the first permanently with a clear reason; the admin sees it and reruns it.
 	s.exec(`SELECT jobs_claim('w', 120, 5)`)
 	s.exec(`SELECT jobs_fail($1, 'w', 'permanent', 'the archive has no readable pages')`, first)
+	// The type narrows the list too (the screen of referenced files asks for the scans only, so a flood of
+	// ingestion jobs cannot push a running scan out of the page).
+	s.exec(`INSERT INTO jobs (type, payload, state) VALUES ('scan', '{"root_id": 1}', 'running')`)
+	get("?type=scan")
+	if len(list.Data) != 1 || list.Data[0].State != "running" {
+		t.Fatalf("scans = %+v", list.Data)
+	}
+	get("?type=scan&state=pending")
+	if len(list.Data) != 0 {
+		t.Fatalf("a state and a type that do not meet = %+v", list.Data)
+	}
+	get("?type=scan&limit=1")
+	if len(list.Data) != 1 {
+		t.Fatalf("limit with a type = %+v", list.Data)
+	}
+	s.exec(`DELETE FROM jobs WHERE type = 'scan'`)
 	get("?state=failed")
 	if len(list.Data) != 1 || list.Data[0].LastError != "the archive has no readable pages" || list.Data[0].ErrorKind != "permanent" {
 		t.Fatalf("failed jobs = %+v", list.Data)

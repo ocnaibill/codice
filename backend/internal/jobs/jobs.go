@@ -99,9 +99,9 @@ var (
 	ErrState    = errors.New("job is not in a state that allows this")
 )
 
-// List returns jobs newest first, optionally of one state, with the count of
-// every state for the summary.
-func List(ctx context.Context, db *sql.DB, state string, limit int) ([]Job, map[string]int, error) {
+// List returns jobs newest first, optionally of one state and one type, with the count of
+// every state for the summary (of all jobs, whatever the filter).
+func List(ctx context.Context, db *sql.DB, state, jobType string, limit int) ([]Job, map[string]int, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -110,8 +110,8 @@ func List(ctx context.Context, db *sql.DB, state string, limit int) ([]Job, map[
 		       j.max_attempts, j.run_at, j.cancel_requested, COALESCE(j.last_error, ''), COALESCE(j.error_kind, ''),
 		       j.created_at, j.started_at, j.finished_at
 		FROM jobs j LEFT JOIN works w ON w.id = j.work_id
-		WHERE $1 = '' OR j.state = $1
-		ORDER BY j.id DESC LIMIT $2`, state, limit)
+		WHERE ($1 = '' OR j.state = $1) AND ($2 = '' OR j.type = $2)
+		ORDER BY j.id DESC LIMIT $3`, state, jobType, limit)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -16,6 +16,7 @@ let view;
 let listed; // what the server has, filtered by the mock
 let transfers = () => ({ data: [] });
 let moveAnswer;
+let scanJobs = [];
 
 const referencedCalls = () => api.get.mock.calls.filter(([u]) => u === '/admin/storage/referenced');
 const lastParams = () => referencedCalls().at(-1)[1].params;
@@ -26,6 +27,7 @@ async function open(files, { roots = [{ id: 1, path: '/mnt/livros' }, { id: 2, p
   api.get.mockImplementation(async (url, options) => {
     if (url === '/admin/storage/roots') return { data: { roots, managed: '/data' } };
     if (url === '/admin/storage/cleanups') return { data: { data: cleanups } };
+    if (url === '/admin/jobs') return { data: { data: scanJobs, counts: {} } };
     if (url === '/admin/storage/referenced') {
       const p = options?.params || {};
       return { data: { data: listed.slice(p.offset || 0, (p.offset || 0) + p.limit), total: total ?? listed.length, summary: sum } };
@@ -50,6 +52,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   transfers = () => ({ data: [] });
   moveAnswer = { data: [] };
+  scanJobs = [];
 });
 afterEach(() => view.unmount());
 
@@ -150,6 +153,72 @@ describe('ReferencedFiles: what the library only points at (#15)', () => {
     const before = referencedCalls().length;
     await wait(3200);
     expect(referencedCalls().length).toBe(before);
+  });
+});
+
+describe('ReferencedFiles: while a folder is being scanned', () => {
+  const scan = (state) => ({ id: 3, type: 'scan', state });
+
+  it('asks only for scans, and says nothing when none is going on', async () => {
+    await open([file(1)]);
+    expect(api.get).toHaveBeenCalledWith('/admin/jobs', { params: { type: 'scan', limit: 10 } });
+    expect(view.text()).not.toContain('Varredura em andamento');
+    expect(referencedCalls().length).toBe(1); // nothing is going on: the list is asked for once
+  });
+
+  it('does not keep asking about scans when there is none going on', async () => {
+    await open([file(1)]);
+    const asks = () => api.get.mock.calls.filter(([u]) => u === '/admin/jobs').length;
+    const before = asks();
+    await wait(3200);
+    expect(asks()).toBe(before);
+  });
+
+  it('says a scan is going on while one is waiting, and the list asks again by itself', async () => {
+    scanJobs = [scan('pending'), { id: 2, type: 'scan', state: 'succeeded' }];
+    await open([file(1)]);
+    expect(view.text()).toContain('Varredura em andamento: a lista se atualiza sozinha.');
+    const before = referencedCalls().length;
+    await wait(3200);
+    expect(referencedCalls().length).toBeGreaterThan(before);
+  });
+
+  it('says the same while one is running', async () => {
+    scanJobs = [scan('running')];
+    await open([file(1)]);
+    expect(view.text()).toContain('Varredura em andamento');
+  });
+
+  it('does not count a scan that ended, failed or was cancelled', async () => {
+    scanJobs = [scan('succeeded'), scan('failed'), scan('cancelled')];
+    await open([file(1)]);
+    expect(view.text()).not.toContain('Varredura em andamento');
+    const before = referencedCalls().length;
+    await wait(3200);
+    expect(referencedCalls().length).toBe(before);
+  });
+
+  it('asks for the list once more when the scan ends, and stops saying it is going on', async () => {
+    scanJobs = [scan('running')];
+    await open([file(1)]);
+    expect(view.text()).toContain('Varredura em andamento');
+    scanJobs = [scan('succeeded')];
+    listed = [file(1), file(2, { title: 'Achado pela varredura' })];
+    await wait(2800); // the screen asks about the scans every 2.5 s
+    await flush();
+    expect(view.text()).not.toContain('Varredura em andamento');
+    expect(view.text()).toContain('Achado pela varredura');
+  });
+
+  it('works when the scans cannot be asked about: no message, no asking again', async () => {
+    await open([file(1)]);
+    api.get.mockImplementation(async (url) => {
+      if (url === '/admin/jobs') throw new Error('offline');
+      if (url === '/admin/storage/roots') return { data: { roots: [], managed: '/d' } };
+      if (url === '/admin/storage/cleanups') return { data: { data: [] } };
+      return { data: { data: [file(1)], total: 1, summary } };
+    });
+    expect(view.text()).not.toContain('Varredura em andamento');
   });
 });
 

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { REFERENCED_PAGE, describeError, useCleanups, useMoveToManaged, useReferenced, useRoots, useTransfers } from '../api/admin';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { REFERENCED_PAGE, describeError, useCleanups, useMoveToManaged, useReferenced, useRoots, useScanActivity, useTransfers } from '../api/admin';
 import { formatBytes } from '../format';
 import { STATE_HINT, STATE_LABEL, canMove, explainCleanupReason, explainTransferError, transferBadge } from '../storageText';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -106,7 +106,14 @@ export function ReferencedFiles({ maxSelected = MAX_SELECTED }) {
     setSelected(new Map());
   }, [rootId, state, q]);
 
-  const { data, isLoading, isError, refetch, isFetching } = useReferenced({ rootId, state, q, page });
+  // A scan ends after it was asked for: while one is going on the list asks again by itself, and once more when it ends.
+  const scanning = useScanActivity().data === true;
+  const { data, isLoading, isError, refetch, isFetching } = useReferenced({ rootId, state, q, page }, { live: scanning });
+  const wasScanning = useRef(false);
+  useEffect(() => {
+    if (wasScanning.current && !scanning) refetch();
+    wasScanning.current = scanning;
+  }, [scanning, refetch]);
   const move = useMoveToManaged();
   const files = useMemo(() => data?.data ?? [], [data]);
   const total = data?.total ?? 0;
@@ -151,8 +158,9 @@ export function ReferencedFiles({ maxSelected = MAX_SELECTED }) {
     <Section
       title="Arquivos referenciados"
       hint="Arquivos que o acervo só aponta: ficam na pasta de origem. Mover para o gerenciado copia o arquivo para o armazenamento do Códice, confere a cópia e só então remove o original da pasta."
-      actions={<Btn onClick={() => refetch()} disabled={isFetching} title="Uma varredura ou uma transferência termina depois de pedida: atualize para ver">Atualizar</Btn>}
+      actions={<Btn onClick={() => refetch()} disabled={isFetching}>Atualizar</Btn>}
     >
+      {scanning && <p role="status" className="mb-3 text-[13px] text-ink-soft">Varredura em andamento: a lista se atualiza sozinha.</p>}
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-[12px] text-ink-soft">
           Pasta
