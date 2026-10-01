@@ -97,3 +97,38 @@ it('loads the next passage page using the backend offset', async () => {
   expect(api.get).toHaveBeenCalledWith('/search', { params: { q: 'universo', workId: undefined, limit: 10, offset: 10 } });
   expect(passage.textContent).toContain('Página 2');
 });
+
+const passagesWith = (extra) => api.get.mockImplementation(async (url) => {
+  if (url.startsWith('/works?')) return { data: { data: [], totalPages: 0 } };
+  if (url === '/notes') return { data: { data: [], total: 0 } };
+  if (url === '/search') return { data: { data: [{ segmentId: 5, workId: 7, fileId: 10, workTitle: 'Duna', workAuthor: 'Frank Herbert', format: 'epub', language: 'pt', section: '', origin: 'native', snippet: 'A corrida', matches: [[2, 9]], locator }], hasMore: false, ...extra } };
+  throw new Error(url);
+});
+const passagesText = () => container.querySelector('[aria-label="Passagens"]').textContent;
+const render = async (query) => { await act(async () => root.render(<QueryClientProvider client={client}><SearchPage query={query} /></QueryClientProvider>)); await flush(); };
+
+it('tells a search by stem what it did and how to ask for the exact word', async () => {
+  passagesWith({ mode: 'stem' });
+  await render('correr');
+  expect(passagesText()).toContain('Inclui outras formas das palavras');
+  expect(passagesText()).toContain('use aspas');
+  expect(passagesText()).not.toContain('Busca exata');
+});
+
+it('says when the search was exact', async () => {
+  passagesWith({ mode: 'exact' });
+  await render('"correr"');
+  expect(passagesText()).toContain('Busca exata: só as palavras como estão escritas.');
+  expect(passagesText()).not.toContain('Inclui outras formas');
+});
+
+it('says nothing about the mode when there is no passage, or when the server does not tell it', async () => {
+  passagesWith({ mode: 'stem', data: [] });
+  await render('correr');
+  expect(passagesText()).not.toContain('Inclui outras formas');
+  passagesWith({});
+  client.clear();
+  await render('correr outra');
+  expect(passagesText()).not.toContain('Inclui outras formas');
+  expect(passagesText()).not.toContain('Busca exata');
+});
