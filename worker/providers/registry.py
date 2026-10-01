@@ -8,12 +8,16 @@ from .base import BaseProvider, MetadataRecord
 from .google_books import GoogleBooksProvider
 from .openlibrary import OpenLibraryProvider
 from .comicvine import ComicVineProvider
+from .gate import nothing_allowed
 
 
 class ProviderRegistry:
     """Registry that selects providers by format with priority ordering."""
 
-    def __init__(self):
+    def __init__(self, enabled=None):
+        # Which providers may be asked (the owner's choice, gate.py). Without one, none is: asking a third party
+        # is never the default.
+        self._enabled = enabled or nothing_allowed
         self._providers: Dict[str, List[BaseProvider]] = {
             'default': [
                 GoogleBooksProvider(),
@@ -30,6 +34,13 @@ class ProviderRegistry:
                 OpenLibraryProvider(),
             ],
         }
+
+    def _allowed(self, providers):
+        """The providers the owner turned on, in their order. The others are not asked."""
+        allowed = [p for p in providers if self._enabled(p.id)]
+        if not allowed:
+            print("   🔒 No external metadata provider is turned on")
+        return allowed
 
     @staticmethod
     def _sanitize_query(raw_title: str) -> str:
@@ -60,7 +71,7 @@ class ProviderRegistry:
 
         providers = self._providers.get(format, self._providers['default'])
 
-        for provider in providers:
+        for provider in self._allowed(providers):
             try:
                 result = provider.search(query)
                 if result is not None and (result.title or result.author):
@@ -86,7 +97,7 @@ class ProviderRegistry:
         providers = self._providers.get(format, self._providers['default'])
         results: List[MetadataRecord] = []
 
-        for provider in providers:
+        for provider in self._allowed(providers):
             try:
                 result = provider.search(query)
                 if result is not None and (result.title or result.author):

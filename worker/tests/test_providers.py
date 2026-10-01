@@ -223,3 +223,106 @@ class TestNoLanguageFromProviders:
         mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"items": [
             {"volumeInfo": {"title": "Duna", "authors": ["A One"], "language": "pt"}}]}))
         assert GoogleBooksProvider().search("Duna").language is None
+
+
+class FakeProvider:
+    """A provider that records that it was asked: what the gate is for is that it is not."""
+
+    def __init__(self, pid, title):
+        self.id = pid
+        self.name = pid.title()
+        self._title = title
+        self.asked = []
+
+    def search(self, query):
+        self.asked.append(query)
+        return MetadataRecord(title=self._title, source=self.name)
+
+
+def _registry(allowed, *providers):
+    registry = ProviderRegistry(enabled=(lambda pid: pid in allowed) if allowed is not None else None)
+    registry._providers = {'default': list(providers)}
+    return registry
+
+
+class TestNothingIsAskedUnlessTheOwnerTurnedItOn:
+    def test_without_a_gate_no_provider_is_asked(self):
+        a = FakeProvider('openlibrary', 'A')
+        registry = _registry(None, a)
+        assert registry.search('Duna') is None
+        assert registry.search_all('Duna') == []
+        assert registry.search_best('Duna') is None
+        assert a.asked == []
+
+    def test_a_provider_that_is_off_is_not_asked_and_the_next_one_answers(self):
+        a, b = FakeProvider('google_books', 'A'), FakeProvider('openlibrary', 'B')
+        registry = _registry({'openlibrary'}, a, b)
+        assert registry.search('Duna').title == 'B'
+        assert a.asked == [] and b.asked == ['Duna']
+
+    def test_search_all_asks_only_the_ones_that_are_on_in_their_order(self):
+        a, b, c = FakeProvider('google_books', 'A'), FakeProvider('openlibrary', 'B'), FakeProvider('comicvine', 'C')
+        registry = _registry({'google_books', 'comicvine'}, a, b, c)
+        assert [r.title for r in registry.search_all('Duna')] == ['A', 'C']
+        assert b.asked == []
+
+    def test_every_provider_on_is_the_way_it_always_was(self):
+        a, b = FakeProvider('google_books', 'A'), FakeProvider('openlibrary', 'B')
+        registry = _registry({'google_books', 'openlibrary'}, a, b)
+        assert registry.search('Duna').title == 'A'
+        assert b.asked == []  # the first answer is enough, as before
+
+    def test_a_provider_the_gate_does_not_know_is_off(self):
+        a = FakeProvider('something_new', 'A')
+        assert _registry({'openlibrary'}, a).search('Duna') is None
+        assert a.asked == []
+
+    def test_the_real_providers_have_the_ids_the_owner_chooses_by(self):
+        assert [p.id for p in ProviderRegistry()._providers['default']] == ['google_books', 'openlibrary']
+        assert [p.id for p in ProviderRegistry()._providers['cbz']] == ['comicvine', 'google_books', 'openlibrary']
+
+
+class FakeSettings:
+    def __init__(self, value=None, boom=False):
+        self.value, self.boom, self.reads = value, boom, 0
+
+    def fetchone(self, query, params=()):
+        self.reads += 1
+        if self.boom:
+            raise RuntimeError('database down')
+        assert 'FROM settings' in query and params == ('metadata.providers',)
+        return None if self.value is None else (self.value,)
+
+
+class TestTheGate:
+    def test_only_a_provider_set_to_true_is_on(self):
+        from providers.gate import db_gate
+        gate = db_gate(FakeSettings({'openlibrary': True, 'google_books': False, 'comicvine': 'true', 'x': 1}))
+        assert gate('openlibrary') is True
+        assert gate('google_books') is False
+        assert gate('comicvine') is False and gate('x') is False  # not a yes the owner gave
+        assert gate('not_listed') is False
+
+    def test_nothing_is_on_without_a_setting_or_with_one_that_is_not_a_choice(self):
+        from providers.gate import db_gate
+        for value in (None, [], 'null', '[1]', 5):
+            assert db_gate(FakeSettings(value))('openlibrary') is False
+
+    def test_a_setting_that_comes_as_text_is_read(self):
+        from providers.gate import db_gate
+        assert db_gate(FakeSettings('{"openlibrary": true}'))('openlibrary') is True
+        assert db_gate(FakeSettings(b'{"openlibrary": true}'))('openlibrary') is True
+
+    def test_when_the_setting_cannot_be_read_nothing_is_on(self):
+        from providers.gate import db_gate
+        assert db_gate(FakeSettings({'openlibrary': True}, boom=True))('openlibrary') is False
+        assert db_gate(FakeSettings('not json'))('openlibrary') is False
+
+    def test_it_reads_the_setting_every_time_so_turning_one_off_counts_for_the_next_work(self):
+        from providers.gate import db_gate
+        db = FakeSettings({'openlibrary': True})
+        gate = db_gate(db)
+        assert gate('openlibrary') is True
+        db.value = {'openlibrary': False}
+        assert gate('openlibrary') is False
+        assert db.reads == 2

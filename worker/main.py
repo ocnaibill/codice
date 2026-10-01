@@ -11,6 +11,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 from extractors import EpubExtractor, PdfExtractor, CbzExtractor, CbrExtractor, TxtExtractor, AudiobookExtractor, MobiExtractor
 from extractors.base import BaseExtractor
 from providers import ProviderRegistry
+from providers.gate import db_gate
 from db import CodiceDatabase
 from analyzer import Analyzer, MediaStatus
 from pipeline import analyze_file, ensure_file
@@ -104,7 +105,8 @@ def wait_for_work(client, last_id):
 
 def build_runner(db, client, heartbeat=None):
     extractors = register_extractors()
-    provider_registry = ProviderRegistry()
+    # Only the providers the owner turned on are asked (#68): the title of a work goes to no one else.
+    provider_registry = ProviderRegistry(enabled=db_gate(db))
     analyzer = Analyzer(db)
 
     storage_path = os.getenv('CODICE_STORAGE_PATH', './uploads')

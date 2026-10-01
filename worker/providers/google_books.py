@@ -18,6 +18,10 @@ class GoogleBooksProvider(BaseProvider):
     def name(self) -> str:
         return 'Google Books'
 
+    @property
+    def id(self) -> str:
+        return 'google_books'
+
     def search(self, query: str) -> Optional[MetadataRecord]:
         if not query:
             return None

@@ -18,6 +18,10 @@ class ComicVineProvider(BaseProvider):
     def name(self) -> str:
         return 'ComicVine'
 
+    @property
+    def id(self) -> str:
+        return 'comicvine'
+
     def search(self, query: str) -> Optional[MetadataRecord]:
         if not self.api_key:
             print(f"   ⚠️ ComicVine: no API key set (COMICVINE_API_KEY env var is empty)")
