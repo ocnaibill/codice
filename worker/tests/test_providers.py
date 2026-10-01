@@ -209,3 +209,17 @@ class TestCredits:
         assert Credit("A One").as_dict() == {"name": "A One"}
         assert Credit("A One", "writer", {"openlibrary": "OL1A"}).as_dict() == {
             "name": "A One", "role": "writer", "ids": {"openlibrary": "OL1A"}}
+
+
+class TestNoLanguageFromProviders:
+    """The language of a file is read from the file (DEC-096): a provider says the language of some edition."""
+
+    def test_open_library_does_not_give_the_language_of_an_edition_as_the_files(self):
+        result = _openlibrary({"title": "Good Omens", "author_name": ["A One"], "language": ["cat", "eng"]})
+        assert result.language is None
+
+    @patch('providers.google_books.requests.get')
+    def test_google_books_does_not_give_the_language_of_the_volume_it_matched(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"items": [
+            {"volumeInfo": {"title": "Duna", "authors": ["A One"], "language": "pt"}}]}))
+        assert GoogleBooksProvider().search("Duna").language is None

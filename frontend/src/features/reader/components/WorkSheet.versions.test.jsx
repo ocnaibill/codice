@@ -37,6 +37,7 @@ const dialog = (label) => container.querySelector(`[aria-label="${label}"]`);
 async function open({ role = 'admin', detail = twoEditions, results = [dune] } = {}) {
   api.get.mockImplementation(async (url, options) => {
     if (url === '/works/7') return { data: detail };
+    if (url === '/works/7/candidates') return { data: { data: [] } };
     if (url === '/auth/me') return { data: { role } };
     if (url === '/works') return { data: { data: options?.params?.search ? results : [] } };
     throw new Error(`unexpected GET ${url}`);

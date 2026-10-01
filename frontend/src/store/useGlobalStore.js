@@ -13,6 +13,11 @@ export const useGlobalStore = create((set) => ({
   setLibraryViewMode: (libraryViewMode) => set({ libraryViewMode }),
   // The work whose sheet (edition, language and file choice) is open, if any.
   sheetWorkId: null,
+  // The work whose metadata and suggestions are open for owner/admin (#70), and which part ('suggestions' or 'edit').
+  metadataWorkId: null,
+  metadataTab: 'suggestions',
+  openMetadata: (id, tab = 'suggestions') => set({ metadataWorkId: id, metadataTab: tab }),
+  closeMetadata: () => set({ metadataWorkId: null }),
   // What the reader has open: a work, one of its files, and whether to ignore the saved
   // position and start over (choosing a version starts from that version's own position, or
   // from the beginning if the person asks).

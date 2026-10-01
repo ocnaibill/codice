@@ -63,7 +63,8 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
         record = {
             'title': enriched.title, 'author': enriched.author, 'series': enriched.series,
             'series_index': enriched.series_index, 'isbn': enriched.isbn,
-            'language': enriched.language, 'publisher': enriched.publisher,
+            'language': None,  # a provider says the language of some edition, not of this file (DEC-096)
+            'publisher': enriched.publisher,
             'publication_date': enriched.publication_date, 'description': enriched.description,
             'tags': enriched.tags,
             'credits': [c.as_dict() for c in (getattr(enriched, 'credits', None) or [])],

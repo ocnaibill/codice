@@ -1,136 +1,80 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, authenticatedUrl } from '../../../lib/api';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '../../../lib/api';
 import { refreshLibrary } from '../../../lib/refreshLibrary';
+import { useGlobalStore } from '../../../store/useGlobalStore';
+import { useWork } from '../../reader/api/useWork';
+import { useCandidates } from '../../reader/api/useCandidates';
+import { reasonOf } from '../../reader/api/useVersions';
+import { WorkSuggestions } from '../../reader/components/WorkSuggestions';
+import { ConfirmDialog } from '../../admin/components/ConfirmDialog';
+import { isTopmostDialog } from '../../../lib/topDialog';
 
-// A suggestion's value as text: tags and contributors travel as JSON lists. A value that is not what its
-// field says is shown as it came instead of breaking the list.
-function candidateText(c) {
-  try {
-    const parsed = JSON.parse(c.value);
-    if (c.field === 'tags' && Array.isArray(parsed)) return parsed.join(', ');
-    if (c.field === 'contributors' && Array.isArray(parsed)) return parsed.map((p) => `${p.name} (${p.role})`).join('; ');
-  } catch {
-    // not JSON: shown as it is
-  }
-  return c.value;
+const LOCKS = [
+  ['title', 'Título'], ['author', 'Autor'], ['series', 'Série'], ['cover', 'Capa'], ['isbn', 'ISBN'],
+  ['publisher', 'Editora'], ['language', 'Idioma'], ['publication_date', 'Data'], ['description', 'Sinopse'],
+];
+
+const inputClass = 'w-full rounded-lg border border-border-hairline bg-white px-3 py-2 text-sm text-ink outline-none focus:border-brand disabled:opacity-50';
+
+function Field({ label, children }) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-ink-soft">
+      {label}
+      {children}
+    </label>
+  );
 }
 
-export function EditBookModal({ book, onClose }) {
+/**
+ * The fields of a work, to be corrected by hand: the last resort when what the file says and what the
+ * providers suggest are not right. Whatever is saved is locked against the automatic extraction. The form
+ * starts from the full record and exists only once it has loaded, so nothing is saved over a field that
+ * was never read.
+ */
+function EditForm({ work, onClose }) {
   const queryClient = useQueryClient();
+  const closeSheet = useGlobalStore((state) => state.closeSheet);
+  const meta = work.metadata || {};
+  const [title, setTitle] = useState(work.title || '');
+  // The first author as it is stored: what the sheet shows for a work with several authors, or for an account
+  // that sees surnames first, is not a name, and saving it back would make a person of it.
+  const firstAuthor = meta.firstAuthor === 'Unknown Author' ? '' : meta.firstAuthor || '';
+  const [author, setAuthor] = useState(firstAuthor);
+  const [series, setSeries] = useState(meta.series || '');
+  const [seriesIndex, setSeriesIndex] = useState(meta.seriesIndex ? String(meta.seriesIndex) : '');
+  const [isbn, setIsbn] = useState(meta.isbn || '');
+  const [publisher, setPublisher] = useState(meta.publisher || '');
+  const [language, setLanguage] = useState(meta.language || '');
+  const [publicationDate, setPublicationDate] = useState(meta.publicationDate || '');
+  const [description, setDescription] = useState(meta.description || '');
+  const [tags, setTags] = useState((work.tags || []).join(', '));
+  const [locks, setLocks] = useState(meta.locks || {});
+  const [retiring, setRetiring] = useState(false);
 
-  // The list card does not carry ISBN, publisher, language, description or the
-  // locks, so the form starts from the full record. Saving before it loads would
-  // send empty values and clear those fields.
-  const { data: full, isLoading: isLoadingFull } = useQuery({
-    queryKey: ['work-edit', book.id],
-    queryFn: async () => (await api.get(`/works/${book.id}`)).data,
-  });
-  const { data: candidates = [] } = useQuery({
-    queryKey: ['work-candidates', book.id],
-    queryFn: async () => (await api.get(`/works/${book.id}/candidates`)).data.data,
-  });
-
-  const [title, setTitle] = useState(book.title || '');
-  const [author, setAuthor] = useState(book.author || '');
-  const [series, setSeries] = useState('');
-  const [seriesIndex, setSeriesIndex] = useState('');
-  const [isbn, setIsbn] = useState('');
-  const [publisher, setPublisher] = useState('');
-  const [language, setLanguage] = useState('');
-  const [publicationDate, setPublicationDate] = useState('');
-  const [description, setDescription] = useState('');
-  const [tagsInput, setTagsInput] = useState(book.tags ? book.tags.join(', ') : '');
-  const [locks, setLocks] = useState({});
-  const initialized = useRef(false);
-
-  useEffect(() => {
-    if (!full || initialized.current) return;
-    initialized.current = true;
-    const m = full.metadata || {};
-    setTitle(full.title || '');
-    setAuthor(full.author === 'Unknown Author' ? '' : full.author || '');
-    setSeries(m.series || '');
-    setSeriesIndex(m.seriesIndex ? String(m.seriesIndex) : '');
-    setIsbn(m.isbn || '');
-    setPublisher(m.publisher || '');
-    setLanguage(m.language || '');
-    setPublicationDate(m.publicationDate || '');
-    setDescription(m.description || '');
-    setTagsInput((full.tags || []).join(', '));
-    setLocks(m.locks || {});
-  }, [full]);
-
-  const setLock = (field, value) => setLocks((prev) => ({ ...prev, [field]: value }));
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-
-  // --- Metadata Search ---
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState('');
-
-  const handleSearch = async () => {
-    const q = searchQuery.trim() || book.title;
-    if (!q) return;
-    setIsSearching(true);
-    setSearchError('');
-    setSearchResults([]);
-    try {
-      const res = await api.get('/metadata/search', { params: { q, format: book.format } });
-      setSearchResults(res.data.results || []);
-      if (!res.data.results || res.data.results.length === 0) {
-        setSearchError('No results found from any provider.');
-      }
-    } catch (err) {
-      setSearchError('Search service unavailable. Is the worker search server running?');
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const applySearchResult = (result) => {
-    if (result.title) setTitle(result.title);
-    if (result.author) setAuthor(result.author);
-    if (result.series) setSeries(result.series);
-    if (result.series_index != null) setSeriesIndex(String(result.series_index));
-    if (result.isbn) setIsbn(result.isbn);
-    if (result.publisher) setPublisher(result.publisher);
-    if (result.language) setLanguage(result.language);
-    if (result.description) setDescription(result.description);
-    if (result.tags && result.tags.length > 0) setTagsInput(result.tags.join(', '));
-  };
-
-  const updateMutation = useMutation({
-    mutationFn: async (updatedData) => {
-      await api.put(`/works/${book.id}`, updatedData);
-    },
+  const save = useMutation({
+    mutationFn: (body) => api.put(`/works/${work.id}`, body),
     onSuccess: () => {
       refreshLibrary(queryClient);
       onClose();
     },
   });
-
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      await api.delete(`/works/${book.id}`);
-    },
+  const retire = useMutation({
+    mutationFn: () => api.delete(`/works/${work.id}`),
     onSuccess: () => {
       refreshLibrary(queryClient);
+      closeSheet();
       onClose();
     },
   });
+  const busy = save.isPending || retire.isPending;
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const cleanTags = tagsInput
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
-
-    updateMutation.mutate({
+  const submit = (event) => {
+    event.preventDefault();
+    save.mutate({
       title,
-      author,
+      // Only when it was changed: the other authors of the work stay as they are.
+      ...(author !== firstAuthor ? { author } : {}),
       series,
       series_index: seriesIndex ? parseFloat(seriesIndex) : 0,
       isbn,
@@ -138,7 +82,7 @@ export function EditBookModal({ book, onClose }) {
       language,
       publication_date: publicationDate,
       description,
-      tags: cleanTags,
+      tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       title_lock: !!locks.title,
       author_lock: !!locks.author,
       series_lock: !!locks.series,
@@ -151,248 +95,149 @@ export function EditBookModal({ book, onClose }) {
     });
   };
 
-  // Suggestions from external providers: nothing changes until an admin accepts.
-  const decideMutation = useMutation({
-    mutationFn: async ({ id, verb }) => {
-      await api.post(`/works/${book.id}/candidates/${id}/${verb}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['work-candidates', book.id] });
-      queryClient.invalidateQueries({ queryKey: ['work-edit', book.id] });
-      refreshLibrary(queryClient);
-      // Reload the form from the record the server now holds.
-      initialized.current = false;
-    },
-  });
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <p className="text-sm text-ink-soft">
+        Corrija à mão o que o arquivo e os provedores não acertaram. O que você salva fica travado contra a extração automática.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Título">
+          <input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} required disabled={busy} />
+        </Field>
+        <Field label="Primeiro autor">
+          <input className={inputClass} value={author} onChange={(e) => setAuthor(e.target.value)} disabled={busy} />
+        </Field>
+        <Field label="Série">
+          <input className={inputClass} value={series} onChange={(e) => setSeries(e.target.value)} disabled={busy} />
+        </Field>
+        <Field label="Número na série">
+          <input className={inputClass} type="number" step="0.1" value={seriesIndex} onChange={(e) => setSeriesIndex(e.target.value)} disabled={busy} />
+        </Field>
+        <Field label="ISBN">
+          <input className={inputClass} value={isbn} onChange={(e) => setIsbn(e.target.value)} disabled={busy} />
+        </Field>
+        <Field label="Editora">
+          <input className={inputClass} value={publisher} onChange={(e) => setPublisher(e.target.value)} disabled={busy} />
+        </Field>
+        <Field label="Idioma">
+          <input className={inputClass} value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="pt, pt-BR, en…" disabled={busy} />
+        </Field>
+        <Field label="Data de publicação">
+          <input className={inputClass} value={publicationDate} onChange={(e) => setPublicationDate(e.target.value)} disabled={busy} />
+        </Field>
+      </div>
+      <Field label="Etiquetas (separadas por vírgula)">
+        <input className={inputClass} value={tags} onChange={(e) => setTags(e.target.value)} disabled={busy} />
+      </Field>
+      <Field label="Sinopse">
+        <textarea className={`${inputClass} resize-y`} rows={4} value={description} onChange={(e) => setDescription(e.target.value)} disabled={busy} />
+      </Field>
 
-  const handleDelete = () => {
-    if (isConfirmingDelete) {
-      deleteMutation.mutate();
-    } else {
-      setIsConfirmingDelete(true);
-      setTimeout(() => setIsConfirmingDelete(false), 3000);
-    }
-  };
+      <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border-hairline pt-4">
+        <legend className="mb-1 text-xs font-medium text-ink-soft">Travar contra a extração automática</legend>
+        {LOCKS.map(([field, label]) => (
+          <label key={field} className="flex items-center gap-2 text-xs text-ink-soft">
+            <input
+              type="checkbox"
+              checked={!!locks[field]}
+              onChange={(e) => setLocks((prev) => ({ ...prev, [field]: e.target.checked }))}
+              disabled={busy}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
 
-  const isPending = updateMutation.isPending || deleteMutation.isPending || isLoadingFull;
+      {save.isError && <p role="alert" className="text-sm text-red-700">{reasonOf(save.error, 'Não foi possível salvar.')}</p>}
+      {retire.isError && <p role="alert" className="text-sm text-red-700">{reasonOf(retire.error, 'Não foi possível retirar a obra.')}</p>}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-hairline pt-4">
+        <button
+          type="button"
+          onClick={() => setRetiring(true)}
+          disabled={busy}
+          className="min-h-10 rounded-lg border border-red-200 bg-white px-4 py-2 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
+          title="Tira a obra do acervo. Arquivos, notas e progresso ficam guardados e ela pode ser restaurada."
+        >
+          Retirar do acervo
+        </button>
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} disabled={busy} className="min-h-10 px-4 py-2 text-xs text-ink-soft hover:text-brand disabled:opacity-40">
+            Cancelar
+          </button>
+          <button type="submit" disabled={busy} className="min-h-10 rounded-lg bg-brand px-5 py-2 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40">
+            {save.isPending ? 'Salvando…' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+
+      {retiring && (
+        <ConfirmDialog
+          title="Retirar esta obra do acervo?"
+          message={<p>Ela sai do acervo, mas os arquivos, as notas e o progresso ficam guardados, e ela pode ser restaurada na Lixeira, em Administração.</p>}
+          choices={[{ label: 'Retirar do acervo', value: true, tone: 'danger' }]}
+          onChoose={() => { setRetiring(false); retire.mutate(); }}
+          onCancel={() => setRetiring(false)}
+        />
+      )}
+    </form>
+  );
+}
+
+/**
+ * The metadata of a work, for owner and admin (#70): what the providers suggested, to accept or reject, and
+ * the fields, to correct by hand. It is opened from the sheet of the work and from the queue in Administração.
+ */
+export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose }) {
+  const [tab, setTab] = useState(initialTab);
+  const closeRef = useRef(null);
+  const dialogRef = useRef(null);
+  const { data: work, isLoading, isError } = useWork(workId, { fresh: true });
+  const { data: candidates } = useCandidates(workId);
+  const pending = candidates?.length ?? 0;
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && isTopmostDialog(dialogRef.current)) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const tabs = [['suggestions', pending > 0 ? `Sugestões (${pending})` : 'Sugestões'], ['edit', 'Editar']];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-zinc-100">Edit Book Metadata</h2>
-          <div className="flex items-center gap-3">
-            <button 
-              type="button"
-              title="Hides the book from the library. Files, notes and progress are kept and it can be restored."
-              onClick={handleDelete}
-              disabled={isPending}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                isConfirmingDelete 
-                  ? 'bg-red-600 text-white animate-pulse' 
-                  : 'bg-zinc-950 text-red-400 border border-red-900/50 hover:bg-red-950 hover:border-red-800'
-              }`}
-            >
-              {deleteMutation.isPending ? 'Retiring...' : (isConfirmingDelete ? 'Are you sure?' : 'Retire from Library')}
-            </button>
-            <button 
-              onClick={onClose} 
-              disabled={isPending}
-              className="text-zinc-500 hover:text-zinc-300 disabled:opacity-30 transition-colors"
-            >
-              ✕
-            </button>
+    <div ref={dialogRef} className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/60 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label="Metadados da obra">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-[#faf8f4] shadow-2xl sm:max-h-[92vh] sm:h-auto sm:max-w-2xl sm:rounded-2xl">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border-hairline px-4 py-3 sm:px-6">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">Metadados da obra</p>
+            <h2 className="truncate font-display text-xl text-ink sm:text-2xl">{work?.title ?? 'Carregando…'}</h2>
           </div>
+          <button ref={closeRef} onClick={onClose} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-xl text-ink-soft hover:bg-surface-alt hover:text-brand" aria-label="Fechar">
+            ✕
+          </button>
         </div>
-
-        {/* Manual Metadata Search Section */}
-        <div className="mb-4 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg">
-          <label className="block text-xs font-medium text-blue-300 mb-1">🔎 Search Internet</label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSearch())}
-              placeholder={book.title || 'Search title...'}
-              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
-              disabled={isSearching}
-            />
+        <div role="tablist" className="flex shrink-0 gap-1 border-b border-border-hairline px-4 sm:px-6">
+          {tabs.map(([key, label]) => (
             <button
-              type="button"
-              onClick={handleSearch}
-              disabled={isSearching}
-              className="px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-500 disabled:opacity-50 transition-colors whitespace-nowrap"
+              key={key}
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => setTab(key)}
+              className={`-mb-px min-h-11 border-b-2 px-4 py-2 text-[13px] ${tab === key ? 'border-brand text-brand' : 'border-transparent text-ink-soft hover:text-ink'}`}
             >
-              {isSearching ? 'Searching...' : 'Search'}
+              {label}
             </button>
-          </div>
-          {searchError && <p className="text-red-400 text-xs mt-1">{searchError}</p>}
-          {searchResults.length > 0 && (
-            <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
-              {searchResults.map((result, idx) => (
-                <div key={idx} className="p-2 bg-zinc-950 rounded border border-zinc-800 text-xs">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-blue-300 truncate">[{result.source}] {result.title}</p>
-                      {result.author && <p className="text-zinc-400 truncate">by {result.author}</p>}
-                      {result.series && (
-                        <p className="text-zinc-500 truncate">
-                          {result.series}{result.series_index != null ? ` #${result.series_index}` : ''}
-                        </p>
-                      )}
-                      {result.description && (
-                        <p className="text-zinc-600 mt-1 line-clamp-2">{result.description}</p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => applySearchResult(result)}
-                      className="ml-2 px-2 py-1 bg-green-700 text-white text-xs rounded hover:bg-green-600 transition-colors whitespace-nowrap shrink-0"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          ))}
         </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Title</label>
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
-                required disabled={isPending} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Author</label>
-              <input type="text" value={author} onChange={(e) => setAuthor(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
-                required disabled={isPending} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Series</label>
-              <input type="text" value={series} onChange={(e) => setSeries(e.target.value)}
-                placeholder="e.g. Harry Potter"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
-                disabled={isPending} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Series #</label>
-              <input type="number" step="0.1" value={seriesIndex} onChange={(e) => setSeriesIndex(e.target.value)}
-                placeholder="e.g. 1"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
-                disabled={isPending} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">ISBN</label>
-              <input type="text" value={isbn} onChange={(e) => setIsbn(e.target.value)}
-                placeholder="e.g. 978-3-16-148410-0"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
-                disabled={isPending} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Publisher</label>
-              <input type="text" value={publisher} onChange={(e) => setPublisher(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
-                disabled={isPending} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Language</label>
-              <input type="text" value={language} onChange={(e) => setLanguage(e.target.value)}
-                placeholder="e.g. en, pt-BR"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
-                disabled={isPending} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Tags (comma separated)</label>
-              <input type="text" value={tagsInput} onChange={(e) => setTagsInput(e.target.value)}
-                placeholder="Fantasy, Sci-Fi"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
-                disabled={isPending} />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">Description</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500 resize-none"
-              disabled={isPending} />
-          </div>
-
-          {/* Suggestions from external providers */}
-          {candidates.length > 0 && (
-            <div className="border-t border-zinc-800/80 pt-4">
-              <p className="text-xs font-medium text-amber-300 mb-2">💡 Suggestions ({candidates.length}) — nothing changes until you accept</p>
-              <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
-                {candidates.map((c) => (
-                  <div key={c.id} className="flex items-start justify-between gap-3 bg-zinc-950 border border-zinc-800 rounded-md p-2">
-                    <div className="text-xs min-w-0">
-                      <span className="text-zinc-500">{c.field} · {c.source}</span>
-                      <p className="text-zinc-200 break-words">{candidateText(c)}</p>
-                      {c.current && c.field !== 'tags' && <p className="text-zinc-600 break-words">now: {c.current}</p>}
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <button type="button" disabled={decideMutation.isPending}
-                        onClick={() => decideMutation.mutate({ id: c.id, verb: 'accept' })}
-                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50">Accept</button>
-                      <button type="button" disabled={decideMutation.isPending}
-                        onClick={() => decideMutation.mutate({ id: c.id, verb: 'reject' })}
-                        className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 disabled:opacity-50">Reject</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Lock toggles: a locked field is never changed by automatic extraction.
-              A field you edit is locked when you save. */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-zinc-800/80 pt-4">
-            {[
-              ['title', 'Title'], ['author', 'Author'], ['series', 'Series'], ['cover', 'Cover'],
-              ['isbn', 'ISBN'], ['publisher', 'Publisher'], ['language', 'Language'], ['description', 'Description'],
-            ].map(([field, label]) => (
-              <div key={field} className="flex items-center gap-2">
-                <input type="checkbox" id={`lock-${field}`} checked={!!locks[field]}
-                  onChange={(e) => setLock(field, e.target.checked)}
-                  disabled={isPending}
-                  className="rounded bg-zinc-800 border-zinc-700 text-blue-600 focus:ring-blue-500" />
-                <label htmlFor={`lock-${field}`} className="text-xs text-zinc-400">🔒 {label}</label>
-              </div>
-            ))}
-          </div>
-
-          {(updateMutation.isError || deleteMutation.isError) && (
-            <p className="text-red-400 text-xs font-medium">
-              {deleteMutation.isError ? 'Error deleting book.' : 'Error saving changes.'}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-zinc-800/80">
-            <button type="button" onClick={onClose} disabled={isPending}
-              className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-zinc-100 disabled:opacity-30 transition-colors">
-              Cancel
-            </button>
-            <button type="submit" disabled={isPending}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-500 disabled:opacity-50 transition-colors">
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </form>
+        <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6">
+          {isLoading && <p className="animate-pulse text-sm text-ink-faint">Carregando a obra…</p>}
+          {isError && <p className="text-sm text-red-700">Não foi possível abrir esta obra.</p>}
+          {work && tab === 'suggestions' && <WorkSuggestions workId={work.id} emptyText="Nenhuma sugestão esperando decisão." />}
+          {work && tab === 'edit' && <EditForm work={work} onClose={onClose} />}
+        </div>
       </div>
     </div>
   );

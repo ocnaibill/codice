@@ -466,13 +466,15 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 	return editions, rows.Err()
 }
 
-// UpdateWorkRequest is the payload for editing a work. Title and author are
-// always sent. Every other field is optional: a field that is absent is left as
-// it is, while an empty string clears it. The *_lock flags protect (or release)
-// a field against automatic changes.
+// UpdateWorkRequest is the payload for editing a work. The title is always
+// sent. Every other field is optional: a field that is absent is left as it
+// is, while an empty string clears it. The author is the first author's name:
+// absent leaves the authors as they are (what is shown for a work with several
+// authors is not a name). The *_lock flags protect (or release) a field against
+// automatic changes.
 type UpdateWorkRequest struct {
 	Title           string   `json:"title"`
-	Author          string   `json:"author"`
+	Author          *string  `json:"author"`
 	Tags            []string `json:"tags"`
 	Series          *string  `json:"series"`
 	SeriesIndex     *float64 `json:"series_index"`
@@ -535,9 +537,11 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 
 	next := cur
 	next.Title = req.Title
-	next.Author = strings.TrimSpace(req.Author)
-	if next.Author == "" {
-		next.Author = "Unknown Author"
+	if req.Author != nil {
+		next.Author = strings.TrimSpace(*req.Author)
+		if next.Author == "" {
+			next.Author = "Unknown Author"
+		}
 	}
 	if req.Series != nil {
 		next.Series = strings.TrimSpace(*req.Series)

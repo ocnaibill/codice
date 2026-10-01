@@ -43,7 +43,8 @@ class GoogleBooksProvider(BaseProvider):
                               if isinstance(a, str) and a.strip()]
             record.author = record.credits[0].name if record.credits else None
             record.publisher = volume.get('publisher')
-            record.language = volume.get('language')
+            # No language: it is the language of the volume the title matched, which may be another edition's.
+            # The language of a file is read from the file (DEC-096).
             record.description = volume.get('description')
 
             # ISBN

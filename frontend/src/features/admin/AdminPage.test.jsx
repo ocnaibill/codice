@@ -11,14 +11,17 @@ import { isStaff } from '../auth/api/useMe';
 import { Header } from '../../components/layout/Header';
 
 let view;
+let queueTotal = 0;
 beforeEach(() => {
   vi.clearAllMocks();
+  queueTotal = 0;
   api.get.mockImplementation(async (url) => {
     if (url === '/admin/jobs') return { data: { data: [], counts: {} } };
     if (url === '/admin/trash') return { data: { items: [], totalBytes: 0, policy: { enabled: false, days: 30 } } };
     if (url === '/admin/storage/roots') return { data: { roots: [], managed: '/data' } };
     if (url === '/admin/storage/cleanups' || url === '/admin/storage/orphans') return { data: { data: [] } };
     if (url === '/admin/backup') return { data: { lastBackup: null } };
+    if (url === '/admin/suggestions') return { data: { data: [], total: queueTotal } };
     if (url === '/admin/duplicates' || url === '/admin/ocr' || url === '/users') return { data: { data: [] } };
     if (url === '/admin/ldap') return { data: { configured: false, host: '', baseDN: '', linkedAccounts: 0, policy: { allowCreate: false, revalidateHours: 24 } } };
     if (url === '/admin/embeddings') return { data: { enabled: false, available: true, state: 'idle', model: 'sentence-transformers/LaBSE' } };
@@ -26,6 +29,22 @@ beforeEach(() => {
   });
 });
 afterEach(() => view.unmount());
+
+describe('AdminPage: the queue of suggestions (#70)', () => {
+  it('has the tab, which says how many works wait when some do, and shows the queue', async () => {
+    queueTotal = 12;
+    view = await mount(<AdminPage isOwner={false} />);
+    expect(view.button('Sugestões (12)')).toBeTruthy();
+    await view.click(view.button('Sugestões (12)'));
+    expect(view.text()).toContain('Nenhuma obra com sugestões esperando.');
+  });
+
+  it('names the tab plainly when nothing waits', async () => {
+    view = await mount(<AdminPage isOwner />);
+    expect(view.button('Sugestões')).toBeTruthy();
+    expect(view.text()).not.toContain('Sugestões (');
+  });
+});
 
 describe('AdminPage', () => {
   it('opens on the jobs and switches between the areas', async () => {

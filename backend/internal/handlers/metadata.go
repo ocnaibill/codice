@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -23,15 +24,19 @@ const (
 // field: which fields are locked against automatic changes and where each
 // current value came from.
 type WorkMetadata struct {
-	Series          string            `json:"series"`
-	SeriesIndex     float64           `json:"seriesIndex"`
-	ISBN            string            `json:"isbn"`
-	Publisher       string            `json:"publisher"`
-	Language        string            `json:"language"`
-	PublicationDate string            `json:"publicationDate"`
-	Description     string            `json:"description"`
-	Locks           map[string]bool   `json:"locks"`
-	Sources         map[string]string `json:"sources"`
+	Series          string  `json:"series"`
+	SeriesIndex     float64 `json:"seriesIndex"`
+	ISBN            string  `json:"isbn"`
+	Publisher       string  `json:"publisher"`
+	Language        string  `json:"language"`
+	PublicationDate string  `json:"publicationDate"`
+	Description     string  `json:"description"`
+	// FirstAuthor is the name of the work's first author as it is stored, not as an account is shown it
+	// (a work with two authors is shown "A, B", and "Herbert, Frank" is how a surname-first account sees
+	// "Frank Herbert"): what an edit of the author starts from.
+	FirstAuthor string            `json:"firstAuthor"`
+	Locks       map[string]bool   `json:"locks"`
+	Sources     map[string]string `json:"sources"`
 }
 
 // loadMetadata reads the metadata block shown by GET /works/{id}.
@@ -40,12 +45,13 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int) (*WorkMetadata, e
 	var titleL, authorL, seriesL, coverL, isbnL, pubL, langL, dateL, descL bool
 	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(e.isbn, ''), COALESCE(e.publisher, ''),
-		       COALESCE(e.language, ''), COALESCE(e.publication_date, ''), COALESCE(w.description, ''),
+		       COALESCE(e.language, ''), COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(a.name, ''),
 		       w.title_lock, w.author_lock, w.series_lock, w.cover_lock,
 		       w.isbn_lock, w.publisher_lock, w.language_lock, w.publication_date_lock, w.description_lock
 		FROM works w LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
+		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1`, workID).Scan(
-		&m.Series, &m.SeriesIndex, &m.ISBN, &m.Publisher, &m.Language, &m.PublicationDate, &m.Description,
+		&m.Series, &m.SeriesIndex, &m.ISBN, &m.Publisher, &m.Language, &m.PublicationDate, &m.Description, &m.FirstAuthor,
 		&titleL, &authorL, &seriesL, &coverL, &isbnL, &pubL, &langL, &dateL, &descL)
 	if err != nil {
 		return nil, err
@@ -255,6 +261,50 @@ type Candidate struct {
 	Evidence  json.RawMessage `json:"evidence"`
 	CreatedAt string          `json:"createdAt"`
 	Current   string          `json:"current"`
+	// Keys are the identifiers accepting the suggestion would keep for a person (DEC-095), worked out by the
+	// same rule as accepting, so what the admin is shown is what is done.
+	Keys []CandidateKey `json:"keys"`
+}
+
+// CandidateKey is an identifier a source gave a person named in a suggestion.
+type CandidateKey struct {
+	Name   string `json:"name"`
+	Scheme string `json:"scheme"`
+	Value  string `json:"value"`
+}
+
+// candidateKeys lists the identifiers accepting the suggestion would keep: for an author, those of the author;
+// for contributors, those of each person listed. Any other field keeps none.
+func candidateKeys(field, value string, evidence []byte) []CandidateKey {
+	keys := []CandidateKey{}
+	var names []string
+	switch field {
+	case "author":
+		names = []string{value}
+	case "contributors":
+		var items []contributorSuggestion
+		if json.Unmarshal([]byte(value), &items) != nil {
+			return keys
+		}
+		for _, it := range items {
+			if contributorRoles[it.Role] {
+				names = append(names, it.Name)
+			}
+		}
+	}
+	for _, name := range names {
+		name = strings.Join(strings.Fields(name), " ")
+		ids := people.IDsFor(evidence, name)
+		schemes := make([]string, 0, len(ids))
+		for scheme := range ids {
+			schemes = append(schemes, scheme)
+		}
+		sort.Strings(schemes)
+		for _, scheme := range schemes {
+			keys = append(keys, CandidateKey{Name: name, Scheme: scheme, Value: ids[scheme]})
+		}
+	}
+	return keys
 }
 
 // ListCandidates returns the pending suggestions for a work, with the current
@@ -303,6 +353,7 @@ func (h *LibraryHandler) ListCandidates(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "Error reading candidates", http.StatusInternalServerError)
 			return
 		}
+		c.Keys = candidateKeys(c.Field, c.Value, c.Evidence)
 		out = append(out, c)
 	}
 	w.Header().Set("Content-Type", "application/json")
