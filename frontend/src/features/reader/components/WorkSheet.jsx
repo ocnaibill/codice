@@ -6,6 +6,7 @@ import { useSetCompletion, useSetWorkFinished } from '../api/useCompletion';
 import { reasonOf, useSplitEdition } from '../api/useVersions';
 import { isStaff, useMe } from '../../auth/api/useMe';
 import { JoinVersionsDialog } from './JoinVersionsDialog';
+import { WorkSuggestions } from './WorkSuggestions';
 import { completionText, formatSize, languageName, whereYouAre } from '../files';
 import { WorkCover } from '../../../components/ui/WorkCover';
 
@@ -242,6 +243,8 @@ export function WorkSheet() {
               busy={setWorkFinished.isPending}
               onFinish={(finished) => setWorkFinished.mutate({ workId: work.id, finished })}
             />
+
+            {staff && <WorkSuggestions workId={work.id} />}
 
             {notice && (
               <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border-l-4 border-success bg-surface-alt p-4 text-sm text-ink">

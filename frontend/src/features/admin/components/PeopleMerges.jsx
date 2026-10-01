@@ -2,18 +2,7 @@ import { useState } from 'react';
 import { usePeopleMerges, useMergePeople, useDismissPeopleMerge, describeError } from '../api/admin';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
-
-const SOURCES = { openlibrary: 'Open Library', comicvine: 'ComicVine' };
-
-function sourceName(scheme) {
-  return SOURCES[scheme] || scheme;
-}
-
-// "openlibrary:OL79034A" -> "Open Library OL79034A"
-function keyLabel(key) {
-  const at = key.indexOf(':');
-  return `${sourceName(key.slice(0, at))} ${key.slice(at + 1)}`;
-}
+import { keyLabel, sourceName } from '../../../lib/authority';
 
 function Side({ person }) {
   return (

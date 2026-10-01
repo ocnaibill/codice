@@ -298,3 +298,48 @@ func TestContributors_ARejectedOrMalformedSuggestionChangesNothingAndSuggestions
 		t.Errorf("another source's suggestion was dismissed (%s): adding people does not settle a field", got)
 	}
 }
+
+func keysOf(c Candidate) string {
+	parts := []string{}
+	for _, k := range c.Keys {
+		parts = append(parts, k.Name+"="+k.Scheme+":"+k.Value)
+	}
+	return strings.Join(parts, "|")
+}
+
+func TestCandidates_TheListSaysWhichKeysAcceptingWouldKeepAndAcceptingKeepsExactlyThose(t *testing.T) {
+	s := newCatalogStack(t)
+	w := s.addWork("Good Omens", "T. Pratchett", "a.epub", "epub")
+	author := s.addCandidateWithEvidence(w, "author", "Neil Gaiman", "Open Library", goodOmens)
+	people := s.addCandidateWithEvidence(w, "contributors",
+		`[{"name":"Paul  Kidby ","role":"illustrator"},{"name":"Terry Pratchett","role":"author"},{"name":"Neil Gaiman","role":"colorist"}]`, "Open Library", goodOmens)
+	both := s.addCandidateWithEvidence(w, "author", "Anne Rice", "Google Books",
+		`{"credits":[{"name":"Anne Rice","ids":{"openlibrary":"OL1A","comicvine":"4050-9","goodreads":"7"}}]}`)
+	title := s.addCandidateWithEvidence(w, "title", "Neil Gaiman", "Open Library", goodOmens)
+	bare := s.addCandidate(w, "isbn", "9788576573135", "Google Books")
+
+	byID := map[int]Candidate{}
+	for _, c := range s.candidates(w) {
+		byID[int(c.ID)] = c
+	}
+	if got := keysOf(byID[author]); got != "Neil Gaiman=openlibrary:OL53305A" {
+		t.Errorf("author keys = %q", got)
+	}
+	if got := keysOf(byID[people]); got != "Paul Kidby=openlibrary:OL5A|Terry Pratchett=openlibrary:OL25712A" {
+		t.Errorf("contributors keys = %q: each listed person, in the listed order, and not an invalid entry", got)
+	}
+	if got := keysOf(byID[both]); got != "Anne Rice=comicvine:4050-9|Anne Rice=goodreads:7|Anne Rice=openlibrary:OL1A" {
+		t.Errorf("several schemes = %q: in a stable order", got)
+	}
+	for _, id := range []int{title, bare} {
+		if byID[id].Keys == nil || len(byID[id].Keys) != 0 {
+			t.Errorf("a %s suggestion keeps no key and says so with an empty list, got %#v", byID[id].Field, byID[id].Keys)
+		}
+	}
+	// What it said it would keep is what accepting keeps.
+	s.decide(w, author, "accept")
+	s.decide(w, people, "accept")
+	if got := s.authorities("Neil Gaiman") + " " + s.authorities("Paul Kidby") + " " + s.authorities("Terry Pratchett"); got != "openlibrary:OL53305A openlibrary:OL5A openlibrary:OL25712A" {
+		t.Errorf("kept = %q", got)
+	}
+}

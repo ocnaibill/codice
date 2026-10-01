@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -255,6 +256,50 @@ type Candidate struct {
 	Evidence  json.RawMessage `json:"evidence"`
 	CreatedAt string          `json:"createdAt"`
 	Current   string          `json:"current"`
+	// Keys are the identifiers accepting the suggestion would keep for a person (DEC-095), worked out by the
+	// same rule as accepting, so what the admin is shown is what is done.
+	Keys []CandidateKey `json:"keys"`
+}
+
+// CandidateKey is an identifier a source gave a person named in a suggestion.
+type CandidateKey struct {
+	Name   string `json:"name"`
+	Scheme string `json:"scheme"`
+	Value  string `json:"value"`
+}
+
+// candidateKeys lists the identifiers accepting the suggestion would keep: for an author, those of the author;
+// for contributors, those of each person listed. Any other field keeps none.
+func candidateKeys(field, value string, evidence []byte) []CandidateKey {
+	keys := []CandidateKey{}
+	var names []string
+	switch field {
+	case "author":
+		names = []string{value}
+	case "contributors":
+		var items []contributorSuggestion
+		if json.Unmarshal([]byte(value), &items) != nil {
+			return keys
+		}
+		for _, it := range items {
+			if contributorRoles[it.Role] {
+				names = append(names, it.Name)
+			}
+		}
+	}
+	for _, name := range names {
+		name = strings.Join(strings.Fields(name), " ")
+		ids := people.IDsFor(evidence, name)
+		schemes := make([]string, 0, len(ids))
+		for scheme := range ids {
+			schemes = append(schemes, scheme)
+		}
+		sort.Strings(schemes)
+		for _, scheme := range schemes {
+			keys = append(keys, CandidateKey{Name: name, Scheme: scheme, Value: ids[scheme]})
+		}
+	}
+	return keys
 }
 
 // ListCandidates returns the pending suggestions for a work, with the current
@@ -303,6 +348,7 @@ func (h *LibraryHandler) ListCandidates(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "Error reading candidates", http.StatusInternalServerError)
 			return
 		}
+		c.Keys = candidateKeys(c.Field, c.Value, c.Evidence)
 		out = append(out, c)
 	}
 	w.Header().Set("Content-Type", "application/json")
