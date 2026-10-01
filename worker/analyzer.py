@@ -381,6 +381,14 @@ class Analyzer:
                    needs_ocr = EXCLUDED.needs_ocr, detected_at = now()""",
             (page_count, list(pages_without_text), bool(pages_without_text), work_id))
 
+    def save_declared_mode(self, work_id: int, mode):
+        """Record how the work's file says it is read ('rtl', 'webtoon'), or None when it says nothing (#19).
+        Analysing the file again replaces what was recorded, so a file that stops declaring one is not stuck."""
+        self.db.execute(
+            """UPDATE files SET declared_mode = %s
+               WHERE id = (SELECT file_id FROM work_primary WHERE work_id = %s)""",
+            (mode, work_id))
+
     def save_media_pages(self, work_id: int, metadata: dict):
         """Save per-page metadata to media_pages table."""
         pages = metadata.get('raw', {}).get('pages', [])

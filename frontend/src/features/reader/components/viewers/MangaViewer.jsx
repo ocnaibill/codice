@@ -9,19 +9,36 @@ const PRELOAD_COUNT = 2;
 // Loading timeout per page in ms
 const PAGE_TIMEOUT = 30000;
 
-export default function MangaViewer({ fileUrl, onProgress, initialProgress, workId, onPlaceFailed }) {
+// How a file can say it is read (#19). The file's word is a fact; the remembered mode is the person's taste, which
+// fills in where the file says nothing.
+const FILE_MODES = ['rtl', 'webtoon'];
+
+export default function MangaViewer({ fileUrl, onProgress, initialProgress, workId, onPlaceFailed, declaredMode }) {
   const [pages, setPages] = useState([]);
   const [currentPage, setCurrentPage] = useState(
     initialProgress ? parseInt(initialProgress, 10) || 0 : 0
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // 'ltr', 'rtl', 'webtoon' or 'double', remembered from the last comic read on this device (DEC-078)
-  const [readingDirection, setDirection] = useState(getComicMode);
+  // 'ltr', 'rtl', 'webtoon' or 'double'. A comic that declares how it is read opens that way; otherwise it opens in
+  // the mode remembered from the last comic read on this device (DEC-078). Opening one that declares a mode does
+  // not touch what is remembered: that was not a choice of the person, who still makes it by changing the mode.
+  const declared = FILE_MODES.includes(declaredMode) ? declaredMode : null;
+  const [readingDirection, setDirection] = useState(() => declared || getComicMode());
+  const [fromFile, setFromFile] = useState(!!declared);
   const setReadingDirection = (mode) => {
     setDirection(mode);
+    setFromFile(false);
     saveComicMode(mode);
   };
+  const fileSaid = fromFile && (
+    <span
+      className="text-[11px] text-zinc-500"
+      title={readingDirection === 'webtoon' ? 'O arquivo indica que é uma tira para rolar.' : 'O arquivo indica leitura da direita para a esquerda.'}
+    >
+      pelo arquivo
+    </span>
+  );
   const [pageStatus, setPageStatus] = useState({}); // { [pageNum]: 'loading'|'loaded'|'error' }
   const timeoutRef = useRef(null);
   const containerRef = useRef(null);
@@ -239,6 +256,7 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
           <span className="text-zinc-300 font-mono text-sm font-medium">
             Scroll — {pages.length} pages
           </span>
+          {fileSaid}
           <button onClick={() => setReadingDirection('ltr')} className="text-xs text-zinc-400 hover:text-white px-2 py-1 bg-zinc-800 rounded">
             EXIT
           </button>
@@ -328,6 +346,7 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
         <span className="text-zinc-300 font-mono text-sm font-medium">
           {currentPage + 1} / {pages.length}
         </span>
+        {fileSaid}
         <button 
           onClick={nextPage} 
           disabled={readingDirection === 'rtl' ? currentPage <= 0 : currentPage >= pages.length - 1}

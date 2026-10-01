@@ -112,6 +112,8 @@ type FileInfo struct {
 	// PagesWithoutText lists them, numbered from 1.
 	NeedsOCR         bool  `json:"needsOcr,omitempty"`
 	PagesWithoutText []int `json:"pagesWithoutText,omitempty"`
+	// DeclaredMode is how a comic file says it is read: "rtl" or "webtoon" (#19). Empty when it says nothing.
+	DeclaredMode string `json:"declaredMode,omitempty"`
 }
 
 // LibraryHandler stores the database connection
@@ -407,7 +409,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		       f.id, COALESCE(f.format, ''), f.size_bytes, f.availability, l.path, l.mode,
 		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL), COALESCE(`+hasPosition("rp")+`, FALSE),
 		       COALESCE(tl.needs_ocr, FALSE), tl.pages_without_text,
-		       COALESCE(tx.status, ''), COALESCE(tx.segment_count, 0)
+		       COALESCE(tx.status, ''), COALESCE(tx.segment_count, 0), COALESCE(f.declared_mode, '')
 		FROM editions e
 		LEFT JOIN files f ON f.edition_id = e.id
 		LEFT JOIN text_layers tl ON tl.file_id = f.id
@@ -436,8 +438,9 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		var missing pq.Int64Array
 		var textStatus string
 		var textSegments int
+		var declaredMode string
 		if err := rows.Scan(&e.ID, &e.Title, &e.Language, &e.Publisher, &e.PublicationDate, &e.ISBN, &e.IsPrimary,
-			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &started, &needsOCR, &missing, &textStatus, &textSegments); err != nil {
+			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &started, &needsOCR, &missing, &textStatus, &textSegments, &declaredMode); err != nil {
 			return nil, err
 		}
 		i, seen := index[e.ID]
@@ -450,7 +453,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		if fileID.Valid {
 			fi := FileInfo{ID: fileID.Int64, Format: format.String, Availability: availability.String,
 				PercentComplete: percent, Completed: completed.Bool, Started: started.Bool,
-				TextStatus: textStatus, TextSegments: textSegments}
+				TextStatus: textStatus, TextSegments: textSegments, DeclaredMode: declaredMode}
 			if size.Valid {
 				fi.SizeBytes = &size.Int64
 			}

@@ -5,6 +5,7 @@ Inspired by Komga's rarfile-based extraction for CBR files.
 import os
 from typing import Optional
 from .base import BaseExtractor, ExtractedMetadata
+from .comic_layout import HEADER_BYTES, declared_mode, image_size, sample
 
 
 class CbrExtractor(BaseExtractor):
@@ -34,6 +35,18 @@ class CbrExtractor(BaseExtractor):
                     if f.lower().endswith(valid_exts) and not f.endswith('/')
                 ])
                 meta.page_count = len(images)
+
+                # What the file says about how to read it (#19): ComicInfo's direction, or pages that are strips.
+                sizes = []
+                for name in sample(images):
+                    try:
+                        with rf.open(name) as page:
+                            sizes.append(image_size(page.read(HEADER_BYTES)) or (0, 0))
+                    except Exception:
+                        sizes.append((0, 0))
+                mode = declared_mode(meta.raw.get('manga', ''), sizes)
+                if mode:
+                    meta.raw['declared_mode'] = mode
 
                 # 3. Extract cover from first image
                 if images and not meta.cover_path:
@@ -85,6 +98,9 @@ class CbrExtractor(BaseExtractor):
         publisher = text('Publisher')
         if publisher:
             meta.publisher = publisher
+        manga = text('Manga')
+        if manga:
+            meta.raw['manga'] = manga
         desc = text('Summary')
         if desc:
             meta.description = desc
