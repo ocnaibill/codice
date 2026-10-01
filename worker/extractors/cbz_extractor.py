@@ -7,6 +7,7 @@ import os
 import zipfile
 import xml.etree.ElementTree as ET
 from .base import BaseExtractor, ExtractedMetadata
+from .comic_layout import HEADER_BYTES, declared_mode, image_size, sample
 
 
 class CbzExtractor(BaseExtractor):
@@ -44,6 +45,18 @@ class CbzExtractor(BaseExtractor):
                     {'page_number': i, 'file_name': name}
                     for i, name in enumerate(images)
                 ]
+
+                # What the file says about how to read it (#19): ComicInfo's direction, or pages that are strips.
+                sizes = []
+                for name in sample(images):
+                    try:
+                        with zf.open(name) as page:
+                            sizes.append(image_size(page.read(HEADER_BYTES)) or (0, 0))
+                    except Exception:
+                        sizes.append((0, 0))
+                mode = declared_mode(meta.raw.get('manga', ''), sizes)
+                if mode:
+                    meta.raw['declared_mode'] = mode
 
                 # 3. Extract cover from first image
                 if images and not meta.cover_path:
@@ -100,6 +113,10 @@ class CbzExtractor(BaseExtractor):
         publisher = text('Publisher')
         if publisher:
             meta.publisher = publisher
+
+        manga = text('Manga')
+        if manga:
+            meta.raw['manga'] = manga
 
         description = text('Summary')
         if description:

@@ -161,7 +161,7 @@ export function Reader() {
         return <EpubViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} {...place} />;
       case 'cbz':
       case 'cbr':
-        return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} {...place} />;
+        return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} declaredMode={file.declaredMode} {...place} />;
       case 'txt':
         return <TextViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} {...place} />;
       case 'md':

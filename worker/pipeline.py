@@ -91,6 +91,8 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
     checkpoint()
     analyzer.save_identifiers(work_id, identifiers)
     analyzer.save_media_pages(work_id, native)
+    if metadata.format in ('cbz', 'cbr'):
+        analyzer.save_declared_mode(work_id, (metadata.raw or {}).get('declared_mode'))
     if metadata.format == 'pdf':
         page_count, missing = detect_text_layer(file_path)
         analyzer.save_text_layer(work_id, page_count, missing)

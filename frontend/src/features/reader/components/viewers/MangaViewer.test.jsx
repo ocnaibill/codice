@@ -68,6 +68,77 @@ describe('MangaViewer reading mode', () => {
   });
 });
 
+const noteText = () => container.textContent;
+const remembered = () => localStorage.getItem('codice:comic-mode:ana');
+const modeNow = () => modeButton().textContent.trim();
+
+describe('MangaViewer: how the file says it is read (#19)', () => {
+  it('opens a comic that declares right to left that way, whatever was remembered', async () => {
+    for (const before of [null, 'ltr', 'webtoon', 'double']) {
+      localStorage.clear();
+      if (before) localStorage.setItem('codice:comic-mode:ana', before);
+      await open({ declaredMode: 'rtl' });
+      expect(modeNow()).toBe('RTL');
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+  });
+
+  it('opens a comic that declares itself a strip as a strip, even after a manga read right to left', async () => {
+    localStorage.setItem('codice:comic-mode:ana', 'rtl');
+    await open({ declaredMode: 'webtoon' });
+    expect(modeNow()).toBe('WEBTOON');
+    expect(container.textContent).toContain('Scroll');
+  });
+
+  it('does not touch what is remembered: that was not a choice of the person', async () => {
+    await open({ declaredMode: 'rtl' });
+    expect(remembered()).toBeNull();
+    act(() => root.unmount());
+    root = createRoot(container);
+    localStorage.setItem('codice:comic-mode:ana', 'double');
+    await open({ declaredMode: 'webtoon' });
+    expect(remembered()).toBe('double');
+  });
+
+  it('opens in the remembered mode when the file says nothing, or says something it does not understand', async () => {
+    for (const declaredMode of [undefined, null, '', 'ltr', 'double', 'sideways']) {
+      localStorage.setItem('codice:comic-mode:ana', 'rtl');
+      await open({ declaredMode });
+      expect(modeNow(), String(declaredMode)).toBe('RTL');
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+  });
+
+  it('says the mode came from the file, until the person changes it', async () => {
+    await open({ declaredMode: 'rtl' });
+    expect(noteText()).toContain('pelo arquivo');
+    await act(async () => { modeButton().click(); }); // RTL -> WEBTOON
+    expect(noteText()).not.toContain('pelo arquivo');
+  });
+
+  it('says nothing about the file when it declared nothing', async () => {
+    await open();
+    expect(noteText()).not.toContain('pelo arquivo');
+  });
+
+  it('says it in the strip view too', async () => {
+    await open({ declaredMode: 'webtoon' });
+    expect(noteText()).toContain('pelo arquivo');
+  });
+
+  it('what the person chooses on it is what is remembered, and the next comic that declares nothing follows it', async () => {
+    await open({ declaredMode: 'rtl' });
+    await act(async () => { modeButton().click(); }); // RTL -> WEBTOON
+    expect(remembered()).toBe('webtoon');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open();
+    expect(modeNow()).toBe('WEBTOON');
+  });
+});
+
 describe('MangaViewer: an image that is not there (#14)', () => {
   it('says so, and shows the first image, when the place asked for is past the last', async () => {
     const onPlaceFailed = vi.fn();
