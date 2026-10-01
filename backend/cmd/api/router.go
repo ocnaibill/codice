@@ -60,6 +60,7 @@ func newRouter(d routerDeps) http.Handler {
 	dupesHandler := &handlers.DuplicatesHandler{DB: db}
 	versionsHandler := &handlers.VersionsHandler{DB: db}
 	peopleHandler := &handlers.PeopleHandler{DB: db}
+	providersHandler := &handlers.ProvidersHandler{DB: db}
 	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
@@ -220,6 +221,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Get("/auth/preferences", peopleHandler.GetPreferences)
 	r.With(auth).Put("/auth/preferences", peopleHandler.SetPreferences)
 	r.With(owner).Put("/admin/name-order", peopleHandler.SetLibraryOrder)
+	r.With(staff).Get("/admin/metadata-providers", providersHandler.List)
+	r.With(owner).Put("/admin/metadata-providers/{id}", providersHandler.Set)
 
 	// Accounts: owner and admins list and block (the policy decides who may act on
 	// whom); only the owner changes roles.

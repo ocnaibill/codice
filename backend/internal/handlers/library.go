@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ocnaibill/codice/backend/internal/people"
 	"io"
 	"log"
 	"net/http"
@@ -18,7 +17,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/audit"
+	"github.com/ocnaibill/codice/backend/internal/metaproviders"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/people"
 	"github.com/ocnaibill/codice/backend/internal/storage"
 )
 
@@ -806,6 +807,17 @@ func (h *LibraryHandler) SearchMetadata(w http.ResponseWriter, r *http.Request) 
 
 	if query == "" {
 		http.Error(w, "Missing 'q' parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Nothing leaves the instance unless the owner turned a provider on (DEC-045): the worker checks it too.
+	on, err := metaproviders.AnyEnabled(r.Context(), h.DB)
+	if err != nil {
+		http.Error(w, "Error reading the providers", http.StatusInternalServerError)
+		return
+	}
+	if !on {
+		writeJSON(w, http.StatusOK, map[string]any{"results": []ProviderResult{}, "query": query, "providersOff": true})
 		return
 	}
 
