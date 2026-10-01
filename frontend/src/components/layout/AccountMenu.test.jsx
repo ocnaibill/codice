@@ -38,6 +38,20 @@ describe('account menu', () => {
     expect(preferences).toHaveBeenCalledTimes(1);
   });
 
+  it('opens the apps from the menu', async () => {
+    const apps = vi.fn();
+    view = await mount(<Header onOpenApps={apps} />);
+    await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));
+    await view.click(view.button('Aplicativos'));
+    expect(apps).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no apps item when nothing handles it', async () => {
+    view = await mount(<Header />);
+    await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));
+    expect(view.button('Aplicativos')).toBeUndefined();
+  });
+
   it('has no preferences item when nothing handles it', async () => {
     view = await mount(<Header />);
     await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));

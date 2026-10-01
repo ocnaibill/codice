@@ -8,6 +8,7 @@ export function Header({
   onLogout,
   onChangePassword,
   onOpenPreferences,
+  onOpenApps,
   canAdmin = false,
   onOpenAdmin,
   onGoHome,
@@ -146,6 +147,17 @@ export function Header({
                   }}
                 >
                   Preferências
+                </button>
+              )}
+              {onOpenApps && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenApps();
+                  }}
+                >
+                  Aplicativos
                 </button>
               )}
               {onChangePassword && (
