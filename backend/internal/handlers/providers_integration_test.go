@@ -11,11 +11,12 @@ import (
 )
 
 type providerRow struct {
-	ID       string
-	Name     string
-	Sends    []string
-	NeedsKey bool
-	Enabled  bool
+	ID            string
+	Name          string
+	Sends         []string
+	Key           string
+	Enabled       bool
+	KeyConfigured *bool
 }
 
 func (s *catalogStack) providers() []providerRow {
@@ -56,8 +57,13 @@ func TestProviders_EveryOneIsOffUntilTheOwnerTurnsItOnAndSaysWhatItSends(t *test
 			t.Errorf("%s must say what it receives: %+v", r.ID, r)
 		}
 	}
-	if rows[2].ID != "comicvine" || !rows[2].NeedsKey || rows[0].NeedsKey || rows[1].NeedsKey {
-		t.Errorf("only ComicVine needs a key: %+v", rows)
+	if rows[0].Key != "optional" || rows[1].Key != "" || rows[2].Key != "required" {
+		t.Errorf("Google Books takes a key it can do without, Open Library none, ComicVine one it cannot: %+v", rows)
+	}
+	for _, r := range rows {
+		if r.KeyConfigured != nil {
+			t.Errorf("%s: the worker has not said anything about keys yet, so nothing is known: %v", r.ID, *r.KeyConfigured)
+		}
 	}
 }
 
@@ -166,5 +172,77 @@ func TestSearchMetadata_NeverReachesTheWorkerWhileNoProviderIsOn(t *testing.T) {
 	s.do(admin, "GET", "/metadata/search?q=Dune", "")
 	if hits.Load() != 1 {
 		t.Errorf("the worker was asked after the provider was turned off")
+	}
+}
+
+func keyState(r providerRow) string {
+	if r.KeyConfigured == nil {
+		return "unknown"
+	}
+	if *r.KeyConfigured {
+		return "set"
+	}
+	return "missing"
+}
+
+func (s *catalogStack) workerSays(raw string) {
+	s.t.Helper()
+	s.exec(`INSERT INTO settings (key, value) VALUES ('metadata.providers.keys', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, raw)
+}
+
+func TestProviders_SayWhetherTheWorkerHasTheKeyOfEachThatTakesOneAndNeverTheKey(t *testing.T) {
+	s := newCatalogStack(t)
+	s.workerSays(`{"google_books": false, "comicvine": true, "openlibrary": true}`)
+	rows := s.providers()
+	got := keyState(rows[0]) + " " + keyState(rows[1]) + " " + keyState(rows[2])
+	if got != "missing unknown set" {
+		t.Errorf("keys = %q: a provider with no key has none to say anything about, even if told", got)
+	}
+	s.workerSays(`{"google_books": "yes", "comicvine": null}`)
+	rows = s.providers()
+	if got := keyState(rows[0]) + " " + keyState(rows[2]); got != "unknown unknown" {
+		t.Errorf("what is not a plain true or false is not said: %q", got)
+	}
+	s.workerSays(`"nonsense"`)
+	if got := keyState(s.providers()[2]); got != "unknown" {
+		t.Errorf("a report that is not a report: %q", got)
+	}
+}
+
+func TestProviders_CannotTurnOnWhatNeedsAKeyThatTheWorkerSaysItDoesNotHave(t *testing.T) {
+	s := newCatalogStack(t)
+	s.workerSays(`{"google_books": false, "comicvine": false}`)
+	if code := s.setProvider("comicvine", `{"enabled":true}`); code != 409 {
+		t.Fatalf("without the key: %d, want 409", code)
+	}
+	if got := s.scalar(`SELECT count(*) FROM settings WHERE key = 'metadata.providers'`); got != "0" {
+		t.Errorf("the refused choice was saved")
+	}
+	if got := s.scalar(`SELECT count(*) FROM audit_log WHERE action = 'providers.set'`); got != "0" {
+		t.Errorf("the refused choice was audited as a change")
+	}
+	// A key it can do without does not stop Google Books.
+	if code := s.setProvider("google_books", `{"enabled":true}`); code != 204 {
+		t.Errorf("Google Books without a key: %d", code)
+	}
+	// Turning it off is never in the way.
+	s.exec(`INSERT INTO settings (key, value) VALUES ('metadata.providers', '{"comicvine": true}') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`)
+	if code := s.setProvider("comicvine", `{"enabled":false}`); code != 204 {
+		t.Errorf("turning off without the key: %d", code)
+	}
+	// With the key it can be turned on.
+	s.workerSays(`{"comicvine": true}`)
+	if code := s.setProvider("comicvine", `{"enabled":true}`); code != 204 {
+		t.Errorf("with the key: %d", code)
+	}
+	if got := summary(s.providers()); got != "google_books=off openlibrary=off comicvine=on" { // the setting was replaced above
+		t.Errorf("after: %s", got)
+	}
+}
+
+func TestProviders_BeforeTheWorkerHasSaidAnythingTurningOnWhatNeedsAKeyIsAllowed(t *testing.T) {
+	s := newCatalogStack(t)
+	if code := s.setProvider("comicvine", `{"enabled":true}`); code != 204 {
+		t.Errorf("not known yet: %d", code)
 	}
 }

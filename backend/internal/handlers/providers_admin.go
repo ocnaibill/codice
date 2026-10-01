@@ -42,6 +42,10 @@ func (h *ProvidersHandler) Set(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Provider not found", http.StatusNotFound)
 		return
 	}
+	if errors.Is(err, metaproviders.ErrNoKey) {
+		http.Error(w, "This provider needs an API key and the worker has none: set it in the environment of the worker", http.StatusConflict)
+		return
+	}
 	if err != nil {
 		log.Println("Error setting a metadata provider:", err)
 		http.Error(w, "Error saving the choice", http.StatusInternalServerError)

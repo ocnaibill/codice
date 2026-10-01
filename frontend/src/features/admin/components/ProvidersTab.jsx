@@ -5,11 +5,30 @@ import { Empty, ErrorNote, Loading, Section } from './ui';
 
 // What each provider is, where it lives, and what asking it hands over: the owner decides knowing (DEC-045).
 const ABOUT = {
-  google_books: { host: 'googleapis.com (Google)', note: 'Se a instância tiver uma chave de API do Google Books, ela vai junto.' },
+  google_books: { host: 'googleapis.com (Google)', keyEnv: 'GOOGLE_BOOKS_API_KEY' },
   openlibrary: { host: 'openlibrary.org (Internet Archive)', note: 'Também é a fonte das chaves de autoridade dos autores.' },
-  comicvine: { host: 'comicvine.gamespot.com', note: 'Só funciona com uma chave de API (COMICVINE_API_KEY) no ambiente do worker.' },
+  comicvine: { host: 'comicvine.gamespot.com', keyEnv: 'COMICVINE_API_KEY' },
 };
 const SENDS = { title: 'o título da obra' };
+
+/** What is known of the API key of a provider: the worker says whether it has one, never the key. The key is set
+ *  in the environment of the worker, not here. */
+function keyNote(provider) {
+  const env = ABOUT[provider.id]?.keyEnv;
+  if (!provider.key || !env) return null;
+  if (provider.keyConfigured === true) {
+    return provider.key === 'optional' ? 'Chave de API configurada: o limite de uso é maior.' : 'Chave de API configurada.';
+  }
+  if (provider.keyConfigured === false) {
+    return provider.key === 'optional'
+      ? `Sem chave de API: funciona, com limite de uso menor. Para aumentar, defina ${env} no ambiente do worker.`
+      : `Falta a chave de API: sem ela o ${provider.name} não funciona. Defina ${env} no ambiente do worker e reinicie-o.`;
+  }
+  return provider.key === 'required' ? 'O worker ainda não informou se a chave de API existe.' : null;
+}
+
+// A provider that cannot work without a key the worker does not have is not turned on to find out later.
+const blocked = (provider) => provider.key === 'required' && provider.keyConfigured === false && !provider.enabled;
 
 const sendsText = (provider) => provider.sends.map((s) => SENDS[s] || s).join(', ');
 
@@ -35,6 +54,7 @@ export function ProvidersTab({ isOwner }) {
       <ul className="divide-y divide-border-hairline">
         {providers.map((provider) => {
           const about = ABOUT[provider.id] || {};
+          const note = keyNote(provider);
           return (
             <li key={provider.id} className="flex flex-wrap items-start justify-between gap-3 py-4">
               <div className="min-w-0">
@@ -46,12 +66,15 @@ export function ProvidersTab({ isOwner }) {
                 </p>
                 <p className="text-[12px] text-ink-soft">Recebe: {sendsText(provider)}. Endereço: {about.host || '—'}.</p>
                 {about.note && <p className="text-[12px] text-ink-faint">{about.note}</p>}
+                {note && (
+                  <p className={`text-[12px] ${blocked(provider) ? 'text-red-700' : 'text-ink-faint'}`}>{note}</p>
+                )}
               </div>
               <label className="flex min-h-10 items-center gap-2 text-[13px] text-ink">
                 <input
                   type="checkbox"
                   checked={provider.enabled}
-                  disabled={!isOwner || set.isPending}
+                  disabled={!isOwner || set.isPending || blocked(provider)}
                   onChange={(event) => (event.target.checked ? setTurningOn(provider) : set.mutate({ id: provider.id, enabled: false }))}
                   aria-label={`${provider.name}: ${provider.enabled ? 'ligado' : 'desligado'}`}
                 />
@@ -71,7 +94,7 @@ export function ProvidersTab({ isOwner }) {
             <p>
               A partir de agora, o título de cada obra analisada (e de cada busca manual de metadados) é enviado a{' '}
               <strong>{ABOUT[turningOn.id]?.host || turningOn.name}</strong>. O nome do arquivo, o autor, o conteúdo do livro e as
-              notas não são enviados. {ABOUT[turningOn.id]?.note} Você pode desligar quando quiser; o que já foi enviado não volta.
+              notas não são enviados. {ABOUT[turningOn.id]?.note}{turningOn.keyConfigured && ' A chave de API configurada no worker vai junto.'} Você pode desligar quando quiser; o que já foi enviado não volta.
             </p>
           }
           choices={[{ label: 'Ligar', value: true, tone: 'primary' }]}
