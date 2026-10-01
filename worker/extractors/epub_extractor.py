@@ -75,6 +75,10 @@ class EpubExtractor(BaseExtractor):
             for elem in root.iter():
                 tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
                 text = (elem.text or '').strip()
+                if tag == 'description' and len(elem):
+                    # XHTML written inside the element rather than escaped: all of it is the description, not
+                    # only what comes before the first tag. The markup is taken out later, with the rest.
+                    text = ((elem.text or '') + ''.join(etree.tostring(child, encoding='unicode') for child in elem)).strip()
                 if not text:
                     continue
 
