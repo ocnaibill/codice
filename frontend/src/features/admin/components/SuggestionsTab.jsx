@@ -1,4 +1,4 @@
-import { useSuggestionQueue } from '../api/admin';
+import { useMetadataProviders, useSuggestionQueue } from '../api/admin';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { FIELD_LABELS } from '../../../lib/suggestionFields';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
@@ -10,8 +10,11 @@ const fieldNames = (fields) => fields.map((f) => FIELD_LABELS[f] || f).join(', '
  * first. Reviewing one opens the metadata of the work, where each suggestion is accepted or rejected; the
  * work leaves the queue when its last suggestion is decided.
  */
-export function SuggestionsTab() {
+export function SuggestionsTab({ isOwner, onOpenProviders }) {
   const { data, isLoading, isError } = useSuggestionQueue();
+  const providers = useMetadataProviders().data?.data;
+  // Known to be off, not merely not loaded yet: a banner that flashes on every open would be noise.
+  const allOff = !!providers && providers.length > 0 && providers.every((p) => !p.enabled);
   const openMetadata = useGlobalStore((state) => state.openMetadata);
   const works = data?.data || [];
   const total = data?.total ?? works.length;
@@ -21,6 +24,16 @@ export function SuggestionsTab() {
       title="Sugestões dos provedores"
       hint="Obras com sugestões de metadados esperando decisão, as mais antigas primeiro. Nada muda até você aceitar."
     >
+      {allOff && (
+        <p role="status" className="mb-3 rounded-lg bg-surface-alt p-3 text-[13px] text-ink-soft">
+          Nenhum provedor externo está ligado, então não chegam sugestões novas.{' '}
+          {isOwner ? (
+            <button onClick={onOpenProviders} className="font-medium text-brand hover:underline">Escolher os provedores</button>
+          ) : (
+            'Só o owner liga os provedores.'
+          )}
+        </p>
+      )}
       {isLoading && <Loading />}
       {isError && <ErrorNote>Não foi possível carregar a fila.</ErrorNote>}
       {!isLoading && !isError && works.length === 0 && <Empty>Nenhuma obra com sugestões esperando.</Empty>}

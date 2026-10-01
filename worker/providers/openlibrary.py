@@ -17,6 +17,10 @@ class OpenLibraryProvider(BaseProvider):
     def name(self) -> str:
         return 'OpenLibrary'
 
+    @property
+    def id(self) -> str:
+        return 'openlibrary'
+
     @staticmethod
     def _credits(doc: dict) -> list:
         """Every author of the work. `author_key` names each one, in the same order as `author_name`;

@@ -27,6 +27,7 @@ export const useOrphans = list('orphans', '/admin/storage/orphans');
 export const useTrash = list('trash', '/admin/trash');
 export const useDuplicates = list('duplicates', '/admin/duplicates');
 export const useSuggestionQueue = list('suggestion-queue', '/admin/suggestions');
+export const useMetadataProviders = list('metadata-providers', '/admin/metadata-providers');
 export const usePeopleMerges = list('people-merges', '/admin/people/merges');
 export const useOcr = list('ocr', '/admin/ocr');
 export const useAccounts = list('accounts', '/users');
@@ -43,6 +44,10 @@ function useAdminAction(run) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin'] }),
   });
 }
+
+/** Turns an external metadata provider on or off (owner). */
+export const useSetMetadataProvider = () =>
+  useAdminAction(({ id, enabled }) => api.put(`/admin/metadata-providers/${id}`, { enabled }));
 
 export const useRerunJob = () => useAdminAction((id) => api.post(`/admin/jobs/${id}/rerun`));
 export const useCancelJob = () => useAdminAction((id) => api.post(`/admin/jobs/${id}/cancel`));

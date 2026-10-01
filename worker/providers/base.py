@@ -63,6 +63,12 @@ class BaseProvider(ABC):
         """Human-readable provider name."""
         pass
 
+    @property
+    @abstractmethod
+    def id(self) -> str:
+        """The name the owner's choice is kept under (see gate.py): it is also what the administration lists."""
+        pass
+
     def download_cover(self, cover_url: str, file_path: str, covers_dir: str) -> Optional[str]:
         """Download cover from provider and save locally. Returns local path or None."""
         import os

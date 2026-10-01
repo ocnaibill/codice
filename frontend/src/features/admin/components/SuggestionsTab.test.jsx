@@ -2,24 +2,28 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../lib/api', () => ({ api: { get: vi.fn() } }));
 
+let providerList = [{ id: 'openlibrary', name: 'Open Library', enabled: true, sends: ['title'] }];
+
 import { api } from '../../../lib/api';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { mount } from '../testUtils';
 import { SuggestionsTab } from './SuggestionsTab';
 
 let view;
-async function open(payload) {
+async function open(payload, props = {}) {
   api.get.mockImplementation(async (url) => {
+    if (url === '/admin/metadata-providers') return { data: { data: providerList } };
     if (url === '/admin/suggestions') {
       if (payload instanceof Error) throw payload;
       return { data: payload };
     }
     throw new Error(`unexpected GET ${url}`);
   });
-  view = await mount(<SuggestionsTab />);
+  view = await mount(<SuggestionsTab {...props} />);
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  providerList = [{ id: 'openlibrary', name: 'Open Library', enabled: true, sends: ['title'] }];
   useGlobalStore.setState({ metadataWorkId: null });
 });
 afterEach(() => view.unmount());
@@ -67,5 +71,42 @@ describe('SuggestionsTab: the queue of suggestions (#70)', () => {
     await open(new Error('offline'));
     expect(view.text()).toContain('Não foi possível carregar a fila.');
     expect(view.text()).not.toContain('Nenhuma obra com sugestões');
+  });
+
+  describe('when no external provider is on (#68)', () => {
+    const off = () => [{ id: 'openlibrary', name: 'Open Library', enabled: false, sends: ['title'] }, { id: 'comicvine', name: 'ComicVine', enabled: false, sends: ['title'] }];
+
+    it('tells the owner why nothing new arrives, with a way to choose', async () => {
+      providerList = off();
+      const onOpenProviders = vi.fn();
+      await open({ data: [], total: 0 }, { isOwner: true, onOpenProviders });
+      expect(view.text()).toContain('Nenhum provedor externo está ligado, então não chegam sugestões novas.');
+      await view.click(view.button('Escolher os provedores'));
+      expect(onOpenProviders).toHaveBeenCalled();
+    });
+
+    it('tells an admin to ask the owner, with no button', async () => {
+      providerList = off();
+      await open({ data: [], total: 0 }, { isOwner: false, onOpenProviders: vi.fn() });
+      expect(view.text()).toContain('Só o owner liga os provedores.');
+      expect(view.button('Escolher os provedores')).toBeUndefined();
+    });
+
+    it('says nothing while one is on, or before it is known', async () => {
+      providerList = [...off(), { id: 'google_books', name: 'Google Books', enabled: true, sends: ['title'] }];
+      await open({ data: [], total: 0 }, { isOwner: true });
+      expect(view.text()).not.toContain('Nenhum provedor externo está ligado');
+      view.unmount();
+      providerList = [];
+      await open({ data: [], total: 0 }, { isOwner: true });
+      expect(view.text()).not.toContain('Nenhum provedor externo está ligado');
+    });
+
+    it('still lists the suggestions that were already there', async () => {
+      providerList = off();
+      await open({ data: queued, total: 2 }, { isOwner: true });
+      expect(view.text()).toContain('Nenhum provedor externo está ligado');
+      expect(view.text()).toContain('Duna');
+    });
   });
 });

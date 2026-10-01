@@ -97,6 +97,7 @@ var staffRoutes = []route{
 	{"POST", "/admin/works/1/not-same-as"},
 	{"POST", "/admin/editions/1/split"},
 	{"GET", "/admin/suggestions"},
+	{"GET", "/admin/metadata-providers"},
 	{"GET", "/admin/people/merges"},
 	{"POST", "/admin/people/merges/1/merge"},
 	{"POST", "/admin/people/merges/1/dismiss"},
@@ -127,6 +128,7 @@ var ownerRoutes = []route{
 	{"POST", "/admin/trash/policy/apply"},
 	{"POST", "/admin/storage/roots"},
 	{"PUT", "/admin/name-order"},
+	{"PUT", "/admin/metadata-providers/openlibrary"},
 	{"PUT", "/users/" + someUUID + "/role"},
 }
 
