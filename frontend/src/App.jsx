@@ -4,6 +4,7 @@ import { AppShell } from './components/layout/AppShell';
 import { HomePage } from './pages/HomePage';
 import { Reader } from './features/reader/components/Reader';
 import { WorkSheet } from './features/reader/components/WorkSheet';
+import { NotesPage } from './features/notes/NotesPage';
 import { EditBookModal } from './features/library/components/EditBookModal';
 import { useGlobalStore } from './store/useGlobalStore';
 import { UploadModal } from './features/upload/components/UploadModal';
@@ -47,6 +48,7 @@ function App() {
   const searchQuery = useGlobalStore((state) => state.searchQuery);
   const setSearchQuery = useGlobalStore((state) => state.setSearchQuery);
   const adminOpen = useGlobalStore((state) => state.adminOpen);
+  const notesOpen = useGlobalStore((state) => state.notesOpen);
   const metadataWorkId = useGlobalStore((state) => state.metadataWorkId);
   const metadataTab = useGlobalStore((state) => state.metadataTab);
   const closeMetadata = useGlobalStore((state) => state.closeMetadata);
@@ -303,7 +305,13 @@ function App() {
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >
-          {adminOpen && staff ? <AdminPage isOwner={me.role === 'owner'} onClose={closeBook} /> : <HomePage searchQuery={searchQuery} />}
+          {adminOpen && staff ? (
+            <AdminPage isOwner={me.role === 'owner'} onClose={closeBook} />
+          ) : notesOpen && !searchQuery.trim() ? (
+            <NotesPage />
+          ) : (
+            <HomePage searchQuery={searchQuery} />
+          )}
         </AppShell>
       )}
     </div>

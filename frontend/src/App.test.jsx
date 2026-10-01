@@ -9,18 +9,18 @@ vi.mock('./lib/api', () => ({
   clearAssetToken: vi.fn(),
   UNAUTHORIZED_EVENT: 'codice:unauthorized',
 }));
-const store = vi.hoisted(() => ({ metadataWorkId: null, metadataTab: 'suggestions', closeMetadata: vi.fn() }));
+const store = vi.hoisted(() => ({ metadataWorkId: null, metadataTab: 'suggestions', closeMetadata: vi.fn(), notesOpen: false, searchQuery: '' }));
 vi.mock('./store/useGlobalStore', () => ({
   useGlobalStore: (selector) => selector({
     activeBookId: null,
     closeBook: vi.fn(),
-    searchQuery: '',
     setSearchQuery: vi.fn(),
     adminOpen: false,
     openAdmin: vi.fn(),
     ...store,
   }),
 }));
+vi.mock('./features/notes/NotesPage', () => ({ NotesPage: () => <div>Todas as anotações</div> }));
 vi.mock('./features/library/components/EditBookModal', () => ({
   EditBookModal: ({ workId, tab, onClose }) => <button onClick={onClose}>Metadados {workId} {tab}</button>,
 }));
@@ -48,6 +48,8 @@ beforeEach(() => {
   localStorage.clear();
   window.history.replaceState(null, '', '/');
   store.metadataWorkId = null;
+  store.notesOpen = false;
+  store.searchQuery = '';
   api.get.mockResolvedValue({ data: { isFirstRun: false } });
 });
 afterEach(() => {
@@ -102,5 +104,29 @@ describe('App startup', () => {
     localStorage.setItem('codice_token', 'current-session');
     view = await mount(<App />);
     expect(view.text()).not.toContain('Metadados');
+  });
+
+  it('shows the screen of every note instead of the library when it is open', async () => {
+    localStorage.setItem('codice_token', 'current-session');
+    store.notesOpen = true;
+    view = await mount(<App />);
+    expect(view.text()).toContain('Todas as anotações');
+    expect(view.text()).not.toContain('Acervo');
+  });
+
+  it('shows the search instead of the notes when something is searched for', async () => {
+    localStorage.setItem('codice_token', 'current-session');
+    store.notesOpen = true;
+    store.searchQuery = 'duna';
+    view = await mount(<App />);
+    expect(view.text()).toContain('Acervo');
+    expect(view.text()).not.toContain('Todas as anotações');
+  });
+
+  it('shows the library when the notes are not open', async () => {
+    localStorage.setItem('codice_token', 'current-session');
+    view = await mount(<App />);
+    expect(view.text()).toContain('Acervo');
+    expect(view.text()).not.toContain('Todas as anotações');
   });
 });

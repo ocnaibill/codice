@@ -20,6 +20,8 @@ export function AppShell({
   const menuButton = useRef(null);
   const view = useGlobalStore((state) => state.libraryView);
   const adminOpen = useGlobalStore((state) => state.adminOpen);
+  const notesOpen = useGlobalStore((state) => state.notesOpen);
+  const openNotes = useGlobalStore((state) => state.openNotes);
   const setView = useGlobalStore((state) => state.setLibraryView);
   const goHome = () => {
     onGoHome?.();
@@ -86,6 +88,7 @@ export function AppShell({
             aria-current={
               !searchQuery &&
               !adminOpen &&
+              !notesOpen &&
               (view === key ||
                 (key === 'all' && ['ebooks', 'comics', 'audio'].includes(view)))
                 ? 'page'
@@ -97,6 +100,10 @@ export function AppShell({
             <span>{label}</span>
           </button>
         ))}
+        <button onClick={openNotes} aria-current={notesOpen && !searchQuery ? 'page' : undefined}>
+          <LibraryIcon name="note" />
+          <span>Anotações</span>
+        </button>
         <button
           onClick={focusSearch}
           aria-current={searchQuery ? 'page' : undefined}
