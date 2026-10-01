@@ -3,6 +3,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, authenticatedUrl } from '../../../lib/api';
 import { refreshLibrary } from '../../../lib/refreshLibrary';
 
+// A suggestion's value as text: tags and contributors travel as JSON lists. A value that is not what its
+// field says is shown as it came instead of breaking the list.
+function candidateText(c) {
+  try {
+    const parsed = JSON.parse(c.value);
+    if (c.field === 'tags' && Array.isArray(parsed)) return parsed.join(', ');
+    if (c.field === 'contributors' && Array.isArray(parsed)) return parsed.map((p) => `${p.name} (${p.role})`).join('; ');
+  } catch {
+    // not JSON: shown as it is
+  }
+  return c.value;
+}
+
 export function EditBookModal({ book, onClose }) {
   const queryClient = useQueryClient();
 
@@ -329,7 +342,7 @@ export function EditBookModal({ book, onClose }) {
                   <div key={c.id} className="flex items-start justify-between gap-3 bg-zinc-950 border border-zinc-800 rounded-md p-2">
                     <div className="text-xs min-w-0">
                       <span className="text-zinc-500">{c.field} · {c.source}</span>
-                      <p className="text-zinc-200 break-words">{c.field === 'tags' ? JSON.parse(c.value).join(', ') : c.value}</p>
+                      <p className="text-zinc-200 break-words">{candidateText(c)}</p>
                       {c.current && c.field !== 'tags' && <p className="text-zinc-600 break-words">now: {c.current}</p>}
                     </div>
                     <div className="flex gap-1 shrink-0">

@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -197,5 +198,103 @@ func TestAuthority_MergingTwoPeopleKeepsEveryKeyOfBoth(t *testing.T) {
 	}
 	if got := s.scalar(`SELECT count(*) FROM person_authority`); got != "2" {
 		t.Errorf("rows = %s", got)
+	}
+}
+
+func (s *catalogStack) contributors(workID int) string {
+	s.t.Helper()
+	return s.scalar(`SELECT COALESCE(string_agg(p.name || '/' || c.role || '/' || c.position, '; ' ORDER BY c.role, c.position), '')
+		FROM work_contributors c JOIN person p ON p.id = c.person_id WHERE c.work_id = $1`, workID)
+}
+
+const goodOmens = `{"credits":[{"name":"Terry Pratchett","ids":{"openlibrary":"OL25712A"}},{"name":"Neil Gaiman","ids":{"openlibrary":"OL53305A"}},{"name":"Paul Kidby","role":"illustrator","ids":{"openlibrary":"OL5A"}}]}`
+
+func TestContributors_AcceptingAddsEachPersonInTheirRoleAfterWhoeverIsThereAndKeepsTheirKeys(t *testing.T) {
+	s := newCatalogStack(t)
+	w := s.addWork("Good Omens", "Terry Pratchett", "a.epub", "epub")
+	c := s.addCandidateWithEvidence(w, "contributors",
+		`[{"name":"Neil Gaiman","role":"author"},{"name":"Paul Kidby","role":"illustrator"}]`, "Open Library", goodOmens)
+	if got := s.candidates(w); len(got) != 1 || got[0].Current != "Terry Pratchett (author)" {
+		t.Fatalf("the admin sees who the work has next to the suggestion: %+v", got)
+	}
+	if code := s.decide(w, c, "accept"); code != 200 {
+		t.Fatalf("accept: %d", code)
+	}
+	if got := s.contributors(w); got != "Terry Pratchett/author/0; Neil Gaiman/author/1; Paul Kidby/illustrator/0" {
+		t.Errorf("contributors = %q", got)
+	}
+	if got := s.authorities("Neil Gaiman") + " " + s.authorities("Paul Kidby"); got != "openlibrary:OL53305A openlibrary:OL5A" {
+		t.Errorf("keys = %q: each person keeps the key of their own credit", got)
+	}
+	if got := s.authorities("Terry Pratchett"); got != "" {
+		t.Errorf("someone who was not added got a key: %q", got)
+	}
+	if got := s.scalar(`SELECT details->'added'->>0 || ' | ' || (details->'added'->>1) FROM audit_log WHERE action = 'metadata.accept'`); got != "Neil Gaiman (author) | Paul Kidby (illustrator)" {
+		t.Errorf("audit = %q", got)
+	}
+}
+
+func TestContributors_AcceptingOnlyAddsAndLeavesOutWhatIsNotAValidPerson(t *testing.T) {
+	s := newCatalogStack(t)
+	w := s.addWork("Good Omens", "Terry Pratchett", "a.epub", "epub")
+	s.exec(`INSERT INTO work_contributors (work_id, person_id, role, position) SELECT $1, id, 'illustrator', 3 FROM person WHERE name = 'Terry Pratchett'`, w)
+	value := `[{"name":"Terry Pratchett","role":"author"},{"name":"Terry Pratchett","role":"illustrator"},
+		{"name":"Colorist Person","role":"colorist"},{"name":"  ","role":"author"},{"name":"` + strings.Repeat("x", 201) + `","role":"author"},
+		{"name":"Neil Gaiman","role":"author"}]`
+	c := s.addCandidateWithEvidence(w, "contributors", value, "Open Library", goodOmens)
+	if code := s.decide(w, c, "accept"); code != 200 {
+		t.Fatalf("accept: %d", code)
+	}
+	if got := s.contributors(w); got != "Terry Pratchett/author/0; Neil Gaiman/author/1; Terry Pratchett/illustrator/3" {
+		t.Errorf("contributors = %q: nobody is removed or moved, and what is not valid is left out", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM person`); got != "2" {
+		t.Errorf("people = %s: an invalid entry created a person", got)
+	}
+	if got := s.scalar(`SELECT jsonb_array_length(details->'added')::text || ' ' || (details->'added'->>0) FROM audit_log WHERE action = 'metadata.accept'`); got != "1 Neil Gaiman (author)" {
+		t.Errorf("audit = %q: only who was really added is reported", got)
+	}
+}
+
+func TestContributors_ASuggestionIsCappedSoItCannotFloodAWork(t *testing.T) {
+	s := newCatalogStack(t)
+	w := s.addWork("Anthology", "Editor One", "a.epub", "epub")
+	var items []string
+	for i := 0; i < 60; i++ {
+		items = append(items, fmt.Sprintf(`{"name":"Writer %c%c","role":"author"}`, 'a'+i/26, 'a'+i%26))
+	}
+	c := s.addCandidateWithEvidence(w, "contributors", "["+strings.Join(items, ",")+"]", "Open Library", `{}`)
+	if code := s.decide(w, c, "accept"); code != 200 {
+		t.Fatal(code)
+	}
+	if got := s.scalar(`SELECT count(*) FROM work_contributors WHERE work_id = $1 AND role = 'author'`, w); got != "51" {
+		t.Errorf("authors = %s, want the one it had and 50 more", got)
+	}
+}
+
+func TestContributors_ARejectedOrMalformedSuggestionChangesNothingAndSuggestionsFromSeveralSourcesAllStay(t *testing.T) {
+	s := newCatalogStack(t)
+	w := s.addWork("Good Omens", "Terry Pratchett", "a.epub", "epub")
+	reject := s.addCandidateWithEvidence(w, "contributors", `[{"name":"Neil Gaiman","role":"author"}]`, "Open Library", goodOmens)
+	if code := s.decide(w, reject, "reject"); code != 200 {
+		t.Fatal(code)
+	}
+	if got := s.contributors(w); got != "Terry Pratchett/author/0" {
+		t.Errorf("a rejected suggestion changed the work: %q", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM person_authority`); got != "0" {
+		t.Errorf("a rejected suggestion left keys: %s", got)
+	}
+	bad := s.addCandidateWithEvidence(w, "contributors", `{"not":"a list"}`, "Open Library", goodOmens)
+	if code := s.decide(w, bad, "accept"); code != 422 {
+		t.Errorf("malformed: %d, want 422", code)
+	}
+	one := s.addCandidateWithEvidence(w, "contributors", `[{"name":"Paul Kidby","role":"illustrator"}]`, "Open Library", goodOmens)
+	two := s.addCandidateWithEvidence(w, "contributors", `[{"name":"Neil Gaiman","role":"author"}]`, "Google Books", `{}`)
+	if code := s.decide(w, one, "accept"); code != 200 {
+		t.Fatal(code)
+	}
+	if got := s.scalar(`SELECT state FROM metadata_candidates WHERE id = $1`, two); got != "pending" {
+		t.Errorf("another source's suggestion was dismissed (%s): adding people does not settle a field", got)
 	}
 }

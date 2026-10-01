@@ -54,3 +54,36 @@ def normalize_name(raw):
     """(the name a person goes by, whether it differs from what was written)."""
     name, _family, _given, changed = parse_name(raw)
     return name, changed
+
+
+def name_key(name):
+    """A name as a set of words, whichever order they come in and without role words or accents: what two
+    spellings of a person have in common (the same rule as backend/internal/people.Key)."""
+    words = re.split(r'[^0-9a-z]+', _fold((name or '').replace(',', ' ')))
+    return ' '.join(sorted(w for w in words if w and w not in ROLES))
+
+
+# What a provider calls what a person did, and the role the library keeps. A role the library has no word
+# for (a colorist, a letterer) is left out: it is not made into something it is not.
+PROVIDER_ROLES = {
+    'author': 'author', 'writer': 'author', 'creator': 'author', 'script': 'author', 'story': 'author',
+    'editor': 'editor',
+    'illustrator': 'illustrator', 'penciller': 'illustrator', 'penciler': 'illustrator', 'artist': 'illustrator',
+    'inker': 'illustrator', 'cover': 'illustrator',
+    'translator': 'translator',
+    'narrator': 'narrator',
+}
+
+
+def library_roles(provider_role):
+    """The roles of the library that a provider's role stands for, in order and with no repeats. A provider
+    that says nothing about the role is saying the person is an author of the work; one that lists several
+    ("writer, inker") says each."""
+    if not (provider_role or '').strip():
+        return ['author']
+    roles = []
+    for word in re.split(r'[,/;&]| and ', provider_role.lower()):
+        role = PROVIDER_ROLES.get(word.strip())
+        if role and role not in roles:
+            roles.append(role)
+    return roles
