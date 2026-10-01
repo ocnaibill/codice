@@ -6,6 +6,8 @@ import {
 import { formatBytes, formatDate } from '../format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ImportFolder } from './ImportFolder';
+import { ReferencedFiles } from './ReferencedFiles';
+import { explainCleanupReason } from '../storageText';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 
 function Roots({ isOwner }) {
@@ -136,7 +138,7 @@ function Cleanups() {
         {pending.map((item) => (
           <li key={item.id} className="py-2">
             <code className="text-ink">{item.path}</code>
-            <p className="text-[12px] text-ink-faint">{item.reason}</p>
+            <p className="text-[12px] text-ink-faint">{explainCleanupReason(item.reason)}</p>
           </li>
         ))}
       </ul>
@@ -231,6 +233,7 @@ export function StorageTab({ isOwner }) {
     <div className="flex flex-col gap-5">
       <ImportFolder />
       <Roots isOwner={isOwner} />
+      <ReferencedFiles />
       <Backup />
       <Reorganize />
       <Cleanups />
