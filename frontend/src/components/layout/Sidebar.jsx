@@ -26,6 +26,8 @@ export function Sidebar({ onGoHome, onNavigate, canAdmin, onOpenAdmin }) {
   const view = useGlobalStore((state) => state.libraryView);
   const search = useGlobalStore((state) => state.searchQuery);
   const adminOpen = useGlobalStore((state) => state.adminOpen);
+  const notesOpen = useGlobalStore((state) => state.notesOpen);
+  const openNotes = useGlobalStore((state) => state.openNotes);
   const setView = useGlobalStore((state) => state.setLibraryView);
   const navigate = (key) => {
     setView(key);
@@ -36,7 +38,7 @@ export function Sidebar({ onGoHome, onNavigate, canAdmin, onOpenAdmin }) {
       key={item.key}
       onClick={() => navigate(item.key)}
       aria-current={
-        !search && !adminOpen && view === item.key ? 'page' : undefined
+        !search && !adminOpen && !notesOpen && view === item.key ? 'page' : undefined
       }
       className="library-nav-item"
     >
@@ -67,6 +69,17 @@ export function Sidebar({ onGoHome, onNavigate, canAdmin, onOpenAdmin }) {
         {LIBRARIES.map(navItem)}
         <p className="library-eyebrow library-nav-group">Sua coleção</p>
         {COLLECTION.map(navItem)}
+        <button
+          className="library-nav-item"
+          aria-current={notesOpen && !search ? 'page' : undefined}
+          onClick={() => {
+            openNotes();
+            onNavigate?.();
+          }}
+        >
+          <LibraryIcon name="note" />
+          <span>Anotações</span>
+        </button>
         {canAdmin && (
           <>
             <p className="library-eyebrow library-nav-group">

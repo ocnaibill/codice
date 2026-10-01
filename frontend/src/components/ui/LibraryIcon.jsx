@@ -23,6 +23,12 @@ const paths = {
     </>
   ),
   bookmark: <path d="M6 3h12v18l-6-4-6 4Z" />,
+  note: (
+    <>
+      <path d="M5 3h10l4 4v14H5Z" />
+      <path d="M14 3v5h5M8 13h8M8 17h6" />
+    </>
+  ),
   heart: (
     <path d="M20 5a5 5 0 0 0-8 1 5 5 0 0 0-8-1c-6 6 8 15 8 15S26 11 20 5Z" />
   ),

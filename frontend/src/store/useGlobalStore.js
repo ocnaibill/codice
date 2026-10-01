@@ -7,7 +7,7 @@ export const useGlobalStore = create((set) => ({
   libraryPage: 1,
   librarySort: 'added', // 'added' (newest first), 'title' or 'author' (as the account shows names, #64)
   libraryViewMode: 'grid',
-  setLibraryView: (libraryView) => set({ libraryView, libraryPage: 1, searchQuery: '', adminOpen: false, activeBookId: null, activeFileId: null, sheetWorkId: null }),
+  setLibraryView: (libraryView) => set({ libraryView, libraryPage: 1, searchQuery: '', adminOpen: false, notesOpen: false, activeBookId: null, activeFileId: null, sheetWorkId: null }),
   setLibraryPage: (libraryPage) => set({ libraryPage }),
   setLibrarySort: (librarySort) => set({ librarySort, libraryPage: 1 }),
   setLibraryViewMode: (libraryViewMode) => set({ libraryViewMode }),
@@ -31,7 +31,8 @@ export const useGlobalStore = create((set) => ({
 
   // Actions
   isUploadModalOpen: false,
-  setSearchQuery: (query) => set({ searchQuery: query, ...(query.trim() ? { adminOpen: false } : {}) }),
+  setSearchQuery: (query) => set({ searchQuery: query, ...(query.trim() ? { adminOpen: false, notesOpen: false } : {}) }),
+  // The sheet of a work opens over whatever is on screen, the notes included.
   openWork: (id) => set({ sheetWorkId: id, activeBookId: null, activeFileId: null, adminOpen: false }),
   closeSheet: () => set({ sheetWorkId: null }),
   openBook: (id, fileId = null, { fromStart = false, locator = null } = {}) =>
@@ -42,9 +43,13 @@ export const useGlobalStore = create((set) => ({
       seek: locator ? { locator, n: (state.seek?.n ?? 0) + 1 } : null,
       sheetWorkId: null,
     })),
+  // Closing the book goes back to what it was opened from, the screen of every note included.
   closeBook: () => set({ activeBookId: null, activeFileId: null, fromStart: false, seek: null, sheetWorkId: null, adminOpen: false }),
   adminOpen: false,
-  openAdmin: () => set({ adminOpen: true, activeBookId: null, activeFileId: null, sheetWorkId: null }),
+  openAdmin: () => set({ adminOpen: true, notesOpen: false, activeBookId: null, activeFileId: null, sheetWorkId: null }),
+  // All of the person's own notes, highlights and bookmarks (#13).
+  notesOpen: false,
+  openNotes: () => set({ notesOpen: true, adminOpen: false, searchQuery: '', activeBookId: null, activeFileId: null, sheetWorkId: null }),
   setBooks: (books) => set({ books }),
   openUploadModal: () => set({ isUploadModalOpen: true }),
   closeUploadModal: () => set({ isUploadModalOpen: false }),
