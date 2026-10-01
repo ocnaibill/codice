@@ -23,11 +23,11 @@ type JobsHandler struct {
 	StoragePath string // root of the managed storage, to rebuild a file's absolute path
 }
 
-// List returns jobs newest first, optionally of one state (?state=failed), with
+// List returns jobs newest first, optionally of one state (?state=failed) and one type (?type=scan), with
 // the number of jobs in each state so the page can show a summary.
 func (h *JobsHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	list, counts, err := jobs.List(r.Context(), h.DB, r.URL.Query().Get("state"), limit)
+	list, counts, err := jobs.List(r.Context(), h.DB, r.URL.Query().Get("state"), r.URL.Query().Get("type"), limit)
 	if err != nil {
 		log.Println("Error listing jobs:", err)
 		http.Error(w, "Error listing jobs", http.StatusInternalServerError)

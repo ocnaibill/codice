@@ -417,16 +417,47 @@ func TestList_FiltersAndCounts(t *testing.T) {
 	claim(t, db, "w", 5)
 	fail(t, db, a, "w", "permanent", "broken")
 
-	all, counts, err := jobs.List(ctx, db, "", 50)
+	all, counts, err := jobs.List(ctx, db, "", "", 50)
 	if err != nil || len(all) != 2 {
 		t.Fatalf("list: %v %d", err, len(all))
 	}
 	if counts["failed"] != 1 || counts["pending"] != 1 || counts["running"] != 0 {
 		t.Errorf("counts = %v", counts)
 	}
-	failed, _, _ := jobs.List(ctx, db, "failed", 50)
+	failed, _, _ := jobs.List(ctx, db, "failed", "", 50)
 	if len(failed) != 1 || failed[0].WorkTitle != "a" || failed[0].LastError != "broken" || failed[0].ErrorKind != "permanent" {
 		t.Errorf("failed jobs = %+v", failed)
+	}
+}
+
+func TestList_NarrowsByTypeAndKeepsCountingEverything(t *testing.T) {
+	db := setup(t)
+	enqueue(t, db, newWork(t, db, "a"), 0) // an ingestion
+	for _, st := range []string{"pending", "succeeded", "running"} {
+		if _, err := db.Exec(`INSERT INTO jobs (type, payload, state) VALUES ('scan', jsonb_build_object('n', $1::text), $1)`, st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scans, counts, err := jobs.List(ctx, db, "", "scan", 50)
+	if err != nil || len(scans) != 3 {
+		t.Fatalf("scans: %v %d", err, len(scans))
+	}
+	for _, j := range scans {
+		if j.Type != "scan" {
+			t.Errorf("another type came with it: %+v", j)
+		}
+	}
+	if counts["pending"] != 2 || counts["running"] != 1 || counts["succeeded"] != 1 {
+		t.Errorf("counts = %v: they say how many jobs there are, not how many matched", counts)
+	}
+	if live, _, _ := jobs.List(ctx, db, "pending", "scan", 50); len(live) != 1 || live[0].State != "pending" {
+		t.Errorf("a state and a type together = %+v", live)
+	}
+	if none, _, err := jobs.List(ctx, db, "", "nope", 50); err != nil || len(none) != 0 {
+		t.Errorf("a type nobody has: %v %d", err, len(none))
+	}
+	if all, _, _ := jobs.List(ctx, db, "", "", 50); len(all) != 4 {
+		t.Errorf("no filter = %d", len(all))
 	}
 }
 

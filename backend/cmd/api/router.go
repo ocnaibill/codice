@@ -184,6 +184,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Get("/admin/storage/roots", storageHandler.ListRoots)
 	r.With(owner).Post("/admin/storage/roots", storageHandler.AddRoot)
 	r.With(owner).Delete("/admin/storage/roots/{id}", storageHandler.RemoveRoot)
+	r.With(staff).Get("/admin/storage/referenced", storageHandler.ListReferenced)
+	r.With(staff).Get("/admin/storage/transfers", storageHandler.Transfers)
 	r.With(staff).Post("/admin/library/scan", storageHandler.Scan)
 	r.With(staff).Post("/admin/library/move-to-managed", storageHandler.MoveToManaged)
 	r.With(staff).Get("/admin/storage/cleanups", storageHandler.ListCleanups)

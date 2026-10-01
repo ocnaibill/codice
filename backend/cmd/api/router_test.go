@@ -96,6 +96,8 @@ var staffRoutes = []route{
 	{"POST", "/admin/works/1/join"},
 	{"POST", "/admin/works/1/not-same-as"},
 	{"POST", "/admin/editions/1/split"},
+	{"GET", "/admin/storage/referenced"},
+	{"GET", "/admin/storage/transfers?ids=1"},
 	{"GET", "/admin/suggestions"},
 	{"GET", "/admin/metadata-providers"},
 	{"GET", "/admin/people/merges"},

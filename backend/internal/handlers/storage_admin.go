@@ -294,7 +294,17 @@ func (h *StorageHandler) MoveToManaged(w http.ResponseWriter, r *http.Request) {
 		}
 		q.JobID, err = jobs.Enqueue(r.Context(), h.DB, "transfer", workID, map[string]any{"file_id": id}, jobs.PriorityManual, currentUserID(r))
 		if err != nil {
+			q.JobID = 0
 			q.Error = "could not queue the transfer"
+		} else {
+			// A work has one live transfer at a time: asking for a second file of the same work returns the job
+			// that is already there, which moves the other file. Say so instead of pointing at a job that is not
+			// about this file.
+			var queuedFile int64
+			if h.DB.QueryRowContext(r.Context(), `SELECT COALESCE((payload->>'file_id')::bigint, 0) FROM jobs WHERE id = $1`, q.JobID).Scan(&queuedFile) == nil && queuedFile != id {
+				q.JobID = 0
+				q.Error = "another file of this work is being moved: ask again when it ends"
+			}
 		}
 		out = append(out, q)
 	}

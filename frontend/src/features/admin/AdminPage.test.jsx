@@ -22,6 +22,7 @@ beforeEach(() => {
     if (url === '/admin/trash') return { data: { items: [], totalBytes: 0, policy: { enabled: false, days: 30 } } };
     if (url === '/admin/storage/roots') return { data: { roots: [], managed: '/data' } };
     if (url === '/admin/storage/cleanups' || url === '/admin/storage/orphans') return { data: { data: [] } };
+    if (url === '/admin/storage/referenced') return { data: { data: [], total: 0, summary: { ok: 0, missing: 0, conflict: 0 } } };
     if (url === '/admin/backup') return { data: { lastBackup: null } };
     if (url === '/admin/metadata-providers') return { data: { data: providerList } };
     if (url === '/admin/suggestions') return { data: { data: [], total: queueTotal } };

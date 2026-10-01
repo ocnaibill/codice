@@ -21,6 +21,8 @@ async function open({ isOwner = true, cleanups = [], orphans = [], last = null }
     if (url === '/admin/storage/roots') return { data: { roots: [{ id: 2, path: '/mnt/livros' }], managed: '/data/uploads' } };
     if (url === '/admin/storage/cleanups') return { data: { data: cleanups } };
     if (url === '/admin/storage/orphans') return { data: { data: orphans } };
+    if (url === '/admin/jobs') return { data: { data: [], counts: {} } };
+    if (url === '/admin/storage/referenced') return { data: { data: [], total: 0, summary: { ok: 0, missing: 0, conflict: 0 } } };
     if (url === '/admin/storage/reorganize') return { data: plan };
     if (url === '/admin/backup') return { data: { lastBackup } };
     throw new Error(`unexpected GET ${url}`);
@@ -109,5 +111,17 @@ describe('StorageTab', () => {
     expect(view.text()).toContain('sem permissão');
     await view.click(view.button('Tentar apagar de novo'));
     expect(api.post).toHaveBeenCalledWith('/admin/storage/cleanups/retry');
+  });
+
+  it('says in Portuguese why an original could not be removed, with what the system said', async () => {
+    await open({ cleanups: [{ id: 1, path: '/origem/a.epub', reason: 'the original could not be removed: remove /origem/a.epub: permission denied' }] });
+    expect(view.text()).toContain('Não foi possível apagar o original: remove /origem/a.epub: permission denied');
+  });
+
+  it('has the referenced files above the backup, so the admin finds them with the folders', async () => {
+    await open();
+    const text = view.text();
+    expect(text.indexOf('Pastas autorizadas')).toBeLessThan(text.indexOf('Arquivos referenciados'));
+    expect(text.indexOf('Arquivos referenciados')).toBeLessThan(text.indexOf('Backup'));
   });
 });

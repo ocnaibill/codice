@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 
 /** Turns an error from the API into a sentence a person can act on. */
@@ -35,6 +35,59 @@ export const useLdap = list('ldap', '/admin/ldap');
 export const useEmbeddings = list('embeddings', '/admin/embeddings');
 export const useInvitations = list('invitations', '/invitations');
 export const usePasswordResets = list('password-resets', '/password-resets');
+
+export const REFERENCED_PAGE = 50;
+
+/** A page of the referenced files, narrowed by directory, state and text (#15). While a transfer of one of them is
+ *  waiting or running, it asks again, so the state moves on its own. */
+export function useReferenced({ rootId, state, q, page }, { live = false } = {}) {
+  return useQuery({
+    queryKey: ['admin', 'referenced', { rootId, state, q, page }],
+    queryFn: async () => {
+      const params = { limit: REFERENCED_PAGE, offset: (page - 1) * REFERENCED_PAGE };
+      if (rootId) params.rootId = rootId;
+      if (state) params.state = state;
+      if (q?.trim()) params.q = q.trim();
+      return (await api.get('/admin/storage/referenced', { params })).data;
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 0,
+    // Asks again while something that changes it is going on: a transfer of one of its files, or a scan (`live`).
+    refetchInterval: (query) =>
+      live || query.state.data?.data?.some((f) => f.transfer && (f.transfer.state === 'pending' || f.transfer.state === 'running')) ? 3000 : false,
+  });
+}
+
+/** Whether a scan of a folder is waiting or running. A scan ends after it was asked for, so the screens that show
+ *  what it catalogues ask again, every couple of seconds, while this is true. Asks only for scans, so a flood of other
+ *  jobs (the ingestion of the books it finds) cannot push one out of the page. */
+export function useScanActivity() {
+  return useQuery({
+    queryKey: ['admin', 'scan-activity'],
+    queryFn: async () => ((await api.get('/admin/jobs', { params: { type: 'scan', limit: 10 } })).data.data || []).some((j) => j.state === 'pending' || j.state === 'running'),
+    staleTime: 0,
+    refetchInterval: (query) => (query.state.data ? 2500 : false),
+  });
+}
+
+/** Asks for the transfer of referenced files into the managed storage: one job per file, or the reason it was not queued. */
+export const useMoveToManaged = () =>
+  useAdminAction(async (fileIds) => (await api.post('/admin/library/move-to-managed', { fileIds })).data);
+
+/** How the transfers asked for are going, per job. It asks again every two seconds until none is waiting or running. */
+export function useTransfers(jobIds) {
+  const ids = [...jobIds].sort((a, b) => a - b);
+  return useQuery({
+    queryKey: ['admin', 'transfers', ids],
+    queryFn: async () => (await api.get('/admin/storage/transfers', { params: { ids: ids.join(',') } })).data,
+    enabled: ids.length > 0,
+    staleTime: 0,
+    refetchInterval: (query) => {
+      const rows = query.state.data?.data;
+      return !rows || rows.some((t) => t.outcome === 'queued' || t.outcome === 'running') ? 2000 : false;
+    },
+  });
+}
 
 /** A POST/PUT/DELETE that refreshes the admin lists when it succeeds. */
 function useAdminAction(run) {

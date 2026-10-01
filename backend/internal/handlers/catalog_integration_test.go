@@ -78,6 +78,8 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Post("/admin/storage/roots", storageAdmin.AddRoot)
 	r.Delete("/admin/storage/roots/{id}", storageAdmin.RemoveRoot)
 	r.Post("/admin/library/scan", storageAdmin.Scan)
+	r.Get("/admin/storage/referenced", storageAdmin.ListReferenced)
+	r.Get("/admin/storage/transfers", storageAdmin.Transfers)
 	r.Post("/admin/library/move-to-managed", storageAdmin.MoveToManaged)
 	r.Get("/admin/storage/cleanups", storageAdmin.ListCleanups)
 	r.Post("/admin/storage/cleanups/retry", storageAdmin.RetryCleanups)
