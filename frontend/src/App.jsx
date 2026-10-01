@@ -16,6 +16,7 @@ import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
 import { OwnershipBanner } from './features/ownership/OwnershipBanner';
 import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
 import { PreferencesModal } from './components/layout/PreferencesModal';
+import { AppsModal } from './components/layout/AppsModal';
 import { ResetPassword } from './features/auth/components/ResetPassword';
 import { AcceptInvite } from './features/auth/components/AcceptInvite';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
@@ -28,6 +29,7 @@ function App() {
   const [assetsReady, setAssetsReady] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [appsOpen, setAppsOpen] = useState(false);
   // A link like /?invite=<secret> opens the sign-up page for that invitation.
   const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset'));
@@ -290,6 +292,7 @@ function App() {
       <OwnershipBanner me={me} />
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
       {preferencesOpen && <PreferencesModal onClose={() => setPreferencesOpen(false)} />}
+      {appsOpen && <AppsModal onClose={() => setAppsOpen(false)} />}
       <WorkSheet />
       {metadataWorkId && <EditBookModal key={`${metadataWorkId}-${metadataTab}`} workId={metadataWorkId} tab={metadataTab} onClose={closeMetadata} />}
       {activeBookId ? (
@@ -302,6 +305,7 @@ function App() {
           onLogout={handleLogout}
           onChangePassword={() => setChangingPassword(true)}
           onOpenPreferences={() => setPreferencesOpen(true)}
+          onOpenApps={() => setAppsOpen(true)}
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >

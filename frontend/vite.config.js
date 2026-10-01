@@ -19,7 +19,7 @@ export default defineConfig(({ command }) => {
     // its CORS policy or exposing a second API origin to the browser.
     server: devApiTarget ? {
       proxy: {
-        '^/(auth|works|stats|favorites|notes|search|progress|files|covers|ws|admin|users|invitations|password-resets|upload|ownership|metadata|healthz)(/|\\?|$)': {
+        '^/(auth|works|stats|favorites|notes|search|progress|files|covers|ws|admin|users|invitations|password-resets|upload|ownership|metadata|opds|healthz)(/|\\?|$)': {
           target: devApiTarget,
           changeOrigin: true,
           ws: true,
