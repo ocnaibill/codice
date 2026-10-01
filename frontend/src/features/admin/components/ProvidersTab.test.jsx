@@ -9,7 +9,7 @@ import { ProvidersTab } from './ProvidersTab';
 const provider = (id, name, enabled, over = {}) => ({ id, name, enabled, sends: ['title'], key: '', keyConfigured: null, ...over });
 const providers = [
   provider('google_books', 'Google Books', false, { key: 'optional' }),
-  provider('openlibrary', 'Open Library', true),
+  provider('openlibrary', 'Open Library', true, { sends: ['title', 'author_key'] }),
   provider('comicvine', 'ComicVine', false, { key: 'required', keyConfigured: true }),
 ];
 
@@ -36,7 +36,7 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
     const text = view.text();
     expect(text).toContain('Todos começam desligados');
     expect(text).toContain('Open Library');
-    expect(text).toContain('Recebe: o título da obra. Endereço: openlibrary.org (Internet Archive).');
+    expect(text).toContain('Recebe: o título da obra, a chave de cada autor que você aceita (para obter os identificadores dele: Wikidata, VIAF, ISNI). Endereço: openlibrary.org (Internet Archive).');
     expect(text).toContain('Endereço: googleapis.com (Google).');
     expect([...document.body.querySelectorAll('li span.font-mono')].map((e) => e.textContent)).toEqual(['desligado', 'ligado', 'desligado']);
     expect(box('Open Library').checked).toBe(true);
@@ -51,7 +51,9 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
     const dialogText = confirmDialog().textContent;
     expect(dialogText).toContain('Ligar Google Books?');
     expect(dialogText).toContain('googleapis.com (Google)');
-    expect(dialogText).toContain('O nome do arquivo, o autor, o conteúdo do livro e as notas não são enviados');
+    expect(dialogText).toContain('é enviado a googleapis.com (Google): o título da obra.');
+    expect(dialogText).toContain('O nome do arquivo, o conteúdo do livro e as notas não são enviados');
+    expect(dialogText).not.toContain('chave de cada autor');
 
     await view.click(view.button('Cancelar'));
     expect(api.put).not.toHaveBeenCalled();
@@ -60,6 +62,15 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
     await view.click(box('Google Books'));
     await view.click([...document.body.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent === 'Ligar'));
     expect(api.put).toHaveBeenCalledWith('/admin/metadata-providers/google_books', { enabled: true });
+  });
+
+  it('says before turning on Open Library that it is also asked about the authors that are accepted', async () => {
+    await open({ isOwner: true }, [provider('openlibrary', 'Open Library', false, { sends: ['title', 'author_key'] })]);
+    await view.click(box('Open Library'));
+    const dialogText = confirmDialog().textContent;
+    expect(dialogText).toContain('é enviado a openlibrary.org (Internet Archive): o título da obra, a chave de cada autor que você aceita');
+    expect(dialogText).toContain('Wikidata, VIAF, ISNI');
+    expect(dialogText).toContain('O nome do arquivo, o conteúdo do livro e as notas não são enviados');
   });
 
   it('turns one off at once, with nothing to confirm', async () => {

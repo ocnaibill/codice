@@ -51,6 +51,19 @@ describe('PeopleMerges', () => {
     expect(text).toContain('Chave: ComicVine 4050-1; Open Library OL79034A');
   });
 
+  it('names the identifier of a reference authority that two people share, and the ones each holds', async () => {
+    const shared = {
+      id: 11, reason: 'authority', evidence: { scheme: 'wikidata', value: 'Q7934' },
+      a: { id: 1, name: 'Frank Herbert', aliases: [], works: 2, titles: ['Duna'], authorities: ['isni:0000000121347853', 'openlibrary:OL79034A', 'viaf:59083797', 'wikidata:Q7934'] },
+      b: { id: 2, name: 'F. P. Herbert', aliases: [], works: 1, titles: ['Messias'], authorities: ['openlibrary:OL5A', 'wikidata:Q7934'] },
+    };
+    await open([shared]);
+    const text = view.text();
+    expect(text).toContain('Mesma chave no Wikidata (Q7934): muito provavelmente a mesma pessoa.');
+    expect(text).toContain('Chave: ISNI 0000000121347853; Open Library OL79034A; VIAF 59083797; Wikidata Q7934');
+    expect(text).toContain('Chave: Open Library OL5A; Wikidata Q7934');
+  });
+
   it('gives no reason to a pair proposed only for sharing words, and no key line to a person without one', async () => {
     await open();
     expect(view.text()).not.toContain('Mesma chave');
