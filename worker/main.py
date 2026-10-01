@@ -13,6 +13,7 @@ from extractors.base import BaseExtractor
 from providers import ProviderRegistry
 from providers.gate import asks_providers, db_gate, report_keys
 from authority import resolve_pending
+from maintenance import repair_descriptions
 from db import CodiceDatabase
 from analyzer import Analyzer, MediaStatus
 from pipeline import analyze_file, ensure_file
@@ -208,6 +209,8 @@ def listen_for_tasks():
     db = CodiceDatabase()
     allowed = db_gate(db)
     report_keys(db)  # which API keys this worker has: the administration says so before a provider is turned on
+    if asks_providers():
+        repair_descriptions(db)  # once, for the descriptions an older version stored with their HTML (#58)
     client = connect_redis()
     heartbeat = Heartbeat()
     runner = build_runner(db, client, heartbeat)

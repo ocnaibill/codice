@@ -4,6 +4,7 @@ and reused by whatever runs the jobs."""
 import os
 
 from analyzer import Analyzer
+from extractors.plain_text import plain_description
 from ocr_detect import detect_text_layer
 
 
@@ -34,6 +35,8 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
       only when the file has none.
     """
     metadata = extractor.extract(file_path, covers_dir)
+    # What a file says about itself may be HTML; it is kept, and shown, as plain text (#58).
+    metadata.description = plain_description(metadata.description)
     print(f"   📄 Local metadata: {metadata.title} ({metadata.page_count} pages)")
     checkpoint()
 
@@ -65,7 +68,7 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
             'series_index': enriched.series_index, 'isbn': enriched.isbn,
             'language': None,  # a provider says the language of some edition, not of this file (DEC-096)
             'publisher': enriched.publisher,
-            'publication_date': enriched.publication_date, 'description': enriched.description,
+            'publication_date': enriched.publication_date, 'description': plain_description(enriched.description),
             'tags': enriched.tags,
             'credits': [c.as_dict() for c in (getattr(enriched, 'credits', None) or [])],
         }
