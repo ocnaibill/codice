@@ -9,7 +9,7 @@ from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
 
-from people import parse_name
+from people import library_roles, name_key, parse_name
 
 
 # The cover is stored on the work's primary edition. Since the data model allows
@@ -304,6 +304,10 @@ class Analyzer:
                 continue
             propose(field, text)
 
+        extra = self._missing_contributors(work_id, record, state)
+        if extra:
+            propose('contributors', json.dumps(extra, ensure_ascii=False))
+
         tags = {clean_tag(t) for t in (record.get('tags') or []) if clean_tag(t)}
         if tags:
             have = {r[0] for r in (self.db.fetchall(
@@ -312,6 +316,33 @@ class Analyzer:
             if not tags <= have:
                 propose('tags', json.dumps(sorted(tags)))
         return stored
+
+    def _missing_contributors(self, work_id: int, record: dict, state: dict) -> list:
+        """The people the provider credits besides the author it suggests (a co-author, an illustrator, a
+        translator), with the role of each, leaving out whoever the work already has in that role. The first
+        author is the `author` suggestion's business, not this one's. A locked author is not given co-authors."""
+        credits = record.get('credits') or []
+        if len(credits) == 0:
+            return []
+        have = {(name_key(n), r) for n, r in (self.db.fetchall(
+            """SELECT p.name, c.role FROM work_contributors c JOIN person p ON p.id = c.person_id
+               WHERE c.work_id = %s""", (work_id,)) or [])}
+        first = name_key(record.get('author') or '')
+        author_locked = bool(state['locks'].get('author'))
+        out, seen = [], set()
+        for credit in credits:
+            name = ' '.join(str(credit.get('name') or '').split())
+            key = name_key(name)
+            if not key:
+                continue
+            for role in library_roles(credit.get('role')):
+                if role == 'author' and (key == first or author_locked):
+                    continue
+                if (key, role) in have or (key, role) in seen:
+                    continue
+                seen.add((key, role))
+                out.append({'name': name, 'role': role})
+        return out
 
     def save_identifiers(self, work_id: int, metadata: dict):
         """Save identifiers (ISBN, provider IDs) to work_identifiers table."""

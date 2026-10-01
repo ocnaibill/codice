@@ -55,3 +55,29 @@ def test_only_the_catalogues_way_with_a_role_says_which_is_the_surname(raw, name
     got = parse_name(raw)
     assert got[:3] == (name, family, given)
     assert got[3] == (name != raw)
+
+
+class TestNameKeyAndRoles:
+    def test_name_key_is_the_same_for_the_same_words_in_any_order_without_accents_or_role_words(self):
+        from people import name_key
+        assert name_key('Herbert, Frank') == name_key('Frank Herbert') == name_key('Frank Herbert (author)')
+        assert name_key('Antônio da Conceição') == name_key('antonio da conceicao')
+        assert name_key('Herbert, Frank') != name_key('Brian Herbert')
+        assert name_key('') == '' and name_key(None) == ''
+
+    def test_a_provider_that_says_nothing_about_the_role_says_author(self):
+        from people import library_roles
+        assert library_roles(None) == ['author'] and library_roles('  ') == ['author']
+
+    def test_provider_roles_are_the_librarys_roles_and_a_role_it_has_no_word_for_is_left_out(self):
+        from people import library_roles
+        assert library_roles('writer') == ['author']
+        assert library_roles('Penciller') == ['illustrator']
+        assert library_roles('translator') == ['translator']
+        assert library_roles('colorist') == [] and library_roles('letterer') == []
+
+    def test_several_roles_are_each_kept_once_in_order(self):
+        from people import library_roles
+        assert library_roles('writer, inker') == ['author', 'illustrator']
+        assert library_roles('penciller, inker') == ['illustrator']
+        assert library_roles('writer and editor') == ['author', 'editor']

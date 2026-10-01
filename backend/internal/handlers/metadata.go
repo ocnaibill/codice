@@ -282,6 +282,8 @@ func (h *LibraryHandler) ListCandidates(w http.ResponseWriter, r *http.Request) 
 		         WHEN 'publisher' THEN COALESCE(e.publisher, '')
 		         WHEN 'publication_date' THEN COALESCE(e.publication_date, '')
 		         WHEN 'description' THEN COALESCE(w.description, '')
+		         WHEN 'contributors' THEN COALESCE((SELECT string_agg(p.name || ' (' || k.role || ')', '; ' ORDER BY k.role, k.position, p.name)
+		                                            FROM work_contributors k JOIN person p ON p.id = k.person_id WHERE k.work_id = w.id), '')
 		         ELSE '' END
 		FROM metadata_candidates c
 		JOIN works w ON w.id = c.work_id
@@ -347,8 +349,9 @@ func (h *LibraryHandler) decideCandidate(w http.ResponseWriter, r *http.Request,
 	}
 
 	var field, value, source string
-	err = tx.QueryRow(`SELECT field, value, source FROM metadata_candidates
-		WHERE id = $1 AND work_id = $2 AND state = 'pending' FOR UPDATE`, candID, workID).Scan(&field, &value, &source)
+	var evidence []byte
+	err = tx.QueryRow(`SELECT field, value, source, evidence FROM metadata_candidates
+		WHERE id = $1 AND work_id = $2 AND state = 'pending' FOR UPDATE`, candID, workID).Scan(&field, &value, &source, &evidence)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Candidate not found", http.StatusNotFound)
 		return
@@ -397,17 +400,36 @@ func (h *LibraryHandler) decideCandidate(w http.ResponseWriter, r *http.Request,
 				http.Error(w, "Error adding tags", http.StatusInternalServerError)
 				return
 			}
+		case "contributors":
+			var items []contributorSuggestion
+			if json.Unmarshal([]byte(value), &items) != nil {
+				http.Error(w, "Candidate contributors are malformed", http.StatusUnprocessableEntity)
+				return
+			}
+			added, err := addContributors(r.Context(), tx, workID, items, source, evidence)
+			if err != nil {
+				http.Error(w, "Error adding contributors", http.StatusInternalServerError)
+				return
+			}
+			details["added"] = added
 		default:
 			http.Error(w, "Unsupported candidate field", http.StatusUnprocessableEntity)
 			return
 		}
-		if field != "tags" {
+		// Tags and contributors only add: they do not settle a field, so other proposals for them stay.
+		if field != "tags" && field != "contributors" {
 			changes, err := applyWorkFields(r.Context(), tx, workID, actor, source, cur, retired, next, nil)
 			if err != nil {
 				http.Error(w, "Error applying candidate", http.StatusInternalServerError)
 				return
 			}
 			details["changes"] = auditDetails(changes)
+			if field == "author" {
+				if err := recordAuthorAuthority(r.Context(), tx, value, source, evidence); err != nil {
+					http.Error(w, "Error recording author identity", http.StatusInternalServerError)
+					return
+				}
+			}
 			// The field is settled: dismiss the other proposals for it.
 			if _, err := tx.Exec(`UPDATE metadata_candidates SET state = 'rejected', decided_at = now()
 				WHERE work_id = $1 AND field = $2 AND state = 'pending' AND id <> $3`, workID, field, candID); err != nil {
@@ -486,6 +508,70 @@ func addTags(tx *sql.Tx, workID int, names []string) error {
 const firstAuthorSQL = `
 	SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id
 	WHERE c.work_id = w.id AND c.role = 'author' ORDER BY c.position, p.name LIMIT 1`
+
+// contributorSuggestion is one person a provider credits on a work, with the role the library keeps for them.
+type contributorSuggestion struct {
+	Name string `json:"name"`
+	Role string `json:"role"`
+}
+
+var contributorRoles = map[string]bool{"author": true, "translator": true, "narrator": true, "editor": true, "illustrator": true}
+
+const (
+	maxSuggestedContributors = 50
+	maxContributorNameRunes  = 200
+)
+
+// addContributors adds the people of an accepted suggestion to the work, each in their role and after whoever
+// the work already has in it. It only adds: nobody the work has is removed or moved, and someone who is
+// already there in that role stays as they are. A role the library has no word for, or a name that is empty or
+// too long, is left out rather than failing the decision. The identifiers the source gave each name are kept for
+// the person, as for an accepted author. It returns who was added.
+func addContributors(ctx context.Context, tx *sql.Tx, workID int, items []contributorSuggestion, source string, evidence []byte) ([]string, error) {
+	added := []string{}
+	if len(items) > maxSuggestedContributors {
+		items = items[:maxSuggestedContributors]
+	}
+	for _, it := range items {
+		name := strings.Join(strings.Fields(it.Name), " ")
+		if name == "" || len([]rune(name)) > maxContributorNameRunes || !contributorRoles[it.Role] {
+			continue
+		}
+		personID, err := people.Resolve(ctx, tx, name)
+		if err != nil {
+			return nil, err
+		}
+		res, err := tx.ExecContext(ctx, `
+			INSERT INTO work_contributors (work_id, person_id, role, position)
+			SELECT $1::int, $2::int, $3::varchar, COALESCE((SELECT max(position) + 1 FROM work_contributors WHERE work_id = $1 AND role = $3), 0)
+			ON CONFLICT DO NOTHING`, workID, personID, it.Role)
+		if err != nil {
+			return nil, err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			added = append(added, name+" ("+it.Role+")")
+		}
+		if err := people.RecordAuthority(ctx, tx, personID, source, people.IDsFor(evidence, name)); err != nil {
+			return nil, err
+		}
+	}
+	return added, nil
+}
+
+// recordAuthorAuthority keeps, for the person an accepted author stands for, the identifiers the source gave
+// that author in the record the suggestion came from. A human accepting the name is what ties the identifier
+// to the person; a name the record does not credit, or credits twice, brings none.
+func recordAuthorAuthority(ctx context.Context, tx *sql.Tx, name, source string, evidence []byte) error {
+	ids := people.IDsFor(evidence, name)
+	if len(ids) == 0 {
+		return nil
+	}
+	personID, err := people.Resolve(ctx, tx, name)
+	if err != nil {
+		return err
+	}
+	return people.RecordAuthority(ctx, tx, personID, source, ids)
+}
 
 // setFirstAuthor makes name the work's first author, creating the person if needed. The person goes by
 // the name people say ("Herbert, Frank, author" is Frank Herbert) and what was written is kept as an

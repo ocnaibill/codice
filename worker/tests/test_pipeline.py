@@ -79,6 +79,15 @@ class TestPipeline:
                 {'name': 'John Schoenherr', 'role': 'illustrator'}]
             assert evidence['query'] == 'Duna'
 
+    def test_the_people_credited_besides_the_author_become_a_contributors_suggestion(self):
+        import json
+        from providers.base import Credit
+        db = FakeDB()
+        credits = [Credit('F. Herbert'), Credit('John Schoenherr', 'illustrator', {'openlibrary': 'OL9A'})]
+        run(db, meta(), FakeProviders(record(author='F. Herbert', credits=credits)))
+        found = {p[1]: json.loads(p[2]) for q, p in db.matching("INSERT INTO metadata_candidates") if p[1] == 'contributors'}
+        assert found['contributors'] == [{'name': 'John Schoenherr', 'role': 'illustrator'}]
+
     def test_a_record_without_credits_leaves_the_evidence_as_it_was(self):
         import json
         db = FakeDB()

@@ -12,7 +12,7 @@ LOCK_NAMES = ['title', 'author', 'series', 'cover', 'isbn', 'language', 'publish
 class FakeDB:
     """Records statements and answers the analyzer's reads from a given state."""
 
-    def __init__(self, values=None, locks=None, sources=None, tags=()):
+    def __init__(self, values=None, locks=None, sources=None, tags=(), contributors=()):
         self.values = {n: '' for n in VALUE_NAMES}
         self.values['series_index'] = 0
         self.values['title'] = 'upload.epub'
@@ -21,6 +21,7 @@ class FakeDB:
         self.locks.update(locks or {})
         self.sources = sources or {}
         self.tags = list(tags)
+        self.contributors = list(contributors)  # [(name, role)]
         self.statements = []
 
     def execute(self, query, params=()):
@@ -41,6 +42,8 @@ class FakeDB:
             return list(self.sources.items())
         if "FROM work_tags" in query:
             return [(t,) for t in self.tags]
+        if "FROM work_contributors c JOIN person" in query:
+            return list(self.contributors)
         return []
 
     # helpers for assertions
@@ -274,3 +277,48 @@ class TestAuthorNames:
         db = FakeDB()
         Analyzer(db).save_metadata(7, dict(NATIVE, author='Unknown Author'))
         assert self.author_inserts(db) == []
+
+
+class TestContributorSuggestions:
+    def propose(self, record, **db_kw):
+        import json
+        db = FakeDB(values={'author': 'F. Herbert'}, **db_kw)
+        Analyzer(db).save_candidates(7, dict(record), 'Open Library', {})
+        found = [json.loads(p[2]) for q, p in db.matching("INSERT INTO metadata_candidates") if p[1] == 'contributors']
+        return found[0] if found else None
+
+    def test_the_other_people_a_provider_credits_are_suggested_with_their_roles_but_not_the_first_author(self):
+        got = self.propose({'author': 'Terry Pratchett', 'credits': [
+            {'name': 'Terry Pratchett', 'ids': {'openlibrary': 'OL1A'}},
+            {'name': 'Neil Gaiman', 'ids': {'openlibrary': 'OL2A'}},
+            {'name': 'John Schoenherr', 'role': 'illustrator'}]})
+        assert got == [{'name': 'Neil Gaiman', 'role': 'author'}, {'name': 'John Schoenherr', 'role': 'illustrator'}]
+
+    def test_nothing_is_suggested_when_only_the_first_author_is_credited_or_nothing_is_credited(self):
+        assert self.propose({'author': 'Frank Herbert', 'credits': [{'name': 'Frank Herbert'}]}) is None
+        assert self.propose({'author': 'Frank Herbert', 'credits': []}) is None
+        assert self.propose({'author': 'Frank Herbert'}) is None
+
+    def test_who_the_work_already_has_in_that_role_is_left_out_whichever_way_the_name_is_written(self):
+        got = self.propose({'author': 'Terry Pratchett', 'credits': [
+            {'name': 'Terry Pratchett'}, {'name': 'Neil Gaiman'}, {'name': 'John Schoenherr', 'role': 'illustrator'}]},
+            contributors=[('Gaiman, Neil', 'author'), ('John Schoenherr', 'translator')])
+        # Schoenherr is there as a translator, not as the illustrator he is credited as.
+        assert got == [{'name': 'John Schoenherr', 'role': 'illustrator'}]
+
+    def test_a_locked_author_is_given_no_co_authors_but_the_others_are_still_suggested(self):
+        got = self.propose({'author': 'Terry Pratchett', 'credits': [
+            {'name': 'Neil Gaiman'}, {'name': 'John Schoenherr', 'role': 'illustrator'}]}, locks={'author': True})
+        assert got == [{'name': 'John Schoenherr', 'role': 'illustrator'}]
+
+    def test_a_role_the_library_has_no_word_for_is_not_made_up_and_a_person_credited_twice_is_kept_once(self):
+        got = self.propose({'author': 'A One', 'credits': [
+            {'name': 'B Two', 'role': 'colorist'}, {'name': 'C Three', 'role': 'writer, inker'},
+            {'name': 'Three, C', 'role': 'writer'}, {'name': '  ', 'role': 'writer'}]})
+        assert got == [{'name': 'C Three', 'role': 'author'}, {'name': 'C Three', 'role': 'illustrator'}]
+
+    def test_a_repeated_suggestion_is_a_no_op_for_the_database(self):
+        db = FakeDB(values={'author': 'A One'})
+        Analyzer(db).save_candidates(7, {'author': 'A One', 'credits': [{'name': 'B Two'}]}, 'Open Library', {})
+        query = [q for q, p in db.matching("INSERT INTO metadata_candidates") if p[1] == 'contributors'][0]
+        assert "ON CONFLICT (work_id, field, source, value) DO NOTHING" in query

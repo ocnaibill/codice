@@ -3,6 +3,7 @@ package people
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -76,17 +77,23 @@ type Person struct {
 	Aliases []string `json:"aliases"`
 	Works   int      `json:"works"`
 	Titles  []string `json:"titles"`
+	// Authorities are the identifiers a reference source has for the person ("openlibrary:OL79034A").
+	Authorities []string `json:"authorities"`
 }
 
 // Candidate is a pair waiting for a decision.
 type Candidate struct {
-	ID int64  `json:"id"`
-	A  Person `json:"a"`
-	B  Person `json:"b"`
+	ID int64 `json:"id"`
+	// Reason is why the pair was proposed: "authority" (both hold the same identifier from a reference source,
+	// which Evidence names) or "words" (their names are made of the same words).
+	Reason   string          `json:"reason"`
+	Evidence json.RawMessage `json:"evidence"`
+	A        Person          `json:"a"`
+	B        Person          `json:"b"`
 }
 
 func person(ctx context.Context, db *sql.DB, id int) (Person, error) {
-	p := Person{ID: id, Aliases: []string{}, Titles: []string{}}
+	p := Person{ID: id, Aliases: []string{}, Titles: []string{}, Authorities: []string{}}
 	if err := db.QueryRowContext(ctx, `SELECT name FROM person WHERE id = $1`, id).Scan(&p.Name); err != nil {
 		return p, err
 	}
@@ -103,6 +110,19 @@ func person(ctx context.Context, db *sql.DB, id int) (Person, error) {
 		p.Aliases = append(p.Aliases, a)
 	}
 	rows.Close()
+	ids, err := db.QueryContext(ctx, `SELECT scheme || ':' || value FROM person_authority WHERE person_id = $1 ORDER BY scheme, value`, id)
+	if err != nil {
+		return p, err
+	}
+	for ids.Next() {
+		var a string
+		if err := ids.Scan(&a); err != nil {
+			ids.Close()
+			return p, err
+		}
+		p.Authorities = append(p.Authorities, a)
+	}
+	ids.Close()
 	if err := db.QueryRowContext(ctx, `
 		SELECT count(DISTINCT c.work_id) FROM work_contributors c JOIN works w ON w.id = c.work_id AND w.retired_at IS NULL
 		WHERE c.person_id = $1`, id).Scan(&p.Works); err != nil {
@@ -127,18 +147,22 @@ func person(ctx context.Context, db *sql.DB, id int) (Person, error) {
 
 // ListPending returns the pairs waiting for a decision.
 func ListPending(ctx context.Context, db *sql.DB) ([]Candidate, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, person_a, person_b FROM person_merge_candidates WHERE state = 'pending' ORDER BY id`)
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, person_a, person_b, reason, evidence FROM person_merge_candidates WHERE state = 'pending'
+		ORDER BY (reason = 'authority') DESC, id`)
 	if err != nil {
 		return nil, err
 	}
 	type pair struct {
-		id   int64
-		a, b int
+		id       int64
+		a, b     int
+		reason   string
+		evidence []byte
 	}
 	var pairs []pair
 	for rows.Next() {
 		var p pair
-		if err := rows.Scan(&p.id, &p.a, &p.b); err != nil {
+		if err := rows.Scan(&p.id, &p.a, &p.b, &p.reason, &p.evidence); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -155,7 +179,7 @@ func ListPending(ctx context.Context, db *sql.DB) ([]Candidate, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, Candidate{ID: p.id, A: a, B: b})
+		out = append(out, Candidate{ID: p.id, Reason: p.reason, Evidence: p.evidence, A: a, B: b})
 	}
 	return out, nil
 }
@@ -226,6 +250,8 @@ func Merge(ctx context.Context, db *sql.DB, id int64, keep int, actor string) er
 		     SELECT 1 FROM work_contributors o WHERE o.work_id = work_contributors.work_id AND o.person_id = $1 AND o.role = work_contributors.role)`, []any{keep, other}},
 		{`INSERT INTO person_alias (person_id, alias) SELECT $1, name FROM person WHERE id = $2 ON CONFLICT DO NOTHING`, []any{keep, other}},
 		{`INSERT INTO person_alias (person_id, alias) SELECT $1, alias FROM person_alias WHERE person_id = $2 ON CONFLICT DO NOTHING`, []any{keep, other}},
+		// The identifiers it had are keep's too.
+		{`INSERT INTO person_authority (person_id, scheme, value, source) SELECT $1, scheme, value, source FROM person_authority WHERE person_id = $2 ON CONFLICT DO NOTHING`, []any{keep, other}},
 		// What is left of it (the rows of a work that had both) goes with it, and so do its pairs.
 		{`DELETE FROM person WHERE id = $1`, []any{other}},
 	} {

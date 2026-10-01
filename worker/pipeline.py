@@ -66,12 +66,12 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
             'language': enriched.language, 'publisher': enriched.publisher,
             'publication_date': enriched.publication_date, 'description': enriched.description,
             'tags': enriched.tags,
+            'credits': [c.as_dict() for c in (getattr(enriched, 'credits', None) or [])],
         }
         raw = enriched.raw or {}
         evidence = {k: raw[k] for k in ('google_id', 'openlibrary_id', 'comicvine_id') if raw.get(k)}
-        credits = [c.as_dict() for c in (getattr(enriched, 'credits', None) or [])]
-        if credits:
-            evidence['credits'] = credits
+        if record['credits']:
+            evidence['credits'] = record['credits']
         evidence['query'] = metadata.title
         stored = analyzer.save_candidates(work_id, record, source, evidence)
         print(f"   💡 {stored} suggestion(s) from {source} waiting for review")

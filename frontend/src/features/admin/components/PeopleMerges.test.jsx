@@ -36,6 +36,27 @@ describe('PeopleMerges', () => {
     expect(text).toContain('1 obra: Dune');
   });
 
+  it('says why a pair was proposed when the same key of a reference source is the reason, and shows the key each holds', async () => {
+    const keyed = {
+      id: 9,
+      reason: 'authority',
+      evidence: { scheme: 'openlibrary', value: 'OL79034A' },
+      a: { id: 1, name: 'Frank Herbert', aliases: [], works: 2, titles: ['Duna'], authorities: ['openlibrary:OL79034A'] },
+      b: { id: 2, name: 'Frank P. Herbert', aliases: [], works: 1, titles: ['Messias'], authorities: ['comicvine:4050-1', 'openlibrary:OL79034A'] },
+    };
+    await open([keyed]);
+    const text = view.text();
+    expect(text).toContain('Mesma chave no Open Library (OL79034A): muito provavelmente a mesma pessoa.');
+    expect(text).toContain('Chave: Open Library OL79034A');
+    expect(text).toContain('Chave: ComicVine 4050-1; Open Library OL79034A');
+  });
+
+  it('gives no reason to a pair proposed only for sharing words, and no key line to a person without one', async () => {
+    await open();
+    expect(view.text()).not.toContain('Mesma chave');
+    expect(view.text()).not.toContain('Chave:');
+  });
+
   it('says so when there is nothing to decide', async () => {
     await open([]);
     expect(view.text()).toContain('Nenhuma sugestão pendente');

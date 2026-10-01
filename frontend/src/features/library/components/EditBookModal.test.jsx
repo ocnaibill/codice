@@ -118,6 +118,26 @@ describe('EditBookModal', () => {
     expect(api.post).toHaveBeenCalledWith('/works/7/candidates/3/accept');
   });
 
+  it('reads a list of tags and a list of contributors as text, with who the work has next to it', async () => {
+    await render([
+      { id: 4, field: 'tags', value: '["Sci-Fi","Clássico"]', source: 'openlibrary', current: '', evidence: {} },
+      { id: 5, field: 'contributors', value: '[{"name":"Neil Gaiman","role":"author"},{"name":"Paul Kidby","role":"illustrator"}]', source: 'Open Library', current: 'Terry Pratchett (author)', evidence: {} },
+    ]);
+    expect(container.textContent).toContain('Sci-Fi, Clássico');
+    expect(container.textContent).toContain('Neil Gaiman (author); Paul Kidby (illustrator)');
+    expect(container.textContent).toContain('now: Terry Pratchett (author)');
+    expect(container.textContent).not.toContain('{"name"');
+  });
+
+  it('shows a suggestion that is not the list its field promises as it came, without breaking the others', async () => {
+    await render([
+      { id: 6, field: 'contributors', value: 'Neil Gaiman', source: 'x', current: '', evidence: {} },
+      { id: 7, field: 'isbn', value: '9788576573135', source: 'y', current: '', evidence: {} },
+    ]);
+    expect(container.textContent).toContain('Neil Gaiman');
+    expect(container.textContent).toContain('9788576573135');
+  });
+
   it('retires instead of deleting', async () => {
     await render();
     expect(button('Retire from Library')).toBeTruthy();
