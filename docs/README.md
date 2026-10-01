@@ -19,6 +19,28 @@ Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz
 - Os IDs (RF, RNF, RN, DEC, QA, UI, FL) são estáveis: não reutilizar, marcar como substituído.
 - O estado do código está em "Estado" abaixo e na análise.
 
+## Roteiro das issues abertas (triagem de 1º de outubro de 2026)
+
+As issues que sobraram **não são independentes**: quase todas pertencem a uma trilha, esperam uma decisão do mantenedor ou dependem de um dado real. Por isso a ordem de trabalho é **por trilha, não por número**. Cada issue carrega um destes rótulos no GitHub:
+
+- `pronta`: pode ser feita agora, sem decisão nem espera.
+- `aguarda decisão`: falta uma decisão de produto ou de desenho do mantenedor. Recomenda-se com justificativa; só vira DEC depois de confirmada.
+- `aguarda dado`: falta um dado, ambiente ou cliente real para medir ou validar (um MOBI real, um cliente OPDS, o Authentik do mantenedor).
+- `bloqueada`: depende de outra issue ainda aberta.
+
+| Trilha | Issues, na ordem | Situação |
+| --- | --- | --- |
+| **Busca** | [#41](https://github.com/ocnaibill/codice/issues/41) (radical por idioma da edição) | `pronta`; o idioma da edição já é preenchido (DEC-092, DEC-096). |
+| **Texto dos arquivos** | [#25](https://github.com/ocnaibill/codice/issues/25) (capítulos do áudio e ComicInfo) → [#24](https://github.com/ocnaibill/codice/issues/24) (OCR de PDF) → [#27](https://github.com/ocnaibill/codice/issues/27) (OCR de quadrinhos) → [#28](https://github.com/ocnaibill/codice/issues/28) (transcrição) → [#20](https://github.com/ocnaibill/codice/issues/20) (livro e audiobook) | #25 e #24 `pronta`; #27 `bloqueada` pela #24; #28 `bloqueada` e `aguarda decisão` (controles de IA, RF-022); #20 `bloqueada` pela #28. **#20 e #28 estacionadas por decisão do mantenedor.** |
+| **Retomada equivalente** | [#39](https://github.com/ocnaibill/codice/issues/39), [#40](https://github.com/ocnaibill/codice/issues/40), [#38](https://github.com/ocnaibill/codice/issues/38) | `pronta`, mas **a #39 e a #40 estão em parte entregues** pela DEC-087 (frente/corpo/fim, marcadores do PDF, conferência de ida e volta); o que falta está nos comentários da triagem. Tudo se mede na régua da #32. O "aproximado sem capítulo" da #39 espera decisão. |
+| **Notas e conhecimento** | [#83](https://github.com/ocnaibill/codice/issues/83) (grafo manual de conceitos) → [#21](https://github.com/ocnaibill/codice/issues/21) (wikilinks e fórmulas) | #83 `aguarda decisão` (quatro perguntas abertas na issue); #21 `bloqueada` por ela. |
+| **Leitor e design** | [#76](https://github.com/ocnaibill/codice/issues/76) (modo imersivo), [#77](https://github.com/ocnaibill/codice/issues/77) (curadoria de design) | `aguarda decisão`: pedem desenho antes de código. |
+| **Formatos** | [#26](https://github.com/ocnaibill/codice/issues/26) (MOBI/AZW) | `aguarda decisão` (extrair, converter ou não fazer) e `aguarda dado` (um MOBI real, ver quantos há no acervo). |
+| **Integrações** | [#80](https://github.com/ocnaibill/codice/issues/80) (links do OPDS atrás de HTTPS), [#10](https://github.com/ocnaibill/codice/issues/10) e [#11](https://github.com/ocnaibill/codice/issues/11) (Authentik/LDAP) | `aguarda dado`: um cliente OPDS real (#80) e o Authentik do mantenedor (#10, #11, que ficam para o fim). |
+| **Lembretes** | [#61](https://github.com/ocnaibill/codice/issues/61) (idioma com o modelo local), [#79](https://github.com/ocnaibill/codice/issues/79) (mover em lote) | `aguarda dado`: só quando houver medição ou uma biblioteca grande. |
+
+**Ordem proposta:** #41; depois #25 e #24 juntas (usam o mesmo caminho de segmentos); depois reavaliar. A #25 sozinha vale pouco sem a cadeia do áudio, e por isso vai junto da #24.
+
 ## Estado em 19 de setembro de 2026
 
 **Hub responsivo (UI-01, 25/09/2026):** primeira fatia do design Stitch integrada à `main` pelo PR #50: papel aquecido, fontes locais, navegação desktop/mobile, filtros, grade/lista e paginação. Validação e limites em [Hub Stitch](Codice_Hub_Stitch_2026-09-25.md). Tema escuro e demais telas permanecem fora desta fatia. O PR #51 corrigiu a abertura de links de redefinição de senha quando já existe uma sessão local.
