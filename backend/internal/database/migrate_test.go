@@ -299,3 +299,47 @@ func TestMigrate_PersonAuthorityRollsBackAndReappliesAndDeletingAPersonTakesItsK
 		t.Fatalf("reapply: %v", err)
 	}
 }
+
+func TestMigrate_LanguageSuggestionsOfProvidersAreRejectedAndTheDetectedOnesAreNot(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	w, _, _ := testdb.AddWork(t, db, testdb.Work{Title: "A", Path: "a.epub", Format: "epub"})
+	if err := database.RollbackTo(db, 30); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	for _, q := range []string{
+		`INSERT INTO metadata_candidates (work_id, field, value, source, state) VALUES
+			(` + itoa(w) + `, 'language', 'cat', 'OpenLibrary', 'pending'),
+			(` + itoa(w) + `, 'language', 'pt', 'Google Books', 'pending'),
+			(` + itoa(w) + `, 'language', 'en', 'detected', 'pending'),
+			(` + itoa(w) + `, 'language', 'fr', 'OpenLibrary', 'accepted'),
+			(` + itoa(w) + `, 'publisher', 'Aleph', 'OpenLibrary', 'pending')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	rows, err := db.Query(`SELECT field || '/' || value || '/' || state FROM metadata_candidates ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var s string
+		rows.Scan(&s)
+		got = append(got, s)
+	}
+	want := []string{"language/cat/rejected", "language/pt/rejected", "language/en/pending", "language/fr/accepted", "publisher/Aleph/pending"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("states = %v, want %v", got, want)
+	}
+	if err := database.RollbackTo(db, 30); err != nil {
+		t.Errorf("rolling the migration back: %v", err)
+	}
+}

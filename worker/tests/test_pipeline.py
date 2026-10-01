@@ -88,6 +88,12 @@ class TestPipeline:
         found = {p[1]: json.loads(p[2]) for q, p in db.matching("INSERT INTO metadata_candidates") if p[1] == 'contributors'}
         assert found['contributors'] == [{'name': 'John Schoenherr', 'role': 'illustrator'}]
 
+    def test_a_language_a_provider_gives_is_never_suggested(self):
+        db = FakeDB()
+        run(db, meta(language=None), FakeProviders(record(language='cat')))
+        fields = {p[1] for q, p in db.matching("INSERT INTO metadata_candidates")}
+        assert 'language' not in fields and 'title' in fields
+
     def test_a_record_without_credits_leaves_the_evidence_as_it_was(self):
         import json
         db = FakeDB()

@@ -48,7 +48,8 @@ class OpenLibraryProvider(BaseProvider):
             record.credits = self._credits(doc)
             record.author = record.credits[0].name if record.credits else None
             record.publisher = doc.get('publisher', [None])[0] if doc.get('publisher') else None
-            record.language = doc.get('language', [None])[0] if doc.get('language') else None
+            # No language: `language` lists the languages of the editions of the work, in codes of three letters, and
+            # the first is not the file's. The language of a file is read from the file (DEC-096).
             record.publication_date = doc.get('first_publish_year')
 
             # ISBN
