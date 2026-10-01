@@ -350,7 +350,7 @@ describe('ReferencedFiles: moving to the managed storage', () => {
   it('says it could not follow the transfers when that fails, without losing what was asked', async () => {
     moveAnswer = { data: [{ fileId: 1, jobId: 11 }] };
     await open([file(1)]);
-    api.get.mockImplementation(async (url, options) => {
+    api.get.mockImplementation(async (url) => {
       if (url === '/admin/storage/transfers') throw new Error('offline');
       if (url === '/admin/storage/roots') return { data: { roots: [], managed: '/d' } };
       if (url === '/admin/storage/cleanups') return { data: { data: [] } };
