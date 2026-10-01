@@ -4,6 +4,24 @@ from typing import Optional, List
 
 
 @dataclass
+class Credit:
+    """One person a provider credits on a record: who, in which role, and the identifiers the provider
+    knows for them ({'openlibrary': 'OL113611A'}). Both the role and the identifiers are only what the
+    provider says; a provider that does not say leaves them empty, and nothing is made up."""
+    name: str
+    role: Optional[str] = None
+    ids: dict = field(default_factory=dict)
+
+    def as_dict(self) -> dict:
+        out = {'name': self.name}
+        if self.role:
+            out['role'] = self.role
+        if self.ids:
+            out['ids'] = dict(self.ids)
+        return out
+
+
+@dataclass
 class MetadataRecord:
     """Standard metadata record returned by all providers.
 
@@ -13,6 +31,7 @@ class MetadataRecord:
     """
     title: Optional[str] = None
     author: Optional[str] = None
+    credits: List[Credit] = field(default_factory=list)  # every person credited; `author` is the first
     series: Optional[str] = None
     series_index: Optional[float] = None
     isbn: Optional[str] = None
