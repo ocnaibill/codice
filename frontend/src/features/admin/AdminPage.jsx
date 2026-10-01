@@ -7,6 +7,7 @@ import { AccountsTab } from './components/AccountsTab';
 import { LdapTab } from './components/LdapTab';
 import { EmbeddingsTab } from './components/EmbeddingsTab';
 import { SuggestionsTab } from './components/SuggestionsTab';
+import { ProvidersTab } from './components/ProvidersTab';
 import { useSuggestionQueue } from './api/admin';
 
 const TABS = [
@@ -14,6 +15,7 @@ const TABS = [
   ['storage', 'Armazenamento'],
   ['trash', 'Lixeira'],
   ['suggestions', 'Sugestões'],
+  ['providers', 'Provedores'],
   ['duplicates', 'Duplicatas e OCR'],
   ['accounts', 'Contas'],
 ];
@@ -51,7 +53,8 @@ export function AdminPage({ isOwner, onClose }) {
         {tab === 'jobs' && <JobsTab />}
         {tab === 'storage' && <StorageTab isOwner={isOwner} />}
         {tab === 'trash' && <TrashTab isOwner={isOwner} />}
-        {tab === 'suggestions' && <SuggestionsTab />}
+        {tab === 'suggestions' && <SuggestionsTab isOwner={isOwner} onOpenProviders={() => setTab('providers')} />}
+        {tab === 'providers' && <ProvidersTab isOwner={isOwner} />}
         {tab === 'duplicates' && <DuplicatesTab />}
         {tab === 'accounts' && <AccountsTab isOwner={isOwner} />}
         {tab === 'ldap' && isOwner && <LdapTab />}

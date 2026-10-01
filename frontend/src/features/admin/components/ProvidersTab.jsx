@@ -1,0 +1,84 @@
+import { useState } from 'react';
+import { describeError, useMetadataProviders, useSetMetadataProvider } from '../api/admin';
+import { ConfirmDialog } from './ConfirmDialog';
+import { Empty, ErrorNote, Loading, Section } from './ui';
+
+// What each provider is, where it lives, and what asking it hands over: the owner decides knowing (DEC-045).
+const ABOUT = {
+  google_books: { host: 'googleapis.com (Google)', note: 'Se a instância tiver uma chave de API do Google Books, ela vai junto.' },
+  openlibrary: { host: 'openlibrary.org (Internet Archive)', note: 'Também é a fonte das chaves de autoridade dos autores.' },
+  comicvine: { host: 'comicvine.gamespot.com', note: 'Só funciona com uma chave de API (COMICVINE_API_KEY) no ambiente do worker.' },
+};
+const SENDS = { title: 'o título da obra' };
+
+const sendsText = (provider) => provider.sends.map((s) => SENDS[s] || s).join(', ');
+
+/**
+ * Which external services may be asked for suggestions about a work (#68, DEC-045). They are all off until the
+ * owner turns each on: asking one sends the title of the work to a third party. Owner and admin see the choice;
+ * only the owner changes it.
+ */
+export function ProvidersTab({ isOwner }) {
+  const { data, isLoading, isError } = useMetadataProviders();
+  const set = useSetMetadataProvider();
+  const [turningOn, setTurningOn] = useState(null);
+  const providers = data?.data || [];
+
+  return (
+    <Section
+      title="Provedores de metadados"
+      hint="Serviços externos que sugerem autor, sinopse, capa e outros dados de uma obra. Todos começam desligados: ligar um envia o título de cada obra analisada a esse serviço. As sugestões nunca mudam nada sozinhas. Extração do arquivo e detecção de idioma seguem locais, ligados ou não."
+    >
+      {isLoading && <Loading />}
+      {isError && <ErrorNote>Não foi possível carregar os provedores.</ErrorNote>}
+      {!isLoading && !isError && providers.length === 0 && <Empty>Nenhum provedor.</Empty>}
+      <ul className="divide-y divide-border-hairline">
+        {providers.map((provider) => {
+          const about = ABOUT[provider.id] || {};
+          return (
+            <li key={provider.id} className="flex flex-wrap items-start justify-between gap-3 py-4">
+              <div className="min-w-0">
+                <p className="text-[14px] font-medium text-ink">
+                  {provider.name}
+                  <span className={`ml-2 font-mono text-[10px] uppercase ${provider.enabled ? 'text-success' : 'text-ink-faint'}`}>
+                    {provider.enabled ? 'ligado' : 'desligado'}
+                  </span>
+                </p>
+                <p className="text-[12px] text-ink-soft">Recebe: {sendsText(provider)}. Endereço: {about.host || '—'}.</p>
+                {about.note && <p className="text-[12px] text-ink-faint">{about.note}</p>}
+              </div>
+              <label className="flex min-h-10 items-center gap-2 text-[13px] text-ink">
+                <input
+                  type="checkbox"
+                  checked={provider.enabled}
+                  disabled={!isOwner || set.isPending}
+                  onChange={(event) => (event.target.checked ? setTurningOn(provider) : set.mutate({ id: provider.id, enabled: false }))}
+                  aria-label={`${provider.name}: ${provider.enabled ? 'ligado' : 'desligado'}`}
+                />
+                {provider.enabled ? 'Ligado' : 'Desligado'}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      {!isOwner && <p className="mt-3 text-[12px] text-ink-faint">Só o owner liga ou desliga os provedores.</p>}
+      <ErrorNote>{set.isError && describeError(set.error)}</ErrorNote>
+
+      {turningOn && (
+        <ConfirmDialog
+          title={`Ligar ${turningOn.name}?`}
+          message={
+            <p>
+              A partir de agora, o título de cada obra analisada (e de cada busca manual de metadados) é enviado a{' '}
+              <strong>{ABOUT[turningOn.id]?.host || turningOn.name}</strong>. O nome do arquivo, o autor, o conteúdo do livro e as
+              notas não são enviados. {ABOUT[turningOn.id]?.note} Você pode desligar quando quiser; o que já foi enviado não volta.
+            </p>
+          }
+          choices={[{ label: 'Ligar', value: true, tone: 'primary' }]}
+          onChoose={() => { set.mutate({ id: turningOn.id, enabled: true }); setTurningOn(null); }}
+          onCancel={() => setTurningOn(null)}
+        />
+      )}
+    </Section>
+  );
+}
