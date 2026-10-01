@@ -24,15 +24,19 @@ const (
 // field: which fields are locked against automatic changes and where each
 // current value came from.
 type WorkMetadata struct {
-	Series          string            `json:"series"`
-	SeriesIndex     float64           `json:"seriesIndex"`
-	ISBN            string            `json:"isbn"`
-	Publisher       string            `json:"publisher"`
-	Language        string            `json:"language"`
-	PublicationDate string            `json:"publicationDate"`
-	Description     string            `json:"description"`
-	Locks           map[string]bool   `json:"locks"`
-	Sources         map[string]string `json:"sources"`
+	Series          string  `json:"series"`
+	SeriesIndex     float64 `json:"seriesIndex"`
+	ISBN            string  `json:"isbn"`
+	Publisher       string  `json:"publisher"`
+	Language        string  `json:"language"`
+	PublicationDate string  `json:"publicationDate"`
+	Description     string  `json:"description"`
+	// FirstAuthor is the name of the work's first author as it is stored, not as an account is shown it
+	// (a work with two authors is shown "A, B", and "Herbert, Frank" is how a surname-first account sees
+	// "Frank Herbert"): what an edit of the author starts from.
+	FirstAuthor string            `json:"firstAuthor"`
+	Locks       map[string]bool   `json:"locks"`
+	Sources     map[string]string `json:"sources"`
 }
 
 // loadMetadata reads the metadata block shown by GET /works/{id}.
@@ -41,12 +45,13 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int) (*WorkMetadata, e
 	var titleL, authorL, seriesL, coverL, isbnL, pubL, langL, dateL, descL bool
 	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(e.isbn, ''), COALESCE(e.publisher, ''),
-		       COALESCE(e.language, ''), COALESCE(e.publication_date, ''), COALESCE(w.description, ''),
+		       COALESCE(e.language, ''), COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(a.name, ''),
 		       w.title_lock, w.author_lock, w.series_lock, w.cover_lock,
 		       w.isbn_lock, w.publisher_lock, w.language_lock, w.publication_date_lock, w.description_lock
 		FROM works w LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
+		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1`, workID).Scan(
-		&m.Series, &m.SeriesIndex, &m.ISBN, &m.Publisher, &m.Language, &m.PublicationDate, &m.Description,
+		&m.Series, &m.SeriesIndex, &m.ISBN, &m.Publisher, &m.Language, &m.PublicationDate, &m.Description, &m.FirstAuthor,
 		&titleL, &authorL, &seriesL, &coverL, &isbnL, &pubL, &langL, &dateL, &descL)
 	if err != nil {
 		return nil, err

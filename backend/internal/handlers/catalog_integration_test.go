@@ -124,6 +124,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Put("/works/{id}", lib.UpdateWork)
 	r.Delete("/works/{id}", lib.DeleteWork)
 	r.Post("/works/{id}/restore", lib.RestoreWork)
+	r.Get("/admin/suggestions", lib.SuggestionQueue)
 	r.Get("/works/{id}/candidates", lib.ListCandidates)
 	r.Post("/works/{id}/candidates/{candidateID}/accept", lib.AcceptCandidate)
 	r.Post("/works/{id}/candidates/{candidateID}/reject", lib.RejectCandidate)

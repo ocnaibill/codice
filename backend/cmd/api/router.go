@@ -143,6 +143,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Put("/works/{id}", libHandler.UpdateWork)
 	r.With(staff).Delete("/works/{id}", libHandler.DeleteWork)
 	r.With(staff).Post("/works/{id}/restore", libHandler.RestoreWork)
+	r.With(staff).Get("/admin/suggestions", libHandler.SuggestionQueue)
 	r.With(staff).Get("/works/{id}/candidates", libHandler.ListCandidates)
 	r.With(staff).Post("/works/{id}/candidates/{candidateID}/accept", libHandler.AcceptCandidate)
 	r.With(staff).Post("/works/{id}/candidates/{candidateID}/reject", libHandler.RejectCandidate)

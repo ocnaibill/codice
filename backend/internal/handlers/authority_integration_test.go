@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/ocnaibill/codice/backend/internal/people"
 )
 
 const herbertKey = `{"query":"Dune","credits":[{"name":"Frank Herbert","ids":{"openlibrary":"OL79034A"}},{"name":"John Schoenherr","role":"illustrator","ids":{"openlibrary":"OL999A"}}]}`
@@ -341,5 +343,60 @@ func TestCandidates_TheListSaysWhichKeysAcceptingWouldKeepAndAcceptingKeepsExact
 	s.decide(w, people, "accept")
 	if got := s.authorities("Neil Gaiman") + " " + s.authorities("Paul Kidby") + " " + s.authorities("Terry Pratchett"); got != "openlibrary:OL53305A openlibrary:OL5A openlibrary:OL25712A" {
 		t.Errorf("kept = %q", got)
+	}
+}
+
+func TestEditWork_AWorkWithSeveralAuthorsKeepsThemWhenTheAuthorIsNotSentAndTheFormStartsFromTheFirstOne(t *testing.T) {
+	s := newCatalogStack(t)
+	w := s.addWork("Good Omens", "Terry Pratchett", "a.epub", "epub")
+	s.decide(w, s.addCandidateWithEvidence(w, "contributors", `[{"name":"Neil Gaiman","role":"author"}]`, "Open Library", `{}`), "accept")
+
+	detail, _ := s.detail(admin, w)
+	if detail.Author != "Terry Pratchett, Neil Gaiman" {
+		t.Fatalf("shown author = %q", detail.Author)
+	}
+	if got := s.meta(w).FirstAuthor; got != "Terry Pratchett" {
+		t.Errorf("firstAuthor = %q: the name that is stored, not what is shown for the work", got)
+	}
+
+	// Saving what the form sends when the author was not touched changes nobody.
+	if code := s.put(w, `{"title":"Good Omens","publisher":"Corgi"}`); code != 200 {
+		t.Fatalf("put: %d", code)
+	}
+	if got := s.contributors(w); got != "Terry Pratchett/author/0; Neil Gaiman/author/1" {
+		t.Errorf("authors = %q", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM person`); got != "2" {
+		t.Errorf("people = %s: a person was made out of what is shown", got)
+	}
+	// The same name sent back is no change either, and a lock is not set by it.
+	s.put(w, `{"title":"Good Omens","author":"Terry Pratchett"}`)
+	if got := s.scalar(`SELECT author_lock::text FROM works WHERE id = $1`, w); got != "false" {
+		t.Errorf("author lock = %s: nothing changed, nothing is confirmed", got)
+	}
+	// A different name replaces the first author only.
+	s.put(w, `{"title":"Good Omens","author":"Terry Pratchet"}`)
+	if got := s.contributors(w); got != "Terry Pratchet/author/0; Neil Gaiman/author/1" {
+		t.Errorf("authors = %q: the first author is replaced and the second stays", got)
+	}
+	// An empty one is a work with an unknown author, as it always was.
+	s.put(w, `{"title":"Good Omens","author":""}`)
+	if got := s.scalar(`SELECT string_agg(p.name, '; ' ORDER BY c.position) FROM work_contributors c JOIN person p ON p.id = c.person_id WHERE c.work_id = $1 AND c.role = 'author'`, w); !strings.HasPrefix(got, "Unknown Author") {
+		t.Errorf("authors = %q", got)
+	}
+}
+
+func TestEditWork_TheFirstAuthorIsTheStoredNameWhateverOrderAnAccountIsShown(t *testing.T) {
+	s := newCatalogStack(t)
+	w := s.addWork("Dune", "Frank Herbert", "a.epub", "epub")
+	s.exec(`UPDATE person SET family_name = 'Herbert', given_name = 'Frank' WHERE name = 'Frank Herbert'`)
+	if err := people.SetLibraryOrder(s.t.Context(), s.db, people.FamilyFirst, ""); err != nil {
+		t.Fatal(err)
+	}
+	if detail, _ := s.detail(admin, w); detail.Author != "Herbert, Frank" {
+		t.Fatalf("shown = %q", detail.Author)
+	}
+	if got := s.meta(w).FirstAuthor; got != "Frank Herbert" {
+		t.Errorf("firstAuthor = %q", got)
 	}
 }
