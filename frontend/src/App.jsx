@@ -4,6 +4,7 @@ import { AppShell } from './components/layout/AppShell';
 import { HomePage } from './pages/HomePage';
 import { Reader } from './features/reader/components/Reader';
 import { WorkSheet } from './features/reader/components/WorkSheet';
+import { EditBookModal } from './features/library/components/EditBookModal';
 import { useGlobalStore } from './store/useGlobalStore';
 import { UploadModal } from './features/upload/components/UploadModal';
 import { Auth } from './features/auth/components/Auth';
@@ -46,6 +47,9 @@ function App() {
   const searchQuery = useGlobalStore((state) => state.searchQuery);
   const setSearchQuery = useGlobalStore((state) => state.setSearchQuery);
   const adminOpen = useGlobalStore((state) => state.adminOpen);
+  const metadataWorkId = useGlobalStore((state) => state.metadataWorkId);
+  const metadataTab = useGlobalStore((state) => state.metadataTab);
+  const closeMetadata = useGlobalStore((state) => state.closeMetadata);
   const openAdmin = useGlobalStore((state) => state.openAdmin);
   const { data: me } = useMe(isAuthenticated);
   const staff = isStaff(me);
@@ -285,6 +289,7 @@ function App() {
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
       {preferencesOpen && <PreferencesModal onClose={() => setPreferencesOpen(false)} />}
       <WorkSheet />
+      {metadataWorkId && <EditBookModal key={`${metadataWorkId}-${metadataTab}`} workId={metadataWorkId} tab={metadataTab} onClose={closeMetadata} />}
       {activeBookId ? (
         <Reader />
       ) : (

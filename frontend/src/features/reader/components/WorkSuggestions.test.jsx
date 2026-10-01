@@ -10,8 +10,8 @@ vi.mock('../../../lib/api', () => ({
 
 import { api } from '../../../lib/api';
 import { useGlobalStore } from '../../../store/useGlobalStore';
-import { WorkSheet } from './WorkSheet';
-import { WorkSuggestions, suggestionText } from './WorkSuggestions';
+import { WorkSuggestions } from './WorkSuggestions';
+import { suggestionText } from '../suggestionText';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -111,7 +111,7 @@ describe('WorkSuggestions (#70)', () => {
     await flush();
     expect(api.post).toHaveBeenCalledWith('/works/7/candidates/2/accept');
     const keys = client.invalidateQueries.mock.calls.map(([arg]) => arg.queryKey[0]);
-    expect(keys).toEqual(expect.arrayContaining(['candidates', 'people-merges', 'works', 'work', 'stats', 'favorites']));
+    expect(keys).toEqual(expect.arrayContaining(['candidates', 'admin', 'works', 'work', 'stats', 'favorites']));
 
     await act(async () => { button('Recusar', itemOf('Uma sinopse')).click(); });
     await flush();
@@ -163,31 +163,15 @@ describe('suggestionText', () => {
   });
 });
 
-describe('the sheet of a work', () => {
-  const sheetWork = { id: 7, title: 'Duna', author: 'Frank Herbert', metadata: {}, editions: [] };
-  async function sheet(role) {
-    api.get.mockImplementation(async (url) => {
-      if (url === '/works/7') return { data: sheetWork };
-      if (url === '/auth/me') return { data: { role } };
-      if (url === '/works/7/candidates') return { data: { data: [synopsis] } };
-      throw new Error(`unexpected GET ${url}`);
-    });
-    useGlobalStore.setState({ sheetWorkId: 7 });
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => { root.render(<QueryClientProvider client={client}><WorkSheet /></QueryClientProvider>); });
+describe('without a heading of its own', () => {
+  it('says so when there is nothing to decide, if it was told what to say', async () => {
+    await show([]);
+    expect(container.textContent).toBe('');
+    act(() => root.unmount());
+    root = createRoot(container);
+    api.get.mockImplementation(async () => ({ data: { data: [] } }));
+    await act(async () => { root.render(<QueryClientProvider client={new QueryClient()}><WorkSuggestions workId={7} emptyText="Nada por aqui." /></QueryClientProvider>); });
     await flush();
-    await flush();
-  }
-
-  it('shows the suggestions to the owner and the admin', async () => {
-    await sheet('admin');
-    expect(container.textContent).toContain('Sugestões dos provedores');
-    expect(container.textContent).toContain('Uma sinopse.');
-  });
-
-  it('neither shows them to a reader nor asks the server for them', async () => {
-    await sheet('reader');
-    expect(container.textContent).not.toContain('Sugestões dos provedores');
-    expect(api.get).not.toHaveBeenCalledWith('/works/7/candidates');
+    expect(container.textContent).toBe('Nada por aqui.');
   });
 });

@@ -9,6 +9,7 @@ vi.mock('./lib/api', () => ({
   clearAssetToken: vi.fn(),
   UNAUTHORIZED_EVENT: 'codice:unauthorized',
 }));
+const store = vi.hoisted(() => ({ metadataWorkId: null, metadataTab: 'suggestions', closeMetadata: vi.fn() }));
 vi.mock('./store/useGlobalStore', () => ({
   useGlobalStore: (selector) => selector({
     activeBookId: null,
@@ -17,7 +18,11 @@ vi.mock('./store/useGlobalStore', () => ({
     setSearchQuery: vi.fn(),
     adminOpen: false,
     openAdmin: vi.fn(),
+    ...store,
   }),
+}));
+vi.mock('./features/library/components/EditBookModal', () => ({
+  EditBookModal: ({ workId, tab, onClose }) => <button onClick={onClose}>Metadados {workId} {tab}</button>,
 }));
 vi.mock('./features/auth/api/useMe', () => ({ useMe: () => ({ data: null }), isStaff: () => false }));
 vi.mock('./features/reader/preferences', () => ({ setPreferenceOwner: vi.fn() }));
@@ -42,6 +47,7 @@ let view;
 beforeEach(() => {
   localStorage.clear();
   window.history.replaceState(null, '', '/');
+  store.metadataWorkId = null;
   api.get.mockResolvedValue({ data: { isFirstRun: false } });
 });
 afterEach(() => {
@@ -78,5 +84,23 @@ describe('App startup', () => {
 
     expect(view.text()).toContain('Acervo');
     expect(localStorage.getItem('codice_token')).toBe('current-session');
+  });
+
+  it('opens the metadata of a work over everything when asked to, and closes it through the store', async () => {
+    localStorage.setItem('codice_token', 'current-session');
+    store.metadataWorkId = 7;
+    store.metadataTab = 'edit';
+
+    view = await mount(<App />);
+
+    expect(view.text()).toContain('Metadados 7 edit');
+    await view.click(view.buttonMatching(/^Metadados 7/));
+    expect(store.closeMetadata).toHaveBeenCalled();
+  });
+
+  it('has no metadata open unless a work asked for it', async () => {
+    localStorage.setItem('codice_token', 'current-session');
+    view = await mount(<App />);
+    expect(view.text()).not.toContain('Metadados');
   });
 });

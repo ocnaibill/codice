@@ -19,7 +19,8 @@ export function useDecideCandidate(workId) {
     mutationFn: async ({ id, verb }) => (await api.post(`/works/${workId}/candidates/${id}/${verb}`)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['candidates', workId] });
-      queryClient.invalidateQueries({ queryKey: ['people-merges'] });
+      // The admin lists: the queue of suggestions, and the people who may be the same (an accepted author).
+      queryClient.invalidateQueries({ queryKey: ['admin'] });
       refreshLibrary(queryClient);
     },
   });

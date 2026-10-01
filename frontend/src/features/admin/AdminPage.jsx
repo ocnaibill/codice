@@ -6,11 +6,14 @@ import { DuplicatesTab } from './components/DuplicatesTab';
 import { AccountsTab } from './components/AccountsTab';
 import { LdapTab } from './components/LdapTab';
 import { EmbeddingsTab } from './components/EmbeddingsTab';
+import { SuggestionsTab } from './components/SuggestionsTab';
+import { useSuggestionQueue } from './api/admin';
 
 const TABS = [
   ['jobs', 'Trabalhos'],
   ['storage', 'Armazenamento'],
   ['trash', 'Lixeira'],
+  ['suggestions', 'Sugestões'],
   ['duplicates', 'Duplicatas e OCR'],
   ['accounts', 'Contas'],
 ];
@@ -18,6 +21,7 @@ const TABS = [
 /** The administration area. Owner and admin see it; some actions are the owner's alone. */
 export function AdminPage({ isOwner, onClose }) {
   const [tab, setTab] = useState('jobs');
+  const waiting = useSuggestionQueue().data?.total ?? 0;
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
       <div className="flex items-center justify-between gap-3">
@@ -39,7 +43,7 @@ export function AdminPage({ isOwner, onClose }) {
               tab === key ? 'border-brand text-brand' : 'border-transparent text-ink-soft hover:text-ink'
             }`}
           >
-            {label}
+            {key === 'suggestions' && waiting > 0 ? `${label} (${waiting})` : label}
           </button>
         ))}
       </div>
@@ -47,6 +51,7 @@ export function AdminPage({ isOwner, onClose }) {
         {tab === 'jobs' && <JobsTab />}
         {tab === 'storage' && <StorageTab isOwner={isOwner} />}
         {tab === 'trash' && <TrashTab isOwner={isOwner} />}
+        {tab === 'suggestions' && <SuggestionsTab />}
         {tab === 'duplicates' && <DuplicatesTab />}
         {tab === 'accounts' && <AccountsTab isOwner={isOwner} />}
         {tab === 'ldap' && isOwner && <LdapTab />}

@@ -3,42 +3,8 @@ import { useCandidates, useDecideCandidate } from '../api/useCandidates';
 import { reasonOf } from '../api/useVersions';
 import { keyLabel } from '../../../lib/authority';
 import { languageName } from '../files';
-
-const FIELD_LABELS = {
-  title: 'Título',
-  author: 'Autor',
-  contributors: 'Outras pessoas',
-  series: 'Série',
-  series_index: 'Número na série',
-  isbn: 'ISBN',
-  language: 'Idioma',
-  publisher: 'Editora',
-  publication_date: 'Data de publicação',
-  description: 'Sinopse',
-  tags: 'Etiquetas',
-};
-const FIELD_ORDER = Object.keys(FIELD_LABELS);
-
-const ROLE_LABELS = { author: 'autor', illustrator: 'ilustrador', translator: 'tradutor', editor: 'editor', narrator: 'narrador' };
-const roleLabel = (role) => ROLE_LABELS[role] || role;
-
-// The server says who the work has with the library's role words; a reader reads them in Portuguese.
-const localizeRoles = (text) => text.replace(/\((author|illustrator|translator|editor|narrator)\)/g, (_, role) => `(${roleLabel(role)})`);
-
-/** A suggestion's value as a reader reads it. A list (tags, people) comes as JSON; one that is not what its
- *  field promises is shown as it came instead of breaking the others. */
-export function suggestionText(candidate) {
-  const { field, value } = candidate;
-  try {
-    const parsed = JSON.parse(value);
-    if (field === 'tags' && Array.isArray(parsed)) return parsed.join(', ');
-    if (field === 'contributors' && Array.isArray(parsed)) return parsed.map((p) => `${p.name} (${roleLabel(p.role)})`).join('; ');
-  } catch {
-    // not JSON: shown as it is
-  }
-  if (field === 'language') return languageName(value) || value;
-  return value;
-}
+import { localizeRoles, suggestionText } from '../suggestionText';
+import { FIELD_LABELS, FIELD_ORDER } from '../../../lib/suggestionFields';
 
 function Suggestion({ candidate, onDecide, busy }) {
   let current = candidate.current;
@@ -88,16 +54,16 @@ function Suggestion({ candidate, onDecide, busy }) {
 /**
  * What the providers suggested for this work (owner and admin; #70). Nothing changes until someone accepts:
  * accepting a field applies it as a confirmed value and locks it, rejecting remembers it so it does not come
- * back. The section is not there when there is nothing to decide.
+ * back. With `emptyText` the list says so when there is nothing to decide; without it, it is not there.
  */
-export function WorkSuggestions({ workId }) {
+export function WorkSuggestions({ workId, emptyText }) {
   const { data } = useCandidates(workId);
   const decide = useDecideCandidate(workId);
   const [error, setError] = React.useState(null);
   const candidates = [...(data || [])].sort(
     (a, b) => (FIELD_ORDER.indexOf(a.field) + 1 || 99) - (FIELD_ORDER.indexOf(b.field) + 1 || 99) || a.id - b.id
   );
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) return emptyText ? <p className="text-sm text-ink-faint">{emptyText}</p> : null;
 
   const onDecide = (id, verb) => {
     setError(null);
@@ -109,13 +75,9 @@ export function WorkSuggestions({ workId }) {
 
   return (
     <section className="flex flex-col gap-3" aria-label="Sugestões dos provedores">
-      <div>
-        <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">Metadados</p>
-        <h3 className="font-display text-2xl text-ink sm:text-3xl">Sugestões dos provedores</h3>
-        <p className="text-sm text-ink-soft">
-          Nada muda até você aceitar. Aceitar um campo o trava contra a extração automática; etiquetas e pessoas só são acrescentadas.
-        </p>
-      </div>
+      <p className="text-sm text-ink-soft">
+        Nada muda até você aceitar. Aceitar um campo o trava contra a extração automática; etiquetas e pessoas só são acrescentadas.
+      </p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <ul className="flex flex-col gap-3">
         {candidates.map((candidate) => (

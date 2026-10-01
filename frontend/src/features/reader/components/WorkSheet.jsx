@@ -6,7 +6,8 @@ import { useSetCompletion, useSetWorkFinished } from '../api/useCompletion';
 import { reasonOf, useSplitEdition } from '../api/useVersions';
 import { isStaff, useMe } from '../../auth/api/useMe';
 import { JoinVersionsDialog } from './JoinVersionsDialog';
-import { WorkSuggestions } from './WorkSuggestions';
+import { useCandidates } from '../api/useCandidates';
+import { isTopmostDialog } from '../../../lib/topDialog';
 import { completionText, formatSize, languageName, whereYouAre } from '../files';
 import { WorkCover } from '../../../components/ui/WorkCover';
 
@@ -124,6 +125,66 @@ function ReadingSummary({ work, busy, onFinish }) {
 }
 
 /**
+ * The actions on a work that are for owner and admin (#70). The dots carry a mark when providers have
+ * suggested something nobody decided yet, so the sheet itself stays as a reader sees it.
+ */
+function WorkMenu({ workId, pending }) {
+  const openMetadata = useGlobalStore((state) => state.openMetadata);
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const onPointer = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointer);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
+
+  const choose = (tab) => {
+    setOpen(false);
+    openMetadata(workId, tab);
+  };
+  const label = pending > 0 ? `Mais ações da obra (${pending} ${pending === 1 ? 'sugestão' : 'sugestões'})` : 'Mais ações da obra';
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="relative flex min-h-11 min-w-11 items-center justify-center rounded-lg text-xl leading-none text-ink-soft hover:bg-surface-alt hover:text-brand"
+      >
+        ⋯
+        {pending > 0 && <span data-testid="pending-mark" className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-brand ring-2 ring-[#faf8f4]" />}
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-full z-10 mt-1 w-60 overflow-hidden rounded-xl border border-border-hairline bg-white py-1 shadow-lg">
+          <button role="menuitem" onClick={() => choose('suggestions')} className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm text-ink hover:bg-surface-alt">
+            Sugestões dos provedores
+            {pending > 0 && <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] text-white">{pending}</span>}
+          </button>
+          <button role="menuitem" onClick={() => choose('edit')} className="flex min-h-11 w-full items-center px-4 py-2 text-left text-sm text-ink hover:bg-surface-alt">
+            Editar metadados
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * The sheet of a work (RF-041, DEC-028): its editions, their languages and the files of each,
  * with the reader's own position in every file, before the reader opens. Each file keeps its
  * own position, so choosing another one continues from *its* place or from the beginning.
@@ -133,11 +194,13 @@ export function WorkSheet() {
   const closeSheet = useGlobalStore((state) => state.closeSheet);
   const openBook = useGlobalStore((state) => state.openBook);
   const closeButtonRef = React.useRef(null);
+  const dialogRef = React.useRef(null);
   const { data: work, isLoading, isError } = useWork(workId, { fresh: true });
   const setCompletion = useSetCompletion();
   const setWorkFinished = useSetWorkFinished();
   // Putting the files of one book under one work, and taking them out again, is for owner and admin (#37).
   const staff = isStaff(useMe().data);
+  const pending = useCandidates(workId, { enabled: staff }).data?.length ?? 0;
   const openWork = useGlobalStore((state) => state.openWork);
   const splitEdition = useSplitEdition();
   const [joining, setJoining] = React.useState(false);
@@ -155,7 +218,10 @@ export function WorkSheet() {
     const previousFocus = document.activeElement;
     closeButtonRef.current?.focus();
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') closeSheet();
+      if (event.key !== 'Escape' || !isTopmostDialog(dialogRef.current)) return;
+      // An open menu takes the Escape for itself, whichever of the two listeners runs first.
+      if (dialogRef.current.querySelector('[role="menu"]')) return;
+      closeSheet();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
@@ -183,16 +249,19 @@ export function WorkSheet() {
   ].filter(Boolean);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label="Ficha da obra">
+    <div ref={dialogRef} className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label="Ficha da obra">
       <div className="flex h-full w-full flex-col overflow-hidden bg-[#faf8f4] shadow-2xl sm:max-h-[92vh] sm:h-auto sm:max-w-5xl sm:rounded-2xl">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border-hairline bg-[#faf8f4] px-4 py-3 sm:px-6">
           <div className="min-w-0">
             <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">Biblioteca / Ficha da obra</p>
             <h2 className="truncate font-display text-2xl text-ink sm:text-3xl">{work?.title ?? 'Carregando…'}</h2>
           </div>
-          <button ref={closeButtonRef} onClick={closeSheet} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-xl text-ink-soft hover:bg-surface-alt hover:text-brand" aria-label="Fechar">
-            ✕
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {staff && work && <WorkMenu workId={work.id} pending={pending} />}
+            <button ref={closeButtonRef} onClick={closeSheet} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-xl text-ink-soft hover:bg-surface-alt hover:text-brand" aria-label="Fechar">
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
@@ -243,8 +312,6 @@ export function WorkSheet() {
               busy={setWorkFinished.isPending}
               onFinish={(finished) => setWorkFinished.mutate({ workId: work.id, finished })}
             />
-
-            {staff && <WorkSuggestions workId={work.id} />}
 
             {notice && (
               <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border-l-4 border-success bg-surface-alt p-4 text-sm text-ink">
