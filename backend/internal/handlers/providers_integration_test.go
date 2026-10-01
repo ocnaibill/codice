@@ -53,8 +53,17 @@ func TestProviders_EveryOneIsOffUntilTheOwnerTurnsItOnAndSaysWhatItSends(t *test
 		t.Fatalf("by default: %s", got)
 	}
 	for _, r := range rows {
-		if r.Name == "" || len(r.Sends) != 1 || r.Sends[0] != "title" {
-			t.Errorf("%s must say what it receives: %+v", r.ID, r)
+		if r.Name == "" || len(r.Sends) == 0 || r.Sends[0] != "title" {
+			t.Errorf("%s must say what it receives, the title first: %+v", r.ID, r)
+		}
+	}
+	// Open Library is also asked about an author whose key an administrator accepted, and says so.
+	if got := strings.Join(rows[1].Sends, ","); got != "title,author_key" {
+		t.Errorf("Open Library receives %q", got)
+	}
+	for _, i := range []int{0, 2} {
+		if len(rows[i].Sends) != 1 {
+			t.Errorf("%s receives only the title: %v", rows[i].ID, rows[i].Sends)
 		}
 	}
 	if rows[0].Key != "optional" || rows[1].Key != "" || rows[2].Key != "required" {

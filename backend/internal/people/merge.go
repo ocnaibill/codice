@@ -22,7 +22,7 @@ var (
 )
 
 // Detect proposes the pairs of people whose names are made of the same words, in any order ("Herbert,
-// Frank" and "Frank Herbert"). A pair that already exists, whatever its state, is left alone, so one that
+// Frank" and "Frank Herbert"), and those who hold the same identifier of a reference source. A pair that already exists, whatever its state, is left alone, so one that
 // was dismissed does not come back. It returns how many new pairs it found.
 func Detect(ctx context.Context, db *sql.DB) (int, error) {
 	rows, err := db.QueryContext(ctx, `SELECT id, name FROM person ORDER BY id`)
@@ -67,7 +67,41 @@ func Detect(ctx context.Context, db *sql.DB) (int, error) {
 			}
 		}
 	}
-	return found, nil
+	shared, err := detectShared(ctx, db)
+	return found + shared, err
+}
+
+// detectShared proposes the people who hold the same identifier from a reference source (a key of Open Library,
+// a Wikidata, VIAF or ISNI identifier): the strongest reason to think two spellings are one person, so it
+// promotes a pair that was only proposed for sharing words and names the identifier as the evidence. A pair
+// that was dismissed stays dismissed. When two share several, the evidence is the one that says the most. It
+// returns how many new pairs it found.
+func detectShared(ctx context.Context, db *sql.DB) (int, error) {
+	rows, err := db.QueryContext(ctx, `
+		INSERT INTO person_merge_candidates (person_a, person_b, reason, evidence)
+		SELECT DISTINCT ON (a.person_id, b.person_id)
+		       a.person_id, b.person_id, 'authority', jsonb_build_object('scheme', a.scheme, 'value', a.value)
+		FROM person_authority a
+		JOIN person_authority b ON b.scheme = a.scheme AND b.value = a.value AND a.person_id < b.person_id
+		ORDER BY a.person_id, b.person_id, COALESCE(array_position(ARRAY['wikidata', 'viaf', 'isni', 'openlibrary'], a.scheme::text), 99), a.scheme
+		ON CONFLICT (person_a, person_b) DO UPDATE SET reason = 'authority', evidence = EXCLUDED.evidence
+		  WHERE person_merge_candidates.state = 'pending' AND person_merge_candidates.reason <> 'authority'
+		RETURNING (xmax = 0)`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	found := 0
+	for rows.Next() {
+		var inserted bool
+		if err := rows.Scan(&inserted); err != nil {
+			return found, err
+		}
+		if inserted {
+			found++
+		}
+	}
+	return found, rows.Err()
 }
 
 // Person is one side of a pair, with enough to tell who it is.

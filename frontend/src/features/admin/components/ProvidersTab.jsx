@@ -9,7 +9,10 @@ const ABOUT = {
   openlibrary: { host: 'openlibrary.org (Internet Archive)', note: 'Também é a fonte das chaves de autoridade dos autores.' },
   comicvine: { host: 'comicvine.gamespot.com', keyEnv: 'COMICVINE_API_KEY' },
 };
-const SENDS = { title: 'o título da obra' };
+const SENDS = {
+  title: 'o título da obra',
+  author_key: 'a chave de cada autor que você aceita (para obter os identificadores dele: Wikidata, VIAF, ISNI)',
+};
 
 /** What is known of the API key of a provider: the worker says whether it has one, never the key. The key is set
  *  in the environment of the worker, not here. */
@@ -92,9 +95,9 @@ export function ProvidersTab({ isOwner }) {
           title={`Ligar ${turningOn.name}?`}
           message={
             <p>
-              A partir de agora, o título de cada obra analisada (e de cada busca manual de metadados) é enviado a{' '}
-              <strong>{ABOUT[turningOn.id]?.host || turningOn.name}</strong>. O nome do arquivo, o autor, o conteúdo do livro e as
-              notas não são enviados. {ABOUT[turningOn.id]?.note}{turningOn.keyConfigured && ' A chave de API configurada no worker vai junto.'} Você pode desligar quando quiser; o que já foi enviado não volta.
+              A partir de agora, é enviado a <strong>{ABOUT[turningOn.id]?.host || turningOn.name}</strong>: {sendsText(turningOn)}.
+              O nome do arquivo, o conteúdo do livro e as notas não são enviados. {ABOUT[turningOn.id]?.note}
+              {turningOn.keyConfigured && ' A chave de API configurada no worker vai junto.'} Você pode desligar quando quiser; o que já foi enviado não volta.
             </p>
           }
           choices={[{ label: 'Ligar', value: true, tone: 'primary' }]}

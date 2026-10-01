@@ -11,7 +11,8 @@ if hasattr(sys.stdout, 'reconfigure'):
 from extractors import EpubExtractor, PdfExtractor, CbzExtractor, CbrExtractor, TxtExtractor, AudiobookExtractor, MobiExtractor
 from extractors.base import BaseExtractor
 from providers import ProviderRegistry
-from providers.gate import db_gate, report_keys
+from providers.gate import asks_providers, db_gate, report_keys
+from authority import resolve_pending
 from db import CodiceDatabase
 from analyzer import Analyzer, MediaStatus
 from pipeline import analyze_file, ensure_file
@@ -192,8 +193,20 @@ def build_runner(db, client, heartbeat=None):
     return runner
 
 
+def resolve_authors(db, allowed):
+    """With nothing else to do, look up a few authors whose keys nobody has looked up (only if the owner turned
+    Open Library on, and only by the worker that asks the providers). It never gets in the way of the work."""
+    if not asks_providers():
+        return
+    try:
+        resolve_pending(db, allowed)
+    except Exception as err:
+        print(f"   ⚠️ Author lookup failed ({type(err).__name__}: {err})")
+
+
 def listen_for_tasks():
     db = CodiceDatabase()
+    allowed = db_gate(db)
     report_keys(db)  # which API keys this worker has: the administration says so before a provider is turned on
     client = connect_redis()
     heartbeat = Heartbeat()
@@ -212,6 +225,7 @@ def listen_for_tasks():
             continue
         if runner.embeddings is not None:
             runner.embeddings.enqueue_missing()
+        resolve_authors(db, allowed)
         last_id = wait_for_work(client, last_id)
 
 
