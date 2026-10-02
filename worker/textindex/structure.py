@@ -64,6 +64,31 @@ _BACK = _words(
 _EITHER = _words(r'acknowledg', r'agradecimentos', r'remerciements', r'agradecimientos', r'شكر')
 
 
+# What an EPUB 3 says about a document or a section with epub:type (the "structural semantics" vocabulary): it is
+# the file declaring what it is, so it is worth more than a guess from a title. A token that does not say which end
+# of the book it belongs to (a "chapter" can be anywhere in it, an "introduction" before or inside the story) says
+# nothing here.
+_DECLARED_FRONT = {'frontmatter', 'cover', 'titlepage', 'halftitlepage', 'halftitle', 'fulltitle', 'covertitle', 'copyright-page',
+                   'dedication', 'epigraph', 'toc', 'loi', 'lot', 'lov', 'foreword', 'preface', 'seriespage', 'credits', 'imprint'}
+_DECLARED_BACK = {'backmatter', 'appendix', 'glossary', 'index', 'bibliography', 'colophon', 'afterword', 'endnotes', 'rearnotes',
+                  'errata', 'footnotes', 'conclusion', 'other-credits', 'index-headnotes'}
+_DECLARED_BODY = {'bodymatter', 'chapter', 'part'}
+
+
+def declared_part(tokens):
+    """The part ('front', 'body' or 'back') that the epub:type tokens of an element declare, or None when they say
+    nothing about it. A token that puts it outside the story wins over one that says it is in it: a section that is
+    a `chapter` and an `appendix` is an appendix."""
+    tokens = {t.strip().lower() for t in (tokens or ()) if t and t.strip()}
+    if tokens & _DECLARED_BACK:
+        return BACK
+    if tokens & _DECLARED_FRONT:
+        return FRONT
+    if tokens & _DECLARED_BODY:
+        return BODY
+    return None
+
+
 def _kind(title):
     folded = re.sub(r'^[\W_]+', '', _fold(title))  # Unicode-aware: a title in Arabic is not "nothing"
     if _EITHER.search(folded):
@@ -90,12 +115,15 @@ def classify(nodes):
     """Sets the 'part' of every node, in place, and returns the list."""
     if not nodes:
         return nodes
-    kinds = [_kind(n['title']) for n in nodes]
+    declared = [n.pop('declared', None) for n in nodes]  # what the file itself says (epub:type), when it does
+    # A node that declares itself is not guessed from its name: a front or back part takes the place of its name's
+    # kind, and a body part is the story whatever it is called and however short it is.
+    kinds = [{FRONT: 'front', BACK: 'back', BODY: 'neutral'}[d] if d else _kind(n['title']) for d, n in zip(declared, nodes)]
     totals = _subtree_chars(nodes)
     sizes = sorted(t for k, t in zip(kinds, totals) if k == 'neutral' and t > 0)
     typical = sizes[len(sizes) // 2] if sizes else 0
     threshold = max(SUBSTANTIAL_CHARS, SUBSTANTIAL_SHARE * typical)
-    substantial = [k == 'neutral' and t >= threshold for k, t in zip(kinds, totals)]
+    substantial = [k == 'neutral' and (d == BODY or t >= threshold) for k, t, d in zip(kinds, totals, declared)]
 
     if any(substantial):
         first = substantial.index(True)
@@ -109,7 +137,9 @@ def classify(nodes):
 
     for i, node in enumerate(nodes):
         kind = kinds[i]
-        if i < first:
+        if declared[i]:
+            node['part'] = declared[i]
+        elif i < first:
             node['part'] = FRONT if kind != 'back' else BACK
         elif i >= end:
             node['part'] = BACK if kind != 'front' else FRONT

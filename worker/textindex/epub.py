@@ -8,7 +8,7 @@ from lxml import etree, html
 
 from . import Limits, Segment
 from .normalize import chunk, clean
-from .structure import classify
+from .structure import classify, declared_part
 
 _HTML_TYPES = ('application/xhtml+xml', 'text/html', 'application/x-dtbook+xml')
 _SKIP = {'script', 'style', 'head', 'title', 'nav', 'noscript', 'svg', 'math'}
@@ -56,14 +56,21 @@ def _encoding(data: bytes) -> str:
     return 'utf-8'
 
 
+def _types(el):
+    """The epub:type tokens of an element."""
+    return (el.get('epub:type') or el.get('{%s}type' % _OPS) or '').split()
+
+
 def _paragraphs(data: bytes, wanted=()):
-    """The paragraphs of one XHTML document, its first heading, and where each wanted anchor is: the
-    index of the paragraph that follows it (or holds it)."""
+    """The paragraphs of one XHTML document, its first heading, where each wanted anchor is (the index of the
+    paragraph that follows it or holds it) and what the document says it is (epub:type): `types` has the tokens of
+    the document under '' (its body, or the section that is all of it) and those of each wanted anchor under the
+    anchor's name."""
     parser = html.HTMLParser(recover=True, no_network=True, remove_comments=True, huge_tree=False, encoding=_encoding(data))
     root = html.document_fromstring(data, parser=parser) if data.strip() else None
     if root is None:
-        return [], None, {}
-    paragraphs, current, heading, anchors = [], [], None, {}
+        return [], None, {}, {}
+    paragraphs, current, heading, anchors, types = [], [], None, {}, {}
 
     def flush():
         text = clean(''.join(current))
@@ -79,10 +86,19 @@ def _paragraphs(data: bytes, wanted=()):
         block = tag in _BLOCK
         if block:
             flush()
+        tokens = _types(el)
+        if tokens:
+            parent = el.getparent()
+            opens_the_document = parent is not None and parent.tag == 'body' and parent.index(el) == 0
+            if tag == 'body' or opens_the_document:
+                # The body says what the document is; failing that, the section that opens it.
+                types.setdefault('', []).extend(tokens)
         if wanted:
             ident = el.get('id') or (el.get('name') if tag == 'a' else None)
             if ident and ident in wanted:
                 anchors.setdefault(ident, len(paragraphs))
+                if tokens:
+                    types.setdefault(ident, []).extend(tokens)
         start = len(paragraphs)
         if el.text:
             current.append(el.text)
@@ -97,7 +113,7 @@ def _paragraphs(data: bytes, wanted=()):
 
     walk(root)
     flush()
-    return paragraphs, heading, anchors
+    return paragraphs, heading, anchors, types
 
 
 def _target(base_dir, src):
@@ -148,6 +164,31 @@ def _nav_entries(data, base_dir):
     return entries
 
 
+def _landmarks(zf, package, opf_dir):
+    """What the navigation document's landmarks say, as {epub:type: archive member}: the first document of each
+    kind they point to (`bodymatter` is where the story starts). Only EPUB 3 has them."""
+    found = {}
+    for item in package.iterfind('.//{*}manifest/{*}item'):
+        if 'nav' not in (item.get('properties') or '').split() or not item.get('href'):
+            continue
+        member = posixpath.normpath(posixpath.join(opf_dir, unquote(item.get('href'))))
+        try:
+            root = etree.fromstring(zf.read(member), parser=etree.XMLParser(recover=True, resolve_entities=False))
+        except (KeyError, etree.XMLSyntaxError):
+            continue
+        if root is None:
+            continue
+        for nav in root.iter('{*}nav'):
+            if 'landmarks' not in (nav.get('{%s}type' % _OPS) or '').split():
+                continue
+            for link in nav.iter('{*}a'):
+                target, _fragment = _target(posixpath.dirname(member), link.get('href'))
+                for kind in (link.get('{%s}type' % _OPS) or '').split():
+                    if target:
+                        found.setdefault(kind, target)
+    return found
+
+
 def _table_of_contents(zf, package, opf_dir):
     """The book's own outline, in reading order: (title, depth, archive member, fragment). An EPUB 3
     navigation document or an EPUB 2 NCX, whichever lists more; none if the book has neither."""
@@ -194,6 +235,13 @@ def epub_segments(path, checkpoint=lambda: None, out=None):
             raise ValueError('the EPUB has too many chapters')
 
         outline = _table_of_contents(zf, package, opf_dir)
+        landmarks = _landmarks(zf, package, opf_dir)
+        spine_members = []
+        for idref in spine:
+            entry = manifest.get(idref)
+            if entry and entry[1] in _HTML_TYPES:
+                spine_members.append(posixpath.normpath(posixpath.join(opf_dir, unquote(entry[0].split('#')[0]))))
+        declared = [None] * len(outline)  # what each node of the outline says it is, by epub:type
         by_member = {}
         for index, (_title, _depth, member, fragment) in enumerate(outline):
             if member:
@@ -216,7 +264,9 @@ def epub_segments(path, checkpoint=lambda: None, out=None):
             if info.file_size > Limits.MAX_ENTRY_BYTES:
                 raise ValueError(f'a chapter is too large: {href}')
             here = by_member.get(member, [])
-            paragraphs, heading, anchors = _paragraphs(zf.read(info), {f for _i, f in here if f})
+            paragraphs, heading, anchors, types = _paragraphs(zf.read(info), {f for _i, f in here if f})
+            for index, fragment in here:
+                declared[index] = declared_part(types.get(fragment) or types.get(''))
             length = sum(len(p) + 1 for p in paragraphs) or 1
 
             # Where each node of the outline starts in this file; the last one listed at a place wins,
@@ -257,4 +307,14 @@ def epub_segments(path, checkpoint=lambda: None, out=None):
                     )
 
         if out is not None and outline:
-            out['structure'] = classify([{'title': t, 'depth': d, 'chars': chars[i]} for i, (t, d, _m, _f) in enumerate(outline)])
+            # Where the landmarks put the story's start (and its end), for the nodes that did not say what they are.
+            story, after = landmarks.get('bodymatter'), landmarks.get('backmatter')
+            order = {member: i for i, member in enumerate(spine_members)}
+            for index, (_t, _d, member, _f) in enumerate(outline):
+                if declared[index] is None and member in order:
+                    if story in order and order[member] < order[story]:
+                        declared[index] = 'front'
+                    elif after in order and order[member] >= order[after]:
+                        declared[index] = 'back'
+            out['structure'] = classify([{'title': t, 'depth': d, 'chars': chars[i], 'declared': declared[i]}
+                                         for i, (t, d, _m, _f) in enumerate(outline)])

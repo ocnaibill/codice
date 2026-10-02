@@ -10,6 +10,10 @@ a word broken by a hyphen at the end of a line in a PDF joined again, and paragr
 line break. Searching ignores case and accents in the database, so none of that is done to the text.
 Change any of it, or a limit, and EXTRACTOR_VERSION goes up: every file is read again.
 
+Version 6 reads what an EPUB says about itself (structure.py, epub.py): the epub:type of a document, of a section and of
+the landmarks of the navigation document tell the front matter, the story and the back matter, in place of a guess from the
+titles. It concerns EPUBs only (FORMAT_VERSION).
+
 Version 5 reads the text a comic or an audio file carries in its metadata (comic.py, audio.py): the ComicInfo.xml of a
 comic, the chapters and the description of an audio file. It changes nothing for the other formats, so it is a
 version of those formats only (FORMAT_VERSION): the files of the others are not read again for it.
@@ -25,13 +29,13 @@ outline it is in, and the file's nodes are published with its text. A segment ne
 from dataclasses import dataclass
 from typing import Optional
 
-EXTRACTOR_VERSION = 5
+EXTRACTOR_VERSION = 6
 
 # The version a file of each format has to have been read with to be up to date. A change that concerns one format
 # raises only its number, so the others are not read again (a library of PDFs is not read again for a comic's
 # ComicInfo.xml). Formats that are not here were last changed at BASE_VERSION.
 BASE_VERSION = 4
-FORMAT_VERSION = {fmt: 5 for fmt in ('cbz', 'cbr', 'mp3', 'm4a', 'm4b', 'ogg', 'wav', 'flac')}
+FORMAT_VERSION = {fmt: 5 for fmt in ('cbz', 'cbr', 'mp3', 'm4a', 'm4b', 'ogg', 'wav', 'flac')} | {'epub': 6}
 
 
 def required_version(fmt):

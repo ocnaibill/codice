@@ -255,10 +255,12 @@ class TestAudio:
 
 
 class TestVersions:
-    def test_a_change_for_comics_and_audio_does_not_read_the_other_formats_again(self):
+    def test_a_change_for_one_kind_of_format_does_not_read_the_others_again(self):
         for fmt in ('cbz', 'cbr', 'mp3', 'm4a', 'm4b', 'ogg', 'wav', 'flac', 'CBZ'):
-            assert required_version(fmt) == EXTRACTOR_VERSION
-        for fmt in ('epub', 'pdf', 'txt', 'md', 'mobi', '', None):
+            assert required_version(fmt) == 5  # the version that reads their metadata
+        for fmt in ('epub', 'EPUB'):
+            assert required_version(fmt) == EXTRACTOR_VERSION == 6  # the version that reads what an EPUB declares
+        for fmt in ('pdf', 'txt', 'md', 'mobi', '', None):
             assert required_version(fmt) == BASE_VERSION
 
     def test_a_comic_read_before_is_read_again_and_a_pdf_is_not(self, tmp_path):
@@ -267,9 +269,16 @@ class TestVersions:
         assert idx.needs_reading(file_row(1, 'cbz', version=old, source_sha='aa', status='unsupported'), False)
         assert idx.needs_reading(file_row(1, 'm4b', version=old, source_sha='aa', status='unsupported'), False)
         assert not idx.needs_reading(file_row(1, 'pdf', version=old, source_sha='aa', status='ready'), False)
-        assert not idx.needs_reading(file_row(1, 'epub', version=old, source_sha='aa', status='ready'), False)
-        assert not idx.needs_reading(file_row(1, 'cbz', version=EXTRACTOR_VERSION, source_sha='aa', status='ready'), False)
-        assert idx.needs_reading(file_row(1, 'epub', version=old - 1, source_sha='aa', status='ready'), False)
+        assert not idx.needs_reading(file_row(1, 'cbz', version=5, source_sha='aa', status='ready'), False)  # up to date for a comic
+        assert idx.needs_reading(file_row(1, 'pdf', version=old - 1, source_sha='aa', status='ready'), False)
+
+    def test_an_epub_read_before_is_read_again_and_the_others_are_not(self, tmp_path):
+        idx = TextIndexer(FakeDB([]), str(tmp_path))
+        assert idx.needs_reading(file_row(1, 'epub', version=5, source_sha='aa', status='ready'), False)
+        assert idx.needs_reading(file_row(1, 'epub', version=BASE_VERSION, source_sha='aa', status='ready'), False)
+        assert not idx.needs_reading(file_row(1, 'epub', version=EXTRACTOR_VERSION, source_sha='aa', status='ready'), False)
+        assert not idx.needs_reading(file_row(1, 'pdf', version=5, source_sha='aa', status='ready'), False)
+        assert not idx.needs_reading(file_row(1, 'txt', version=BASE_VERSION, source_sha='aa', status='ready'), False)
 
 
 class TestIndexer:
@@ -321,6 +330,14 @@ class TestIndexer:
         db, outcome = self.run(tmp_path, [file_row(7, 'cbz', path='bad.cbz'), file_row(8, 'mp3', path='ok.mp3')])
         assert outcome == {7: 'failed', 8: 'ready'}
 
-    def test_an_epub_read_with_the_last_version_is_left_alone(self, tmp_path):
-        db, outcome = self.run(tmp_path, [file_row(7, 'epub', version=BASE_VERSION, source_sha='aa', status='ready')])
+    def test_a_pdf_read_with_the_last_version_of_its_format_is_left_alone(self, tmp_path):
+        db, outcome = self.run(tmp_path, [file_row(7, 'pdf', version=BASE_VERSION, source_sha='aa', status='ready')])
+        assert outcome == {} and db.calls == [('fetchall', 'files', (9,))]
+
+    def test_an_epub_read_before_the_version_that_reads_what_it_declares_is_read_again(self, tmp_path):
+        from tests.test_textindex import make_epub
+        make_epub(tmp_path / 'e.epub', {'a.xhtml': '<p>Um texto de capítulo que o EPUB traz, com o bastante para ser lido.</p>'})
+        db, outcome = self.run(tmp_path, [file_row(7, 'epub', path='e.epub', version=5, source_sha='aa', status='ready')])
+        assert outcome == {7: 'ready'}
+        db, outcome = self.run(tmp_path, [file_row(7, 'epub', version=EXTRACTOR_VERSION, source_sha='aa', status='ready')])
         assert outcome == {} and db.calls == [('fetchall', 'files', (9,))]
