@@ -919,7 +919,7 @@ Cobrir dois usuários, administrador, conta externa, leitura offline no cliente 
 | QA-004 | PDF, EPUB e CBZ confirmados | Variantes aceitas e sequência de formatos adicionais |
 | QA-005 | Progresso comum na experiência confirmado | Regra de agregação por obra e conflitos |
 | QA-006 | Visualização escolhida pelo usuário confirmada | Defaults por publicação e dispositivos |
-| QA-007 | Finalidade do OCR e controle separado confirmados | Motores, benchmark e critérios de qualidade ainda precisam de validação |
+| QA-007 | Finalidade do OCR e controle separado confirmados | Benchmark do Tesseract feito com páginas desenhadas (`make benchmark-ocr`, #24): números e limites no README; falta validar com escaneamentos reais (#89), motores alternativos e critérios de qualidade |
 | QA-008 | Busca textual discutida | Backend de busca, idiomas e consulta literal |
 | QA-009 | Embeddings discutidos | Modelo, segmentação, avaliação e armazenamento |
 | QA-010 | Áreas de IA, toggles, transmissão e orçamento confirmados | DEC-044 a 049; detalhar modelos compatíveis, contabilização, moeda/período, custo desconhecido e implementação do consentimento |

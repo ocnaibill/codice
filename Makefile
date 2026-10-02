@@ -1,7 +1,7 @@
 # Códice — Test Runner
 # Run all tests for a specific stack or everything at once
 
-.PHONY: test test-backend test-worker test-frontend test-all benchmark-equivalence watch
+.PHONY: test test-backend test-worker test-frontend test-all benchmark-equivalence benchmark-ocr watch
 
 GO ?= go
 NPM ?= npm
@@ -44,6 +44,14 @@ test-all: test
 # Optional and networked: downloads a SHA-256-pinned public-domain corpus into tmp/.
 benchmark-equivalence:
 	cd worker && $(PYTHON) ../benchmarks/equivalence/benchmark.py
+
+# Optional and networked: downloads public-domain texts (SHA-256 pinned) into tmp/, draws them as scanned pages and
+# measures the OCR engine of the `ocr` image. The report goes to tmp/ocr-benchmark/report.md. ARGS passes options on
+# (see benchmarks/ocr/README.md), for example ARGS='--pages 1 --only limpa'.
+benchmark-ocr:
+	docker build -q --target ocr -t codice-ocr-benchmark worker
+	docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -v "$(CURDIR)":/repo -w /repo/worker \
+		codice-ocr-benchmark python ../benchmarks/ocr/benchmark.py $(ARGS)
 
 # Watch mode for frontend dev
 watch:
