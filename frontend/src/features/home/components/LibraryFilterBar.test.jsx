@@ -36,3 +36,42 @@ describe('LibraryFilterBar: sorting', () => {
     expect(container.querySelector('select')).toBeNull();
   });
 });
+
+describe('LibraryFilterBar: the kinds of work that the library has', () => {
+  const labels = () => [...container.querySelectorAll('[aria-label="Filtrar acervo"] button')].map((b) => b.textContent);
+
+  it('counts each kind, and offers only those with at least one work; Todos is always there', async () => {
+    await render({ worksTotal: 9, breakdown: { livros: 5, mangas: 0, audio: 4 } });
+    expect(labels()).toEqual(['Todos[09]', 'Livros digitais[05]', 'Audiolivros[04]']);
+  });
+
+  it('offers only Todos for an empty library, and no kind before the counts are known', async () => {
+    await render({ worksTotal: 0, breakdown: { livros: 0, mangas: 0, audio: 0 } });
+    expect(labels()).toEqual(['Todos[00]']);
+    await render({ worksTotal: undefined, breakdown: undefined });
+    expect(labels()).toEqual(['Todos']);
+  });
+
+  it('picks a kind, and marks the one on screen', async () => {
+    const onFilterChange = vi.fn();
+    await render({ worksTotal: 3, breakdown: { livros: 3, mangas: 0, audio: 0 }, activeFilter: 'ebooks', onFilterChange });
+    const buttons = [...container.querySelectorAll('[aria-label="Filtrar acervo"] button')];
+    expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    await act(async () => buttons[0].click());
+    expect(onFilterChange).toHaveBeenCalledWith('all');
+  });
+
+  it('goes back to all of the works when the kind on screen has none left', async () => {
+    const onFilterChange = vi.fn();
+    await render({ worksTotal: 3, breakdown: { livros: 3, mangas: 0, audio: 0 }, activeFilter: 'comics', onFilterChange });
+    expect(onFilterChange).toHaveBeenCalledWith('all');
+  });
+
+  it('does not go back while the counts are unknown, nor from a kind that has works, nor from all', async () => {
+    const onFilterChange = vi.fn();
+    await render({ worksTotal: undefined, breakdown: undefined, activeFilter: 'comics', onFilterChange });
+    await render({ worksTotal: 4, breakdown: { livros: 0, mangas: 4, audio: 0 }, activeFilter: 'comics', onFilterChange });
+    await render({ worksTotal: 0, breakdown: { livros: 0, mangas: 0, audio: 0 }, activeFilter: 'all', onFilterChange });
+    expect(onFilterChange).not.toHaveBeenCalled();
+  });
+});

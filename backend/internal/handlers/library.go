@@ -55,6 +55,10 @@ type Work struct {
 	Finished bool `json:"finished"`
 	// FileCount is how many files of the work can be opened: with more than one there is a choice.
 	FileCount int `json:"fileCount"`
+	// FormatCount is how many different formats those files have, whatever their number: a book with an EPUB
+	// and a PDF has two, one with the EPUBs of two editions has one. The card says "2 formatos" instead of
+	// naming only one of them.
+	FormatCount int `json:"formatCount"`
 	// Completions, only in the detail: how many times the caller finished it, and in what format.
 	Completions *CompletionSummary `json:"completions,omitempty"`
 }
@@ -179,6 +183,8 @@ const cardColumns = `
 	COALESCE(lastrp.position, ''), COALESCE(lastrp.percent_complete, 0), (lastrp.completed_at IS NOT NULL),
 	COALESCE(lastrp.language, ''), (wrs.work_id IS NOT NULL),
 	(SELECT count(*) FROM files fc JOIN editions ec ON ec.id = fc.edition_id
+	  WHERE ec.work_id = w.id AND fc.availability = 'available'),
+	(SELECT count(DISTINCT lower(fc.format)) FROM files fc JOIN editions ec ON ec.id = fc.edition_id
 	  WHERE ec.work_id = w.id AND fc.availability = 'available')`
 
 // hasPosition is the condition for a reading_progress row (alias a) that says where the person
@@ -233,7 +239,7 @@ func scanWork(row rowScanner) (Work, error) {
 		&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
 		&fileID, &work.Retired, &mode,
 		&lastFile, &last.Format, &lastPath, &lastMode, &last.Position, &last.PercentComplete, &last.Completed,
-		&last.Language, &finished, &work.FileCount,
+		&last.Language, &finished, &work.FileCount, &work.FormatCount,
 	)
 	if err != nil {
 		return work, err

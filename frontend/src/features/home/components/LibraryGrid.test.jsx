@@ -6,6 +6,7 @@ vi.mock('../../../lib/api', () => ({ authenticatedUrl: (u) => u }));
 
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { LibraryGrid } from './LibraryGrid';
+import { formatBadge } from '../utils/format';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -57,5 +58,21 @@ describe('the Read button of a card (DEC-081)', () => {
     await render([card({ continue: { fileId: 10, completed: true } })]);
     await act(async () => { readButton().click(); });
     expect(state()).toMatchObject({ sheetWorkId: 1, activeBookId: null });
+  });
+});
+
+describe('the corner of a cover says the format, or how many formats there are', () => {
+  it('names the format of a work that has one', () => {
+    expect(formatBadge(card({ format: 'epub', formatCount: 1 }))).toBe('EPUB');
+    expect(formatBadge(card({ format: 'cbz' }))).toBe('CBZ');
+  });
+  it('says how many when there is more than one', () => {
+    expect(formatBadge(card({ format: 'epub', formatCount: 2 }))).toBe('2 formatos');
+    expect(formatBadge(card({ format: 'pdf', formatCount: 3 }))).toBe('3 formatos');
+  });
+  it('shows it on the card', async () => {
+    await render([card({ format: 'epub', formatCount: 2 }), card({ id: 2, format: 'cbz', formatCount: 1 })]);
+    const corners = [...container.querySelectorAll('article .library-book-cover span')].map((s) => s.textContent);
+    expect(corners).toEqual(['2 formatos', 'CBZ']);
   });
 });

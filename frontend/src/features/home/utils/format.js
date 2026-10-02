@@ -47,3 +47,16 @@ export function formatRelativeDate(isoString) {
   if (diffDays === 1) return 'ontem';
   return `há ${diffDays} dias`;
 }
+
+/** The count of a shelf as the menus show it, in brackets: "[05]", "[12]", "[1.420]". Two digits at least, so that
+ *  the column of a menu lines up. Nothing for a count that is not known yet. */
+export function bracketCount(n) {
+  if (n == null) return '';
+  return `[${n < 10 ? String(n).padStart(2, '0') : numberFormatter.format(n)}]`;
+}
+
+/** What the corner of a cover says: the format when the work has one, "2 formatos" when it has more than one. */
+export function formatBadge(item) {
+  return item.formatCount > 1 ? `${item.formatCount} formatos` : item.format.toUpperCase();
+}
+
