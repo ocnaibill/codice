@@ -1,7 +1,7 @@
 # Códice — Test Runner
 # Run all tests for a specific stack or everything at once
 
-.PHONY: test test-backend test-worker test-frontend test-all benchmark-equivalence benchmark-ocr watch
+.PHONY: test test-backend test-worker test-frontend test-all benchmark-equivalence benchmark-duplicates benchmark-ocr watch
 
 GO ?= go
 NPM ?= npm
@@ -44,6 +44,11 @@ test-all: test
 # Optional and networked: downloads a SHA-256-pinned public-domain corpus into tmp/.
 benchmark-equivalence:
 	cd worker && $(PYTHON) ../benchmarks/equivalence/benchmark.py
+
+# Optional and networked: the same public-domain books as benchmark-equivalence, here to see which pairs of files the
+# fingerprint takes for the same text (an EPUB and a PDF of one book, two editions) and which it does not.
+benchmark-duplicates:
+	cd worker && $(PYTHON) ../benchmarks/duplicates/benchmark.py
 
 # Optional and networked: downloads public-domain texts (SHA-256 pinned) into tmp/, draws them as scanned pages and
 # measures the OCR engine of the `ocr` image. The report goes to tmp/ocr-benchmark/report.md. ARGS passes options on

@@ -255,6 +255,7 @@ func TestBackup_TheExtractedTextIsNotInThePackageAndComesBackAsAJob(t *testing.T
 	s.exec(`INSERT INTO document_segments (file_id, generation, sequence, text, locator, locator_version)
 	        VALUES ($1, $2, 0, 'texto que se refaz', '{"type":"pdf","page":0}', 1)`, file, gen)
 	s.exec(`SELECT text_extraction_publish($1, $2, 1, 'abc', 'ready', 'native', 'pt')`, file, gen)
+	s.exec(`INSERT INTO text_fingerprints (file_id, generation, source_sha256, method, words, sample) VALUES ($1, $2, 'abc', 1, 4000, '{1,2,3}')`, file, gen)
 	s.exec(`DELETE FROM jobs WHERE type = 'extract_text'`)
 
 	pkg, _ := s.backup(false, "")

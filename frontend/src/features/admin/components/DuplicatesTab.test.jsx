@@ -35,6 +35,23 @@ describe('DuplicatesTab', () => {
     expect(view.text()).toContain('pdf');
   });
 
+  it('says it is the same text, and how much of each is in the other, for a pair found by the words', async () => {
+    await open([{ ...pair, id: 4, reason: 'content', evidence: { content: { ofA: 0.858, ofB: 0.892 } } }]);
+    expect(view.text()).toContain('O mesmo texto, em outro arquivo');
+    expect(view.text()).toContain('86% do texto de “Duna” está em “Duna (PDF)”, e 89% do texto de “Duna (PDF)” está em “Duna”.');
+  });
+
+  it('says nothing about the text for a pair that was found by the title and the author', async () => {
+    await open();
+    expect(view.text()).not.toContain('do texto de');
+  });
+
+  it('adds what the words say to a pair that was also found by the title and the author', async () => {
+    await open([{ ...pair, evidence: { content: { ofA: 0.99, ofB: 0.97 } } }]);
+    expect(view.text()).toContain('Mesmo título e autor');
+    expect(view.text()).toContain('99% do texto de “Duna”');
+  });
+
   it('dismisses a pair with one click', async () => {
     await open();
     await view.click(view.button('Não é duplicata'));

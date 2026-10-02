@@ -63,6 +63,13 @@ def resolve(storage_root, mode, root, path):
     return full
 
 
+# The comparison of a work with the others goes after what people asked for (priority below 0), once however many of its
+# files were read, and not while one is already waiting.
+ENQUEUE_DEDUPE = """
+    INSERT INTO jobs (type, work_id, payload, priority) VALUES ('dedupe', %s, '{}'::jsonb, -10)
+    ON CONFLICT (type, work_id) WHERE state IN ('pending', 'running') DO NOTHING"""
+
+
 class TextIndexer:
     def __init__(self, db, storage_root, version=EXTRACTOR_VERSION, log=print):
         self.db = db
@@ -90,6 +97,9 @@ class TextIndexer:
             if availability != 'available' or not self.needs_reading(row, force):
                 continue
             outcome[file_id] = self.read_file(file_id, fmt.lower(), sha, language, mode, root, path, checkpoint)
+        if 'ready' in outcome.values():
+            # There is text now (or new text): the work is compared, by its words, with the others (#38).
+            self.db.execute(ENQUEUE_DEDUPE, (work_id,))
         return outcome
 
     def read_file(self, file_id, fmt, sha, language, mode, root, path, checkpoint):
