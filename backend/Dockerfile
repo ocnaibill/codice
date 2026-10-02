@@ -11,7 +11,8 @@ FROM alpine:3.21
 # ca-certificates: to reach metadata providers over HTTPS. tzdata: readable timestamps.
 # postgresql15-client: pg_dump and pg_restore for `codice-admin backup` and `restore`. Its major
 # version must match the database server's (docker-compose.full.yml runs PostgreSQL 15).
-RUN apk add --no-cache ca-certificates tzdata postgresql15-client \
+# libarchive-tools: bsdtar, which opens the CBR (RAR) archives of comics; free, and what the worker uses too.
+RUN apk add --no-cache ca-certificates tzdata postgresql15-client libarchive-tools \
  && addgroup -S -g 10001 codice && adduser -S -u 10001 -G codice codice \
  && mkdir -p /app/storage && chown codice:codice /app/storage
 COPY --from=build /out/ /usr/local/bin/
