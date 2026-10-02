@@ -277,6 +277,165 @@ func TestBackup_TheExtractedTextIsNotInThePackageAndComesBackAsAJob(t *testing.T
 	}
 }
 
+// keepOCR gives each file of the source the pages OCR read of it: one with text, one blank and one that failed.
+func (s *source) keepOCR() {
+	s.t.Helper()
+	s.exec(`INSERT INTO text_layers (file_id, page_count, pages_without_text, needs_ocr)
+	        SELECT id, 3, '{1,2,3}', TRUE FROM files`)
+	for _, c := range []struct {
+		page        int
+		state, text string
+		err         any
+	}{
+		{0, "done", "A catedral antiga ficava no alto da colina.", nil},
+		{1, "blank", "", nil},
+		{2, "failed", "", "EngineError: timed out after 180 s"},
+	} {
+		s.exec(`INSERT INTO ocr_pages (file_id, page, source_sha256, state, text, engine, engine_version, language, dpi, error)
+		        SELECT id, $1, sha256, $2, $3, 'tesseract', '5.5.0', 'por+eng', 200, $4 FROM files`, c.page, c.state, c.text, c.err)
+	}
+}
+
+func TestBackup_WhatOCRReadTravelsInThePackageAndComesBackWhole(t *testing.T) {
+	s := newSource(t)
+	s.keepOCR()
+	pkg, _ := s.backup(false, "")
+
+	p, err := Read(bytes.NewReader(pkg), ReadOptions{TmpDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	if p.Manifest.Counts.OCRPages != 6 {
+		t.Errorf("the manifest counts %d pages read by OCR, want 6", p.Manifest.Counts.OCRPages)
+	}
+
+	tg := newTarget(t, s.dsn, false)
+	if _, err := tg.restore(pkg); err != nil {
+		t.Fatal(err)
+	}
+	db := tg.open()
+	// Every page comes back as it was: the text, how it was read, and why a page failed.
+	if got := scalar(t, db, `SELECT string_agg(page || ':' || state || ':' || text || ':' || engine || ':' || engine_version || ':' || language || ':' || dpi || ':' || COALESCE(error, '-'), '|' ORDER BY file_id, page) FROM ocr_pages`); got !=
+		"0:done:A catedral antiga ficava no alto da colina.:tesseract:5.5.0:por+eng:200:-|1:blank::tesseract:5.5.0:por+eng:200:-|2:failed::tesseract:5.5.0:por+eng:200:EngineError: timed out after 180 s|"+
+			"0:done:A catedral antiga ficava no alto da colina.:tesseract:5.5.0:por+eng:200:-|1:blank::tesseract:5.5.0:por+eng:200:-|2:failed::tesseract:5.5.0:por+eng:200:EngineError: timed out after 180 s" {
+		t.Errorf("the pages that came back: %s", got)
+	}
+	// They are of the file as it came back (the worker uses a page only when the hash is the same), and which pages
+	// of the file have no text is still known.
+	if got := scalar(t, db, `SELECT count(*) FROM ocr_pages p JOIN files f ON f.id = p.file_id AND p.source_sha256 = f.sha256`); got != "6" {
+		t.Errorf("pages whose hash is that of their file: %s", got)
+	}
+	if got := scalar(t, db, `SELECT count(*) FROM text_layers WHERE needs_ocr`); got != "2" {
+		t.Errorf("files that need OCR: %s", got)
+	}
+	// The native text still is not in the package: it is made again, from these pages where there is no text layer.
+	for _, table := range derivedTables {
+		if n := scalar(t, db, `SELECT count(*) FROM `+table); n != "0" {
+			t.Errorf("%s came back with %s rows", table, n)
+		}
+	}
+	if got := scalar(t, db, `SELECT count(DISTINCT work_id) FROM jobs WHERE type = 'extract_text' AND state = 'pending'`); got != "2" {
+		t.Errorf("the text of the library is to be made again: %s jobs", got)
+	}
+}
+
+func TestBackup_WhatOCRReadIsNotAmongTheDerivedTablesThatAreLeftOut(t *testing.T) {
+	for _, table := range derivedTables {
+		if table == "ocr_pages" || table == "text_layers" {
+			t.Errorf("%s is left out of the package: reading a scanned library again takes hours", table)
+		}
+	}
+}
+
+func TestRestore_ARestoredCopyMissingOCRPagesIsNeverSwappedIn(t *testing.T) {
+	s := newSource(t)
+	s.keepOCR()
+	pkg, _ := s.backup(false, "")
+	lying := rewrite(t, pkg, func(name string, body []byte) (string, []byte, bool) {
+		if name == MemberManifest {
+			var m Manifest
+			json.Unmarshal(body, &m)
+			m.Counts.OCRPages = 99 // the package says it holds more than the dump has
+			b, _ := json.Marshal(m)
+			return name, b, true
+		}
+		return name, body, true
+	})
+	tg := newTarget(t, s.dsn, true)
+	if _, err := tg.restore(pkg); err != nil { // an instance with real data
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if _, err := tg.restore(lying, func(o *RestoreOptions) { o.Overwrite = true }); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("restore: %v, want ErrCorrupt", err)
+	}
+	if got := tg.scalar(`SELECT count(*) FROM ocr_pages`); got != "6" {
+		t.Errorf("the running database was replaced by a copy without the pages OCR read: %s", got)
+	}
+}
+
+func TestVerify_TheRehearsalCountsThePagesOCRReadToo(t *testing.T) {
+	s := newSource(t)
+	s.keepOCR()
+	pkg, _ := s.backup(false, "")
+	lying := rewrite(t, pkg, func(name string, body []byte) (string, []byte, bool) {
+		if name == MemberManifest {
+			var m Manifest
+			json.Unmarshal(body, &m)
+			m.Counts.OCRPages = 99
+			b, _ := json.Marshal(m)
+			return name, b, true
+		}
+		return name, body, true
+	})
+	res, err := Verify(ctx, VerifyOptions{In: bytes.NewReader(pkg), DatabaseURL: s.dsn, TmpDir: t.TempDir(), Deep: true})
+	if err != nil || res.Deep == nil || res.Deep.Restored.OCRPages != 6 {
+		t.Fatalf("a package that tells the truth: %v %+v", err, res)
+	}
+	if _, err := Verify(ctx, VerifyOptions{In: bytes.NewReader(lying), DatabaseURL: s.dsn, TmpDir: t.TempDir(), Deep: true}); !errors.Is(err, ErrCorrupt) {
+		t.Errorf("a package that miscounts the pages OCR read: %v, want ErrCorrupt", err)
+	}
+}
+
+func TestBackup_APackageWithoutOCRHasNoSuchCountAndRestoresAsBefore(t *testing.T) {
+	s := newSource(t)
+	pkg, _ := s.backup(false, "")
+	p, err := Read(bytes.NewReader(pkg), ReadOptions{TmpDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	if p.Manifest.Counts.OCRPages != 0 {
+		t.Errorf("counts %d", p.Manifest.Counts.OCRPages)
+	}
+	counts, _ := json.Marshal(p.Manifest.Counts)
+	if strings.Contains(string(counts), "ocrPages") {
+		t.Errorf("a package made without OCR carries the count: %s", counts)
+	}
+	tg := newTarget(t, s.dsn, false)
+	if _, err := tg.restore(pkg); err != nil {
+		t.Fatal(err)
+	}
+	if got := scalar(t, tg.open(), `SELECT count(*) FROM ocr_pages`); got != "0" {
+		t.Errorf("pages: %s", got)
+	}
+}
+
+func TestCountOCRPages_WhereTheTableIsNotThereYetItIsNone(t *testing.T) {
+	s := newSource(t)
+	s.keepOCR()
+	got, err := countOCRPages(context.Background(), s.db)
+	if err != nil || got != 6 {
+		t.Fatalf("with the table: %d, %v", got, err)
+	}
+	s.exec(`ALTER TABLE ocr_pages RENAME TO ocr_pages_away`) // the schema of a package from before OCR
+	got, err = countOCRPages(context.Background(), s.db)
+	if err != nil || got != 0 {
+		t.Errorf("without the table: %d, %v", got, err)
+	}
+}
+
 func TestCreate_PackageHoldsWhatItPromisesAndNoCredentials(t *testing.T) {
 	s := newSource(t)
 	pkg, res := s.backup(false, "")

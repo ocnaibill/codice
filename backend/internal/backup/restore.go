@@ -130,8 +130,24 @@ func listDump(ctx context.Context, c pgConn, dump string, out io.Writer) error {
 }
 
 func countsOf(ctx context.Context, db *sql.DB) (c Counts, err error) {
-	err = db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM works),
-		(SELECT count(*) FROM files), (SELECT count(*) FROM notes)`).Scan(&c.Users, &c.Works, &c.Files, &c.Notes)
+	if err = db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM works),
+		(SELECT count(*) FROM files), (SELECT count(*) FROM notes)`).Scan(&c.Users, &c.Works, &c.Files, &c.Notes); err != nil {
+		return
+	}
+	c.OCRPages, err = countOCRPages(ctx, db)
+	return
+}
+
+// countOCRPages counts the pages OCR has read, or none where the table is not there yet: a package from before OCR is
+// restored into a database of the schema it was made with, which is brought up to date afterwards.
+func countOCRPages(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}) (n int, err error) {
+	var exists bool
+	if err = q.QueryRowContext(ctx, `SELECT to_regclass('ocr_pages') IS NOT NULL`).Scan(&exists); err != nil || !exists {
+		return 0, err
+	}
+	err = q.QueryRowContext(ctx, `SELECT count(*) FROM ocr_pages`).Scan(&n)
 	return
 }
 
