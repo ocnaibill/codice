@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  useDuplicates, useScanDuplicates, useDismissDuplicate, useLinkDuplicate, useOcr, describeError,
+  useDuplicates, useScanDuplicates, useDismissDuplicate, useLinkDuplicate, describeError,
 } from '../api/admin';
 import { ConfirmDialog } from './ConfirmDialog';
 import { PeopleMerges } from './PeopleMerges';
@@ -73,38 +73,11 @@ function Duplicates() {
   );
 }
 
-function Ocr() {
-  const { data, isLoading } = useOcr();
-  const items = data?.data || [];
-  return (
-    <Section
-      title="PDFs com páginas sem texto"
-      hint="Páginas que são só imagem: não dá para buscar nem selecionar o texto nelas. Rodar o OCR ainda não faz parte do sistema; esta lista mostra onde ele seria útil."
-    >
-      {isLoading && <Loading />}
-      {!isLoading && items.length === 0 && <Empty>Nenhum PDF precisa de OCR.</Empty>}
-      <ul className="divide-y divide-border-hairline text-[13px]">
-        {items.map((item) => (
-          <li key={item.fileId} className="py-2">
-            <p className="text-ink">{item.title}</p>
-            <p className="text-[12px] text-ink-faint">
-              {item.pagesWithoutText.length === item.pageCount
-                ? `Todas as ${item.pageCount} páginas são imagem`
-                : `${item.pagesWithoutText.length} de ${item.pageCount} páginas sem texto (${item.pagesWithoutText.slice(0, 12).join(', ')}${item.pagesWithoutText.length > 12 ? '…' : ''})`}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </Section>
-  );
-}
-
 export function DuplicatesTab() {
   return (
     <div className="flex flex-col gap-5">
       <Duplicates />
       <PeopleMerges />
-      <Ocr />
     </div>
   );
 }

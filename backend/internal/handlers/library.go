@@ -114,6 +114,18 @@ type FileInfo struct {
 	PagesWithoutText []int `json:"pagesWithoutText,omitempty"`
 	// DeclaredMode is how a comic file says it is read: "rtl" or "webtoon" (#19). Empty when it says nothing.
 	DeclaredMode string `json:"declaredMode,omitempty"`
+	// OCR says what became of the pages of a scan that have no text layer (#24); absent when the file has none.
+	OCR *OCRProgress `json:"ocr,omitempty"`
+}
+
+// OCRProgress is how far the reading of the pages without text has got: how many there are, how many were read (a blank
+// page counts as read) and how many could not be, and whether the work is waiting for the engine ("queued") or being
+// read ("reading").
+type OCRProgress struct {
+	Pages  int    `json:"pages"`
+	Read   int    `json:"read"`
+	Failed int    `json:"failed"`
+	State  string `json:"state,omitempty"`
 }
 
 // LibraryHandler stores the database connection
@@ -409,11 +421,19 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		       f.id, COALESCE(f.format, ''), f.size_bytes, f.availability, l.path, l.mode,
 		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL), COALESCE(`+hasPosition("rp")+`, FALSE),
 		       COALESCE(tl.needs_ocr, FALSE), tl.pages_without_text,
-		       COALESCE(tx.status, ''), COALESCE(tx.segment_count, 0), COALESCE(f.declared_mode, '')
+		       COALESCE(tx.status, ''), COALESCE(tx.segment_count, 0), COALESCE(f.declared_mode, ''),
+		       cardinality(tl.pages_without_text), oc.read, oc.failed,
+		       (SELECT CASE j.state WHEN 'running' THEN 'reading' ELSE 'queued' END FROM jobs j
+		        WHERE j.type = 'ocr' AND j.work_id = e.work_id AND j.state IN ('pending', 'running') ORDER BY j.id LIMIT 1)
 		FROM editions e
 		LEFT JOIN files f ON f.edition_id = e.id
 		LEFT JOIN text_layers tl ON tl.file_id = f.id
 		LEFT JOIN text_extractions tx ON tx.file_id = f.id
+		LEFT JOIN LATERAL (
+			SELECT count(*) FILTER (WHERE p.state IN ('done', 'blank')) AS read, count(*) FILTER (WHERE p.state = 'failed') AS failed
+			FROM ocr_pages p WHERE p.file_id = f.id AND p.source_sha256 IS NOT DISTINCT FROM f.sha256
+			  AND p.page + 1 = ANY (tl.pages_without_text)
+		) oc ON tl.needs_ocr
 		LEFT JOIN LATERAL (
 			SELECT path, mode FROM storage_locations WHERE file_id = f.id ORDER BY id LIMIT 1
 		) l ON TRUE
@@ -439,8 +459,10 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		var textStatus string
 		var textSegments int
 		var declaredMode string
+		var ocrPages, ocrRead, ocrFailed sql.NullInt64
+		var ocrState sql.NullString
 		if err := rows.Scan(&e.ID, &e.Title, &e.Language, &e.Publisher, &e.PublicationDate, &e.ISBN, &e.IsPrimary,
-			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &started, &needsOCR, &missing, &textStatus, &textSegments, &declaredMode); err != nil {
+			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &started, &needsOCR, &missing, &textStatus, &textSegments, &declaredMode, &ocrPages, &ocrRead, &ocrFailed, &ocrState); err != nil {
 			return nil, err
 		}
 		i, seen := index[e.ID]
@@ -463,6 +485,9 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 				for _, n := range missing {
 					fi.PagesWithoutText = append(fi.PagesWithoutText, int(n))
 				}
+			}
+			if needsOCR && ocrPages.Valid {
+				fi.OCR = &OCRProgress{Pages: int(ocrPages.Int64), Read: int(ocrRead.Int64), Failed: int(ocrFailed.Int64), State: ocrState.String}
 			}
 			editions[i].Files = append(editions[i].Files, fi)
 		}

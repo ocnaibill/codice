@@ -241,6 +241,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Get("/admin/embeddings", embeddingsAdmin.Get)
 	r.With(owner).Put("/admin/embeddings", embeddingsAdmin.Set)
 	r.With(staff).Get("/admin/ocr", ocrAdmin.List)
+	r.With(staff).Post("/admin/works/{id}/ocr/retry", ocrAdmin.Retry)
 	r.With(owner).Get("/admin/ocr/settings", ocrSettings.Get)
 	r.With(owner).Put("/admin/ocr/settings", ocrSettings.Set)
 	r.With(staff).Get("/invitations", invitesHandler.List)

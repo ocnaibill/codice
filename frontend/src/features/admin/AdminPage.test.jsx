@@ -28,6 +28,7 @@ beforeEach(() => {
     if (url === '/admin/suggestions') return { data: { data: [], total: queueTotal } };
     if (url === '/admin/duplicates' || url === '/admin/ocr' || url === '/users') return { data: { data: [] } };
     if (url === '/admin/ldap') return { data: { configured: false, host: '', baseDN: '', linkedAccounts: 0, policy: { allowCreate: false, revalidateHours: 24 } } };
+    if (url === '/admin/ocr/settings') return { data: { enabled: false, language: 'por+eng', available: true, engine: 'tesseract', engineVersion: '5.5.0', languages: ['eng', 'por'], state: 'idle', error: '' } };
     if (url === '/admin/embeddings') return { data: { enabled: false, available: true, state: 'idle', model: 'sentence-transformers/LaBSE' } };
     throw new Error(`unexpected GET ${url}`);
   });
@@ -79,8 +80,13 @@ describe('AdminPage', () => {
     await view.click(view.button('Lixeira'));
     expect(view.text()).toContain('A lixeira está vazia');
 
-    await view.click(view.button('Duplicatas e OCR'));
+    await view.click(view.button('Duplicatas'));
     expect(view.text()).toContain('Nenhuma sugestão pendente');
+    expect(view.text()).not.toContain('PDFs com páginas sem texto'); // OCR has a tab of its own
+
+    await view.click(view.button('OCR'));
+    expect(view.text()).toContain('Leitura de páginas escaneadas (OCR)');
+    expect(view.text()).toContain('Nenhum PDF precisa de OCR');
 
     await view.click(view.button('Contas'));
     expect(view.text()).toContain('Nenhuma conta');
