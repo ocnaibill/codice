@@ -16,6 +16,8 @@ vi.mock('epubjs', () => ({
       }),
       on: () => {},
       themes: { register: () => {}, select: () => {}, fontSize: () => {} },
+      hooks: { content: { register: () => {} } },
+      resize: () => {},
       prev: () => {},
       next: () => {},
       destroy: () => {},
@@ -139,6 +141,6 @@ describe('EpubViewer: a place that is not there (#14)', () => {
   it('works without anyone listening', async () => {
     await open({ initialProgress: 'epubcfi(/6/40!/4)', locator: { type: 'epub', cfi: 'x' } });
     expect(state.displayed).toEqual([null]);
-    expect(container.textContent).not.toContain('Failed to load EPUB');
+    expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 });
