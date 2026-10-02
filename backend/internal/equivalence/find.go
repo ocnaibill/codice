@@ -1,5 +1,7 @@
 package equivalence
 
+import "strings"
+
 // File is what is known of one file's text: its segments, in reading order, and the nodes of its
 // outline when the worker found one (DEC-087).
 type File struct {
@@ -76,10 +78,24 @@ func Find(src, dst File, source Segment) Answer {
 		bySequence[s.Sequence] = s
 	}
 
-	verify := func(list []Candidate) []Candidate {
+	// A candidate is walked back from the passage it points to. For names, the passage and the way back are
+	// read with their neighbours (windows), for the same reason the search is.
+	windowedPool, windowedBack := windows(pool), windows(back)
+	windowedBySequence := make(map[int]Segment, len(windowedPool))
+	for _, s := range windowedPool {
+		windowedBySequence[s.Sequence] = s
+	}
+	sourceWindow := windowAround(source, sequences(src.Segments))
+	verify := func(list []Candidate, names bool) []Candidate {
 		var out []Candidate
 		for _, c := range list {
-			switch Reverse(source, bySequence[c.sequence], back) {
+			var verdict Verdict
+			if names {
+				verdict = Reverse(sourceWindow, windowedBySequence[c.sequence], windowedBack)
+			} else {
+				verdict = Reverse(source, bySequence[c.sequence], back)
+			}
+			switch verdict {
 			case Agrees:
 				c.Evidence["reverse"] = "agrees"
 				if aligned != nil && aligned.Verified {
@@ -99,10 +115,10 @@ func Find(src, dst File, source Segment) Answer {
 		return out
 	}
 
-	passages := verify(ByPassage(source, pool))
+	passages := verify(ByPassage(source, pool), false)
 	var anchors []Candidate
 	if len(passages) == 0 {
-		anchors = verify(ByAnchors(source, pool))
+		anchors = verify(ByAnchors(sourceWindow, windowedPool), true)
 		if len(anchors) == 0 {
 			anchors = BySemantic(source, pool, back)
 		}
@@ -173,6 +189,49 @@ func sourcePool(src File, want string, aligned *Alignment) []Segment {
 			}
 		}
 		out = append(out, s)
+	}
+	return out
+}
+
+// windowRadius is how many segments on each side are read with a segment when names are compared: a
+// passage is cut by a page or a chunk in a different place in every edition, so one segment holds only
+// part of the names of the passage, and three hold most of them.
+const windowRadius = 1
+
+// windowAround is a copy of the segment with the text of its neighbours (the segments of the file at
+// sequence-1 and sequence+1) added, in order. The address, section and chapter are the segment's own.
+func windowAround(s Segment, bySequence map[int]Segment) Segment {
+	var text []string
+	for n := s.Sequence - windowRadius; n <= s.Sequence+windowRadius; n++ {
+		if n == s.Sequence {
+			text = append(text, s.Text)
+		} else if near, ok := bySequence[n]; ok {
+			text = append(text, near.Text)
+		}
+	}
+	s.own = s.Text
+	s.Text = strings.Join(text, "\n")
+	return s
+}
+
+// windows is the pool as segments with their neighbours' text, for comparing names. A neighbour is one
+// of the pool: what the pool leaves out (another chapter, a preface) does not lend names.
+func windows(pool []Segment) []Segment {
+	bySequence := make(map[int]Segment, len(pool))
+	for _, s := range pool {
+		bySequence[s.Sequence] = s
+	}
+	out := make([]Segment, len(pool))
+	for i, s := range pool {
+		out[i] = windowAround(s, bySequence)
+	}
+	return out
+}
+
+func sequences(segments []Segment) map[int]Segment {
+	out := make(map[int]Segment, len(segments))
+	for _, s := range segments {
+		out[s.Sequence] = s
 	}
 	return out
 }

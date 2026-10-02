@@ -26,12 +26,14 @@ type testCase struct {
 }
 
 type result struct {
-	Suite         string `json:"suite"`
-	Status        string `json:"status"`
-	Method        string `json:"method,omitempty"`
-	Confidence    string `json:"confidence,omitempty"`
-	Distance      *int   `json:"distance,omitempty"`
-	LatencyMicros int64  `json:"latencyMicros"`
+	Suite      string `json:"suite"`
+	Status     string `json:"status"`
+	Method     string `json:"method,omitempty"`
+	Confidence string `json:"confidence,omitempty"`
+	Distance   *int   `json:"distance,omitempty"`
+	// Evidence is what the first candidate says of itself (shares of names found, whether the way back agrees).
+	Evidence      map[string]any `json:"evidence,omitempty"`
+	LatencyMicros int64          `json:"latencyMicros"`
 }
 
 func main() {
@@ -65,7 +67,7 @@ func main() {
 		row := result{Suite: tc.Suite, Status: answer.Status, LatencyMicros: time.Since(started).Microseconds()}
 		if len(answer.Candidates) > 0 {
 			candidate := answer.Candidates[0]
-			row.Method, row.Confidence = candidate.Method, candidate.Confidence
+			row.Method, row.Confidence, row.Evidence = candidate.Method, candidate.Confidence, candidate.Evidence
 			if tc.ExpectedSeq != nil {
 				var locator struct {
 					Offset int `json:"offset"`
