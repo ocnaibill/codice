@@ -29,7 +29,28 @@ export const useDuplicates = list('duplicates', '/admin/duplicates');
 export const useSuggestionQueue = list('suggestion-queue', '/admin/suggestions');
 export const useMetadataProviders = list('metadata-providers', '/admin/metadata-providers');
 export const usePeopleMerges = list('people-merges', '/admin/people/merges');
-export const useOcr = list('ocr', '/admin/ocr');
+/** Whether OCR is on, which engine there is and what it is doing. While it is on, it asks again every few seconds: the
+ *  service takes a moment to notice that it was turned on, and then to say it is working. */
+export function useOcrSettings() {
+  return useQuery({
+    queryKey: ['admin', 'ocr-settings', null],
+    queryFn: async () => (await api.get('/admin/ocr/settings')).data,
+    staleTime: 0,
+    refetchInterval: (query) => (query.state.data?.enabled ? 3000 : false),
+  });
+}
+
+/** The PDFs with pages that have no text, and how far reading them by OCR has got. It asks again every few seconds while
+ *  OCR is on (`live`: the work is queued a moment after it is turned on, so nothing says "waiting" yet) and while a PDF
+ *  is waiting or being read, so the numbers move on their own. */
+export function useOcr({ live = false } = {}) {
+  return useQuery({
+    queryKey: ['admin', 'ocr', null],
+    queryFn: async () => (await api.get('/admin/ocr')).data,
+    staleTime: 0,
+    refetchInterval: (query) => (live || query.state.data?.data?.some((item) => item.state === 'queued' || item.state === 'reading') ? 3000 : false),
+  });
+}
 export const useAccounts = list('accounts', '/users');
 export const useLdap = list('ldap', '/admin/ldap');
 export const useEmbeddings = list('embeddings', '/admin/embeddings');
@@ -151,5 +172,8 @@ export const useDeleteAccount = () =>
 export const useApproveReset = () => useAdminAction(async (id) => (await api.post(`/password-resets/${id}/approve`)).data);
 export const useRejectReset = () => useAdminAction((id) => api.post(`/password-resets/${id}/reject`));
 export const useSetLdapPolicy = () => useAdminAction(async (policy) => (await api.put('/admin/ldap/policy', policy)).data);
+export const useSetOcr = () => useAdminAction(async (settings) => (await api.put('/admin/ocr/settings', settings)).data);
+/** Asks for the pages of a work that failed to be read to be tried again. */
+export const useRetryOcr = () => useAdminAction(async (workId) => (await api.post(`/admin/works/${workId}/ocr/retry`)).data);
 export const useSetEmbeddings = () => useAdminAction(async (settings) => (await api.put('/admin/embeddings', settings)).data);
 export const useCheckLdap = () => useMutation({ mutationFn: async () => (await api.post('/admin/ldap/check')).data });

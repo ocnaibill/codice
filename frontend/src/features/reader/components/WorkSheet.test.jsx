@@ -68,6 +68,54 @@ afterEach(() => {
   useGlobalStore.setState({ sheetWorkId: null, activeBookId: null, activeFileId: null, fromStart: false });
 });
 
+describe('WorkSheet: the pages of a scan (#24)', () => {
+  const withOcr = (ocr, extra = {}) => ({
+    ...work,
+    editions: [{ id: 2, language: 'pt-BR', isPrimary: true, files: [{ id: 20, format: 'pdf', availability: 'available', url: '/file/20', percentComplete: 0, completed: false, needsOcr: true, ...(ocr ? { ocr } : {}), ...extra }] }],
+  });
+  const note = () => [...container.querySelectorAll('li span')].find((s) => /sem texto|OCR/.test(s.textContent));
+
+  async function show(w) {
+    api.get.mockResolvedValue({ data: w });
+    useGlobalStore.setState({ sheetWorkId: 7, activeBookId: null, activeFileId: null, fromStart: false });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkSheet /></QueryClientProvider>); });
+    await flush();
+  }
+
+  it('says the pages are being read, and how many', async () => {
+    await show(withOcr({ pages: 300, read: 12, failed: 0, state: 'reading' }));
+    expect(note().textContent).toBe('Lendo as páginas sem texto (12 de 300)');
+    expect(container.textContent).not.toContain('OCR ainda não roda');
+  });
+
+  it('says they are waiting in line', async () => {
+    await show(withOcr({ pages: 5, read: 0, failed: 0, state: 'queued' }));
+    expect(note().textContent).toBe('Páginas sem texto na fila para leitura');
+  });
+
+  it('says the text was recognised, and that it may have mistakes', async () => {
+    await show(withOcr({ pages: 5, read: 5, failed: 0 }));
+    expect(note().textContent).toBe('Texto reconhecido por OCR');
+    expect(note().getAttribute('title')).toContain('pode ter erros');
+  });
+
+  it('says some pages failed', async () => {
+    await show(withOcr({ pages: 10, read: 7, failed: 3 }));
+    expect(note().textContent).toBe('Texto reconhecido por OCR em 7 de 10 páginas; 3 falharam');
+    expect(note().className).toContain('amber');
+  });
+
+  it('says the pages have no text when nothing was read, and says nothing for a file that has none without text', async () => {
+    await show(withOcr({ pages: 5, read: 0, failed: 0 }));
+    expect(note().textContent).toBe('Páginas sem texto');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show(withOcr(undefined, { needsOcr: false }));
+    expect(note()).toBeUndefined();
+  });
+});
+
 describe('WorkSheet', () => {
   it('shows nothing until a work is chosen', async () => {
     const client = new QueryClient();

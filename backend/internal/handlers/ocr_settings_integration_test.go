@@ -79,20 +79,24 @@ func TestOCRSettings_AnEngineThatStoppedReportingIsNotAvailable(t *testing.T) {
 func TestOCRSettings_OnlyALanguageTheEngineHasCanBeChosen(t *testing.T) {
 	s := newCatalogStack(t)
 	s.ocrWorker(`["eng","por"]`)
-	for body, want := range map[string]int{
-		`{"enabled":true,"language":"por+eng"}`: 200,
-		`{"enabled":true,"language":"eng"}`:     200,
-		`{"enabled":true,"language":"deu"}`:     400, // the engine has not got it
-		`{"enabled":true,"language":"por+deu"}`: 400,
-		`{"enabled":true,"language":"POR"}`:     400, // not a code of the engine
-		`{"enabled":true,"language":"por eng"}`: 400,
-		`{"enabled":true,"language":"../x"}`:    400,
-		`{"enabled":true,"language":"por+"}`:    400,
-		`{"enabled":true,"language":"a"}`:       400,
-		`not json`:                              400,
+	// In this order: the last one accepted is "eng", and what is refused after it must not change that.
+	for _, c := range []struct {
+		body string
+		want int
+	}{
+		{`{"enabled":true,"language":"por+eng"}`, 200},
+		{`{"enabled":true,"language":"eng"}`, 200},
+		{`{"enabled":true,"language":"deu"}`, 400}, // the engine has not got it
+		{`{"enabled":true,"language":"por+deu"}`, 400},
+		{`{"enabled":true,"language":"POR"}`, 400}, // not a code of the engine
+		{`{"enabled":true,"language":"por eng"}`, 400},
+		{`{"enabled":true,"language":"../x"}`, 400},
+		{`{"enabled":true,"language":"por+"}`, 400},
+		{`{"enabled":true,"language":"a"}`, 400},
+		{`not json`, 400},
 	} {
-		if rec := s.do(admin, "PUT", "/admin/ocr/settings", body); rec.Code != want {
-			t.Errorf("%s: %d, want %d (%s)", body, rec.Code, want, rec.Body.String())
+		if rec := s.do(admin, "PUT", "/admin/ocr/settings", c.body); rec.Code != c.want {
+			t.Errorf("%s: %d, want %d (%s)", c.body, rec.Code, c.want, rec.Body.String())
 		}
 	}
 	if got := s.ocrState()["language"]; got != "eng" {

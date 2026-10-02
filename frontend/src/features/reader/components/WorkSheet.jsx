@@ -10,11 +10,15 @@ import { useCandidates } from '../api/useCandidates';
 import { isTopmostDialog } from '../../../lib/topDialog';
 import { completionText, formatSize, languageName, whereYouAre } from '../files';
 import { WorkCover } from '../../../components/ui/WorkCover';
+import { sheetNote } from '../../../lib/ocr';
+
+const NOTE_TONE = { ok: 'text-success', warn: 'text-amber-800', plain: 'text-ink-soft' };
 
 function FileRow({ file, onRead, onComplete, onReread, busy }) {
   const percent = Math.round(file.percentComplete || 0);
   const started = file.started || percent > 0 || file.completed;
   const usable = file.availability === 'available' && !!file.url;
+  const ocrNote = sheetNote(file);
 
   return (
     <li className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
@@ -22,7 +26,7 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
         <div className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">
           <span className="rounded bg-brand/10 px-2 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-brand">{file.format || '?'}</span>
           {file.sizeBytes != null && <span className="font-mono text-[11px] text-ink-faint">{formatSize(file.sizeBytes)}</span>}
-          {file.needsOcr && <span className="text-xs text-amber-800">Páginas sem texto (OCR ainda não roda)</span>}
+          {ocrNote && <span className={`text-xs ${NOTE_TONE[ocrNote.tone]}`} title={ocrNote.title}>{ocrNote.text}</span>}
           {file.textStatus === 'ready' && <span className="text-xs text-success" title="O texto deste arquivo está indexado para a busca">texto indexado</span>}
           {file.textStatus === 'failed' && <span className="text-xs text-amber-800" title="O arquivo abre, mas o texto não pôde ser lido para a busca">texto não lido</span>}
         </div>
