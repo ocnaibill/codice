@@ -150,5 +150,31 @@ it('says where the text of a passage comes from: the file, OCR, or what a comic 
   await act(async () => root.render(<QueryClientProvider client={client}><SearchPage query="texto" /></QueryClientProvider>));
   await flush();
   const labels = [...container.querySelectorAll('[aria-label="Passagens"] li')].map((li) => li.querySelectorAll('p')[1].textContent.split(' · ').pop());
-  expect(labels).toEqual(['Texto do arquivo', 'OCR', 'Metadados do arquivo', 'Metadados do arquivo', 'Texto do arquivo']);
+  expect(labels).toEqual(['Texto do arquivo', 'Texto reconhecido por OCR', 'Metadados do arquivo', 'Metadados do arquivo', 'Texto do arquivo']);
+});
+
+it('says what became of the scan that has no text yet, as far as reading it has got', async () => {
+  const files = (ocr) => [{ id: 11, format: 'pdf', textStatus: 'empty', needsOcr: true, ...(ocr ? { ocr } : {}) }];
+  const states = [
+    [undefined, 'PDF: Sem texto pesquisável; OCR necessário'],
+    [{ pages: 5, read: 0, failed: 0 }, 'PDF: Sem texto pesquisável; OCR necessário'],
+    [{ pages: 5, read: 0, failed: 0, state: 'queued' }, 'PDF: Páginas sem texto na fila para leitura'],
+    [{ pages: 5, read: 2, failed: 0, state: 'reading' }, 'PDF: Lendo as páginas sem texto (2 de 5)'],
+    [{ pages: 5, read: 2, failed: 3 }, 'PDF: Texto reconhecido por OCR em 2 de 5 páginas; 3 falharam'],
+  ];
+  for (const [ocr, expected] of states) {
+    api.get.mockImplementation(async (url) => {
+      if (url.startsWith('/works?')) return { data: { data: [{ id: 7, title: 'Duna', author: 'F' }], totalPages: 1 } };
+      if (url === '/works/7') return { data: { ...work, editions: [{ files: files(ocr) }] } };
+      if (url === '/search') return { data: { data: [], hasMore: false } };
+      if (url === '/notes') return { data: { data: [], total: 0 } };
+      throw new Error(url);
+    });
+    client.clear();
+    await act(async () => root.render(<QueryClientProvider client={client}><SearchPage query="duna" /></QueryClientProvider>));
+    await flush();
+    await act(async () => button('Buscar só nesta obra')?.click());
+    await flush();
+    expect(container.textContent, JSON.stringify(ocr)).toContain(expected);
+  }
 });

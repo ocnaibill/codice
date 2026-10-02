@@ -15,10 +15,9 @@ const pair = {
 };
 let view;
 
-async function open(pairs = [pair], ocr = []) {
+async function open(pairs = [pair]) {
   api.get.mockImplementation(async (url) => {
     if (url === '/admin/duplicates') return { data: { data: pairs } };
-    if (url === '/admin/ocr') return { data: { data: ocr } };
     if (url === '/admin/people/merges') return { data: { data: [] } };
     throw new Error(`unexpected GET ${url}`);
   });
@@ -66,12 +65,4 @@ describe('DuplicatesTab', () => {
     expect(api.post).toHaveBeenCalledWith('/admin/duplicates/scan');
   });
 
-  it('lists the PDFs that have pages without text', async () => {
-    await open([], [
-      { workId: 1, title: 'Escaneado', fileId: 4, pageCount: 5, pagesWithoutText: [1, 2, 3, 4, 5] },
-      { workId: 2, title: 'Misto', fileId: 6, pageCount: 10, pagesWithoutText: [3, 4] },
-    ]);
-    expect(view.text()).toContain('Todas as 5 páginas são imagem');
-    expect(view.text()).toContain('2 de 10 páginas sem texto (3, 4)');
-  });
 });

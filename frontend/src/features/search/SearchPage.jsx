@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { useWorks } from '../library/api/useWorks';
 import { useWork } from '../reader/api/useWork';
 import { useGlobalStore } from '../../store/useGlobalStore';
+import { sheetNote } from '../../lib/ocr';
 
 const PAGE_SIZE = 10;
 
@@ -34,7 +35,7 @@ function Pager({ page, hasMore, onPageChange }) {
 // Where the text of a passage comes from: recognised from the pictures (OCR), what a comic or an audio file says of itself
 // (its ComicInfo, its chapters and its description, which belong to the whole file and not to a page), or the text of the file.
 function sourceLabel(hit) {
-  if (hit.origin === 'ocr') return 'OCR';
+  if (hit.origin === 'ocr') return 'Texto reconhecido por OCR';
   if (hit.locator?.type === 'audio' || hit.locator?.item === 'ComicInfo.xml') return 'Metadados do arquivo';
   return 'Texto do arquivo';
 }
@@ -43,7 +44,11 @@ function FileIndexState({ file }) {
   if (file.textStatus === 'ready' && file.textSegments > 0) return null;
   let message = 'Texto ainda não indexado';
   if (file.textStatus === 'failed') message = 'Falha ao ler o texto';
-  if (file.textStatus === 'empty') message = file.needsOcr ? 'Sem texto pesquisável; OCR necessário' : 'Sem texto pesquisável';
+  if (file.textStatus === 'empty') {
+    // A scan that OCR has begun on says how far it is; one it has not touched says it needs it.
+    const begun = file.ocr && (file.ocr.state || file.ocr.read || file.ocr.failed);
+    message = file.needsOcr ? (begun ? sheetNote(file).text : 'Sem texto pesquisável; OCR necessário') : 'Sem texto pesquisável';
+  }
   if (file.textStatus === 'ready') message = 'Nenhum texto pesquisável';
   return <li>{file.format?.toUpperCase() || 'Arquivo'}: {message}</li>;
 }

@@ -84,7 +84,9 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/admin/storage/cleanups", storageAdmin.ListCleanups)
 	r.Post("/admin/storage/cleanups/retry", storageAdmin.RetryCleanups)
 	r.Get("/file/{id}", byID.ServeHTTP)
-	r.Get("/admin/ocr", (&OCRHandler{DB: db}).List)
+	ocrAdmin := &OCRHandler{DB: db}
+	r.Get("/admin/ocr", ocrAdmin.List)
+	r.Post("/admin/works/{id}/ocr/retry", ocrAdmin.Retry)
 	ocrSettings := &OCRSettingsHandler{DB: db}
 	r.Get("/admin/ocr/settings", ocrSettings.Get)
 	r.Put("/admin/ocr/settings", ocrSettings.Set)
