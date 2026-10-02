@@ -24,7 +24,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 let container;
 let root;
-const button = (text) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
+const button = (label) => [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label);
 
 beforeEach(() => {
   container = document.createElement('div');
@@ -46,11 +46,11 @@ describe('PdfViewer progress', () => {
       return onProgress.mock.calls.at(-1);
     };
 
-    const [end, endExtras] = await lastSaved('→'); // page 3 of 3
+    const [end, endExtras] = await lastSaved('Próxima página'); // page 3 of 3
     expect(end).toEqual({ type: 'pdf', page: 2 });
     expect(endExtras).toMatchObject({ percent: 100, completed: true });
 
-    const [back, backExtras] = await lastSaved('←'); // back to page 2
+    const [back, backExtras] = await lastSaved('Página anterior'); // back to page 2
     expect(back).toEqual({ type: 'pdf', page: 1 });
     expect(backExtras.completed).toBeUndefined();
   });

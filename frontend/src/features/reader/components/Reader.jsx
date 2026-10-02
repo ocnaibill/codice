@@ -39,6 +39,10 @@ export function Reader() {
   useReadingHeartbeat(activeBookId, file?.id);
   const favoriteToggle = useFavoriteToggle(activeBookId);
   const [showNotes, setShowNotes] = useState(false);
+  // Only the page on the screen: the header goes away (a viewer asks for it, with a tap in the middle of the page) and
+  // comes back the same way. It starts again with each file.
+  const [immersive, setImmersive] = useState(false);
+  useEffect(() => setImmersive(false), [file?.id]);
   const openBook = useGlobalStore((state) => state.openBook);
   const seek = useGlobalStore((state) => state.seek);
   const clearSeek = useGlobalStore((state) => state.clearSeek);
@@ -156,7 +160,7 @@ export function Reader() {
   const renderViewer = () => {
     switch (format) {
       case 'pdf':
-        return <PdfViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} {...place} />;
+        return <PdfViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'epub':
         return <EpubViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} {...place} />;
       case 'cbz':
@@ -197,7 +201,13 @@ export function Reader() {
 
   return (
     <div className="flex h-dvh min-h-[320px] flex-col bg-[#faf8f4]">
-      <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-border-hairline bg-[#faf8f4]/95 px-3 py-2 shadow-sm backdrop-blur-md sm:px-6">
+      <div
+        data-immersive={immersive}
+        inert={immersive}
+        className={`grid shrink-0 transition-[grid-template-rows] duration-200 ease-out ${immersive ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}
+      >
+      <div className="min-h-0 overflow-hidden">
+      <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border-hairline bg-[#faf8f4]/95 px-3 py-2 shadow-sm backdrop-blur-md sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <button
             onClick={closeBook}
@@ -246,6 +256,8 @@ export function Reader() {
           </button>
         </div>
       </header>
+      </div>
+      </div>
 
       {showNotes && (
         <NotesPanel
