@@ -311,3 +311,67 @@ func TestFind_WordsAreTheAnswerWhenTheyAreThereAndNamesAreOnlyForWhenTheyAreNot(
 		t.Fatalf("a passage found by its words is not joined by a match of names: %+v", a)
 	}
 }
+
+func TestFind_NamesThatTheTranslationCutInAnotherPlaceAreFoundThroughTheNeighbouringSegments(t *testing.T) {
+	// The passage names four people. In the other edition the page break falls between them: two on one segment,
+	// two on the next. Neither segment alone shares enough names; together they do.
+	src := File{Segments: []Segment{
+		{Sequence: 4, Text: said("Gaspar", "Hortensio", "Ildefonso", "Jeronimo")},
+		{Sequence: 5, Text: said("Alfredo", "Bernardo", "Cassandra", "Dionisio")},
+		{Sequence: 6, Text: said("Kleber", "Leopoldina", "Marcolino", "Nepomuceno")},
+	}}
+	dst := File{Segments: []Segment{
+		{Sequence: 8, Text: told("Gaspar", "Hortensio", "Ildefonso", "Jeronimo"), Locator: []byte(`{"n":8}`)},
+		{Sequence: 9, Text: told("Alfredo", "Bernardo"), Locator: []byte(`{"n":9}`)},
+		{Sequence: 10, Text: told("Cassandra", "Dionisio"), Locator: []byte(`{"n":10}`)},
+		{Sequence: 11, Text: told("Kleber", "Leopoldina", "Marcolino", "Nepomuceno"), Locator: []byte(`{"n":11}`)},
+		{Sequence: 12, Text: told("Rosalvo", "Silvestre", "Tiburcio", "Ulisses"), Locator: []byte(`{"n":12}`)},
+	}}
+	if got := ByAnchors(src.Segments[1], dst.Segments); len(got) != 0 {
+		t.Fatalf("with one segment at a time, two names are too few: %+v", got)
+	}
+	a := Find(src, dst, src.Segments[1])
+	c := firstCandidate(t, a)
+	if a.Status != Found || c.Method != MethodAnchors || (c.sequence != 9 && c.sequence != 10) {
+		t.Fatalf("got %+v", a)
+	}
+	if strings.Contains(c.Excerpt, "Gaspar") || strings.Contains(c.Excerpt, "Kleber") || strings.Count(c.Excerpt, "That afternoon") != 1 {
+		t.Errorf("what the person is shown is the segment, not the window around it: %q", c.Excerpt)
+	}
+}
+
+func TestFind_TheCastOfAnotherBookOfTheSagaIsNotThePassage(t *testing.T) {
+	src := File{Segments: []Segment{{Sequence: 5, Text: said("Alfredo", "Bernardo", "Cassandra", "Dionisio", "Evaristo")}}}
+	var segments []Segment
+	for i := 0; i < 12; i++ {
+		// The continuation names part of the cast, a few at a time, and many new people.
+		segments = append(segments, Segment{Sequence: 20 + i, Text: told("Alfredo", "Bernardo", fmt.Sprintf("Recruta%c", 'A'+i), fmt.Sprintf("Veterano%c", 'A'+i), "Ulisses")})
+	}
+	if a := Find(src, File{Segments: segments}, src.Segments[0]); a.Status != NotFound {
+		t.Fatalf("got %+v", a)
+	}
+}
+
+func TestFind_NamesThatTheSourceCutInAnotherPlaceAreFoundToo(t *testing.T) {
+	// The cut falls in the source this time: two names on its segment, two on the next, and all four in one segment
+	// of the destination. Alone, the segment of the person has two names, too few to say anything.
+	src := File{Segments: []Segment{
+		{Sequence: 4, Text: said("Gaspar", "Hortensio", "Ildefonso", "Jeronimo")},
+		{Sequence: 5, Text: said("Alfredo", "Bernardo")},
+		{Sequence: 6, Text: said("Cassandra", "Dionisio")},
+		{Sequence: 7, Text: said("Kleber", "Leopoldina", "Marcolino", "Nepomuceno")},
+	}}
+	dst := File{Segments: []Segment{
+		{Sequence: 8, Text: told("Gaspar", "Hortensio", "Ildefonso", "Jeronimo"), Locator: []byte(`{"n":8}`)},
+		{Sequence: 9, Text: told("Alfredo", "Bernardo", "Cassandra", "Dionisio"), Locator: []byte(`{"n":9}`)},
+		{Sequence: 10, Text: told("Kleber", "Leopoldina", "Marcolino", "Nepomuceno"), Locator: []byte(`{"n":10}`)},
+	}}
+	if got := ByAnchors(src.Segments[1], dst.Segments); len(got) != 0 {
+		t.Fatalf("the segment alone names two people: %+v", got)
+	}
+	a := Find(src, dst, src.Segments[1])
+	// A window of three is a place within one segment: the centre may be the neighbour of the segment that holds the names.
+	if c := firstCandidate(t, a); a.Status != Found || c.Method != MethodAnchors || abs(c.sequence-9) > 1 {
+		t.Fatalf("got %+v", a)
+	}
+}

@@ -1,6 +1,10 @@
 package equivalence
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func embedded(id int64, sequence int, vector []float32) Segment {
 	return Segment{ID: id, Sequence: sequence, Text: "semantic passage", Embedding: vector,
@@ -228,5 +232,119 @@ func TestCombine_AChapterCandidateThatDisagreesIsAddedAsItsOwn(t *testing.T) {
 	answer := Combine([]Candidate{passage}, nil, chapter)
 	if len(answer.Candidates) != 2 {
 		t.Fatalf("a disagreeing chapter candidate is its own: %+v", answer)
+	}
+}
+
+// said is a sentence that names the given people (a name after the first word is what Anchors takes).
+func said(names ...string) string {
+	return "Naquela tarde a conversa continuou entre " + strings.Join(names, ", ") + " e todos os outros presentes."
+}
+
+// told is the same kind of sentence in another language: no words in common but the names.
+func told(names ...string) string {
+	return "That afternoon the talk went on among " + strings.Join(names, ", ") + " and all of the rest who were there."
+}
+
+// crowd is n segments, every one of which names the same four people: the cast of the book.
+func crowd(n int) []Segment {
+	var out []Segment
+	for i := 0; i < n; i++ {
+		out = append(out, seg(100+i, "c", said("Alfredo", "Bernardo", "Cassandra", "Dionisio")))
+	}
+	return out
+}
+
+func TestByAnchors_ANameThatIsEverywhereSaysLittleAndARareOneSaysALot(t *testing.T) {
+	// The source names the cast and three rare people. Counted equally, every page of the cast shares four of
+	// seven names and is as good a candidate as the page of the three rare ones.
+	source := seg(1, "s", said("Alfredo", "Bernardo", "Cassandra", "Dionisio", "Evaristo", "Florentina", "Gumercindo"))
+	pool := append(crowd(25), seg(7, "target", said("Evaristo", "Florentina", "Gumercindo", "Alfredo")))
+	got := ByAnchors(source, pool)
+	if len(got) != 1 || got[0].chapter != "target" {
+		t.Fatalf("only the page with the rare names is the passage: %+v", got)
+	}
+}
+
+func TestByAnchors_APageThatIsAListOfCharactersHasNoPrecision(t *testing.T) {
+	source := seg(1, "s", said("Alfredo", "Bernardo", "Cassandra", "Dionisio"))
+	var list []string
+	for i := 0; i < 40; i++ {
+		list = append(list, fmt.Sprintf("Personagem%c%c", 'A'+i%26, 'a'+i/26))
+	}
+	appendix := seg(900, "appendix", said(append([]string{"Alfredo", "Bernardo", "Cassandra", "Dionisio"}, list...)...))
+	pool := append(crowd(6)[:0], appendix, seg(5, "other", said("Eufrasia", "Gaspar", "Hortensio", "Ildefonso")))
+	if got := ByAnchors(source, pool); len(got) != 0 {
+		t.Fatalf("a page that names everybody is not the passage that names four: %+v", got)
+	}
+	// The same four names on a page that is about them are the passage.
+	pool = append(pool, seg(6, "scene", said("Alfredo", "Bernardo", "Cassandra", "Dionisio")))
+	got := ByAnchors(source, pool)
+	if len(got) != 1 || got[0].chapter != "scene" {
+		t.Fatalf("got %+v", got)
+	}
+	if p := got[0].Evidence["precision"].(float64); p < minAnchorPrecision {
+		t.Errorf("precision %v", p)
+	}
+}
+
+func TestByAnchors_NamesTheDestinationNeverMentionsCountAgainstTheCandidate(t *testing.T) {
+	// A translation keeps its names. Three of six names found, three nowhere in the book: not the same book.
+	source := seg(1, "s", said("Alfredo", "Bernardo", "Cassandra", "Dionisio", "Evaristo", "Florentina"))
+	pool := []Segment{seg(7, "x", said("Alfredo", "Bernardo", "Cassandra", "Gaspar")), seg(8, "y", said("Hortensio", "Ildefonso", "Gaspar", "Jeronimo"))}
+	if got := ByAnchors(source, pool); len(got) != 0 {
+		t.Fatalf("the sibling book shares part of the cast, not the passage: %+v", got)
+	}
+	// With the others present somewhere (just not here), the same three are enough.
+	pool = append(pool, seg(9, "z", said("Dionisio", "Evaristo", "Florentina", "Gaspar")))
+	if got := ByAnchors(source, pool); len(got) == 0 {
+		t.Fatalf("names that are in the book count for what they are: %+v", got)
+	}
+}
+
+func TestByAnchors_ConfidenceDependsOnHowMuchOfTheCandidateTheNamesAre(t *testing.T) {
+	source := seg(1, "s", said("Alfredo", "Bernardo", "Cassandra", "Dionisio"))
+	tight := seg(7, "tight", said("Alfredo", "Bernardo", "Cassandra", "Dionisio"))
+	got := ByAnchors(source, []Segment{tight, seg(8, "other", said("Gaspar", "Hortensio", "Ildefonso", "Jeronimo"))})
+	if len(got) != 1 || got[0].Confidence != Medium {
+		t.Fatalf("every name of the source, most of the page: %+v", got)
+	}
+	// Four of its names among fourteen others: found, but not trusted as far.
+	var others []string
+	for i := 0; i < 14; i++ {
+		others = append(others, fmt.Sprintf("Figura%c", 'A'+i))
+	}
+	diluted := seg(7, "diluted", said(append([]string{"Alfredo", "Bernardo", "Cassandra", "Dionisio"}, others...)...))
+	got = ByAnchors(source, []Segment{diluted, seg(8, "other", said("Eufrasia", "Orestes", "Pafuncio", "Quiteria"))})
+	if len(got) != 1 || got[0].Confidence != Low {
+		t.Fatalf("a fifth of the page is the source's names: %+v", got)
+	}
+}
+
+func TestWindowAround_AddsTheNeighboursTextAndKeepsTheSegmentsOwn(t *testing.T) {
+	pool := []Segment{seg(4, "c", "quatro"), seg(5, "c", "cinco"), seg(6, "c", "seis"), seg(9, "c", "nove")}
+	w := windows(pool)
+	if w[1].Text != "quatro\ncinco\nseis" || w[1].shown() != "cinco" || w[1].Sequence != 5 || w[1].Chapter != "c" {
+		t.Errorf("a window is the segment and its two neighbours: %+v", w[1])
+	}
+	if w[0].Text != "quatro\ncinco" || w[3].Text != "nove" || w[3].shown() != "nove" {
+		t.Errorf("the edges, and a segment with no neighbours: %q %q", w[0].Text, w[3].Text)
+	}
+	if pool[1].Text != "cinco" || pool[1].own != "" {
+		t.Error("the pool was changed")
+	}
+	// A neighbour that is not in the pool lends nothing: the segment 7 of another chapter is not here.
+	if got := windows([]Segment{seg(5, "c", "cinco"), seg(7, "d", "sete")}); got[0].Text != "cinco" || got[1].Text != "sete" {
+		t.Errorf("only neighbours in the pool: %+v", got)
+	}
+}
+
+func TestByAnchors_ThreeNamesAreTooFewToSayWhichPassageItIs(t *testing.T) {
+	source := seg(1, "s", said("Alfredo", "Bernardo", "Cassandra"))
+	if got := ByAnchors(source, []Segment{seg(2, "t", told("Alfredo", "Bernardo", "Cassandra"))}); got != nil {
+		t.Errorf("%+v", got)
+	}
+	source = seg(1, "s", said("Alfredo", "Bernardo", "Cassandra", "Dionisio"))
+	if got := ByAnchors(source, []Segment{seg(2, "t", told("Alfredo", "Bernardo", "Cassandra", "Dionisio"))}); len(got) != 1 {
+		t.Errorf("four are enough: %+v", got)
 	}
 }

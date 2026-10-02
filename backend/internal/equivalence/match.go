@@ -9,19 +9,22 @@ import (
 // The first guesses (QA-028: to be measured, on a corpus with reorganized chapters, translations,
 // prefaces, abridged versions and OCR errors, before anyone trusts them).
 const (
-	shingleSize        = 4    // words in a sequence
-	minSourceShingles  = 8    // less than this is too little text to compare
-	minSharedShingles  = 6    // and at least this many must be found
-	highOverlap        = 0.60 // of the source's sequences found in the candidate
-	mediumOverlap      = 0.30
-	minAnchors         = 4 // names and numbers in the source passage
-	minSharedAnchors   = 3
-	mediumAnchorShare  = 0.60 // below it, low confidence
-	minAnchorShare     = 0.40
-	minChaptersToCount = 3
-	maxTextCandidates  = 3
-	adjacentSegments   = 1 // a candidate this close to a better one is the same passage
-	excerptChars       = 240
+	shingleSize       = 4    // words in a sequence
+	minSourceShingles = 8    // less than this is too little text to compare
+	minSharedShingles = 6    // and at least this many must be found
+	highOverlap       = 0.60 // of the source's sequences found in the candidate
+	mediumOverlap     = 0.30
+	minAnchors        = 4 // names and numbers in the source passage
+	minSharedAnchors  = 3
+	mediumAnchorShare = 0.60 // below it, low confidence
+	minAnchorShare    = 0.40
+	// What share of a candidate's own weight the names it has in common with the source must be (see ByAnchors).
+	minAnchorPrecision    = 0.20 // below it, the candidate is mostly other names: a list of characters
+	mediumAnchorPrecision = 0.30
+	minChaptersToCount    = 3
+	maxTextCandidates     = 3
+	adjacentSegments      = 1 // a candidate this close to a better one is the same passage
+	excerptChars          = 240
 )
 
 // Confidence levels, from the least to the most sure.
@@ -55,6 +58,16 @@ type Segment struct {
 	Embedding                                            []float32
 	EmbeddingProvider, EmbeddingModel, EmbeddingRevision string
 	EmbeddingPreprocessing                               int
+
+	own string // the text of the segment alone, when Text holds it with its neighbours (see windowAround)
+}
+
+// shown is the text a person is shown for a segment: its own, not a window.
+func (s Segment) shown() string {
+	if s.own != "" {
+		return s.own
+	}
+	return s.Text
 }
 
 // Candidate is a place in the destination that may be the one.
@@ -111,32 +124,62 @@ func ByPassage(source Segment, candidates []Segment) []Candidate {
 
 // ByAnchors is for versions that share no wording, a translation: it looks for the names and numbers
 // of the source passage together in one segment of the destination.
+//
+// A name is worth what it is rare for: "Barbicane" in a hundred segments says little about which one is
+// the passage, a name in three says a lot. So the names are weighed by their rarity among the candidates
+// (the more segments hold it, the less it counts), and a candidate is judged by two things: how much of
+// the weight of the source's names it holds (recall) and how much of its own weight those names are
+// (precision). A page that is only a list of the characters holds every name of the source, and is nearly
+// all other names: it has recall and no precision.
 func ByAnchors(source Segment, candidates []Segment) []Candidate {
 	sourceAnchors := Anchors(source.Text)
 	if len(sourceAnchors) < minAnchors {
 		return nil
 	}
+	sets := make([]map[string]struct{}, len(candidates))
+	documents := map[string]int{}
+	for i, c := range candidates {
+		sets[i] = Anchors(c.Text)
+		for a := range sets[i] {
+			documents[a]++
+		}
+	}
+	// A name that is in no candidate weighs the most: the passage is looked for in a translation, where names
+	// stay as they are, so a source full of names that the destination never mentions is not that
+	// destination. (Leaving them out of the measure, or weighing them least, let the sibling books of a saga
+	// through: 16 and 10 unwarranted offers in 60 attempts, against none.)
+	weight := func(a string) float64 { return math.Log(1 + float64(len(candidates))/float64(1+documents[a])) }
+	sourceWeight := 0.0
+	for a := range sourceAnchors {
+		sourceWeight += weight(a)
+	}
 	var out []Candidate
-	for _, c := range candidates {
-		found := Anchors(c.Text)
-		n := 0
-		for a := range sourceAnchors {
-			if _, ok := found[a]; ok {
+	for i, c := range candidates {
+		n, shared, total, information := 0, 0.0, 0.0, 0.0
+		for a := range sets[i] {
+			w := weight(a)
+			total += w
+			if _, ok := sourceAnchors[a]; ok {
 				n++
+				shared += w
+				information += math.Log(float64(len(candidates)) / float64(documents[a]))
 			}
 		}
-		share := float64(n) / float64(len(sourceAnchors))
-		if n < minSharedAnchors || share < minAnchorShare {
+		if n < minSharedAnchors || sourceWeight == 0 || total == 0 {
+			continue
+		}
+		recall, precision := shared/sourceWeight, shared/total
+		if recall < minAnchorShare || precision < minAnchorPrecision {
 			continue
 		}
 		confidence := Low
-		if share >= mediumAnchorShare {
+		if recall >= mediumAnchorShare && precision >= mediumAnchorPrecision {
 			confidence = Medium
 		}
 		out = append(out, Candidate{
-			Precision: Passage, Confidence: confidence, Method: MethodAnchors, Score: share,
-			Locator: c.Locator, Section: c.Section, Excerpt: Excerpt(c.Text, excerptChars),
-			Evidence: map[string]any{"sharedNames": n, "sourceNames": len(sourceAnchors)},
+			Precision: Passage, Confidence: confidence, Method: MethodAnchors, Score: recall,
+			Locator: c.Locator, Section: c.Section, Excerpt: Excerpt(c.shown(), excerptChars),
+			Evidence: map[string]any{"sharedNames": n, "sourceNames": len(sourceAnchors), "recall": recall, "precision": precision, "information": information},
 			sequence: c.Sequence, chapter: c.Chapter,
 		})
 	}
