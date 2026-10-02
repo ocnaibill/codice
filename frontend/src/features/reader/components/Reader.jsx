@@ -162,7 +162,7 @@ export function Reader() {
       case 'pdf':
         return <PdfViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'epub':
-        return <EpubViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} {...place} />;
+        return <EpubViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'cbz':
       case 'cbr':
         return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} declaredMode={file.declaredMode} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
