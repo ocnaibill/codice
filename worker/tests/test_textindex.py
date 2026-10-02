@@ -321,13 +321,17 @@ class TestPlain:
 class FakeDB:
     """Records what the indexer asks of the database and answers the few questions it asks."""
 
-    def __init__(self, files, generation=1):
+    def __init__(self, files, generation=1, ocr=None):
         self.files = files
         self.generation = generation
+        self.ocr = ocr or []   # (page, text) rows of the pages OCR has read
         self.calls = []   # (kind, sql-or-name, params)
         self.rows = []
 
     def fetchall(self, query, params=None):
+        if 'ocr_pages' in query:
+            self.calls.append(('fetchall', 'ocr_pages', params))
+            return self.ocr
         self.calls.append(('fetchall', 'files', params))
         return self.files
 
@@ -371,7 +375,7 @@ class TestIndexer:
         assert (file_id, generation, sequence, origin, version, node) == (7, 3, 0, 'native', 1, None)
         assert 'Texto de uma página' in text and json.loads(locator) == {'type': 'pdf', 'page': 0}
         publish = [c for c in db.calls if c[1] == 'text_extraction_publish'][0][2]
-        assert publish == (7, 3, EXTRACTOR_VERSION, 'aa', 'ready', 'pt', None)  # a PDF with no bookmarks has no structure
+        assert publish == (7, 3, EXTRACTOR_VERSION, 'aa', 'ready', 'native', 'pt', None)  # a PDF with no bookmarks has no structure
 
     def test_a_file_with_no_text_is_published_as_empty_without_segments(self, storage):
         db = FakeDB([file_row(7, 'pdf', path='scan.pdf')])
@@ -572,7 +576,7 @@ class TestLanguageOfAFile:
         make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + PT * 4 + '</p>'})
         db = FakeDB([file_row(7, 'epub', 'aa', '', path='b.epub')])
         TextIndexer(db, str(tmp_path)).run(9)
-        assert self.publish_call(db)[5] == 'pt'                        # the language of the published text
+        assert self.publish_call(db)[6] == 'pt'                        # the language of the published text
         (suggestion,) = self.suggestions(db)
         assert suggestion[2][0] == 'pt' and suggestion[2][2] == 7      # the language, and the file it is about
         # Nothing about the edition is written: the suggestion waits for someone to accept it.
@@ -582,14 +586,14 @@ class TestLanguageOfAFile:
         make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + PT * 4 + '</p>'})
         db = FakeDB([file_row(7, 'epub', 'aa', 'en-GB', path='b.epub')])  # declared English, written in Portuguese
         TextIndexer(db, str(tmp_path)).run(9)
-        assert self.publish_call(db)[5] == 'en-GB'
+        assert self.publish_call(db)[6] == 'en-GB'
         assert self.suggestions(db) == []
 
     def test_a_text_it_cannot_tell_suggests_nothing(self, tmp_path):
         make_epub(tmp_path / 'b.epub', {'a.xhtml': '<p>' + 'xqz wvk jhg ' * 80 + '</p>'})
         db = FakeDB([file_row(7, 'epub', 'aa', '', path='b.epub')])
         TextIndexer(db, str(tmp_path)).run(9)
-        assert not self.publish_call(db)[5] and self.suggestions(db) == []
+        assert not self.publish_call(db)[6] and self.suggestions(db) == []
 
     def test_a_file_with_no_text_has_no_language_to_suggest(self, storage):
         db = FakeDB([file_row(7, 'pdf', path='scan.pdf', language='')])

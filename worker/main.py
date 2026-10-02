@@ -21,6 +21,7 @@ from runner import JobRunner, JobsClient, new_owner_name, poll_once
 from health import Heartbeat
 from textindex.store import TextIndexer
 from embeddings import EmbeddingIndexer, SentenceTransformersProvider
+from ocr import OcrIndexer
 
 # 1. Loads variables from .env, trying multiple locations
 env_paths = ["../.env", ".env"]
@@ -120,12 +121,21 @@ def build_runner(db, client, heartbeat=None):
     os.makedirs(covers_dir, exist_ok=True)
 
     indexer = TextIndexer(db, storage_path)
+    # Only the worker that is given the job type reads by OCR: it is the one the image with the engine is for.
+    ocr = OcrIndexer(db, storage_path) if 'ocr' in [t.strip() for t in os.getenv('WORKER_JOB_TYPES', '').split(',')] else None
     embeddings = None
     if os.getenv('EMBEDDINGS_PROVIDER', '').lower() in ('labse', 'sentence-transformers'):
         embeddings = EmbeddingIndexer(db, SentenceTransformersProvider(), selectable=True)
         embeddings.enqueue_missing()
 
     def process(job, checkpoint):
+        if job.get('type') == 'ocr':
+            # Reading the pages of a scan is a job of its own, and slow: what it reads is kept page by page, so a job
+            # that is stopped (or a worker that dies) does not lose it. It never changes the status of the work.
+            print(f"\n🔤 OCR job {job['id']} (work {job['work_id']}, attempt {job['attempts']}/{job['max_attempts']})")
+            outcome = ocr.run(job['work_id'], retry_failed=bool(job['payload'].get('retry_failed')), checkpoint=checkpoint) if ocr else {}
+            print(f"   🔤 {outcome or 'nothing to read'}")
+            return outcome
         if job.get('type') == 'extract_text':
             # Reading the text is a job of its own: it never changes the status of the work, so a work
             # that can be read stays readable while its text is being extracted (or if that fails).
@@ -187,10 +197,13 @@ def build_runner(db, client, heartbeat=None):
             heartbeat.beat("working", job['id'])
         if embeddings is not None:
             embeddings.heartbeat()
+        if ocr is not None:
+            ocr.heartbeat()
     runner = JobRunner(jobs, process, on_start=on_start, on_success=on_success, on_failure=on_failure,
                      on_retry=on_retry, heartbeat_every=max(1.0, LEASE_SECONDS / 4),
                      on_heartbeat=on_job_heartbeat)
     runner.embeddings = embeddings
+    runner.ocr = ocr
     return runner
 
 
@@ -228,6 +241,8 @@ def listen_for_tasks():
             continue
         if runner.embeddings is not None:
             runner.embeddings.enqueue_missing()
+        if getattr(runner, 'ocr', None) is not None:
+            runner.ocr.enqueue_missing()
         resolve_authors(db, allowed)
         last_id = wait_for_work(client, last_id)
 

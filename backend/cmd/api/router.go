@@ -68,6 +68,8 @@ func newRouter(d routerDeps) http.Handler {
 	searchHandler := &handlers.SearchHandler{DB: db}
 	equivalenceHandler := &handlers.EquivalenceHandler{DB: db}
 	embeddingsAdmin := &handlers.EmbeddingsAdminHandler{DB: db}
+	ocrAdmin := &handlers.OCRHandler{DB: db}
+	ocrSettings := &handlers.OCRSettingsHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
 	statsHandler := &handlers.StatsHandler{DB: db}
 
@@ -238,6 +240,9 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Post("/admin/ldap/check", ldapAdmin.Check)
 	r.With(owner).Get("/admin/embeddings", embeddingsAdmin.Get)
 	r.With(owner).Put("/admin/embeddings", embeddingsAdmin.Set)
+	r.With(staff).Get("/admin/ocr", ocrAdmin.List)
+	r.With(owner).Get("/admin/ocr/settings", ocrSettings.Get)
+	r.With(owner).Put("/admin/ocr/settings", ocrSettings.Set)
 	r.With(staff).Get("/invitations", invitesHandler.List)
 	r.With(staff).Post("/invitations", invitesHandler.Create)
 	r.With(staff).Delete("/invitations/{id}", invitesHandler.Revoke)

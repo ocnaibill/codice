@@ -299,7 +299,7 @@ class TestIndexer:
         db, outcome = self.run(tmp_path, [file_row(7, 'cbz', path='c.cbz', language='')])
         assert outcome == {7: 'ready'}
         assert not [c for c in db.calls if 'metadata_candidates' in str(c)]
-        assert self.published(db)[5] is None  # no language published
+        assert self.published(db)[6] is None  # no language published
 
     def test_an_audio_file_with_chapters_is_ready(self, tmp_path):
         shutil.copy(os.path.join(FIXTURES, 'capitulos.m4b'), tmp_path / 'b.m4b')

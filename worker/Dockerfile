@@ -18,6 +18,14 @@ COPY requirements-embeddings.txt .
 RUN pip install 'torch==2.14.0+cpu' --index-url https://download.pytorch.org/whl/cpu \
  && pip install -r requirements-embeddings.txt
 
+FROM base AS ocr-dependencies
+# The OCR engine (#24) and the languages the library is expected to hold (the Latin ones and English), plus the data
+# the engine needs to tell that a page is turned. Only this image has them: the other workers do not read by OCR.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-osd tesseract-ocr-por tesseract-ocr-eng \
+    tesseract-ocr-spa tesseract-ocr-fra tesseract-ocr-ita tesseract-ocr-cat tesseract-ocr-ron \
+ && rm -rf /var/lib/apt/lists/*
+
 FROM base AS runtime
 COPY --chown=codice:codice . .
 USER codice
@@ -26,6 +34,13 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD ["py
 CMD ["python", "main.py"]
 
 FROM embedding-dependencies AS embeddings
+COPY --chown=codice:codice . .
+USER codice
+ENV CODICE_STORAGE_PATH=/app/storage
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD ["python", "health.py"]
+CMD ["python", "main.py"]
+
+FROM ocr-dependencies AS ocr
 COPY --chown=codice:codice . .
 USER codice
 ENV CODICE_STORAGE_PATH=/app/storage

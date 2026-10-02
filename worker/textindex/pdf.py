@@ -1,5 +1,6 @@
-"""The text of a PDF, page by page. A page with no usable text yields nothing: it is a scan, and
-waits for OCR (ocr_detect.py says which)."""
+"""The text of a PDF, page by page. A page with no usable text is a scan: it yields nothing until OCR has read it
+(ocr_detect.py says which pages, and ocr.py reads them); the text OCR found is kept apart, per page, and is used
+here for exactly those pages, as segments of origin 'ocr'."""
 import re
 from collections import Counter
 from bisect import bisect_right
@@ -74,9 +75,16 @@ def _outline(doc):
             for level, title, page in entries if isinstance(page, int) and page >= 1]
 
 
-def pdf_segments(path, checkpoint=lambda: None, out=None):
+def _ocr_paragraphs(text):
+    """The paragraphs of a page as the OCR engine wrote it: blank lines between paragraphs, and lines of one paragraph
+    broken where the line of the page broke (and a word split by a hyphen at the end of one)."""
+    return [p for p in (clean(dehyphenate(block).replace('\n', ' ')) for block in re.split(r'\n[ \t]*\n', text)) if p]
+
+
+def pdf_segments(path, checkpoint=lambda: None, out=None, ocr=None):
     """Yields the segments of the PDF, page by page. When `out` is a dict, the bookmarks' nodes are put
-    in it under 'structure' once every segment has been yielded."""
+    in it under 'structure' once every segment has been yielded. `ocr` is {page index: recognised text} for the
+    pages that have no text layer of their own; a page that has one is always read from it."""
     try:
         doc = fitz.open(path)
     except (RuntimeError, ValueError) as err:
@@ -116,8 +124,12 @@ def pdf_segments(path, checkpoint=lambda: None, out=None):
                 text = clean(dehyphenate(block[4]).replace('\n', ' '))
                 if text:
                     paragraphs.append(text)
+            origin = 'native'
             if sum(1 for p in paragraphs for ch in p if not ch.isspace()) < MIN_TEXT_CHARS:
-                continue
+                recognised = _ocr_paragraphs(ocr[index]) if ocr and index in ocr else []
+                if sum(1 for p in recognised for ch in p if not ch.isspace()) < MIN_TEXT_CHARS:
+                    continue
+                paragraphs, origin = recognised, 'ocr'
             for text, _start in chunk(paragraphs):
                 total += len(text)
                 if total > Limits.MAX_CHARS:
@@ -126,7 +138,7 @@ def pdf_segments(path, checkpoint=lambda: None, out=None):
                 node = node if node >= 0 else None
                 if node is not None:
                     chars[node] += len(text)
-                yield Segment(text=text, locator={'type': 'pdf', 'page': index}, section=outline[node][0] if node is not None else None, node=node)
+                yield Segment(text=text, locator={'type': 'pdf', 'page': index}, section=outline[node][0] if node is not None else None, node=node, origin=origin)
         if out is not None and outline:
             out['structure'] = classify([{'title': t, 'depth': d, 'chars': chars[i]} for i, (t, d, _p) in enumerate(outline)])
     finally:
