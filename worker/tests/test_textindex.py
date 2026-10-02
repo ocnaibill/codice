@@ -6,7 +6,7 @@ import zipfile
 import fitz
 import pytest
 
-from textindex import EXTRACTOR_VERSION, Limits, Segment
+from textindex import BASE_VERSION, EXTRACTOR_VERSION, Limits, Segment
 from textindex import normalize
 from textindex.epub import epub_segments
 from textindex.pdf import pdf_segments
@@ -380,7 +380,7 @@ class TestIndexer:
         assert [c for c in db.calls if c[1] == 'text_extraction_publish'][0][2][4] == 'empty'
 
     def test_a_kind_of_file_with_no_text_is_published_as_unsupported_without_being_opened(self, storage):
-        db = FakeDB([file_row(7, 'cbz', path='does-not-matter.cbz')])
+        db = FakeDB([file_row(7, 'mobi', path='does-not-matter.mobi')])
         assert TextIndexer(db, str(storage)).run(9) == {7: 'unsupported'}
         assert db.names() == ['text_extraction_begin', 'text_extraction_publish']
 
@@ -413,7 +413,7 @@ class TestIndexer:
         assert not idx.needs_reading(current, force=False)
         assert idx.needs_reading(current, force=True)
         assert idx.needs_reading(file_row(1), force=False)                                              # never read
-        assert idx.needs_reading(file_row(1, version=EXTRACTOR_VERSION - 1, source_sha='aa', status='ready'), False)  # an older version
+        assert idx.needs_reading(file_row(1, version=BASE_VERSION - 1, source_sha='aa', status='ready'), False)  # an older version
         assert idx.needs_reading(file_row(1, sha='bb', version=EXTRACTOR_VERSION, source_sha='aa', status='ready'), False)  # the file changed
         assert not idx.needs_reading(file_row(1, sha=None, version=EXTRACTOR_VERSION, source_sha=None, status='ready'), False)
         assert not idx.needs_reading(file_row(1, version=EXTRACTOR_VERSION, source_sha='aa', status='failed'), False)  # failed the same way

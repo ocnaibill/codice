@@ -31,6 +31,14 @@ function Pager({ page, hasMore, onPageChange }) {
   </div>;
 }
 
+// Where the text of a passage comes from: recognised from the pictures (OCR), what a comic or an audio file says of itself
+// (its ComicInfo, its chapters and its description, which belong to the whole file and not to a page), or the text of the file.
+function sourceLabel(hit) {
+  if (hit.origin === 'ocr') return 'OCR';
+  if (hit.locator?.type === 'audio' || hit.locator?.item === 'ComicInfo.xml') return 'Metadados do arquivo';
+  return 'Texto do arquivo';
+}
+
 function FileIndexState({ file }) {
   if (file.textStatus === 'ready' && file.textSegments > 0) return null;
   let message = 'Texto ainda não indexado';
@@ -105,7 +113,7 @@ export function SearchPage({ query }) {
           : !passages.data?.data?.length ? <p className="mt-3 text-sm text-ink-soft">Nenhuma passagem encontrada.</p>
             : <ul className="mt-3 space-y-3">{passages.data.data.map((hit) => <li key={hit.segmentId} className="rounded border border-surface-alt p-3">
               <p className="text-sm font-semibold text-ink">{hit.workTitle} <span className="font-normal text-ink-soft">· {hit.workAuthor}</span></p>
-              <p className="text-xs text-ink-soft">{hit.format?.toUpperCase()}{hit.language ? ` · ${hit.language.toUpperCase()}` : ''}{hit.section ? ` · ${hit.section}` : ''} · {hit.origin === 'ocr' ? 'OCR' : 'Texto do arquivo'}</p>
+              <p className="text-xs text-ink-soft">{hit.format?.toUpperCase()}{hit.language ? ` · ${hit.language.toUpperCase()}` : ''}{hit.section ? ` · ${hit.section}` : ''} · {sourceLabel(hit)}</p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-ink"><HighlightedSnippet text={hit.snippet} matches={hit.matches} /></p>
               <div className="mt-2 flex gap-4 text-xs text-brand">
                 <button type="button" onClick={() => openBook(hit.workId, hit.fileId, { locator: hit.locator, context: { kind: 'search', quote: hit.snippet || '' } })} className="hover:underline">Abrir neste ponto</button>

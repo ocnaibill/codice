@@ -56,6 +56,7 @@ export default function AudioViewer({ fileUrl, onProgress, initialProgress, onPl
     }
   };
 
+  // What happens once the player knows how long the audio is: the duration is shown, and a place asked for is opened.
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
@@ -67,6 +68,15 @@ export default function AudioViewer({ fileUrl, onProgress, initialProgress, onPl
       }
     }
   };
+
+  // The file can be here before the listener is: from the cache, or over a fast network, the player has its metadata
+  // when the element is created and the event is already gone. Without this the duration stays 0:00 and a place asked for
+  // (a chapter found by the search) is never opened.
+  useEffect(() => {
+    if (audioRef.current && audioRef.current.readyState >= 1) handleLoadedMetadata();
+    // Only once, when the viewer opens: the event handles every later load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSeek = (e) => {
     const seekTime = parseFloat(e.target.value);

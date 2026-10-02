@@ -110,3 +110,55 @@ describe('AudioViewer: a point that is not there (#14)', () => {
     expect(onPlaceFailed).not.toHaveBeenCalled();
   });
 });
+
+describe('AudioViewer: a file that is here before the listener is (#25)', () => {
+  // A player that already has its metadata when the element is created: no "loadedmetadata" will come.
+  let restore;
+  const ready = (state) => {
+    const proto = HTMLMediaElement.prototype;
+    const saved = ['readyState', 'duration', 'currentTime'].map((name) => [name, Object.getOwnPropertyDescriptor(proto, name)]);
+    let time = 0;
+    Object.defineProperty(proto, 'readyState', { configurable: true, get: () => state });
+    Object.defineProperty(proto, 'duration', { configurable: true, get: () => 150 });
+    Object.defineProperty(proto, 'currentTime', { configurable: true, get: () => time, set: (v) => { time = v; } });
+    restore = () => saved.forEach(([name, d]) => (d ? Object.defineProperty(proto, name, d) : delete proto[name]));
+  };
+  afterEach(() => restore?.());
+
+  it('opens the place asked for and knows the duration, with no event at all', async () => {
+    ready(4);
+    await act(async () => { root.render(<AudioViewer fileUrl="/a.m4b" onProgress={vi.fn()} initialProgress="40" />); });
+    expect(container.querySelector('audio').currentTime).toBe(40);
+    expect(container.textContent).toContain('2:30'); // the duration, 150 s
+  });
+
+  it('opens the place when the player has only the metadata (what preload="metadata" asks for)', async () => {
+    ready(1);
+    await act(async () => { root.render(<AudioViewer fileUrl="/a.m4b" onProgress={vi.fn()} initialProgress="95" />); });
+    expect(container.querySelector('audio').currentTime).toBe(95);
+  });
+
+  it('says a place past the end is not there, also when the metadata was already here', async () => {
+    ready(4);
+    const onPlaceFailed = vi.fn();
+    await act(async () => { root.render(<AudioViewer fileUrl="/a.m4b" onProgress={vi.fn()} initialProgress="500" onPlaceFailed={onPlaceFailed} />); });
+    expect(onPlaceFailed).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('audio').currentTime).toBe(0);
+  });
+
+  it('waits for the player when it has nothing yet, and then opens the place', async () => {
+    ready(0);
+    await act(async () => { root.render(<AudioViewer fileUrl="/a.m4b" onProgress={vi.fn()} initialProgress="40" />); });
+    const audio = container.querySelector('audio');
+    expect(audio.currentTime).toBe(0);
+    await act(async () => { audio.dispatchEvent(new Event('loadedmetadata')); });
+    expect(audio.currentTime).toBe(40);
+  });
+
+  it('starts at the beginning when no place was asked for', async () => {
+    ready(4);
+    await act(async () => { root.render(<AudioViewer fileUrl="/a.m4b" onProgress={vi.fn()} />); });
+    expect(container.querySelector('audio').currentTime).toBe(0);
+    expect(container.textContent).toContain('2:30');
+  });
+});
