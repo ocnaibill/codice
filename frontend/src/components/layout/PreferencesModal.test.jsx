@@ -77,3 +77,12 @@ describe('PreferencesModal', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('PreferencesModal, how it appears', () => {
+  it('fades the backdrop in and lets the dialog rise, with the motion of the system', async () => {
+    await open();
+    expect(view.dialog().className).toContain('animate-pop-in');
+    expect(view.dialog().parentElement.className).toContain('animate-fade-in');
+  });
+});
+

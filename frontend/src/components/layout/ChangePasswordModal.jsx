@@ -39,9 +39,9 @@ export function ChangePasswordModal({ onClose }) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-4"
       onClick={(event) => event.target === event.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label="Alterar senha" className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Alterar senha" className="w-full max-w-sm animate-pop-in rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">Alterar senha</h2>
         {done ? (
           <>

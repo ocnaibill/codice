@@ -27,10 +27,10 @@ export function ConfirmDialog({ title, message, choices, onChoose, onCancel, can
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-4"
       onClick={(event) => event.target === event.currentTarget && onCancel()}
     >
-      <div role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md animate-pop-in rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">{title}</h2>
         <div className="mt-3 text-[14px] leading-relaxed text-ink-soft">{message}</div>
         {requireText !== undefined && (

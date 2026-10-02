@@ -15,6 +15,47 @@
   --color-ink-warm: #70573b;
   --color-success: #3a6758;
   --color-border-hairline: #d7d7d8;
+  /* The roles of colour that a notice, an error or a warning can take (#77). Same family as the brand and the success. */
+  --color-success-soft: #bcedda;
+  --color-danger: #ba1a1a;
+  --color-danger-soft: #ffdad6;
+  --color-warning: #7a4b00;
+  --color-warning-soft: #ffe8c2;
+  --color-info-soft: #ffdbcb;
+
+  /* Motion (#77): how long and how it eases. Entering is slower and decelerates; leaving is quicker. */
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 320ms;
+  --ease-out-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-in-soft: cubic-bezier(0.4, 0, 1, 1);
+
+  --animate-fade-in: fade-in var(--duration-base) var(--ease-out-soft) both;
+  --animate-rise-in: rise-in var(--duration-base) var(--ease-out-soft) both;
+  --animate-pop-in: pop-in var(--duration-base) var(--ease-out-soft) both;
+  --animate-toast-out: toast-out var(--duration-fast) var(--ease-in-soft) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(0.5rem); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes pop-in {
+    from { opacity: 0; transform: translateY(0.25rem) scale(0.97); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes toast-out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: translateY(0.5rem) scale(0.98); }
+  }
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
 
   --font-display: "Newsreader Variable", ui-serif, Georgia, serif;
   --font-body: "Plus Jakarta Sans Variable", system-ui, sans-serif;
@@ -25,4 +66,17 @@ body {
   background-color: var(--color-surface);
   color: var(--color-ink);
   font-family: var(--font-body);
+}
+
+/* Whoever asks the system for less motion gets none: no entrance, no exit, no shimmer, no smooth scroll. A notice or a
+   dialog still appears and goes away, only without moving (the code never waits for an animation to end). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

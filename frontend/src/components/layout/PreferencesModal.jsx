@@ -22,10 +22,10 @@ export function PreferencesModal({ onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-4"
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >
-      <div role="dialog" aria-modal="true" aria-label="Preferências" className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Preferências" className="w-full max-w-md animate-pop-in rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">Preferências</h2>
         <fieldset className="mt-4" disabled={isLoading || save.isPending}>
           <legend className="text-[13px] font-medium text-ink">Como mostrar o nome dos autores</legend>

@@ -3,6 +3,7 @@ import { useGlobalStore } from '../../store/useGlobalStore';
 import { NoteItem } from '../reader/components/NoteItem';
 import { ExportNotes } from './components/ExportNotes';
 import { NotesFacets } from './components/NotesFacets';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { useNotesFacets } from './api/useNotesFacets';
 import { PAGE_SIZE, useNotesList } from './api/useNotesList';
 
@@ -110,7 +111,13 @@ export function NotesPage() {
           <NotesFacets facets={facets} kind={kind} onKind={setKind} tag={tag} onTag={setTag} />
         </aside>
         <div>
-        {isLoading && <p className="animate-pulse text-sm text-ink-soft">Carregando…</p>}
+        {isLoading && (
+          <div className="flex flex-col gap-3" aria-label="Carregando as anotações">
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+          </div>
+        )}
         {isError && <p role="alert" className="text-sm text-red-700">Não foi possível carregar as anotações.</p>}
         {!isLoading && !isError && notes.length === 0 && (
           <p className="rounded-xl border border-dashed border-border-hairline bg-white p-4 text-sm text-ink-soft">

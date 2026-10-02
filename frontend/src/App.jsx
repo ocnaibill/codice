@@ -21,6 +21,15 @@ import { ResetPassword } from './features/auth/components/ResetPassword';
 import { AcceptInvite } from './features/auth/components/AcceptInvite';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
 import { refreshLibrary } from './lib/refreshLibrary';
+import { ToastRegion } from './components/ui/ToastRegion';
+import { useToasts } from './components/ui/toast';
+import { noticeForWorkEvent } from './features/library/workNotice';
+
+// What the server says of a work (ready, or failed) becomes a notice, with a way to open the work.
+function showWorkNotice(event) {
+  const notice = noticeForWorkEvent(event, useGlobalStore.getState().openWork);
+  if (notice) useToasts.getState().show(notice);
+}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -132,8 +141,6 @@ function App() {
     }
   }, [activeBookId, queryClient]);
 
-  const [toast, setToast] = useState(null);
-
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -158,22 +165,14 @@ function App() {
             if (data.type === 'WORK_READY') {
               console.log(`🎉 Book processing completed: "${data.title}"`);
               refreshLibrary(queryClient);
-              setToast({
-                type: 'success',
-                message: `✨ Metadata updated: ${data.title || 'Book ready'}`,
-              });
-              setTimeout(() => setToast(null), 5000);
+              showWorkNotice(data);
             } else if (data.type === 'WORK_ANALYZING') {
               console.log(`🔍 Book analyzing: ID ${data.work_id}`);
               refreshLibrary(queryClient);
             } else if (data.type === 'WORK_ERROR') {
               console.warn(`❌ Processing error for Work ID ${data.work_id}:`, data.error);
               refreshLibrary(queryClient);
-              setToast({
-                type: 'error',
-                message: `❌ Failed to process book: ${data.error || 'Unknown error'}`,
-              });
-              setTimeout(() => setToast(null), 6000);
+              showWorkNotice(data);
             }
           } catch (err) {
             console.error('Error parsing WebSocket message:', err);
@@ -272,22 +271,7 @@ function App() {
 
   return (
     <div className="relative">
-      {/* Toast Notification Banner */}
-      {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-xl border text-sm font-medium transition-all duration-300 flex items-center gap-3 ${
-          toast.type === 'error'
-            ? 'bg-red-50 text-red-700 border-red-200'
-            : 'bg-white text-success border-success/30 backdrop-blur'
-        }`}>
-          <span>{toast.message}</span>
-          <button
-            onClick={() => setToast(null)}
-            className="text-ink-faint hover:text-ink text-xs ml-2"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      <ToastRegion />
       <UploadModal />
       <OwnershipBanner me={me} />
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
