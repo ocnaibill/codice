@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { act } from 'react';
 
 vi.mock('../../../lib/api', () => ({ api: { patch: vi.fn(), delete: vi.fn() } }));
 
@@ -72,5 +73,33 @@ describe('NoteItem, the text of a note', () => {
     view = await render();
     await view.click(view.button('Editar'));
     expect(document.querySelector('textarea[aria-label="Sua anotação"]').placeholder).toContain('[[Conceito]]');
+  });
+});
+
+describe('NoteItem, writing a formula', () => {
+  const typeInto = async (textarea, value) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, value);
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+
+  it('explains how in the field, and shows a preview only when there is a formula', async () => {
+    view = await render();
+    await view.click(view.button('Editar'));
+    expect(document.querySelector('summary').textContent).toBe('Como escrever fórmulas');
+    expect(document.body.textContent).toContain('$$x^2$$');
+    expect(document.body.textContent).toContain('$$\\frac{a}{b}$$');
+    expect(document.body.textContent).toContain('$$\\sqrt{x}$$');
+    expect(document.querySelector('[aria-label="Prévia da anotação"]')).toBeNull();
+
+    await typeInto(document.querySelector('textarea[aria-label="Sua anotação"]'), 'dobro: $$2x$$');
+    const preview = document.querySelector('[aria-label="Prévia da anotação"]');
+    expect(preview).not.toBeNull();
+    await vi.waitFor(() => expect(preview.querySelector('.katex')).not.toBeNull());
+    expect(preview.querySelector('annotation').textContent).toBe('2x');
+
+    await typeInto(document.querySelector('textarea[aria-label="Sua anotação"]'), 'sem fórmula');
+    expect(document.querySelector('[aria-label="Prévia da anotação"]')).toBeNull();
   });
 });

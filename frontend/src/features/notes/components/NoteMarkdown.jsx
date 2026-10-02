@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { reason } from '../../reader/noteText';
 import { useCreateConcept } from '../api/useCreateConcept';
+import { useMath } from '../useMath';
 import { findLinks, linkIndex, linkify } from '../wikilinks';
 
 /** A [[link]] to a concept the person has: a mark with what it is called and a hint of what it is. */
@@ -51,9 +52,10 @@ function PendingLink({ name, children }) {
  * The text of a note, in Markdown, shown as text (raw HTML in it is not interpreted). A [[Concept]] in it is shown as
  * what it is: a mark when the person has the concept (`links` says so, by the name as written), a dashed one when
  * they do not (pending: the text is not changed and no concept is made). One whose state the server did not say is
- * shown as plain text.
+ * shown as plain text. A formula between $$ and $$ is drawn (DEC-111).
  */
 export function NoteMarkdown({ body, links = {} }) {
+  const math = useMath(body.includes('$$'));
   const found = useMemo(() => findLinks(body), [body]);
   const text = useMemo(() => linkify(body, found), [body, found]);
   const components = {
@@ -74,6 +76,8 @@ export function NoteMarkdown({ body, links = {} }) {
   };
   return (
     <ReactMarkdown
+      remarkPlugins={math?.remarkPlugins}
+      rehypePlugins={math?.rehypePlugins}
       components={components}
       urlTransform={(url) => (linkIndex(url) >= 0 ? url : defaultUrlTransform(url))}
     >

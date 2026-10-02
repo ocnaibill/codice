@@ -379,3 +379,31 @@ func TestWikilinks_ANoteCarriesAHintOfTheConceptNotAllOfIt(t *testing.T) {
 		t.Errorf("%d", len(d))
 	}
 }
+
+func TestWikilinks_AFormulaHoldsNoLinkAndTheExportKeepsItAsWritten(t *testing.T) {
+	s := newCatalogStack(t)
+	w := s.addWork("Duna", "Frank Herbert", "d.epub", "epub")
+	c := s.newConcept(ana, "Poder")
+	onlyFormula := s.newNote(ana, w, "A matriz $$[[Poder]]$$ e\n$$\n[[Poder]]\n$$\n")
+	both := s.newNote(ana, w, "[[Poder]] fora e $$[[Poder]]$$ dentro")
+	if got := s.mentionsOf(ana, onlyFormula); len(got) != 0 {
+		t.Errorf("a link inside a formula is part of the formula: %v", got)
+	}
+	if got := s.mentionsOf(ana, both); len(got) != 1 || got[0] != fmt.Sprintf("mentions:%d:wikilink", c.ID) {
+		t.Errorf("the one outside is a link: %v", got)
+	}
+	if n := s.notesOf(ana)[onlyFormula]; len(n.Links) != 0 {
+		t.Errorf("%+v", n.Links)
+	}
+	js := s.do(ana, "GET", "/notes/export?format=json", "")
+	if js.Code != 200 || !strings.Contains(js.Body.String(), `[[Poder]] fora e $$[[Poder]]$$ dentro`) {
+		t.Errorf("%d %s", js.Code, js.Body.String())
+	}
+	s.newNote(ana, w, "Energia: $$E = mc^2$$.\n\nEm bloco:\n\n$$\n\\frac{a}{b}\n$$\n\nPreço: R$ 5 e R$ 10.")
+	md := s.do(ana, "GET", "/notes/export?format=md", "")
+	for _, want := range []string{"[[Poder]] fora e $$[[Poder]]$$ dentro", "Energia: $$E = mc^2$$.", "$$\n\\frac{a}{b}\n$$", "R$ 5 e R$ 10."} {
+		if !strings.Contains(md.Body.String(), want) {
+			t.Errorf("the export lost %q:\n%s", want, md.Body.String())
+		}
+	}
+}

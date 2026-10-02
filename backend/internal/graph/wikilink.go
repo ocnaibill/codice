@@ -23,7 +23,8 @@ type Link struct {
 // never changed: this only reads it. What is not a link:
 //   - a "[[" with no "]]" on the same line, or with a bracket inside, or with nothing but spaces or punctuation as the
 //     name, or a name longer than MaxLinkName;
-//   - one inside a code span or a fenced code block (``` or ~~~), where text is just text;
+//   - one inside a code span or a fenced code block (``` or ~~~), where text is just text, or inside a formula
+//     ($$...$$ in a line, or a block between two lines of $$), which is read by something else (#21, DEC-111);
 //   - one whose first bracket is escaped with a backslash ("\[[Name]]").
 //
 // A block of code that is only indented is not told apart: it can sit in a list, where indentation is not code.
@@ -65,18 +66,23 @@ func Links(text string) []Link {
 	return out
 }
 
-// opensFence says whether a line starts a fenced block (up to three spaces, then three or more ` or ~), and gives the
-// fence. A backtick fence cannot hold a backtick in its info text.
+// opensFence says whether a line starts a fenced block (up to three spaces, then three or more ` or ~, or two or more
+// $ for a block of formula), and gives the fence. A fence of ` or $ cannot hold its character in its info text: a line
+// like "$$x$$" is a formula in the text, not the start of a block.
 func opensFence(line string) string {
 	s := strings.TrimLeft(line, " ")
-	if len(line)-len(s) > 3 || len(s) < 3 || (s[0] != '`' && s[0] != '~') {
+	if len(line)-len(s) > 3 || len(s) < 2 || (s[0] != '`' && s[0] != '~' && s[0] != '$') {
 		return ""
 	}
 	n := 0
 	for n < len(s) && s[n] == s[0] {
 		n++
 	}
-	if n < 3 || (s[0] == '`' && strings.ContainsRune(s[n:], '`')) {
+	min := 3
+	if s[0] == '$' {
+		min = 2
+	}
+	if n < min || (s[0] != '~' && strings.IndexByte(s[n:], s[0]) >= 0) {
 		return ""
 	}
 	return s[:n]
@@ -106,17 +112,20 @@ func paragraphLinks(text string, from, to int) []Link {
 		switch c := text[i]; {
 		case c == '\\' && i+1 < to && isPunct(text[i+1]):
 			i += 2
-		case c == '`':
+		case c == '`' || c == '$':
 			n := 0
-			for i+n < to && text[i+n] == '`' {
+			for i+n < to && text[i+n] == c {
 				n++
 			}
-			// A span ends at the next run of exactly as many backticks; with none, these are just backticks.
-			if close := spanEnd(text, i+n, to, n); close >= 0 {
-				i = close
-			} else {
-				i += n
+			// A span ends at the next run of exactly as many of the same character; with none, these are just
+			// characters. A single $ is a dollar sign (a price), not a formula: it takes two.
+			if c == '`' || n >= 2 {
+				if close := spanEnd(text, i+n, to, n, c); close >= 0 {
+					i = close
+					continue
+				}
 			}
+			i += n
 		case c == '[' && i+1 < to && text[i+1] == '[':
 			if l, ok := linkAt(text, i, to); ok {
 				out = append(out, l)
@@ -131,15 +140,16 @@ func paragraphLinks(text string, from, to int) []Link {
 	return out
 }
 
-// spanEnd finds where a code span opened by n backticks ends: just past the next run of exactly n. -1 if it never does.
-func spanEnd(text string, from, to, n int) int {
+// spanEnd finds where a span opened by n of the character c (a backtick or a dollar) ends: just past the next run of
+// exactly n. -1 if it never does.
+func spanEnd(text string, from, to, n int, c byte) int {
 	for i := from; i < to; {
-		if text[i] != '`' {
+		if text[i] != c {
 			i++
 			continue
 		}
 		run := 0
-		for i+run < to && text[i+run] == '`' {
+		for i+run < to && text[i+run] == c {
 			run++
 		}
 		if run == n {

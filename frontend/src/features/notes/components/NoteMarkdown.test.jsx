@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { act } from 'react';
 
 vi.mock('../../../lib/api', () => ({ api: { post: vi.fn() } }));
 
@@ -106,5 +107,112 @@ describe('NoteMarkdown, the rest of the text', () => {
   it('keeps the same link in two places, and two names of one concept, each as written', async () => {
     view = await render('[[Poder]] e [[dominação]] e [[Poder]]', { Poder: concept('Poder'), dominação: concept('Poder') });
     expect([...document.querySelectorAll('[data-concept]')].map((m) => m.textContent)).toEqual(['Poder', 'dominação', 'Poder']);
+  });
+});
+
+// Formulas (DEC-111): between $$ and $$, drawn by KaTeX, which is told not to trust what it is given.
+const drawn = () => vi.waitFor(() => expect(document.querySelector('.katex, .katex-error')).not.toBeNull());
+const tex = () => [...document.querySelectorAll('annotation')].map((a) => a.textContent);
+
+describe('NoteMarkdown, formulas', () => {
+  it('draws a formula in the line, with the text around it as it is', async () => {
+    view = await render('Vale $$x^2$$ aqui', {});
+    await drawn();
+    expect(tex()).toEqual(['x^2']);
+    expect(document.querySelector('.katex-display')).toBeNull();
+    expect(document.querySelector('p').textContent).toContain('Vale ');
+    expect(document.querySelector('p').textContent).toContain(' aqui');
+  });
+
+  it('draws a block of formula, centred, from two lines of $$', async () => {
+    view = await render('antes\n\n$$\n\\frac{a}{b}\n$$\n\ndepois', {});
+    await drawn();
+    expect(document.querySelector('.katex-display')).not.toBeNull();
+    expect(tex()).toEqual(['\\frac{a}{b}']);
+  });
+
+  it('reads a single dollar as a dollar sign: a price is no formula', async () => {
+    view = await render('custa R$ 5 e R$ 10, ou $x$ mesmo', {});
+    await new Promise((r) => setTimeout(r, 20));
+    expect(view.text()).toBe('custa R$ 5 e R$ 10, ou $x$ mesmo');
+    expect(document.querySelector('.katex')).toBeNull();
+  });
+
+  it('reads a single dollar as a dollar sign even when the note has a formula', async () => {
+    view = await render('custa R$ 5 e R$ 10, $x$ não é fórmula, mas $$y$$ é', {});
+    await drawn();
+    expect(tex()).toEqual(['y']);
+    expect(view.text()).toContain('custa R$ 5 e R$ 10, $x$ não é fórmula, mas ');
+  });
+
+  it('draws a formula that has accents in it, as a person writing in Portuguese will have', async () => {
+    view = await render('$$área = b h$$ e $$\\text{ação}$$', {});
+    await drawn();
+    expect(document.querySelector('.katex-error')).toBeNull();
+    expect(tex()).toEqual(['área = b h', '\\text{ação}']);
+  });
+
+  it('shows a wrong formula as written, in red, with the reason, and the rest of the note stays', async () => {
+    view = await render('Antes $$\\frac{a$$ depois', {});
+    await drawn();
+    const bad = document.querySelector('.katex-error');
+    expect(bad.textContent).toBe('\\frac{a');
+    expect(bad.title).toContain('KaTeX parse error');
+    expect(view.text()).toContain('Antes ');
+    expect(view.text()).toContain(' depois');
+  });
+
+  it.each([
+    ['a link', '$$\\href{javascript:alert(1)}{x}$$', '\\href'],
+    ['an address', '$$\\url{http://exemplo.org}$$', '\\url'],
+    ['an image', '$$\\includegraphics{http://exemplo.org/a.png}$$', '\\includegraphics'],
+  ])('does not draw %s: it is red text, never a link or a fetch', async (_what, text, command) => {
+    view = await render(text, {});
+    await drawn();
+    expect(document.querySelector('a, img')).toBeNull();
+    expect(document.querySelector('[href], [src]')).toBeNull();
+    // The text of the command stays in the formula's source, as text: nothing in the page holds an address.
+    expect(document.querySelector('.katex-html').textContent).toBe(command);
+    expect(document.querySelector('.katex-html [style*="rgb(204, 0, 0)"]')).not.toBeNull();
+  });
+
+  it('cuts short a formula that expands without end', async () => {
+    view = await render('$$\\def\\a{\\a\\a}\\a$$', {});
+    await drawn();
+    expect(document.querySelector('.katex-error').title).toContain('Too many expansions');
+  });
+
+  it('limits the size a formula can ask for', async () => {
+    view = await render('$$\\rule{1000em}{1000em}$$', {});
+    await drawn();
+    const html = document.body.innerHTML;
+    expect(html).toContain('10em');
+    expect(html).not.toContain('1000em"');
+    expect(html).not.toContain('1000em;');
+  });
+
+  it('does not interpret HTML written in a formula', async () => {
+    view = await render('$$<img src=x onerror=alert(1)>$$', {});
+    await drawn();
+    expect(document.querySelector('img')).toBeNull();
+    expect(document.querySelector('[onerror]')).toBeNull();
+  });
+
+  it('keeps a [[link]] outside a formula a link, and one inside it part of the formula', async () => {
+    view = await render('[[A]] e $$[[B]]$$', { A: concept('A'), B: concept('B', '', 6) });
+    await drawn();
+    expect([...document.querySelectorAll('[data-concept]')].map((m) => m.textContent)).toEqual(['A']);
+    expect(tex()).toEqual(['[[B]]']);
+  });
+
+  it('draws a formula in a note that is changed while it is shown', async () => {
+    view = await render('sem nada', {});
+    expect(document.querySelector('.katex')).toBeNull();
+    await act(async () => {
+      view.unmount();
+    });
+    view = await render('agora $$x$$', {});
+    await drawn();
+    expect(tex()).toEqual(['x']);
   });
 });

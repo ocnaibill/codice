@@ -27,6 +27,39 @@ export function NoteFields({ quote, body, tags, onChange }) {
         rows={3}
         className={fieldClass}
       />
+      {body.includes('$$') && (
+        <div aria-label="Prévia da anotação" className="rounded-lg bg-[#f5f0e9] p-3 font-body text-sm text-ink">
+          <p className="mb-1 font-mono text-[10px] uppercase text-ink-soft">Prévia</p>
+          <NoteMarkdown body={body} />
+        </div>
+      )}
+      <details className="text-xs text-ink-soft">
+        <summary className="cursor-pointer">Como escrever fórmulas</summary>
+        <div className="mt-1 flex flex-col gap-1">
+          <p>
+            Escreva a fórmula entre <code>$$</code> e <code>$$</code>. Um <code>$</code> sozinho é só o cifrão.
+          </p>
+          <ul className="list-inside list-disc">
+            <li>
+              Potência: <code>$$x^2$$</code>
+            </li>
+            <li>
+              Fração: <code>{'$$\\frac{a}{b}$$'}</code>
+            </li>
+            <li>
+              Raiz: <code>{'$$\\sqrt{x}$$'}</code>
+            </li>
+          </ul>
+          <p>
+            Com <code>$$</code> sozinho numa linha, antes e depois, a fórmula fica em bloco, centralizada. Se ela estiver errada, a nota mostra o que
+            você escreveu, em vermelho. Mais comandos:{' '}
+            <a href="https://katex.org/docs/supported.html" target="_blank" rel="noreferrer noopener" className="text-brand underline">
+              lista do KaTeX
+            </a>
+            .
+          </p>
+        </div>
+      </details>
       <input
         value={tags}
         onChange={(e) => onChange({ tags: e.target.value })}

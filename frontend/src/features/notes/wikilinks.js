@@ -3,8 +3,9 @@
 // (backend/internal/graph/testdata/wikilinks.json): a link must be shown the way it is kept.
 //
 // What is not a link: a "[[" with no "]]" on the same line, or with a bracket inside, or with nothing but spaces or
-// punctuation as the name, or a name longer than 120 characters; one inside a code span or a fenced block; one whose
-// first bracket is escaped with a backslash.
+// punctuation as the name, or a name longer than 120 characters; one inside a code span or a fenced block, or inside
+// a formula ($$...$$ in a line, or a block between two lines of $$); one whose first bracket is escaped with a
+// backslash.
 
 const MAX_NAME = 120;
 const MAX_TEXT = 300;
@@ -14,12 +15,15 @@ const length = (s) => [...s].length;
 const hasSubstance = (s) => /[\p{L}\p{N}]/u.test(s.normalize('NFD').replace(/\p{Mn}/gu, ''));
 const isPunct = (c) => /[!-/:-@[-`{-~]/.test(c);
 
+// A fence is three or more ` or ~, or two or more $ (a block of formula). One of ` or $ cannot hold its character in
+// its info text: a line like "$$x$$" is a formula in the text, not the start of a block.
 function opensFence(line) {
   const s = line.replace(/^ +/, '');
-  if (line.length - s.length > 3 || s.length < 3 || (s[0] !== '`' && s[0] !== '~')) return '';
+  if (line.length - s.length > 3 || s.length < 2 || (s[0] !== '`' && s[0] !== '~' && s[0] !== '$')) return '';
   let n = 0;
   while (n < s.length && s[n] === s[0]) n++;
-  if (n < 3 || (s[0] === '`' && s.slice(n).includes('`'))) return '';
+  const min = s[0] === '$' ? 2 : 3;
+  if (n < min || (s[0] !== '~' && s.slice(n).includes(s[0]))) return '';
   return s.slice(0, n);
 }
 
@@ -31,14 +35,14 @@ function closesFence(line, fence) {
   return n >= fence.length && s.slice(n).trim() === '';
 }
 
-function spanEnd(text, from, to, n) {
+function spanEnd(text, from, to, n, c) {
   for (let i = from; i < to; ) {
-    if (text[i] !== '`') {
+    if (text[i] !== c) {
       i++;
       continue;
     }
     let run = 0;
-    while (i + run < to && text[i + run] === '`') run++;
+    while (i + run < to && text[i + run] === c) run++;
     if (run === n) return i + run;
     i += run;
   }
@@ -70,10 +74,12 @@ function paragraphLinks(text, from, to) {
     const c = text[i];
     if (c === '\\' && i + 1 < to && isPunct(text[i + 1])) {
       i += 2;
-    } else if (c === '`') {
+    } else if (c === '`' || c === '$') {
       let n = 0;
-      while (i + n < to && text[i + n] === '`') n++;
-      const close = spanEnd(text, i + n, to, n);
+      while (i + n < to && text[i + n] === c) n++;
+      // A span ends at the next run of exactly as many of the same character. A single $ is a dollar sign (a
+      // price), not a formula: it takes two.
+      const close = c === '`' || n >= 2 ? spanEnd(text, i + n, to, n, c) : -1;
       i = close >= 0 ? close : i + n;
     } else if (c === '[' && i + 1 < to && text[i + 1] === '[') {
       const link = linkAt(text, i, to);

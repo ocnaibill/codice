@@ -447,5 +447,119 @@
     "label": "C"
    }
   ]
+ },
+ {
+  "name": "a formula in a line holds no link",
+  "text": "$$[[A]]$$ e [[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "a formula across the lines of a paragraph",
+  "text": "texto $$x\n[[A]] y$$ e [[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "a block of formula holds no link",
+  "text": "antes\n$$\n[[A]]\n$$\n[[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "a block of formula may hold a blank line",
+  "text": "$$\nx\n\n[[A]]\n$$\n[[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "a block of formula is closed by a line of dollars only",
+  "text": "$$\n[[A]]\n$$ x\n[[B]]\n$$\n[[C]]",
+  "links": [
+   {
+    "name": "C",
+    "label": "C"
+   }
+  ]
+ },
+ {
+  "name": "a formula block that is never closed runs to the end",
+  "text": "$$\n[[A]]\n[[B]]",
+  "links": []
+ },
+ {
+  "name": "single dollars are prices, not formulas",
+  "text": "R$ 5 e [[A]] e R$ 10",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   }
+  ]
+ },
+ {
+  "name": "a single dollar does not open a formula",
+  "text": "$[[A]]$",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   }
+  ]
+ },
+ {
+  "name": "an unmatched double dollar in a line is text",
+  "text": "custa $$ e [[A]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   }
+  ]
+ },
+ {
+  "name": "a formula is closed by exactly as many dollars",
+  "text": "$$$[[A]]$$ x$$$ [[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "an escaped dollar is not part of a formula",
+  "text": "\\$$[[A]]$$ e [[B]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   },
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "a line that starts with two dollars opens a block, even with text after them",
+  "text": "$$x\n[[A]] y$$ e [[B]]",
+  "links": []
  }
 ]
