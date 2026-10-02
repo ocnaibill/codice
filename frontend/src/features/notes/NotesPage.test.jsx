@@ -22,11 +22,28 @@ let notes; // what the server has (all of it), filtered by the mock the way the 
 let openBook;
 const calls = () => api.get.mock.calls.map(([url]) => url).filter((u) => u.startsWith('/notes?'));
 const lastParams = () => new URLSearchParams(calls().at(-1).split('?')[1]);
+// The kind buttons carry their counts ("Notas" and then the number).
+const kind = (label) => view.buttonMatching(new RegExp(`^${label}\\d+$`));
 const wait = (ms) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
+
+// What the server counts: each facet follows the other filters and ignores its own choice.
+function facetsOf(p) {
+  const base = (omit) => notes.filter((n) =>
+    (omit === 'kind' || !p.get('kind') || n.kind === p.get('kind')) &&
+    (omit === 'tag' || !p.get('tag') || n.tags.includes(p.get('tag'))) &&
+    (!p.get('workId') || n.workId === Number(p.get('workId'))) &&
+    (!p.get('q') || n.quote.includes(p.get('q'))));
+  const kinds = { note: 0, highlight: 0, bookmark: 0 };
+  base('kind').forEach((n) => { kinds[n.kind] += 1; });
+  const tags = {};
+  base('tag').forEach((n) => n.tags.forEach((t) => { tags[t] = (tags[t] ?? 0) + 1; }));
+  return { kinds, tags: Object.entries(tags).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).map(([tag, count]) => ({ tag, count })) };
+}
 
 async function open(all = [note(1)]) {
   notes = all;
   api.get.mockImplementation(async (url) => {
+    if (url.startsWith('/notes/facets?')) return { data: facetsOf(new URLSearchParams(url.split('?')[1])) };
     if (!url.startsWith('/notes?')) throw new Error(`unexpected GET ${url}`);
     const p = new URLSearchParams(url.split('?')[1]);
     let found = notes;
@@ -101,12 +118,12 @@ describe('NotesPage: every note of the person (#13)', () => {
 
   it('narrows by kind, and Todas takes it away', async () => {
     await open([note(1), note(2, { kind: 'highlight' }), note(3, { kind: 'bookmark' })]);
-    await view.click(view.button('Destaques'));
+    await view.click(kind('Destaques'));
     expect(lastParams().get('kind')).toBe('highlight');
-    expect(view.button('Destaques').getAttribute('aria-pressed')).toBe('true');
-    expect(view.button('Todas').getAttribute('aria-pressed')).toBe('false');
+    expect(kind('Destaques').getAttribute('aria-pressed')).toBe('true');
+    expect(kind('Todas').getAttribute('aria-pressed')).toBe('false');
     expect(items()).toHaveLength(1);
-    await view.click(view.button('Todas'));
+    await view.click(kind('Todas'));
     expect(lastParams().has('kind')).toBe(false);
     expect(items()).toHaveLength(3);
   });
@@ -137,7 +154,7 @@ describe('NotesPage: every note of the person (#13)', () => {
   it('clears every filter at once, and offers to only when one is set', async () => {
     await open([note(1, { tags: ['a'], quote: 'areia' })]);
     expect(view.button('Limpar filtros')).toBeUndefined();
-    await view.click(view.button('Notas'));
+    await view.click(kind('Notas'));
     await view.click([...document.body.querySelectorAll('li button')].find((b) => b.textContent === '#a'));
     await view.click([...document.body.querySelectorAll('li button')].find((b) => b.textContent === 'Duna'));
     await type('areia');
@@ -153,7 +170,7 @@ describe('NotesPage: every note of the person (#13)', () => {
 
   it('says nothing matched when filters leave none, and not that there are no notes', async () => {
     await open([note(1)]);
-    await view.click(view.button('Marcadores'));
+    await view.click(kind('Marcadores'));
     expect(view.text()).toContain('Nenhuma anotação com estes filtros.');
     expect(view.text()).not.toContain('Nenhuma anotação ainda');
   });
@@ -181,7 +198,7 @@ describe('NotesPage: every note of the person (#13)', () => {
   it('goes back to the first page when a filter changes', async () => {
     await open(Array.from({ length: 45 }, (_, i) => note(i + 1)));
     await view.click(view.button('Próxima'));
-    await view.click(view.button('Notas'));
+    await view.click(kind('Notas'));
     expect(calls().at(-1)).toBe('/notes?kind=note&limit=20&offset=0');
   });
 
@@ -217,7 +234,7 @@ describe('NotesPage: every note of the person (#13)', () => {
 
   it('exports what the filters leave, after review', async () => {
     await open([note(1, { kind: 'highlight' })]);
-    await view.click(view.button('Destaques'));
+    await view.click(kind('Destaques'));
     await view.click(view.button('Exportar…'));
     expect(view.dialog().textContent).toContain('1 anotação: só destaques.');
     await view.click(view.button('Cancelar'));
@@ -238,5 +255,94 @@ describe('NotesPage: every note of the person (#13)', () => {
     await flush();
     expect(view.text()).toContain('Não foi possível carregar as anotações.');
     expect(view.text()).not.toContain('Nenhuma anotação ainda');
+  });
+});
+
+describe('NotesPage, the panel that narrows the list', () => {
+  const sample = () => [
+    note(1, { kind: 'note', tags: ['filosofia', 'poder'], quote: 'a' }),
+    note(2, { kind: 'note', tags: ['filosofia'], quote: 'b' }),
+    note(3, { kind: 'highlight', tags: ['ecologia'], quote: 'c' }),
+    note(4, { kind: 'highlight', tags: ['ecologia', 'filosofia'], quote: 'd', workId: 8, workTitle: 'Fundação' }),
+    note(5, { kind: 'bookmark', tags: [], quote: 'e' }),
+  ];
+  const facetCalls = () => api.get.mock.calls.map(([url]) => url).filter((u) => u.startsWith('/notes/facets?'));
+  const tagButton = (name) => view.buttonMatching(new RegExp(`^#${name}\\d+$`));
+
+  it('counts the kinds and the tags of what is stored', async () => {
+    await open(sample());
+    expect(kind('Todas').textContent).toBe('Todas5');
+    expect(kind('Notas').textContent).toBe('Notas2');
+    expect(kind('Destaques').textContent).toBe('Destaques2');
+    expect(kind('Marcadores').textContent).toBe('Marcadores1');
+    expect(tagButton('filosofia').textContent).toBe('#filosofia3');
+    expect(tagButton('ecologia').textContent).toBe('#ecologia2');
+    expect(tagButton('poder').textContent).toBe('#poder1');
+  });
+
+  it('narrows the list by a tag from the panel, and the kinds follow while the tags do not', async () => {
+    await open(sample());
+    await view.click(tagButton('ecologia'));
+    await flush();
+    expect(lastParams().get('tag')).toBe('ecologia');
+    expect(tagButton('ecologia').getAttribute('aria-pressed')).toBe('true');
+    // The kinds count under the tag; the tags still show what the others would give.
+    expect(kind('Destaques').textContent).toBe('Destaques2');
+    expect(kind('Notas').textContent).toBe('Notas0');
+    expect(tagButton('poder')).toBeDefined();
+    expect(facetCalls().at(-1)).toContain('tag=ecologia');
+    // A click on it again takes it away.
+    await view.click(tagButton('ecologia'));
+    await flush();
+    expect(lastParams().get('tag')).toBeNull();
+    expect(kind('Notas').textContent).toBe('Notas2');
+  });
+
+  it('narrows by kind from the panel, and the tags follow the kind', async () => {
+    await open(sample());
+    await view.click(kind('Destaques'));
+    await flush();
+    expect(lastParams().get('kind')).toBe('highlight');
+    expect(tagButton('ecologia').textContent).toBe('#ecologia2');
+    expect(tagButton('poder')).toBeUndefined();
+    expect(kind('Notas').textContent).toBe('Notas2');
+    await view.click(kind('Destaques'));
+    await flush();
+    expect(lastParams().get('kind')).toBeNull();
+  });
+
+  it('asks for the counts under the same text and work as the list', async () => {
+    await open(sample());
+    await type('c');
+    await wait(400);
+    await flush();
+    expect(facetCalls().at(-1)).toContain('q=c');
+    expect(kind('Destaques').textContent).toBe('Destaques1');
+    await type('');
+    await wait(400);
+    await flush();
+    await view.click(view.button('Fundação'));
+    await flush();
+    expect(facetCalls().at(-1)).toContain('workId=8');
+    // Under that work there is one note, a highlight with two tags.
+    expect(kind('Todas').textContent).toBe('Todas1');
+    expect(tagButton('ecologia').textContent).toBe('#ecologia1');
+    expect(tagButton('poder')).toBeUndefined();
+  });
+
+  it('has no tags in the panel when the notes have none', async () => {
+    await open([note(1, { tags: [] })]);
+    expect(document.querySelector('[aria-label="Filtrar por tag"]')).toBeNull();
+    expect(kind('Notas').textContent).toBe('Notas1');
+  });
+
+  it('reads the counts again when a note is deleted', async () => {
+    await open(sample());
+    expect(kind('Todas').textContent).toBe('Todas5');
+    await view.click(view.button('Excluir'));
+    await view.click(view.button('Confirmar exclusão'));
+    await flush();
+    expect(kind('Todas').textContent).toBe('Todas4');
+    expect(tagButton('filosofia').textContent).toBe('#filosofia2');
   });
 });
