@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { useGlobalStore } from '../../store/useGlobalStore';
 import { NoteItem } from '../reader/components/NoteItem';
 import { ExportNotes } from './components/ExportNotes';
+import { NotesFacets } from './components/NotesFacets';
+import { useNotesFacets } from './api/useNotesFacets';
 import { PAGE_SIZE, useNotesList } from './api/useNotesList';
-
-const KINDS = [['', 'Todas'], ['note', 'Notas'], ['highlight', 'Destaques'], ['bookmark', 'Marcadores']];
 
 /**
  * Every note, highlight and bookmark of the person, from every work (#13, RF-016, RF-018, UI-05): newest first,
- * narrowed by text, kind, tag and work, with the reference of each and a way back to the place in the file.
+ * narrowed by text, kind, tag and work, with the reference of each and a way back to the place in the file. A
+ * panel beside the list says how many notes each kind and each tag has, under the other filters.
  * Notes of a work that left the library stay, with their text and the source marked unavailable. Nothing here
  * is shown to anyone else.
  */
@@ -32,6 +33,7 @@ export function NotesPage() {
 
   const filters = { q, kind, tag, workId: work?.id };
   const { data, isLoading, isError, isFetching } = useNotesList(filters, page);
+  const { data: facets } = useNotesFacets(filters);
   const notes = data?.data ?? [];
   const total = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -53,7 +55,7 @@ export function NotesPage() {
   const last = Math.min(page * PAGE_SIZE, total);
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6" aria-busy={isFetching}>
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6" aria-busy={isFetching}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-brand">À margem da leitura</p>
@@ -82,18 +84,6 @@ export function NotesPage() {
           maxLength={200}
           className="w-full rounded-lg border border-border-hairline bg-white px-3 py-2.5 font-body text-sm text-ink placeholder:text-ink-faint outline-none focus:border-brand focus:ring-2 focus:ring-brand/15"
         />
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por tipo">
-          {KINDS.map(([value, label]) => (
-            <button
-              key={value || 'all'}
-              onClick={() => setKind(value)}
-              aria-pressed={kind === value}
-              className={`min-h-9 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${kind === value ? 'bg-brand text-white' : 'bg-surface-alt text-ink-soft hover:bg-border-hairline hover:text-ink'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
         {(work || tag) && (
           <div className="flex flex-wrap items-center gap-2 text-xs" aria-label="Filtros ativos">
             {work && (
@@ -115,7 +105,11 @@ export function NotesPage() {
         )}
       </div>
 
-      <div className="mt-5">
+      <div className="mt-5 grid gap-6 lg:grid-cols-[14rem_minmax(0,1fr)]">
+        <aside aria-label="Filtros das anotações" className="lg:sticky lg:top-4 lg:self-start">
+          <NotesFacets facets={facets} kind={kind} onKind={setKind} tag={tag} onTag={setTag} />
+        </aside>
+        <div>
         {isLoading && <p className="animate-pulse text-sm text-ink-soft">Carregando…</p>}
         {isError && <p role="alert" className="text-sm text-red-700">Não foi possível carregar as anotações.</p>}
         {!isLoading && !isError && notes.length === 0 && (
@@ -137,19 +131,20 @@ export function NotesPage() {
             />
           ))}
         </ul>
-      </div>
 
-      {total > PAGE_SIZE && (
-        <nav className="mt-5 flex items-center justify-between gap-3 text-xs text-ink-soft" aria-label="Páginas de anotações">
-          <button onClick={() => setPage((p) => p - 1)} disabled={page <= 1} className="min-h-10 rounded-lg border border-border-hairline bg-white px-4 py-2 hover:bg-surface-alt disabled:opacity-40">
-            Anterior
-          </button>
-          <span>{first}–{last} de {total}</span>
-          <button onClick={() => setPage((p) => p + 1)} disabled={page >= pages} className="min-h-10 rounded-lg border border-border-hairline bg-white px-4 py-2 hover:bg-surface-alt disabled:opacity-40">
-            Próxima
-          </button>
-        </nav>
-      )}
+        {total > PAGE_SIZE && (
+          <nav className="mt-5 flex items-center justify-between gap-3 text-xs text-ink-soft" aria-label="Páginas de anotações">
+            <button onClick={() => setPage((p) => p - 1)} disabled={page <= 1} className="min-h-10 rounded-lg border border-border-hairline bg-white px-4 py-2 hover:bg-surface-alt disabled:opacity-40">
+              Anterior
+            </button>
+            <span>{first}–{last} de {total}</span>
+            <button onClick={() => setPage((p) => p + 1)} disabled={page >= pages} className="min-h-10 rounded-lg border border-border-hairline bg-white px-4 py-2 hover:bg-surface-alt disabled:opacity-40">
+              Próxima
+            </button>
+          </nav>
+        )}
+        </div>
+      </div>
 
       {exporting && <ExportNotes filters={{ q, kind, tag, work }} total={total} onClose={() => setExporting(false)} />}
     </div>
