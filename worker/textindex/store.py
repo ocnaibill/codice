@@ -9,8 +9,10 @@ import json
 import os
 import zipfile
 
-from . import EXTRACTOR_VERSION, LOCATOR_VERSION
+from . import EXTRACTOR_VERSION, LOCATOR_VERSION, required_version
 from .language import detect as detect_language
+from .audio import audio_segments
+from .comic import comic_segments
 from .epub import epub_segments
 from .pdf import pdf_segments
 from .plain import plain_segments
@@ -18,14 +20,21 @@ from .plain import plain_segments
 BATCH = 200
 SAMPLE_PIECE = 300       # characters taken from the start of each segment, to tell the language
 SAMPLE_PIECES = 1200     # segments the sample is made from, spread over the whole file
-# The formats that have text to read. Comics and audio have none (until OCR, for comics); MOBI is not
-# read here.
+# The formats that have text to read. A comic and an audio file have only what their metadata says (the ComicInfo.xml,
+# the chapters and the description; the pages are for OCR and the speech for recognition); MOBI is not read here.
 READERS = {
     'epub': lambda path, checkpoint, out: epub_segments(path, checkpoint, out),
     'pdf': lambda path, checkpoint, out: pdf_segments(path, checkpoint, out),
     'txt': lambda path, checkpoint, out: plain_segments(path, 'txt', checkpoint),
     'md': lambda path, checkpoint, out: plain_segments(path, 'md', checkpoint),
+    'cbz': lambda path, checkpoint, out: comic_segments(path, 'cbz', checkpoint),
+    'cbr': lambda path, checkpoint, out: comic_segments(path, 'cbr', checkpoint),
+    **{fmt: (lambda path, checkpoint, out, fmt=fmt: audio_segments(path, fmt, checkpoint))
+       for fmt in ('mp3', 'm4a', 'm4b', 'ogg', 'wav', 'flac')},
 }
+# What these formats have is the description of the file, not its body: with none, there is no text to read yet (not
+# an empty scan waiting for OCR), and what there is says nothing about the language the book is written in.
+METADATA_ONLY = {'cbz', 'cbr', 'mp3', 'm4a', 'm4b', 'ogg', 'wav', 'flac'}
 
 FILES_OF_WORK = """
     SELECT f.id, COALESCE(f.format, ''), f.sha256, COALESCE(e.language, ''), f.availability,
@@ -62,8 +71,8 @@ class TextIndexer:
         self.log = log
 
     def needs_reading(self, row, force):
-        _id, _fmt, sha, _lang, _avail, _mode, _root, _path, version, source_sha, status = row
-        if force or version is None or version < self.version:
+        _id, fmt, sha, _lang, _avail, _mode, _root, _path, version, source_sha, status = row
+        if force or version is None or version < min(required_version(fmt), self.version):
             return True
         if status == 'failed':
             return False  # it failed the same way: only asking again (force) or a new version tries it
@@ -94,8 +103,10 @@ class TextIndexer:
             found = {}  # what a reader learns besides the segments: the shape of the book
             pieces = []  # and a sample of the text, to tell the language when the file does not
             count = self.write(file_id, generation, reader(full, checkpoint, found), checkpoint, pieces)
-            detected = None if language or not count else self.detect(pieces)
-            status = self.publish(file_id, generation, sha, 'ready' if count else 'empty', language or detected, found.get('structure'))
+            metadata_only = fmt in METADATA_ONLY
+            detected = None if language or not count or metadata_only else self.detect(pieces)
+            none = 'unsupported' if metadata_only else 'empty'
+            status = self.publish(file_id, generation, sha, 'ready' if count else none, language or detected, found.get('structure'))
             if detected:
                 self.suggest_language(file_id, detected)
             return status

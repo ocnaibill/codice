@@ -10,6 +10,10 @@ a word broken by a hyphen at the end of a line in a PDF joined again, and paragr
 line break. Searching ignores case and accents in the database, so none of that is done to the text.
 Change any of it, or a limit, and EXTRACTOR_VERSION goes up: every file is read again.
 
+Version 5 reads the text a comic or an audio file carries in its metadata (comic.py, audio.py): the ComicInfo.xml of a
+comic, the chapters and the description of an audio file. It changes nothing for the other formats, so it is a
+version of those formats only (FORMAT_VERSION): the files of the others are not read again for it.
+
 Version 4 tells the language of a file from its text, when the file does not declare one (language.py), and
 proposes it as a suggestion.
 
@@ -21,7 +25,18 @@ outline it is in, and the file's nodes are published with its text. A segment ne
 from dataclasses import dataclass
 from typing import Optional
 
-EXTRACTOR_VERSION = 4
+EXTRACTOR_VERSION = 5
+
+# The version a file of each format has to have been read with to be up to date. A change that concerns one format
+# raises only its number, so the others are not read again (a library of PDFs is not read again for a comic's
+# ComicInfo.xml). Formats that are not here were last changed at BASE_VERSION.
+BASE_VERSION = 4
+FORMAT_VERSION = {fmt: 5 for fmt in ('cbz', 'cbr', 'mp3', 'm4a', 'm4b', 'ogg', 'wav', 'flac')}
+
+
+def required_version(fmt):
+    """The version a file of this format has to have been read with (see FORMAT_VERSION)."""
+    return FORMAT_VERSION.get((fmt or '').lower(), BASE_VERSION)
 
 # The version of the locator contract (backend/internal/locator). Segments carry it, so whoever reads
 # them knows how to read their addresses if the contract ever changes.
@@ -46,3 +61,6 @@ class Limits:
     MAX_PDF_PAGES = 20000
     MAX_TEXT_FILE_BYTES = 60 * 1024 * 1024
     MAX_CHARS = 40_000_000                  # of text in one file (a long novel is a few million)
+    MAX_METADATA_BYTES = 2 * 1024 * 1024    # a ComicInfo.xml (they are a few KB)
+    MAX_METADATA_CHARS = 20_000             # of one description, one list of characters...
+    MAX_CHAPTERS = 5000                     # of one audio file

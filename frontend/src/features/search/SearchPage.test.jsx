@@ -132,3 +132,23 @@ it('says nothing about the mode when there is no passage, or when the server doe
   expect(passagesText()).not.toContain('Inclui outras formas');
   expect(passagesText()).not.toContain('Busca exata');
 });
+
+it('says where the text of a passage comes from: the file, OCR, or what a comic or an audio file says of itself', async () => {
+  const hit = (id, extra) => ({ segmentId: id, workId: 7, fileId: 10, workTitle: 'Duna', workAuthor: 'Frank Herbert', format: 'epub', language: 'pt', section: '', origin: 'native', snippet: 'texto', matches: [], locator, ...extra });
+  api.get.mockImplementation(async (url) => {
+    if (url.startsWith('/works?')) return { data: { data: [], totalPages: 0 } };
+    if (url === '/notes') return { data: { data: [], total: 0 } };
+    if (url === '/search') return { data: { data: [
+      hit(1, {}),
+      hit(2, { origin: 'ocr', locator: { type: 'pdf', page: 3 } }),
+      hit(3, { format: 'm4b', locator: { type: 'audio', track: 0, ms: 65250 } }),
+      hit(4, { format: 'cbz', locator: { type: 'image', index: 0, item: 'ComicInfo.xml' } }),
+      hit(5, { format: 'cbz', locator: { type: 'image', index: 3 } }),
+    ], hasMore: false } };
+    throw new Error(url);
+  });
+  await act(async () => root.render(<QueryClientProvider client={client}><SearchPage query="texto" /></QueryClientProvider>));
+  await flush();
+  const labels = [...container.querySelectorAll('[aria-label="Passagens"] li')].map((li) => li.querySelectorAll('p')[1].textContent.split(' · ').pop());
+  expect(labels).toEqual(['Texto do arquivo', 'OCR', 'Metadados do arquivo', 'Metadados do arquivo', 'Texto do arquivo']);
+});
