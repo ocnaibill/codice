@@ -71,6 +71,7 @@ func newRouter(d routerDeps) http.Handler {
 	ocrAdmin := &handlers.OCRHandler{DB: db}
 	ocrSettings := &handlers.OCRSettingsHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
+	graphHandler := &handlers.GraphHandler{DB: db}
 	statsHandler := &handlers.StatsHandler{DB: db}
 
 	r := chi.NewRouter()
@@ -261,6 +262,19 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Get("/notes/export", notesHandler.ExportNotes)
 	r.With(auth).Patch("/notes/{id}", notesHandler.UpdateNote)
 	r.With(auth).Delete("/notes/{id}", notesHandler.DeleteNote)
+
+	// The manual graph: a person's concepts and the relations they draw (DEC-109). All personal.
+	r.With(auth).Get("/graph/types", graphHandler.Types)
+	r.With(auth).Get("/concepts", graphHandler.ListConcepts)
+	r.With(auth).Post("/concepts", graphHandler.CreateConcept)
+	r.With(auth).Get("/concepts/resolve", graphHandler.ResolveConcept)
+	r.With(auth).Get("/concepts/{id}", graphHandler.GetConcept)
+	r.With(auth).Patch("/concepts/{id}", graphHandler.UpdateConcept)
+	r.With(auth).Delete("/concepts/{id}", graphHandler.DeleteConcept)
+	r.With(auth).Get("/relations", graphHandler.ListRelations)
+	r.With(auth).Post("/relations", graphHandler.CreateRelation)
+	r.With(auth).Patch("/relations/{id}", graphHandler.UpdateRelation)
+	r.With(auth).Delete("/relations/{id}", graphHandler.DeleteRelation)
 	r.With(auth).Get("/stats", statsHandler.GetStats)
 
 	// Page streaming endpoints (CBZ/CBR)

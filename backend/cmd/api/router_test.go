@@ -202,6 +202,17 @@ func TestAuthRoutes_RequireASession(t *testing.T) {
 		{"DELETE", "/auth/app-tokens/" + someUUID},
 		{"GET", "/works"},
 		{"GET", "/notes"},
+		{"GET", "/graph/types"},
+		{"GET", "/concepts"},
+		{"POST", "/concepts"},
+		{"GET", "/concepts/resolve?name=x"},
+		{"GET", "/concepts/1"},
+		{"PATCH", "/concepts/1"},
+		{"DELETE", "/concepts/1"},
+		{"GET", "/relations"},
+		{"POST", "/relations"},
+		{"PATCH", "/relations/1"},
+		{"DELETE", "/relations/1"},
 	} {
 		if rec := do(h, rt.method, rt.path, "", ""); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without token: got %d, want 401", rt.method, rt.path, rec.Code)

@@ -60,6 +60,11 @@ func newSource(t *testing.T) *source {
 	}
 	s.must(os.MkdirAll(filepath.Join(s.storage, "covers"), 0o755))
 	s.must(os.WriteFile(filepath.Join(s.storage, "covers", "c1.jpg"), []byte("jpeg"), 0o644))
+	// What the reader built in the graph: a concept, with the names it answers to, and a relation from one of her notes.
+	s.exec(`INSERT INTO concepts (user_id, name, description, aliases) VALUES ($1, 'Poder', 'sobre o poder', '{Domínio}')`, readerID)
+	s.exec(`INSERT INTO concept_keys (user_id, key, concept_id) SELECT $1, k, c.id FROM concepts c, unnest(ARRAY['poder', 'dominio']) k`, readerID)
+	s.exec(`INSERT INTO relations (user_id, source_kind, source_id, type, target_kind, target_id, comment, source_label, target_label)
+	        SELECT $1, 'note', (SELECT min(id) FROM notes), 'mentions', 'concept', c.id, 'um comentário', '{"label":"nota"}', '{"label":"Poder"}' FROM concepts c`, readerID)
 	// Credentials that must never travel in a package.
 	s.exec(`INSERT INTO sessions (user_id, expires_at) VALUES ($1, now() + interval '1 day')`, ownerID)
 	s.exec(`INSERT INTO app_tokens (user_id, name, token_hash) VALUES ($1, 'kobo', repeat('a', 64))`, readerID)
@@ -512,6 +517,20 @@ func TestRoundTrip_RestoresNotesFilesAndCoversIntoACleanInstance(t *testing.T) {
 	db := tg.open()
 	if got := scalar(t, db, `SELECT string_agg(quote, '|' ORDER BY quote) FROM notes`); got != "minha nota sobre Duna|minha nota sobre Neuromancer" {
 		t.Errorf("notes = %q", got)
+	}
+	// The graph is personal data, not derived: the concepts, their names and the relations come back, and the triggers
+	// that take a relation away with its note or its concept still do.
+	if got := scalar(t, db, `SELECT c.name || ':' || c.description || ':' || (SELECT count(*) FROM concept_keys k WHERE k.concept_id = c.id) FROM concepts c`); got != "Poder:sobre o poder:2" {
+		t.Errorf("concepts = %q", got)
+	}
+	if got := scalar(t, db, `SELECT type || ':' || comment || ':' || (target_label->>'label') FROM relations`); got != "mentions:um comentário:Poder" {
+		t.Errorf("relations = %q", got)
+	}
+	if _, err := db.Exec(`DELETE FROM notes WHERE id = (SELECT min(id) FROM notes)`); err != nil {
+		t.Fatal(err)
+	}
+	if scalar(t, db, `SELECT count(*) FROM relations`) != "0" {
+		t.Error("the trigger that takes a relation with its note did not come back")
 	}
 	// The files open again, byte for byte, and so does the cover.
 	for _, rel := range []string{"Autor 0/Duna.epub", "Autor 1/Neuromancer.epub", "covers/c1.jpg"} {
