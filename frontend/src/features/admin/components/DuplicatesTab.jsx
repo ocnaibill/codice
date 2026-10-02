@@ -4,9 +4,8 @@ import {
 } from '../api/admin';
 import { ConfirmDialog } from './ConfirmDialog';
 import { PeopleMerges } from './PeopleMerges';
+import { REASON, contentLine } from '../../../lib/duplicates';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
-
-const REASON = { isbn: 'Mesmo ISBN', title_author: 'Mesmo título e autor' };
 
 function Side({ work }) {
   return (
@@ -41,6 +40,7 @@ function Duplicates() {
         {pairs.map((pair) => (
           <li key={pair.id} className="py-4">
             <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-ink-faint">{REASON[pair.reason] || pair.reason}</p>
+            {contentLine(pair) && <p className="mb-2 text-[12px] text-ink-soft">{contentLine(pair)}</p>}
             <div className="grid gap-3 sm:grid-cols-2">
               <Side work={pair.a} />
               <Side work={pair.b} />

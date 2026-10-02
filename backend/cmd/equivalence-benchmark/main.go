@@ -31,6 +31,8 @@ type result struct {
 	Method     string `json:"method,omitempty"`
 	Confidence string `json:"confidence,omitempty"`
 	Distance   *int   `json:"distance,omitempty"`
+	// Sequence is the segment of the destination the first candidate points to, in reading order.
+	Sequence *int `json:"sequence,omitempty"`
 	// Evidence is what the first candidate says of itself (shares of names found, whether the way back agrees).
 	Evidence      map[string]any `json:"evidence,omitempty"`
 	LatencyMicros int64          `json:"latencyMicros"`
@@ -68,6 +70,8 @@ func main() {
 		if len(answer.Candidates) > 0 {
 			candidate := answer.Candidates[0]
 			row.Method, row.Confidence, row.Evidence = candidate.Method, candidate.Confidence, candidate.Evidence
+			sequence := candidate.Sequence()
+			row.Sequence = &sequence
 			if tc.ExpectedSeq != nil {
 				var locator struct {
 					Offset int `json:"offset"`

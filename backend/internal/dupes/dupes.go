@@ -6,6 +6,7 @@ package dupes
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -165,7 +166,9 @@ func Detect(ctx context.Context, db *sql.DB, workID int) (int, error) {
 			}
 		}
 	}
-	return found, nil
+	// The words: the same text under another title, in another format.
+	added, err := detectContent(ctx, db, workID)
+	return found + added, err
 }
 
 // DetectAll compares every pair of active works.
@@ -186,6 +189,13 @@ func DetectAll(ctx context.Context, db *sql.DB) (int, error) {
 			}
 		}
 	}
+	for _, w := range works {
+		added, err := detectContent(ctx, db, w.id)
+		if err != nil {
+			return found, err
+		}
+		found += added
+	}
 	return found, nil
 }
 
@@ -195,6 +205,9 @@ type Candidate struct {
 	Reason string  `json:"reason"`
 	A      Summary `json:"a"`
 	B      Summary `json:"b"`
+	// Evidence is what made the pair worth a look, when it says more than the reason: the shares of text in
+	// common (internal/fingerprint).
+	Evidence json.RawMessage `json:"evidence,omitempty"`
 }
 
 // Summary is what an admin needs to tell two works apart.
@@ -210,7 +223,7 @@ type Summary struct {
 // ListPending returns the pairs waiting for a decision, both works still active.
 func ListPending(ctx context.Context, db *sql.DB) ([]Candidate, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT d.id, d.reason, d.work_a, d.work_b FROM duplicate_candidates d
+		SELECT d.id, d.reason, d.work_a, d.work_b, d.evidence FROM duplicate_candidates d
 		JOIN works a ON a.id = d.work_a AND a.retired_at IS NULL
 		JOIN works b ON b.id = d.work_b AND b.retired_at IS NULL
 		WHERE d.state = 'pending' ORDER BY d.id`)
@@ -218,14 +231,15 @@ func ListPending(ctx context.Context, db *sql.DB) ([]Candidate, error) {
 		return nil, err
 	}
 	type pair struct {
-		id     int64
-		reason string
-		a, b   int
+		id       int64
+		reason   string
+		a, b     int
+		evidence []byte
 	}
 	var pairs []pair
 	for rows.Next() {
 		var p pair
-		if err := rows.Scan(&p.id, &p.reason, &p.a, &p.b); err != nil {
+		if err := rows.Scan(&p.id, &p.reason, &p.a, &p.b, &p.evidence); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -242,7 +256,7 @@ func ListPending(ctx context.Context, db *sql.DB) ([]Candidate, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, Candidate{ID: p.id, Reason: p.reason, A: a, B: b})
+		out = append(out, Candidate{ID: p.id, Reason: p.reason, A: a, B: b, Evidence: json.RawMessage(p.evidence)})
 	}
 	return out, nil
 }

@@ -7,6 +7,7 @@ import fitz
 import pytest
 
 from textindex import BASE_VERSION, EXTRACTOR_VERSION, Limits, Segment
+from textindex.store import ENQUEUE_DEDUPE
 from textindex import normalize
 from textindex.epub import epub_segments
 from textindex.pdf import pdf_segments
@@ -370,12 +371,39 @@ class TestIndexer:
         db = FakeDB([file_row(7, 'pdf', 'aa', 'pt', path='a.pdf')], generation=3)
         out = TextIndexer(db, str(storage)).run(9)
         assert out == {7: 'ready'}
-        assert db.names() == ['text_extraction_begin', 'insert_many', 'text_extraction_publish']
+        assert db.names() == ['text_extraction_begin', 'insert_many', 'text_extraction_publish', 'INSERT INTO jobs']
         file_id, generation, sequence, origin, section, text, locator, version, node = db.rows[0]
         assert (file_id, generation, sequence, origin, version, node) == (7, 3, 0, 'native', 1, None)
         assert 'Texto de uma página' in text and json.loads(locator) == {'type': 'pdf', 'page': 0}
         publish = [c for c in db.calls if c[1] == 'text_extraction_publish'][0][2]
         assert publish == (7, 3, EXTRACTOR_VERSION, 'aa', 'ready', 'native', 'pt', None)  # a PDF with no bookmarks has no structure
+
+    def test_the_work_is_queued_to_be_compared_with_the_others_once_it_has_text(self, storage):
+        db = FakeDB([file_row(7, 'pdf', 'aa', 'pt', path='a.pdf')])
+        TextIndexer(db, str(storage)).run(9)
+        queued = [c for c in db.calls if c[1] == 'INSERT INTO jobs']
+        assert len(queued) == 1 and queued[0][2] == (9,)
+        statement = ENQUEUE_DEDUPE
+        assert "'dedupe'" in statement and '-10' in statement and 'DO NOTHING' in statement  # behind what people asked for, once
+
+    def test_one_job_however_many_files_were_read(self, storage):
+        make_pdf(storage / 'b.pdf', ['Outro texto de uma página com o bastante para contar.'])
+        db = FakeDB([file_row(7, 'pdf', 'aa', 'pt', path='a.pdf'), file_row(8, 'pdf', 'bb', 'pt', path='b.pdf')])
+        assert TextIndexer(db, str(storage)).run(9) == {7: 'ready', 8: 'ready'}
+        assert len([c for c in db.calls if c[1] == 'INSERT INTO jobs']) == 1
+
+    def test_nothing_is_queued_when_the_text_is_not_there(self, storage):
+        (storage / 'bad.pdf').write_bytes(b'this is not a pdf')
+        for row, status in ((file_row(7, 'pdf', path='scan.pdf'), 'empty'),      # no text layer: waits for OCR
+                            (file_row(7, 'pdf', path='bad.pdf'), 'failed')):     # cannot be read
+            db = FakeDB([row])
+            assert TextIndexer(db, str(storage)).run(9) == {7: status}
+            assert not [c for c in db.calls if c[1] == 'INSERT INTO jobs'], status
+
+    def test_a_file_that_is_up_to_date_does_not_queue_anything(self, storage):
+        db = FakeDB([file_row(7, 'pdf', 'aa', 'pt', path='a.pdf', version=EXTRACTOR_VERSION, source_sha='aa', status='ready')])
+        assert TextIndexer(db, str(storage)).run(9) == {}
+        assert not [c for c in db.calls if c[1] == 'INSERT INTO jobs']
 
     def test_a_file_with_no_text_is_published_as_empty_without_segments(self, storage):
         db = FakeDB([file_row(7, 'pdf', path='scan.pdf')])
