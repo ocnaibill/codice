@@ -346,3 +346,21 @@ describe('NotesPage, the panel that narrows the list', () => {
     expect(tagButton('filosofia').textContent).toBe('#filosofia2');
   });
 });
+
+describe('NotesPage, while the notes load', () => {
+  it('shows the shape of the list in place of a plain "Carregando"', async () => {
+    notes = [note(1)];
+    api.get.mockReturnValue(new Promise(() => {}));
+    view = await mount(<NotesPage />);
+    const loading = document.body.querySelector('[aria-label="Carregando as anotações"]');
+    expect(loading).not.toBeNull();
+    expect(loading.querySelectorAll('[role="status"]')).toHaveLength(3);
+  });
+
+  it('takes the shapes away once the notes are there', async () => {
+    await open([note(1)]);
+    expect(document.body.querySelector('[aria-label="Carregando as anotações"]')).toBeNull();
+    expect(view.text()).toContain('Trecho 1');
+  });
+});
+

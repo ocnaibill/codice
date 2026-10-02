@@ -151,10 +151,10 @@ export function AppsModal({ onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-4"
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Aplicativos" className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Aplicativos" className="max-h-[92vh] w-full max-w-lg overflow-y-auto animate-pop-in rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">Aplicativos</h2>
         <p className="mt-1 text-[13px] text-ink-soft">
           Para ler seu acervo em outro aplicativo (KOReader, Moon+ Reader, Librera…), crie um acesso para ele. É uma senha só
