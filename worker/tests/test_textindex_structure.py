@@ -209,3 +209,181 @@ class TestEpubOutlineTies:
         epub_with_outline(path, {'a.xhtml': f'<h1 id="x">Livro</h1><p>{words(300, "a")}</p>'},
                           [point(1, 'Livro', 'a.xhtml#x', point(2, 'Capítulo I', 'a.xhtml#x'))])
         assert {s.node for s in epub_segments(str(path))} == {1}
+
+
+# --- what the file says it is (epub:type) ---
+
+OPS = 'xmlns:epub="http://www.idpf.org/2007/ops"'
+
+
+def epub3(path, docs, toc, landmarks=(), body_types=None, toc_types=None):
+    """An EPUB 3. docs: {href: inner xhtml}; toc: [(title, href[#fragment])] in the navigation document;
+    landmarks: [(epub:type, href)]; body_types: {href: epub:type of its <body>}."""
+    body_types = body_types or {}
+    manifest = ''.join(f'<item id="d{i}" href="{h}" media-type="application/xhtml+xml"/>' for i, h in enumerate(docs))
+    spine = ''.join(f'<itemref idref="d{i}"/>' for i in range(len(docs)))
+    opf = ('<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata/><manifest>'
+           f'<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>{manifest}</manifest><spine>{spine}</spine></package>')
+    toc_types = toc_types or {}
+    toc_items = ''.join(f'<li><a href="{h}"' + (f' epub:type="{toc_types[h]}"' if h in toc_types else '') + f'>{t}</a></li>' for t, h in toc)
+    marks = ''.join(f'<li><a epub:type="{k}" href="{h}">x</a></li>' for k, h in landmarks)
+    nav = (f'<html xmlns="http://www.w3.org/1999/xhtml" {OPS}><body><nav epub:type="toc"><ol>{toc_items}</ol></nav>'
+           f'<nav epub:type="landmarks"><ol>{marks}</ol></nav></body></html>')
+    with zipfile.ZipFile(path, 'w') as zf:
+        zf.writestr('mimetype', 'application/epub+zip')
+        zf.writestr('META-INF/container.xml', '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">'
+                    '<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
+        zf.writestr('OEBPS/content.opf', opf)
+        zf.writestr('OEBPS/nav.xhtml', nav)
+        for href, inner in docs.items():
+            attr = f' epub:type="{body_types[href]}"' if href in body_types else ''
+            zf.writestr(f'OEBPS/{href}', f'<html xmlns="http://www.w3.org/1999/xhtml" {OPS}><head><title>x</title></head><body{attr}>{inner}</body></html>')
+
+
+def parts_of(path):
+    out = {}
+    list(epub_segments(str(path), out=out))
+    return {n['title']: n['part'] for n in out['structure']}
+
+
+class TestDeclaredPart:
+    def test_the_tokens_say_which_end_of_the_book_it_is(self):
+        assert structure.declared_part(['bodymatter']) == 'body'
+        assert structure.declared_part(['frontmatter', 'preface']) == 'front'
+        assert structure.declared_part(['backmatter']) == 'back'
+        for kind in ('cover', 'titlepage', 'dedication', 'toc', 'foreword', 'copyright-page', 'epigraph'):
+            assert structure.declared_part([kind]) == 'front', kind
+        for kind in ('appendix', 'glossary', 'index', 'bibliography', 'colophon', 'afterword', 'endnotes', 'errata'):
+            assert structure.declared_part([kind]) == 'back', kind
+        assert structure.declared_part(['chapter']) == 'body' and structure.declared_part(['part']) == 'body'
+
+    def test_what_puts_it_outside_the_story_wins_over_what_puts_it_in(self):
+        assert structure.declared_part(['chapter', 'appendix']) == 'back'
+        assert structure.declared_part(['bodymatter', 'preface']) == 'front'
+        assert structure.declared_part(['preface', 'appendix']) == 'back'
+
+    def test_a_token_that_does_not_say_where_it_is_says_nothing(self):
+        for tokens in ([], None, ['introduction'], ['acknowledgments'], ['z3998:poem'], [''], ['  ']):
+            assert structure.declared_part(tokens) is None, tokens
+        assert structure.declared_part([' BodyMatter ']) == 'body'
+
+
+class TestClassifyDeclared:
+    def node(self, title, chars, declared=None, depth=0):
+        return {'title': title, 'depth': depth, 'chars': chars, 'declared': declared}
+
+    def test_a_node_that_says_what_it_is_is_not_guessed_from_its_name(self):
+        nodes = [self.node('Capítulo I', 9000), self.node('Capítulo II', 9000), self.node('Quem é quem', 5000, 'back')]
+        # Without the declaration the last node, as large as a chapter, is a chapter.
+        undeclared = [{k: v for k, v in n.items() if k != 'declared'} for n in nodes]
+        assert [n['part'] for n in structure.classify(undeclared)] == ['body', 'body', 'body']
+        assert [n['part'] for n in structure.classify(nodes)] == ['body', 'body', 'back']
+
+    def test_a_front_declared_node_in_the_middle_of_the_story_stays_front(self):
+        nodes = [self.node('Capítulo I', 9000), self.node('Nota', 400, 'front'), self.node('Capítulo II', 9000)]
+        assert [n['part'] for n in structure.classify(nodes)] == ['body', 'front', 'body']
+
+    def test_a_short_node_that_declares_itself_the_story_is_the_story(self):
+        nodes = [self.node('Capa', 30), self.node('Um', 9000), self.node('Dois', 9000), self.node('Epílogo', 300, 'body'), self.node('Notas', 800)]
+        assert [n['part'] for n in structure.classify(nodes)] == ['front', 'body', 'body', 'body', 'back']
+
+    def test_a_node_called_appendix_that_says_it_is_the_story_is_the_story(self):
+        nodes = [self.node('Um', 9000), self.node('Apêndice', 9000, 'body'), self.node('Dois', 9000)]
+        assert [n['part'] for n in structure.classify(nodes)] == ['body', 'body', 'body']
+
+    def test_the_declaration_is_taken_out_of_the_node(self):
+        nodes = structure.classify([self.node('Um', 9000, 'body'), self.node('Dois', 9000)])
+        assert all(set(n) == {'title', 'depth', 'chars', 'part'} for n in nodes)
+
+    def test_what_declares_nothing_is_decided_as_before(self):
+        nodes = [self.node('Título', 40), self.node('Sumário', 300), self.node('Capítulo I', 9000), self.node('Capítulo II', 9000), self.node('Glossário', 3000)]
+        assert [n['part'] for n in structure.classify(nodes)] == ['front', 'front', 'body', 'body', 'back']
+
+    def test_short_nodes_that_declare_themselves_the_story_say_where_it_ends(self):
+        # Too short to be taken for chapters by their size: what is declared is where the story is, and what follows is the end.
+        nodes = [self.node('Um', 300, 'body'), self.node('Dois', 300, 'body'), self.node('Despedida', 200)]
+        assert [n['part'] for n in structure.classify(nodes)] == ['body', 'body', 'back']
+
+    def test_a_node_nested_under_one_that_is_not_the_story_is_not_the_story(self):
+        nodes = [self.node('Um', 9000, 'body'), self.node('Anexos', 100, 'back'), self.node('Parte', 9000, 'body', depth=1)]
+        assert [n['part'] for n in structure.classify(nodes)] == ['body', 'back', 'back']
+
+
+class TestEpubDeclared:
+    def text(self, tag, n=400):
+        return f'<p>{words(n, tag)}</p>'
+
+    def test_a_document_that_declares_itself_in_its_body_is_what_it_says(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        epub3(path, {'capa.xhtml': self.text('capa', 20), 'c1.xhtml': self.text('um'), 'c2.xhtml': self.text('dois'), 'quem.xhtml': self.text('quem')},
+              [('Capa', 'capa.xhtml'), ('Um', 'c1.xhtml'), ('Dois', 'c2.xhtml'), ('Quem é quem', 'quem.xhtml')],
+              body_types={'capa.xhtml': 'cover', 'c1.xhtml': 'bodymatter chapter', 'c2.xhtml': 'bodymatter chapter', 'quem.xhtml': 'backmatter'})
+        assert parts_of(path) == {'Capa': 'front', 'Um': 'body', 'Dois': 'body', 'Quem é quem': 'back'}
+
+    def test_the_same_book_without_the_declaration_is_guessed_from_the_titles(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        epub3(path, {'c1.xhtml': self.text('um', 2000), 'c2.xhtml': self.text('dois', 2000), 'quem.xhtml': self.text('quem', 2000)},
+              [('Um', 'c1.xhtml'), ('Dois', 'c2.xhtml'), ('Quem é quem', 'quem.xhtml')])
+        assert parts_of(path) == {'Um': 'body', 'Dois': 'body', 'Quem é quem': 'body'}
+
+    def test_the_section_that_is_all_of_a_document_says_it_when_the_body_does_not(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        epub3(path, {'c1.xhtml': f'<section epub:type="chapter">{self.text("um", 2000)}</section>',
+                     'c2.xhtml': f'<section epub:type="chapter">{self.text("dois", 2000)}</section>',
+                     'quem.xhtml': f'<section epub:type="appendix">{self.text("quem", 2000)}</section>'},
+              [('Um', 'c1.xhtml'), ('Dois', 'c2.xhtml'), ('Quem é quem', 'quem.xhtml')])
+        assert parts_of(path) == {'Um': 'body', 'Dois': 'body', 'Quem é quem': 'back'}
+
+    def test_a_section_that_does_not_open_the_document_does_not_speak_for_it(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        epub3(path, {'c1.xhtml': self.text('um', 2000) + f'<section epub:type="appendix">{self.text("x", 100)}</section>',
+                     'c2.xhtml': self.text('dois', 2000)},
+              [('Um', 'c1.xhtml'), ('Dois', 'c2.xhtml')])
+        assert parts_of(path) == {'Um': 'body', 'Dois': 'body'}
+
+    def test_a_node_that_points_into_a_document_is_what_the_section_it_points_to_says(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        inner = (f'<section id="um" epub:type="chapter">{self.text("um", 2000)}</section>'
+                 f'<section id="notas" epub:type="endnotes">{self.text("notas", 300)}</section>')
+        epub3(path, {'tudo.xhtml': inner, 'dois.xhtml': self.text('dois', 2000)}, [('Um', 'tudo.xhtml#um'), ('Notas', 'tudo.xhtml#notas'), ('Dois', 'dois.xhtml')])
+        assert parts_of(path) == {'Um': 'body', 'Notas': 'back', 'Dois': 'body'}
+
+    def test_a_document_declared_back_gives_its_sections_the_same_when_they_say_nothing(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        epub3(path, {'c1.xhtml': self.text('um', 2000), 'c2.xhtml': self.text('dois', 2000),
+                     'anexos.xhtml': f'<h2 id="a">A</h2>{self.text("a", 500)}<h2 id="b">B</h2>{self.text("b", 500)}'},
+              [('Um', 'c1.xhtml'), ('Dois', 'c2.xhtml'), ('A', 'anexos.xhtml#a'), ('B', 'anexos.xhtml#b')],
+              body_types={'anexos.xhtml': 'backmatter'})
+        assert parts_of(path) == {'Um': 'body', 'Dois': 'body', 'A': 'back', 'B': 'back'}
+
+    def test_the_landmarks_say_where_the_story_starts(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        # "Entrada" is long and neutral: by its name and size it would be the first chapter.
+        epub3(path, {'entrada.xhtml': self.text('entrada', 2000), 'c1.xhtml': self.text('um', 2000), 'c2.xhtml': self.text('dois', 2000)},
+              [('Entrada', 'entrada.xhtml'), ('Um', 'c1.xhtml'), ('Dois', 'c2.xhtml')], landmarks=[('bodymatter', 'c1.xhtml')])
+        assert parts_of(path) == {'Entrada': 'front', 'Um': 'body', 'Dois': 'body'}
+
+    def test_and_where_it_ends(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        epub3(path, {'c1.xhtml': self.text('um', 2000), 'c2.xhtml': self.text('dois', 2000), 'fim.xhtml': self.text('fim', 2000)},
+              [('Um', 'c1.xhtml'), ('Dois', 'c2.xhtml'), ('Despedida', 'fim.xhtml')], landmarks=[('bodymatter', 'c1.xhtml'), ('backmatter', 'fim.xhtml')])
+        assert parts_of(path) == {'Um': 'body', 'Dois': 'body', 'Despedida': 'back'}
+
+    def test_what_a_document_says_of_itself_wins_over_the_landmarks(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        epub3(path, {'entrada.xhtml': self.text('entrada', 2000), 'c1.xhtml': self.text('um', 2000), 'c2.xhtml': self.text('dois', 2000)},
+              [('Entrada', 'entrada.xhtml'), ('Um', 'c1.xhtml'), ('Dois', 'c2.xhtml')], landmarks=[('bodymatter', 'c1.xhtml')],
+              body_types={'entrada.xhtml': 'chapter'})
+        assert parts_of(path)['Entrada'] == 'body'
+
+    def test_an_epub_type_on_a_link_of_the_table_of_contents_is_not_a_landmark(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        epub3(path, {'c1.xhtml': self.text('um', 2000), 'c2.xhtml': self.text('dois', 2000)}, [('Um', 'c1.xhtml'), ('Dois', 'c2.xhtml')],
+              toc_types={'c2.xhtml': 'bodymatter'})
+        assert parts_of(path) == {'Um': 'body', 'Dois': 'body'}
+
+    def test_a_landmark_that_points_nowhere_in_the_book_says_nothing(self, tmp_path):
+        path = tmp_path / 'a.epub'
+        epub3(path, {'c1.xhtml': self.text('um', 2000), 'c2.xhtml': self.text('dois', 2000)}, [('Um', 'c1.xhtml'), ('Dois', 'c2.xhtml')],
+              landmarks=[('bodymatter', 'outro.xhtml'), ('backmatter', 'sumiu.xhtml')])
+        assert parts_of(path) == {'Um': 'body', 'Dois': 'body'}
