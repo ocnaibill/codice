@@ -31,7 +31,8 @@ const outline = [
   { title: 'Parte II', dest: at(9) },
 ];
 const withOutline = (items = outline, numPages = 12) => ({ numPages, getOutline: async () => items, getDestination: async () => null, getPageIndex: async (ref) => ref.num - 1 });
-const button = (text) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim().includes(text));
+// The controls are icons with a name: the button is found by it, and the entries of the outline by their text.
+const button = (text) => [...container.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') ?? b.textContent).trim().includes(text));
 const page = () => container.querySelector('[data-testid="page"]').textContent;
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 async function open(props = {}) {
@@ -84,7 +85,8 @@ describe('PdfViewer: the outline of the PDF (#14)', () => {
     await act(async () => { rows[2].click(); });
     expect(page()).toBe('page 9');
     expect(container.querySelector('nav[aria-label="Sumário do PDF"]')).toBeNull();
-    expect(container.textContent).toContain('9 / 12');
+    expect(jumpField().value).toBe('9');
+    expect(container.textContent).toContain('/ 12');
   });
 
   it('saves the page it went to as the progress, like any other page change', async () => {
@@ -105,12 +107,15 @@ describe('PdfViewer: the outline of the PDF (#14)', () => {
 });
 
 describe('PdfViewer: going to a page by number', () => {
-  it('goes to the page typed on Enter, and clears the field', async () => {
+  it('shows the page it is on, goes to the page typed on Enter, and shows that one', async () => {
     await open();
+    expect(jumpField().value).toBe('1');
     await typeIn(jumpField(), '7');
+    expect(jumpField().value).toBe('7');
+    expect(page()).toBe('page 1'); // nothing happens before Enter
     await enter();
     expect(page()).toBe('page 7');
-    expect(jumpField().value).toBe('');
+    expect(jumpField().value).toBe('7');
   });
 
   it('ignores a page that does not exist, a number that is not one, and does nothing without Enter', async () => {
@@ -118,6 +123,7 @@ describe('PdfViewer: going to a page by number', () => {
     await typeIn(jumpField(), '13');
     await enter();
     expect(page()).toBe('page 1');
+    expect(jumpField().value).toBe('1'); // back to the page it is on
     await typeIn(jumpField(), '0');
     await enter();
     await typeIn(jumpField(), 'abc');
@@ -163,3 +169,42 @@ describe('PdfViewer: a page that is not there (#14)', () => {
     expect(page()).toBe('page 1');
   });
 });
+
+describe('PdfViewer: the outline closes by itself', () => {
+  const outlineNav = () => container.querySelector('nav[aria-label="Sumário do PDF"]');
+  const down = (el) => act(async () => { el.dispatchEvent(new Event('pointerdown', { bubbles: true })); });
+
+  it('closes by a touch anywhere outside it, and stays for a touch inside it', async () => {
+    await open();
+    await act(async () => { button('Sumário').click(); });
+    await down(outlineNav());
+    expect(outlineNav()).not.toBeNull();
+    await down(outlineNav().querySelector('button'));
+    expect(outlineNav()).not.toBeNull();
+    await down(document.body);
+    expect(outlineNav()).toBeNull();
+  });
+
+  it('no longer listens for a touch once it is closed', async () => {
+    await open();
+    await act(async () => { button('Sumário').click(); });
+    await act(async () => { button('Sumário').click(); });
+    expect(outlineNav()).toBeNull();
+    await down(document.body);
+    expect(outlineNav()).toBeNull();
+  });
+
+  it('is closed by Escape before the controls are brought back', async () => {
+    const onImmersiveChange = vi.fn();
+    await open({ onImmersiveChange });
+    await act(async () => { button('Sumário').click(); });
+    await open({ onImmersiveChange, immersive: true });
+    expect(outlineNav()).not.toBeNull();
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(outlineNav()).toBeNull();
+    expect(onImmersiveChange).not.toHaveBeenCalled();
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(onImmersiveChange).toHaveBeenCalledWith(false);
+  });
+});
+
