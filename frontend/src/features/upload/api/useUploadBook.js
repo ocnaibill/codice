@@ -10,17 +10,17 @@ import { refreshLibrary } from '../../../lib/refreshLibrary';
 export function describeUploadError(error) {
   const res = error?.response;
   if (!res) {
-    return error?.code === 'ECONNABORTED' ? 'The upload timed out.' : 'Could not reach the server.';
+    return error?.code === 'ECONNABORTED' ? 'O envio demorou demais e foi interrompido.' : 'Não foi possível falar com o servidor.';
   }
   if (res.status === 409 && res.data && typeof res.data === 'object') {
-    const state = res.data.retired ? ' (retired from the library)' : '';
-    return `Already in the library as "${res.data.title}"${state}.`;
+    const state = res.data.retired ? ' (na lixeira)' : '';
+    return `Esse arquivo já está no acervo como “${res.data.title}”${state}.`;
   }
-  if (res.status === 413) return 'The file is too large.';
-  if (res.status === 415) return typeof res.data === 'string' ? res.data.trim() : 'The file is not valid for its format.';
-  if (res.status === 403) return 'Only administrators can add books.';
+  if (res.status === 413) return 'O arquivo é grande demais.';
+  if (res.status === 415) return typeof res.data === 'string' ? res.data.trim() : 'O conteúdo do arquivo não é válido para o formato dele.';
+  if (res.status === 403) return 'Só quem administra o acervo pode adicionar arquivos.';
   if (res.status === 400 && typeof res.data === 'string') return res.data.trim();
-  return 'Error uploading file.';
+  return 'Não foi possível enviar o arquivo.';
 }
 
 const uploadBook = async ({ file, onProgress }) => {
