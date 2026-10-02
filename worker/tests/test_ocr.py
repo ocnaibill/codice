@@ -8,7 +8,7 @@ import fitz
 import pytest
 
 import ocr
-from ocr import (EngineError, EngineMissing, OcrIndexer, Tesseract, effective_dpi, engine_language, render)
+from ocr import (EngineError, EngineMissing, OcrIndexer, Tesseract, declared_language, effective_dpi, engine_language, render, sample_pages)
 from runner import Cancelled
 from tests.test_textindex import FakeDB, file_row
 
@@ -178,8 +178,11 @@ class FakeEngine:
 class OcrDB(FakeDB):
     """The FakeDB of the text indexer, with what the OCR job asks of the database."""
 
-    def __init__(self, files, enabled=True, language='por+eng', known=(), without=(1, 2, 3)):
-        super().__init__([file_row(7, 'pdf', 'aa', 'pt', path='scan.pdf')])
+    def __init__(self, files, enabled=True, language='por+eng', known=(), without=(1, 2, 3), declared='pt', decided=None):
+        super().__init__([file_row(7, 'pdf', 'aa', declared, path='scan.pdf')])
+        self.declared = declared
+        self.decided = decided          # (language, source) already decided for the file, as ocr_files has it
+        self.decisions = []
         self.setting = {'enabled': enabled, 'language': language} if enabled is not None else None
         self.known = list(known)       # (page, state) already kept
         self.without = list(without)   # pages without text, from 1
@@ -189,17 +192,21 @@ class OcrDB(FakeDB):
     def fetchone(self, query, params=None):
         if 'FROM settings' in query:
             return (self.setting,) if self.setting is not None else None
+        if 'FROM ocr_files' in query:
+            return self.decided
         return super().fetchone(query, params)
 
     def fetchall(self, query, params=None):
         if 'FROM files f' in query and 'text_layers' in query:
-            return [(7, 'aa', 'pt', 'managed', None, 'scan.pdf', self.without)]
+            return [(7, 'aa', self.declared, 'managed', None, 'scan.pdf', self.without)]
         if 'SELECT page, state FROM ocr_pages' in query:
             return list(self.known)
         return super().fetchall(query, params)
 
     def execute(self, query, params=None):
         self.statements.append((' '.join(query.split()), params))
+        if 'INSERT INTO ocr_files' in query:
+            self.decisions.append(params)
         if 'INSERT INTO ocr_pages' in query:
             file_id, page, sha, state, text, engine, version, lang, dpi, error = params
             self.saved[page] = dict(sha=sha, state=state, text=text, engine=engine, version=version, lang=lang, dpi=dpi, error=error)
@@ -306,13 +313,6 @@ class TestJob:
         assert page['state'] == 'done' and 'texto reconhecido' in page['text'] and page['sha'] == 'aa'
         assert page['engine'] == 'tesseract' and page['version'] == '5.3.0' and page['dpi'] in (150, 200, 300) and page['error'] is None
         assert [c[0] for c in engine.calls] == ['por'] * 3  # the edition says Portuguese: it is read as that alone
-
-    def test_a_file_whose_edition_has_no_language_is_read_in_the_owners_default(self, scans):
-        db = OcrDB([], language='por+eng')
-        db.files = [file_row(7, 'pdf', 'aa', '', path='scan.pdf')]
-        # the language of the edition comes from the query of the pages, which the fake answers with 'pt'
-        out, engine = self.run(db, scans)
-        assert engine.calls[0][0] == 'por'
 
     def test_a_page_with_almost_nothing_on_it_is_blank_and_kept_so_it_is_not_read_again(self, scans):
         db = OcrDB([])
@@ -513,3 +513,129 @@ class TestWiring:
         runner.ocr.heartbeat = lambda *a, **k: beats.append(1)
         runner.on_heartbeat({'id': 51})
         assert beats == [1]
+
+
+# --- the language a file is read in (#24) ---
+
+ENGLISH = ('The old cathedral stood on top of the hill, and the people of the town climbed up every Sunday to hear the bell. '
+           'It was a tradition that came down from their grandparents, and nobody thought of ending it, because it was what they had.')
+PORTUGUESE = ('A catedral antiga ficava no alto da colina, e os moradores da cidade subiam todos os domingos para ouvir o sino. '
+              'Era uma tradição que vinha dos avós, e ninguém pensava em acabar com ela, porque era o que eles tinham.')
+FRENCH = ('La vieille cathédrale se dressait au sommet de la colline, et les habitants de la ville montaient chaque dimanche '
+          'pour entendre la cloche. C’était une tradition qui venait de leurs grands-parents, et personne ne pensait à y mettre fin.')
+
+
+class TestSamplePages:
+    def test_a_short_file_is_read_whole(self):
+        assert sample_pages([1, 2, 3]) == [0, 1, 2]
+        assert sample_pages([5]) == [4]
+        assert sample_pages([]) == []
+
+    def test_a_long_one_in_a_few_places_spread_over_it_and_not_at_its_ends(self):
+        got = sample_pages(list(range(1, 101)))
+        assert len(got) == 3 and got == sorted(got) and len(set(got)) == 3
+        assert 0 not in got and 99 not in got
+        assert 15 < got[0] < 35 and 40 < got[1] < 60 and 65 < got[2] < 85
+
+    def test_the_pages_are_those_without_text_not_those_of_the_file(self):
+        assert sample_pages([200, 201, 202, 203, 204, 205, 206, 207]) == [201, 203, 205]
+
+    def test_what_is_not_a_page_number_is_left_out_and_the_order_does_not_matter(self):
+        assert sample_pages([3, 0, -2, 1, 2]) == [0, 1, 2]
+        assert sample_pages([9, 1, 5, 3, 7, 2, 8]) == sample_pages([1, 2, 3, 5, 7, 8, 9])
+
+
+class TestDeclaredLanguage:
+    def test_the_engine_code_of_what_an_edition_declares_when_the_engine_has_it(self):
+        assert declared_language('pt-BR', ['eng', 'por']) == 'por'
+        assert declared_language('EN_us', ['eng', 'por']) == 'eng'
+        assert declared_language('fr', ['eng', 'por']) is None   # known, not installed
+        assert declared_language('ja', ['eng', 'por']) is None   # not known
+        assert declared_language('', ['eng']) is None and declared_language(None, ['eng']) is None
+
+
+class TestLanguageOfAFile:
+    def run(self, scans, engine, **kw):
+        db = OcrDB([], **kw)
+        out = indexer(db, scans, engine).run(9)
+        return db, out, engine
+
+    def test_what_the_edition_declares_is_used_without_reading_anything_to_find_out(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(), declared='en')
+        assert [c[0] for c in engine.calls] == ['eng'] * 3
+        assert db.decisions == [(7, 'aa', 'eng', 'declared')]
+        assert {p['lang'] for p in db.saved.values()} == {'eng'}
+
+    def test_with_none_declared_a_few_pages_are_read_and_the_language_found_is_the_one_the_rest_is_read_in(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(pages={0: ENGLISH, 1: ENGLISH, 2: ENGLISH}), declared='')
+        assert [c[0] for c in engine.calls] == ['por+eng'] * 3 + ['eng'] * 3  # to tell it, then to read
+        assert db.decisions == [(7, 'aa', 'eng', 'detected')]
+        assert sorted(db.saved) == [0, 1, 2] and {p['lang'] for p in db.saved.values()} == {'eng'}
+
+    def test_a_portuguese_book_is_read_in_portuguese_alone(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(pages={0: PORTUGUESE, 1: PORTUGUESE, 2: PORTUGUESE}), declared='')
+        assert db.decisions == [(7, 'aa', 'por', 'detected')]
+        assert [c[0] for c in engine.calls][3:] == ['por'] * 3
+
+    def test_the_pages_read_to_tell_the_language_are_not_kept_only_the_final_reading_is(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(pages={0: ENGLISH, 1: ENGLISH, 2: ENGLISH, 3: 'A leitura final da página zero, com texto o bastante.'}), declared='')
+        assert db.saved[0]['text'].startswith('A leitura final')
+
+    def test_when_it_cannot_be_told_the_owners_default_is_used_and_said_so(self, scans):
+        # Too little text to tell, or two languages that score alike.
+        db, out, engine = self.run(scans, FakeEngine(pages={0: 'Um texto curto demais para dizer.', 1: '', 2: ''}), declared='')
+        assert db.decisions == [(7, 'aa', 'por+eng', 'default')]
+        assert {p['lang'] for p in db.saved.values()} == {'por+eng'}
+
+    def test_a_language_the_engine_has_not_got_is_not_used(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(pages={0: FRENCH, 1: FRENCH, 2: FRENCH}), declared='')  # the engine has eng and por
+        assert db.decisions == [(7, 'aa', 'por+eng', 'default')]
+
+    def test_pages_that_fail_to_be_read_for_this_leave_it_to_the_default(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(fail={0, 1, 2}), declared='')
+        assert db.decisions == [(7, 'aa', 'por+eng', 'default')]
+        assert out[7]['read'] == 3  # and the book is read all the same
+
+    def test_what_was_decided_is_kept_and_used_by_the_next_reading(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(), declared='', decided=('eng', 'detected'))
+        assert [c[0] for c in engine.calls] == ['eng'] * 3  # nothing read to find it out again
+        assert db.decisions == []
+
+    def test_a_fallback_to_the_default_is_not_kept_as_a_decision(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(pages={0: ENGLISH, 1: ENGLISH, 2: ENGLISH}), declared='', decided=('por+eng', 'default'))
+        assert db.decisions == [(7, 'aa', 'eng', 'detected')]
+
+    def test_what_somebody_on_the_staff_chose_wins_over_what_the_edition_declares(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(), declared='pt', decided=('eng', 'manual'))
+        assert [c[0] for c in engine.calls] == ['eng'] * 3 and db.decisions == []
+
+    def test_a_decision_with_a_language_the_engine_has_lost_is_decided_again(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(), declared='pt', decided=('deu', 'manual'))
+        assert [c[0] for c in engine.calls] == ['por'] * 3
+        assert db.decisions == [(7, 'aa', 'por', 'declared')]
+
+    def test_the_decision_of_another_version_of_the_file_is_dropped(self, scans):
+        db, out, engine = self.run(scans, FakeEngine(), declared='pt')
+        statement, params = db.matching('DELETE FROM ocr_files')[0]
+        assert 'source_sha256 IS DISTINCT FROM' in statement and params == (7, 'aa')
+
+    def test_telling_the_language_stops_when_the_job_is_cancelled_and_decides_nothing(self, scans):
+        db = OcrDB([], declared='')
+        seen = []
+
+        def checkpoint():
+            seen.append(1)
+            if len(seen) == 3:
+                raise Cancelled()
+
+        with pytest.raises(Cancelled):
+            indexer(db, scans, FakeEngine(pages={0: ENGLISH, 1: ENGLISH})).run(9, checkpoint=checkpoint)
+        assert db.decisions == [] and db.saved == {}
+
+    def test_a_short_file_is_sampled_whole_and_a_long_one_in_three_pages(self, tmp_path):
+        make_scan(tmp_path, pages=40)
+        db = OcrDB([], declared='', without=list(range(1, 41)))
+        engine = FakeEngine(pages={0: ENGLISH, 1: ENGLISH, 2: ENGLISH})
+        indexer(db, tmp_path, engine).run(9)
+        assert len(engine.calls) == 3 + 40
+        assert [c[0] for c in engine.calls[:3]] == ['por+eng'] * 3

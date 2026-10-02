@@ -17,6 +17,23 @@ export function languagesLabel(codes) {
   return `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
 }
 
+const LANGUAGE_SOURCES = {
+  declared: 'o arquivo declara',
+  detected: 'descoberto pelo Códice lendo algumas páginas',
+  default: 'não deu para descobrir, é o padrão do dono do acervo',
+  manual: 'escolhido pela equipe',
+};
+
+/** How the language a file is read in was chosen, as a short phrase; '' for a source that is not known. */
+export const languageSource = (source) => LANGUAGE_SOURCES[source] || '';
+
+/** "Idioma da leitura: Inglês (descoberto…)" for a row of GET /admin/ocr; '' until the file has been looked at. */
+export function languageLine(item) {
+  if (!item?.language) return '';
+  const how = languageSource(item.languageSource);
+  return `Idioma da leitura: ${languagesLabel(item.language)}${how ? ` (${how})` : ''}`;
+}
+
 const pages = (n) => (n === 1 ? '1 página' : `${n} páginas`);
 
 /**

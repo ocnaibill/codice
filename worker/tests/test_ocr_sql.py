@@ -65,6 +65,10 @@ def db():
             engine VARCHAR(32) NOT NULL, engine_version VARCHAR(32) NOT NULL DEFAULT '', language VARCHAR(32) NOT NULL DEFAULT '',
             dpi SMALLINT, error TEXT, recognized_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             PRIMARY KEY (file_id, page), CHECK (state <> 'done' OR text <> ''));
+        CREATE TEMP TABLE ocr_files (
+            file_id BIGINT PRIMARY KEY, source_sha256 CHAR(64), language VARCHAR(32) NOT NULL,
+            source VARCHAR(10) NOT NULL CHECK (source IN ('declared', 'detected', 'default', 'manual')),
+            decided_at TIMESTAMPTZ NOT NULL DEFAULT now());
         INSERT INTO settings (key, value) VALUES ('ocr', '{"enabled": true, "language": "por+eng"}');
     """)
     yield Db(conn)
@@ -205,3 +209,36 @@ class TestPages:
         keep(db, 1, 0, 'done', sha=None, text='sem hash')
         keep(db, 1, 1, 'done', sha=SHA, text='com hash')
         assert TextIndexer(db, '/nowhere').recognised_pages(1, None) == {0: 'sem hash'}
+
+
+class TestLanguageDecision:
+    def decide(self, db, file_id=1, sha=SHA, declared='pt'):
+        return OcrIndexer(db, '/nowhere', NoEngine(), log=lambda *a: None).language_of(
+            None, file_id, sha, declared, [1], 'por+eng', lambda: None)
+
+    def test_what_is_decided_is_kept_and_replaced_when_it_is_decided_again(self, db):
+        assert self.decide(db, declared='pt') == 'por'
+        assert db.fetchall("SELECT file_id, language, source FROM ocr_files") == [(1, 'por', 'declared')]
+        db.execute("DELETE FROM ocr_files")
+        assert self.decide(db, declared='en') == 'eng'
+        db.execute("UPDATE ocr_files SET source = 'default'")
+        assert self.decide(db, declared='pt') == 'por'
+        assert db.fetchall("SELECT language, source FROM ocr_files") == [('por', 'declared')]
+
+    def test_what_a_person_chose_is_used_and_left_as_it_is(self, db):
+        db.execute("INSERT INTO ocr_files (file_id, source_sha256, language, source) VALUES (1, %s, 'eng', 'manual')", (SHA,))
+        assert self.decide(db, declared='pt') == 'eng'
+        assert db.fetchall("SELECT language, source FROM ocr_files") == [('eng', 'manual')]
+
+    def test_what_was_decided_of_another_version_of_the_file_is_not_used(self, db):
+        db.execute("INSERT INTO ocr_files (file_id, source_sha256, language, source) VALUES (1, %s, 'eng', 'manual')", ('b' * 64,))
+        assert self.decide(db, declared='pt') == 'por'
+
+    def test_a_file_without_a_hash_matches_the_decision_made_without_one(self, db):
+        db.execute("INSERT INTO ocr_files (file_id, source_sha256, language, source) VALUES (1, NULL, 'eng', 'manual')")
+        assert self.decide(db, sha=None, declared='pt') == 'eng'
+
+    def test_a_decision_has_one_of_the_known_sources(self, db):
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            db.execute("INSERT INTO ocr_files (file_id, language, source) VALUES (1, 'por', 'guess')")
+        db.cur.connection.rollback()

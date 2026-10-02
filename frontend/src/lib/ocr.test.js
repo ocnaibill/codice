@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fileProgress, languageName, languagesLabel, sheetNote } from './ocr';
+import { fileProgress, languageLine, languageName, languagesLabel, languageSource, sheetNote } from './ocr';
 
 const item = (over) => ({ pagesWithoutText: [1, 2, 3, 4], read: 0, failed: 0, state: '', languages: [], ...over });
 
@@ -73,5 +73,25 @@ describe('sheetNote (the sheet of a work)', () => {
     expect(failed).toMatchObject({ text: 'Texto reconhecido por OCR em 7 de 10 páginas; 3 falharam', tone: 'warn' });
     expect(sheetNote(file({ pages: 10, read: 0, failed: 0 }))).toMatchObject({ text: 'Páginas sem texto', tone: 'warn' });
     expect(sheetNote(file(undefined))).toMatchObject({ text: 'Páginas sem texto', tone: 'warn' });
+  });
+});
+
+describe('languageLine and languageSource', () => {
+  it('say how the language of a file was chosen', () => {
+    expect(languageSource('declared')).toBe('o arquivo declara');
+    expect(languageSource('detected')).toBe('descoberto pelo Códice lendo algumas páginas');
+    expect(languageSource('default')).toBe('não deu para descobrir, é o padrão do dono do acervo');
+    expect(languageSource('manual')).toBe('escolhido pela equipe');
+    expect(languageSource('guess')).toBe('');
+    expect(languageSource(undefined)).toBe('');
+  });
+
+  it('is a line for a file that has been looked at, and nothing before', () => {
+    expect(languageLine({ language: 'por+eng', languageSource: 'default' })).toBe('Idioma da leitura: Português e Inglês (não deu para descobrir, é o padrão do dono do acervo)');
+    expect(languageLine({ language: 'eng', languageSource: 'manual' })).toBe('Idioma da leitura: Inglês (escolhido pela equipe)');
+    expect(languageLine({ language: 'eng' })).toBe('Idioma da leitura: Inglês');
+    expect(languageLine({})).toBe('');
+    expect(languageLine({ language: '' })).toBe('');
+    expect(languageLine(null)).toBe('');
   });
 });

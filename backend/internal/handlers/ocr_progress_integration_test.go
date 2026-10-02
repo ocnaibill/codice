@@ -18,7 +18,9 @@ func (s *catalogStack) scanned(title string, pages ...int) (work int, file strin
 	s.t.Helper()
 	work = s.addWork(title, "Ana", strings.ToLower(title)+".pdf", "pdf")
 	file = s.scalar(fmt.Sprintf(`SELECT file_id FROM work_primary WHERE work_id = %d`, work))
-	s.exec(`UPDATE files SET sha256 = $2 WHERE id = $1`, file, shaA)
+	// The first scan of a test has shaA; one made after it gets a hash of its own (the column is unique).
+	s.exec(`UPDATE files SET sha256 = CASE WHEN EXISTS (SELECT 1 FROM files WHERE sha256 = $2 AND id <> $1)
+		THEN md5($1::text) || md5($1::text) ELSE $2 END WHERE id = $1`, file, shaA)
 	list := make([]string, len(pages))
 	for i, p := range pages {
 		list[i] = fmt.Sprint(p)
@@ -46,6 +48,8 @@ type ocrItem struct {
 	Failed           int      `json:"failed"`
 	State            string   `json:"state"`
 	Languages        []string `json:"languages"`
+	Language         string   `json:"language"`
+	LanguageSource   string   `json:"languageSource"`
 }
 
 func (s *catalogStack) ocrList() []ocrItem {

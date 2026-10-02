@@ -175,5 +175,7 @@ export const useSetLdapPolicy = () => useAdminAction(async (policy) => (await ap
 export const useSetOcr = () => useAdminAction(async (settings) => (await api.put('/admin/ocr/settings', settings)).data);
 /** Asks for the pages of a work that failed to be read to be tried again. */
 export const useRetryOcr = () => useAdminAction(async (workId) => (await api.post(`/admin/works/${workId}/ocr/retry`)).data);
+/** Says the language a scanned file is read in was wrong: its pages are read again, from the first, in the one given. */
+export const useSetOcrLanguage = () => useAdminAction(async ({ fileId, language }) => (await api.post(`/admin/files/${fileId}/ocr/language`, { language })).data);
 export const useSetEmbeddings = () => useAdminAction(async (settings) => (await api.put('/admin/embeddings', settings)).data);
 export const useCheckLdap = () => useMutation({ mutationFn: async () => (await api.post('/admin/ldap/check')).data });
