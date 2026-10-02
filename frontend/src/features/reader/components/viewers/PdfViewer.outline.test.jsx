@@ -194,6 +194,16 @@ describe('PdfViewer: the outline closes by itself', () => {
     expect(outlineNav()).toBeNull();
   });
 
+  it('the button closes it, and a press on it does not close it before the click does', async () => {
+    await open();
+    await act(async () => { button('Sumário').click(); });
+    expect(outlineNav()).not.toBeNull();
+    await down(button('Sumário'));
+    expect(outlineNav()).not.toBeNull();
+    await act(async () => { button('Sumário').click(); });
+    expect(outlineNav()).toBeNull();
+  });
+
   it('is closed by Escape before the controls are brought back', async () => {
     const onImmersiveChange = vi.fn();
     await open({ onImmersiveChange });
