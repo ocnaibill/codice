@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	// Version is the version of the method. A fingerprint made by another version is made again.
-	Version = 1
+	// Version is the version of the method. A fingerprint made by another version is made again (version 2 adds the
+	// rare names).
+	Version = 2
 	// ShingleWords is how many consecutive words make one run that is hashed.
 	ShingleWords = 8
 	// SampleModulus: a run is kept when its hash is a multiple of this.

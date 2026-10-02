@@ -7,13 +7,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/ocnaibill/codice/backend/internal/equivalence"
 	"github.com/ocnaibill/codice/backend/internal/fingerprint"
 )
 
 type corpus struct {
 	Files map[string][]string `json:"files"`
 	Pairs []pair              `json:"pairs"`
+	// Books are files with their segments, for the pairs that are read against each other (translations).
+	Books    map[string]equivalence.File `json:"books"`
+	Parallel []pair                      `json:"parallel"`
 }
 
 type pair struct {
@@ -24,12 +29,18 @@ type pair struct {
 }
 
 type result struct {
+	Mode                        string `json:"mode"` // text (the fingerprint) or parallel (read against each other)
 	A, B, Kind, Expect, Verdict string
 	OfA                         float64 `json:"ofA"`
 	OfB                         float64 `json:"ofB"`
 	Shared                      int     `json:"shared"`
 	HashesA                     int     `json:"hashesA"`
 	HashesB                     int     `json:"hashesB"`
+	Samples                     int     `json:"samples"`
+	Hits                        int     `json:"hits"`
+	Share                       float64 `json:"share"`
+	Order                       float64 `json:"order"`
+	LatencyMillis               int64   `json:"latencyMillis"`
 }
 
 func main() {
@@ -55,8 +66,21 @@ func main() {
 		case o.Contains():
 			verdict = "contains"
 		}
-		if err := enc.Encode(result{A: p.A, B: p.B, Kind: p.Kind, Expect: p.Expect, Verdict: verdict,
+		if err := enc.Encode(result{Mode: "text", A: p.A, B: p.B, Kind: p.Kind, Expect: p.Expect, Verdict: verdict,
 			OfA: o.OfA, OfB: o.OfB, Shared: o.Shared, HashesA: len(a), HashesB: len(b)}); err != nil {
+			fmt.Fprintln(os.Stderr, "duplicates benchmark: write:", err)
+			os.Exit(1)
+		}
+	}
+	for _, p := range input.Parallel {
+		started := time.Now()
+		read := equivalence.ReadParallel(input.Books[p.A], input.Books[p.B], equivalence.ParallelSamples)
+		verdict := "none"
+		if read.Translation() {
+			verdict = "translation"
+		}
+		if err := enc.Encode(result{Mode: "parallel", A: p.A, B: p.B, Kind: p.Kind, Expect: p.Expect, Verdict: verdict,
+			Samples: read.Samples, Hits: read.Hits, Share: read.Share, Order: read.Order, LatencyMillis: time.Since(started).Milliseconds()}); err != nil {
 			fmt.Fprintln(os.Stderr, "duplicates benchmark: write:", err)
 			os.Exit(1)
 		}

@@ -21,7 +21,7 @@ const reasonContent = "content"
 // bodyOf is the text of a file's published generation that counts: with an outline, the segments of the body of
 // the book (a licence, a preface, an appendix are what many files of a source share, and do not tell the text);
 // without one, all of it. It also returns the generation it read and the hash of the file it was made from.
-func bodyOf(ctx context.Context, db *sql.DB, fileID int64) (words []string, generation int, sha string, ok bool, err error) {
+func bodyOf(ctx context.Context, db *sql.DB, fileID int64) (body []equivalence.Segment, generation int, sha string, ok bool, err error) {
 	var structure []byte
 	var source sql.NullString
 	err = db.QueryRowContext(ctx, `
@@ -38,23 +38,24 @@ func bodyOf(ctx context.Context, db *sql.DB, fileID int64) (words []string, gene
 		nodes = nil // an outline that cannot be read is no outline
 	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT text, node FROM document_segments WHERE file_id = $1 AND generation = $2 ORDER BY sequence`, fileID, generation)
+		SELECT sequence, text, node FROM document_segments WHERE file_id = $1 AND generation = $2 ORDER BY sequence`, fileID, generation)
 	if err != nil {
 		return nil, 0, "", false, err
 	}
 	defer rows.Close()
 	for rows.Next() {
+		var sequence int
 		var text string
 		var node sql.NullInt64
-		if err := rows.Scan(&text, &node); err != nil {
+		if err := rows.Scan(&sequence, &text, &node); err != nil {
 			return nil, 0, "", false, err
 		}
 		if len(nodes) > 0 && (!node.Valid || int(node.Int64) >= len(nodes) || nodes[node.Int64].Part != equivalence.PartBody) {
 			continue
 		}
-		words = append(words, equivalence.Words(text)...)
+		body = append(body, equivalence.Segment{Sequence: sequence, Text: text})
 	}
-	return words, generation, source.String, true, rows.Err()
+	return body, generation, source.String, true, rows.Err()
 }
 
 // ensureFingerprint makes the fingerprint of a file when it has none or the one it has is of another text or of
@@ -80,19 +81,24 @@ func ensureFingerprint(ctx context.Context, db *sql.DB, fileID int64) (bool, err
 	if current {
 		return true, nil
 	}
-	words, generation, sha, ok, err := bodyOf(ctx, db, fileID)
+	segments, generation, sha, ok, err := bodyOf(ctx, db, fileID)
 	if err != nil || !ok {
 		return false, err
+	}
+	var words []string
+	for _, s := range segments {
+		words = append(words, equivalence.Words(s.Text)...)
 	}
 	sample := fingerprint.Of(words)
 	if sample == nil {
 		sample = []int64{}
 	}
 	_, err = db.ExecContext(ctx, `
-		INSERT INTO text_fingerprints (file_id, generation, source_sha256, method, words, sample) VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO text_fingerprints (file_id, generation, source_sha256, method, words, sample, names) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (file_id) DO UPDATE SET generation = EXCLUDED.generation, source_sha256 = EXCLUDED.source_sha256,
-			method = EXCLUDED.method, words = EXCLUDED.words, sample = EXCLUDED.sample`,
-		fileID, generation, nullable(sql.NullString{String: sha, Valid: sha != ""}), fingerprint.Version, len(words), pq.Array(sample))
+			method = EXCLUDED.method, words = EXCLUDED.words, sample = EXCLUDED.sample, names = EXCLUDED.names`,
+		fileID, generation, nullable(sql.NullString{String: sha, Valid: sha != ""}), fingerprint.Version, len(words), pq.Array(sample),
+		pq.Array(equivalence.RareNames(segments)))
 	return err == nil, err
 }
 
@@ -208,25 +214,38 @@ func detectContent(ctx context.Context, db *sql.DB, workID int) (int, error) {
 // another reason keeps it and gains the evidence; one that was decided is left alone, so a pair that was said
 // not to be the same work does not come back.
 func proposeContent(ctx context.Context, db *sql.DB, mine, theirs int, m sameText) (bool, error) {
-	lo, hi := mine, theirs
+	lo, hi, swapped := ordered(mine, theirs)
 	a, b := m.overlap.OfA, m.overlap.OfB // of the work being looked at, of the other
 	fileA, fileB, hashesA, hashesB, wordsA, wordsB := m.mine, m.theirs, m.mineN, m.theirsN, m.words[0], m.words[1]
-	if lo > hi {
-		lo, hi = hi, lo
+	if swapped {
 		a, b = b, a
 		fileA, fileB, hashesA, hashesB, wordsA, wordsB = fileB, fileA, hashesB, hashesA, wordsB, wordsA
 	}
-	evidence, _ := json.Marshal(map[string]any{"content": map[string]any{
+	return propose(ctx, db, lo, hi, reasonContent, "content", map[string]any{
 		"fileA": fileA, "fileB": fileB, "ofA": round3(a), "ofB": round3(b), "shared": m.overlap.Shared,
 		"hashesA": hashesA, "hashesB": hashesB, "wordsA": wordsA, "wordsB": wordsB, "method": fingerprint.Version,
-	}})
+	})
+}
+
+// ordered is the two works as a pair is kept (the lower id first) and whether that swapped them.
+func ordered(mine, theirs int) (lo, hi int, swapped bool) {
+	if mine > theirs {
+		return theirs, mine, true
+	}
+	return mine, theirs, false
+}
+
+// propose records the pair under a reason with what made it worth a look, in evidence[key]. A pair that is already
+// waiting for a decision keeps its reason and gains the evidence; one that was decided is left alone.
+func propose(ctx context.Context, db *sql.DB, lo, hi int, reason, key string, what map[string]any) (bool, error) {
+	evidence, _ := json.Marshal(map[string]any{key: what})
 	var inserted bool
 	err := db.QueryRowContext(ctx, `
 		INSERT INTO duplicate_candidates (work_a, work_b, reason, evidence) VALUES ($1, $2, $3, $4)
 		ON CONFLICT (work_a, work_b) DO UPDATE
 			SET evidence = COALESCE(duplicate_candidates.evidence, '{}'::jsonb) || EXCLUDED.evidence
 			WHERE duplicate_candidates.state = 'pending'
-		RETURNING (xmax = 0)`, lo, hi, reasonContent, evidence).Scan(&inserted)
+		RETURNING (xmax = 0)`, lo, hi, reason, evidence).Scan(&inserted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil // decided before: left as it is
 	}

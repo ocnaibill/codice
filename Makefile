@@ -45,8 +45,9 @@ test-all: test
 benchmark-equivalence:
 	cd worker && $(PYTHON) ../benchmarks/equivalence/benchmark.py
 
-# Optional and networked: the same public-domain books as benchmark-equivalence, here to see which pairs of files the
-# fingerprint takes for the same text (an EPUB and a PDF of one book, two editions) and which it does not.
+# Optional and networked: the same public-domain books as benchmark-equivalence, and four more in two languages, here to
+# see which pairs of files the fingerprint takes for the same text (an EPUB and a PDF of one book, two editions), which
+# are read as translations of one another, and which are neither.
 benchmark-duplicates:
 	cd worker && $(PYTHON) ../benchmarks/duplicates/benchmark.py
 

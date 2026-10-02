@@ -52,6 +52,12 @@ describe('DuplicatesTab', () => {
     expect(view.text()).toContain('99% do texto de “Duna”');
   });
 
+  it('says it looks like the same book in another language, and what reading them against each other found', async () => {
+    await open([{ ...pair, id: 5, reason: 'translation', evidence: { translation: { hits: 14, samples: 60, order: 1, languageA: 'pt', languageB: 'en' } } }]);
+    expect(view.text()).toContain('Parece a mesma obra em outra língua');
+    expect(view.text()).toContain('14 de 60 passagens de uma foram achadas na outra, 100% delas na ordem do livro. Idiomas: português e inglês.');
+  });
+
   it('dismisses a pair with one click', async () => {
     await open();
     await view.click(view.button('Não é duplicata'));

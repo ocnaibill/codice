@@ -374,7 +374,7 @@ func TestDetect_TheFingerprintIsMadeOnceAndMadeAgainWhenTheTextChanges(t *testin
 	e.publish(bf, text, nil)
 	dupes.Detect(ctx, e.db, a)
 	made := e.scalar(`SELECT generation || ':' || method FROM text_fingerprints WHERE file_id = ` + fmt.Sprint(af))
-	if made != "1:1" {
+	if made != "1:2" {
 		t.Fatalf("fingerprint %s", made)
 	}
 	// Nothing changed: it is not made again (the row keeps its identity).
@@ -392,7 +392,7 @@ func TestDetect_TheFingerprintIsMadeOnceAndMadeAgainWhenTheTextChanges(t *testin
 	// A fingerprint made by an older method is made again.
 	e.exec(`UPDATE text_fingerprints SET method = 0, words = 7 WHERE file_id = $1`, af)
 	dupes.Detect(ctx, e.db, a)
-	if e.scalar(`SELECT method || ':' || words FROM text_fingerprints WHERE file_id = `+fmt.Sprint(af)) != "1:40000" {
+	if e.scalar(`SELECT method || ':' || words FROM text_fingerprints WHERE file_id = `+fmt.Sprint(af)) != "2:40000" {
 		t.Error("an old method's fingerprint was kept")
 	}
 }
