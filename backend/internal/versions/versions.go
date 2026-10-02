@@ -6,7 +6,7 @@
 // are the ones that moved, and each file keeps its id, so its reading positions, notes and everything
 // else that points at the file are untouched. What belongs to the work as a whole (the history of what
 // people finished, the "whole work finished" mark, favorites, tags, identifiers, authors, the positions
-// they accepted) is carried to the work that stays, because it used to be lost with the work that
+// they accepted, the relations they drew in the graph) is carried to the work that stays, because it used to be lost with the work that
 // went (dupes.Link deleted it, and all of that went with it).
 package versions
 
@@ -105,6 +105,33 @@ func carryWhole(ctx context.Context, tx *sql.Tx, to, from int) error {
 	return nil
 }
 
+// carryRelations moves the relations that people drew to the work that goes, to the work that stays (#83): they were
+// about the book, and the book is now under the other work. A relation the person already had with the work that
+// stays, or that is the same one once moved (a pair with no direction, in the other order), is kept once; one between
+// the two works joined would join the work to itself, and goes.
+func carryRelations(ctx context.Context, tx *sql.Tx, to, from int) error {
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO relations (user_id, source_kind, source_id, type, target_kind, target_id, origin, comment, source_label, target_label, created_at, updated_at)
+		   SELECT user_id, 'work', $1::bigint, type, target_kind, target_id, origin, comment, source_label, target_label, created_at, now()
+		   FROM relations WHERE source_kind = 'work' AND source_id = $2 AND NOT (target_kind = 'work' AND target_id = $1)
+		   ON CONFLICT DO NOTHING`, []any{to, from}},
+		{`DELETE FROM relations WHERE source_kind = 'work' AND source_id = $1`, []any{from}},
+		{`INSERT INTO relations (user_id, source_kind, source_id, type, target_kind, target_id, origin, comment, source_label, target_label, created_at, updated_at)
+		   SELECT user_id, source_kind, source_id, type, 'work', $1::bigint, origin, comment, source_label, target_label, created_at, now()
+		   FROM relations WHERE target_kind = 'work' AND target_id = $2 AND NOT (source_kind = 'work' AND source_id = $1)
+		   ON CONFLICT DO NOTHING`, []any{to, from}},
+		{`DELETE FROM relations WHERE target_kind = 'work' AND target_id = $1`, []any{from}},
+	} {
+		if _, err := tx.ExecContext(ctx, q.sql, q.args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // JoinTx moves every edition of source under target and retires source. Whoever calls it decides
 // whether and how to audit it.
 func JoinTx(ctx context.Context, tx *sql.Tx, target, source int, actor string) (JoinResult, error) {
@@ -135,6 +162,9 @@ func JoinTx(ctx context.Context, tx *sql.Tx, target, source int, actor string) (
 		}
 	}
 	if err := carryWhole(ctx, tx, target, source); err != nil {
+		return res, err
+	}
+	if err := carryRelations(ctx, tx, target, source); err != nil {
 		return res, err
 	}
 	if err := ensurePrimary(ctx, tx, target); err != nil {
