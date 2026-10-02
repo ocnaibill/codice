@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import { NoteMarkdown } from '../../notes/components/NoteMarkdown';
 import { useDeleteNote, useUpdateNote } from '../api/useWorkNotes';
 import { parseTags, placeLabel } from '../files';
 import { KIND_LABEL, reason } from '../noteText';
@@ -22,7 +22,7 @@ export function NoteFields({ quote, body, tags, onChange }) {
       <textarea
         value={body}
         onChange={(e) => onChange({ body: e.target.value })}
-        placeholder="Sua anotação, em Markdown (opcional)"
+        placeholder="Sua anotação, em Markdown (opcional). [[Conceito]] liga a um conceito."
         aria-label="Sua anotação"
         rows={3}
         className={fieldClass}
@@ -101,10 +101,10 @@ export function NoteItem({ note, onOpenAt, showSource = false, onFilterWork, onF
             </p>
           )}
           {note.quote && <blockquote className="border-l-2 border-brand pl-3 font-display text-base italic leading-relaxed text-ink">{note.quote}</blockquote>}
-          {/* Markdown, shown as text: raw HTML in it is not interpreted. */}
+          {/* Markdown, shown as text: raw HTML in it is not interpreted. [[Concept]] links are marked. */}
           {note.body && (
             <div className="prose prose-sm max-w-none rounded-lg bg-[#f5f0e9] p-3 font-body text-sm text-ink [&_a]:text-brand">
-              <ReactMarkdown>{note.body}</ReactMarkdown>
+              <NoteMarkdown body={note.body} links={note.links} />
             </div>
           )}
           {note.tags.length > 0 && (
