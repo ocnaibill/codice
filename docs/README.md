@@ -52,6 +52,8 @@ As issues que sobraram **não são independentes**: quase todas pertencem a uma 
 
 **Anotações no leitor (30/09/2026, em andamento em `feature/reader-notes-stitch`):** gaveta de notas adaptada às telas Stitch de Duna, com filtragem por tipo e preservação das ações e posições reais. Escopo e ensaio em [Anotações Stitch](Codice_Anotacoes_Stitch_2026-09-30.md).
 
+**Sumário do PDF (02/10/2026):** o botão do sumário não conseguia fechá-lo: o toque nele fechava a lista e o clique a abria de novo. O botão agora é ignorado pelo fechamento por toque fora, como já é no menu de modos do leitor de quadrinhos. Em `fix/pdf-outline-toggle`.
+
 **Atualização após o merge:** o PR #6 já foi integrado à `main` (`83fc908`). A validação subsequente passou em 232 casos/subcasos Go (com PostgreSQL, nenhum ignorado), 82 testes Python e 54 testes frontend; build e `go vet` aprovados. API, worker e navegador foram exercitados com banco e arquivos sintéticos isolados. Correções locais: inicialização/reconexão sem Redis, atualização de obras pendentes sem WebSocket e propagação de falhas no Makefile. Consulte o relatório acima para o alcance e as pendências; esses resultados não homologam toda a especificação.
 
 **Fase 0 (preparar o terreno): concluída.** Corpus sintético em `testdata/`, script `scripts/reset-dev-db.sh` (simulação por padrão) e trabalho local salvo em `chore/salvar-trabalho-local`.

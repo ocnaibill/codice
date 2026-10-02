@@ -44,6 +44,7 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlac
   const rootRef = useRef(null);
   const gesture = useRef(null);
   const outlineRef = useRef(null);
+  const outlineOpenerRef = useRef(null);
 
   // How wide the page may be: what the screen gives, up to a comfortable measure, and it follows the screen
   // (a phone turned on its side, a window made larger).
@@ -142,11 +143,12 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlac
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // The table of contents closes by a click outside it.
+  // The table of contents closes by a click outside it. Its own button is not outside: a press on it would close the
+  // list before the click toggles it open again.
   useEffect(() => {
     if (!showOutline) return undefined;
     const onPointer = (event) => {
-      if (!outlineRef.current?.contains(event.target)) setShowOutline(false);
+      if (!outlineRef.current?.contains(event.target) && !outlineOpenerRef.current?.contains(event.target)) setShowOutline(false);
     };
     document.addEventListener('pointerdown', onPointer);
     return () => document.removeEventListener('pointerdown', onPointer);
@@ -296,6 +298,7 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlac
             <>
               <span className="mx-1 h-6 w-px bg-border-hairline max-sm:hidden" aria-hidden="true" />
               <button
+                ref={outlineOpenerRef}
                 onClick={() => setShowOutline((v) => !v)}
                 aria-expanded={showOutline}
                 aria-label="Sumário do PDF"
