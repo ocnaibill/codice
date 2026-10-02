@@ -5,7 +5,7 @@ import { WorkCover } from '../../../components/ui/WorkCover';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { authenticatedUrl } from '../../../lib/api';
 import { readLabel, readTarget } from '../../reader/readTarget';
-import { formatCount } from '../utils/format';
+import { formatBadge, formatCount } from '../utils/format';
 
 const STATUS_LABEL = {
   READY: 'Pronto para ler',
@@ -28,7 +28,7 @@ function BookCard({ item, onOpen, onSheet }) {
           <WorkCover item={item} />
           {item.format && (
             <span className="absolute left-1.5 top-1.5 rounded-sm bg-ink/90 px-1.5 py-1 font-mono text-[9px] text-white">
-              {item.format.toUpperCase()}
+              {formatBadge(item)}
             </span>
           )}
         </button>

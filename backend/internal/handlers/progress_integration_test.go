@@ -744,3 +744,37 @@ func TestVersion_ReopeningAFileTakesTheFinishedMarkOffTheWork(t *testing.T) {
 		t.Errorf("finishing another version is not reading on")
 	}
 }
+
+func TestList_CarriesHowManyDifferentFormatsThereAre(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _, pdf := s.bookWithTwoFiles()
+	single := s.addWork("Um só", "X", "um.epub", "epub")
+	// Two files, one format: the EPUBs of two editions (one written in capitals) are one format.
+	twice := s.addWork("Duas edições", "Y", "d1.epub", "epub")
+	edition := s.addEdition(twice, "en")
+	s.addFile(edition, "EPUB", "d2.epub", "managed")
+
+	both := func() (map[int][2]int, map[int][2]int) {
+		list, detail := map[int][2]int{}, map[int][2]int{}
+		for _, w := range s.list(ana, "").Data {
+			list[w.ID] = [2]int{w.FileCount, w.FormatCount}
+		}
+		for _, id := range []int{work, single, twice} {
+			w, _ := s.detail(ana, id)
+			detail[id] = [2]int{w.FileCount, w.FormatCount}
+		}
+		return list, detail
+	}
+	list, detail := both()
+	want := map[int][2]int{work: {2, 2}, single: {1, 1}, twice: {2, 1}}
+	for id, w := range want {
+		if list[id] != w || detail[id] != w {
+			t.Errorf("work %d: list %v, detail %v, want (files, formats) %v", id, list[id], detail[id], w)
+		}
+	}
+	// A file that is gone is not a format to choose from.
+	s.exec(`UPDATE files SET availability = 'missing' WHERE id = $1`, pdf)
+	if list, _ := both(); list[work] != [2]int{1, 1} {
+		t.Errorf("a missing file still counts: %v", list[work])
+	}
+}

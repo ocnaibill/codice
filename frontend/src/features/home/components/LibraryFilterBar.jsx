@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { LibraryIcon } from '../../../components/ui/LibraryIcon';
-import { formatCount } from '../utils/format';
+import { bracketCount } from '../utils/format';
 
 export function LibraryFilterBar({
   worksTotal,
@@ -11,12 +12,19 @@ export function LibraryFilterBar({
   sort = 'added',
   onSortChange,
 }) {
-  const filters = [
-    { key: 'all', label: 'Todos', count: worksTotal },
+  // "Todos" is always there. A kind of work is there only when the library has at least one of it, and none is
+  // offered before the counts are known.
+  const kinds = [
     { key: 'ebooks', label: 'Livros digitais', count: breakdown?.livros },
     { key: 'comics', label: 'Mangás & HQs', count: breakdown?.mangas },
     { key: 'audio', label: 'Audiolivros', count: breakdown?.audio },
   ];
+  const filters = [{ key: 'all', label: 'Todos', count: worksTotal }, ...kinds.filter((kind) => kind.count > 0)];
+  // The kind on screen has no work left (the last one went away): back to all of them, not to an empty shelf.
+  const gone = breakdown && kinds.some((kind) => kind.key === activeFilter && !(kind.count > 0));
+  useEffect(() => {
+    if (gone) onFilterChange('all');
+  }, [gone, onFilterChange]);
   return (
     <div className="library-filters">
       <div
@@ -31,7 +39,7 @@ export function LibraryFilterBar({
             aria-pressed={filter.key === activeFilter}
           >
             {filter.label}
-            {filter.count != null && <span>[{formatCount(filter.count)}]</span>}
+            {filter.count != null && <span>{bracketCount(filter.count)}</span>}
           </button>
         ))}
       </div>
