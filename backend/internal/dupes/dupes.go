@@ -166,9 +166,14 @@ func Detect(ctx context.Context, db *sql.DB, workID int) (int, error) {
 			}
 		}
 	}
-	// The words: the same text under another title, in another format.
+	// The words: the same text under another title, in another format; and, where no run of words is the same, the
+	// same book in another language.
 	added, err := detectContent(ctx, db, workID)
-	return found + added, err
+	if err != nil {
+		return found + added, err
+	}
+	translated, err := detectTranslation(ctx, db, workID)
+	return found + added + translated, err
 }
 
 // DetectAll compares every pair of active works.
@@ -195,6 +200,11 @@ func DetectAll(ctx context.Context, db *sql.DB) (int, error) {
 			return found, err
 		}
 		found += added
+		translated, err := detectTranslation(ctx, db, w.id)
+		if err != nil {
+			return found, err
+		}
+		found += translated
 	}
 	return found, nil
 }

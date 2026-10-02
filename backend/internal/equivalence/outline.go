@@ -475,9 +475,17 @@ const (
 // where that passage is. A candidate that only looks right from the source (a page that names every
 // character) does not lead back to where the person was.
 func Reverse(original Segment, candidate Segment, sourceSegments []Segment) Verdict {
-	back := ByPassage(candidate, sourceSegments)
+	return reverseWith(original, candidate,
+		func(s Segment) []Candidate { return ByPassage(s, sourceSegments) },
+		func(s Segment) []Candidate { return ByAnchors(s, sourceSegments) })
+}
+
+// reverseWith is Reverse with the two ways of looking in the source given as functions, so that a caller that walks
+// many candidates back can make the indices they look in once.
+func reverseWith(original Segment, candidate Segment, passages, anchors func(Segment) []Candidate) Verdict {
+	back := passages(candidate)
 	if len(back) == 0 {
-		back = ByAnchors(candidate, sourceSegments)
+		back = anchors(candidate)
 	}
 	if len(back) == 0 {
 		return Unknown

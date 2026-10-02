@@ -95,16 +95,30 @@ func rank(confidence string) int {
 	return 1
 }
 
-// ByPassage compares the source passage with the segments of the destination that the database
-// found likely, and keeps those that share enough of its word sequences.
-func ByPassage(source Segment, candidates []Segment) []Candidate {
+// shingleIndex is a set of segments with the word sequences of each, made once so that many passages can be compared
+// with them.
+type shingleIndex struct {
+	segments []Segment
+	sets     []map[uint64]struct{}
+}
+
+func newShingleIndex(segments []Segment) *shingleIndex {
+	ix := &shingleIndex{segments: segments, sets: make([]map[uint64]struct{}, len(segments))}
+	for i, c := range segments {
+		ix.sets[i] = Shingles(Words(c.Text), shingleSize)
+	}
+	return ix
+}
+
+// match compares the source passage with the segments and keeps those that share enough of its word sequences.
+func (ix *shingleIndex) match(source Segment) []Candidate {
 	sourceShingles := Shingles(Words(source.Text), shingleSize)
 	if len(sourceShingles) < minSourceShingles {
 		return nil
 	}
 	var out []Candidate
-	for _, c := range candidates {
-		n, share := Shared(sourceShingles, Shingles(Words(c.Text), shingleSize))
+	for i, c := range ix.segments {
+		n, share := Shared(sourceShingles, ix.sets[i])
 		if n < minSharedShingles || share < mediumOverlap {
 			continue
 		}
@@ -122,6 +136,12 @@ func ByPassage(source Segment, candidates []Segment) []Candidate {
 	return keepBest(out)
 }
 
+// ByPassage compares the source passage with the segments of the destination that the database
+// found likely, and keeps those that share enough of its word sequences.
+func ByPassage(source Segment, candidates []Segment) []Candidate {
+	return newShingleIndex(candidates).match(source)
+}
+
 // ByAnchors is for versions that share no wording, a translation: it looks for the names and numbers
 // of the source passage together in one segment of the destination.
 //
@@ -132,23 +152,54 @@ func ByPassage(source Segment, candidates []Segment) []Candidate {
 // (precision). A page that is only a list of the characters holds every name of the source, and is nearly
 // all other names: it has recall and no precision.
 func ByAnchors(source Segment, candidates []Segment) []Candidate {
+	return newAnchorIndex(candidates).match(source)
+}
+
+// anchorIndex is a set of segments with the names and numbers of each and how many of the segments hold each name,
+// made once so that many passages can be compared with them.
+type anchorIndex struct {
+	segments  []Segment
+	sets      []map[string]struct{}
+	documents map[string]int
+	weights   map[string]float64
+	absent    float64 // the weight of a name that no segment holds
+}
+
+func newAnchorIndex(candidates []Segment) *anchorIndex {
+	ix := &anchorIndex{segments: candidates, sets: make([]map[string]struct{}, len(candidates)), documents: map[string]int{}}
+	for i, c := range candidates {
+		ix.sets[i] = Anchors(c.Text)
+		for a := range ix.sets[i] {
+			ix.documents[a]++
+		}
+	}
+	ix.weights = make(map[string]float64, len(ix.documents))
+	for a, df := range ix.documents {
+		ix.weights[a] = math.Log(1 + float64(len(candidates))/float64(1+df))
+	}
+	ix.absent = math.Log(1 + float64(len(candidates)))
+	return ix
+}
+
+// weight is what a name is worth: the less segments hold it, the more.
+func (ix *anchorIndex) weight(a string) float64 {
+	if w, ok := ix.weights[a]; ok {
+		return w
+	}
+	return ix.absent
+}
+
+func (ix *anchorIndex) match(source Segment) []Candidate {
 	sourceAnchors := Anchors(source.Text)
 	if len(sourceAnchors) < minAnchors {
 		return nil
 	}
-	sets := make([]map[string]struct{}, len(candidates))
-	documents := map[string]int{}
-	for i, c := range candidates {
-		sets[i] = Anchors(c.Text)
-		for a := range sets[i] {
-			documents[a]++
-		}
-	}
+	candidates, sets, documents := ix.segments, ix.sets, ix.documents
 	// A name that is in no candidate weighs the most: the passage is looked for in a translation, where names
 	// stay as they are, so a source full of names that the destination never mentions is not that
 	// destination. (Leaving them out of the measure, or weighing them least, let the sibling books of a saga
 	// through: 16 and 10 unwarranted offers in 60 attempts, against none.)
-	weight := func(a string) float64 { return math.Log(1 + float64(len(candidates))/float64(1+documents[a])) }
+	weight := ix.weight
 	sourceWeight := 0.0
 	for a := range sourceAnchors {
 		sourceWeight += weight(a)

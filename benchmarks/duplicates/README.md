@@ -33,6 +33,30 @@ SHA-256 fixado para `tmp/equivalence-benchmark/`:
 | *As Aventuras* e *Um Estudo em Vermelho*, de Sherlock Holmes | mesmo autor, mesmos personagens | nenhum |
 | livros sem relação | | nenhum |
 
+## Tradução: um livro lido contra o outro
+
+Dois arquivos em idiomas diferentes não dividem sequências de palavras, então a impressão digital não os acha. O que
+sobrevive à tradução são os **nomes e números**. O Códice faz em dois passos, para não ler a biblioteca contra si mesma:
+
+1. **Quais arquivos podem ser tradução deste:** cada impressão digital guarda os nomes e números **raros** do livro (os
+   que estão em poucos trechos). Outro arquivo que compartilha pelo menos 20 deles, e 25% do menor conjunto, é lido
+   contra este. Uma tradução guarda de 37% a 51% (os nomes não se traduzem); livros sem relação, de 0% a 20%; os livros
+   irmãos de uma saga, cerca de um terço (por isso este passo só escolhe o que ler e não decide nada).
+2. **Ler um contra o outro, de ponta a ponta** (`equivalence.ReadParallel`): 60 passagens tiradas ao longo do arquivo
+   **menor** (o maior pode ter mais, como um livro com a continuação no mesmo arquivo) são procuradas no outro, pelas
+   palavras e pelos nomes, com o motor da posição equivalente (#39), **sem o sumário** (ele ligaria capítulo a capítulo
+   quer o texto concorde, quer não). Conta como tradução quando **pelo menos 8 passagens (12% da amostra)** são achadas e
+   **80% dos pares delas estão na mesma ordem** nos dois arquivos. Uma continuação divide nomes, mas as passagens que
+   acha são poucas e não seguem a ordem do livro.
+
+Os pares de tradução são os mesmos livros do Gutenberg e mais quatro livros em dois idiomas, com hash fixado: *Candide*
+(francês e inglês), *Pinocchio* (italiano e inglês), *Don Quijote* (espanhol e inglês) e *Da Terra à Lua* (português e
+duas edições em inglês). Os negativos são os livros irmãos de Sherlock Holmes e livros sem relação, nos mesmos e em
+outros idiomas.
+
+**Limite conhecido:** um livro de poucos nomes, ou de nomes traduzidos (*Pinocchio*: 42 e 66 nomes raros, 5 em comum), não
+é reconhecido como tradução. Ele fica como está: se o título e o autor casam, a sugestão por metadados continua valendo.
+
 ## Execução
 
 ```sh
@@ -45,8 +69,6 @@ saíram fora do esperado.
 
 ## O que não está aqui
 
-- **Tradução.** Dois arquivos em idiomas diferentes não dividem sequências de palavras; encontrá-los é outro problema,
-  da segunda PR da #38 (alinhamento de ponta a ponta).
 - **Escaneados com OCR ruim**: o texto errado derruba as sequências. Um PDF escaneado só entra depois de lido pelo OCR, e
   seus erros diminuem a parte em comum; não foi medido.
 - **Acervo real**: a régua são cinco livros e dois formatos. Quantos pares reais um acervo grande tem, e o que há de
