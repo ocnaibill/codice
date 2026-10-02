@@ -37,7 +37,8 @@ As issues que sobraram **não são independentes**: quase todas pertencem a uma 
 | **Leitor e design** | [#76](https://github.com/ocnaibill/codice/issues/76) (modo imersivo), [#77](https://github.com/ocnaibill/codice/issues/77) (curadoria de design) | `aguarda decisão`: pedem desenho antes de código. |
 | **Formatos** | [#26](https://github.com/ocnaibill/codice/issues/26) (MOBI/AZW) | `aguarda decisão` (extrair, converter ou não fazer) e `aguarda dado` (um MOBI real, ver quantos há no acervo). |
 | **Integrações** | [#80](https://github.com/ocnaibill/codice/issues/80) (links do OPDS atrás de HTTPS), [#10](https://github.com/ocnaibill/codice/issues/10) e [#11](https://github.com/ocnaibill/codice/issues/11) (Authentik/LDAP) | `aguarda dado`: um cliente OPDS real (#80) e o Authentik do mantenedor (#10, #11, que ficam para o fim). |
-| **Lembretes** | [#61](https://github.com/ocnaibill/codice/issues/61) (idioma com o modelo local), [#79](https://github.com/ocnaibill/codice/issues/79) (mover em lote) | `aguarda dado`: só quando houver medição ou uma biblioteca grande. |
+| **Lembretes** | [#61](https://github.com/ocnaibill/codice/issues/61) (idioma com o modelo local), [#79](https://github.com/ocnaibill/codice/issues/79) (mover em lote), [#87](https://github.com/ocnaibill/codice/issues/87) (escolhas e limites da busca por radical) | `aguarda dado`: só quando houver medição ou uma biblioteca grande. |
+| **Beta** | [#89](https://github.com/ocnaibill/codice/issues/89) (testes de fogo reais) | `aguarda dado`, **para o primeiro beta**: junta tudo o que as PRs deixaram como "não verificado" ou "só um acervo real confirma" (arquivos, máquinas, clientes e pessoas de verdade). Antes de qualquer item daquela lista valer como pronto, ele precisa ser riscado lá. |
 
 **Ordem proposta:** #41; depois #25 e #24 juntas (usam o mesmo caminho de segmentos); depois reavaliar. A #25 sozinha vale pouco sem a cadeia do áudio, e por isso vai junto da #24.
 
