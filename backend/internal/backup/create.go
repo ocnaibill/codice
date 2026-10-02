@@ -81,6 +81,9 @@ func snapshotFacts(ctx context.Context, tx *sql.Tx) (schema int64, server string
 		(SELECT count(*) FROM files), (SELECT count(*) FROM notes)`).Scan(&counts.Users, &counts.Works, &counts.Files, &counts.Notes); err != nil {
 		return
 	}
+	if counts.OCRPages, err = countOCRPages(ctx, tx); err != nil {
+		return
+	}
 	rows, qerr := tx.QueryContext(ctx, `
 		SELECT f.id, COALESCE(w.original_title, ''), l.mode, COALESCE(l.root, ''), l.path,
 		       CASE WHEN l.state = 'trashed' THEN COALESCE(ti.trash_path, l.path) ELSE l.path END,
