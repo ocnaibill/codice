@@ -24,7 +24,7 @@ SAMPLE_PIECES = 1200     # segments the sample is made from, spread over the who
 # the chapters and the description; the pages are for OCR and the speech for recognition); MOBI is not read here.
 READERS = {
     'epub': lambda path, checkpoint, out: epub_segments(path, checkpoint, out),
-    'pdf': lambda path, checkpoint, out: pdf_segments(path, checkpoint, out),
+    'pdf': lambda path, checkpoint, out: pdf_segments(path, checkpoint, out, ocr=out.get('ocr')),
     'txt': lambda path, checkpoint, out: plain_segments(path, 'txt', checkpoint),
     'md': lambda path, checkpoint, out: plain_segments(path, 'md', checkpoint),
     'cbz': lambda path, checkpoint, out: comic_segments(path, 'cbz', checkpoint),
@@ -78,12 +78,15 @@ class TextIndexer:
             return False  # it failed the same way: only asking again (force) or a new version tries it
         return bool(sha) and source_sha != sha  # the file is not the one the text came from
 
-    def run(self, work_id, force=False, checkpoint=lambda: None):
-        """Reads every file of the work that needs it. Returns {file_id: status}."""
+    def run(self, work_id, force=False, checkpoint=lambda: None, only=None):
+        """Reads every file of the work that needs it (or, with `only`, those of that list of file ids). Returns
+        {file_id: status}."""
         outcome = {}
         for row in self.db.fetchall(FILES_OF_WORK, (work_id,)):
             checkpoint()
             file_id, fmt, sha, language, availability, mode, root, path = row[:8]
+            if only is not None and file_id not in only:
+                continue
             if availability != 'available' or not self.needs_reading(row, force):
                 continue
             outcome[file_id] = self.read_file(file_id, fmt.lower(), sha, language, mode, root, path, checkpoint)
@@ -101,12 +104,16 @@ class TextIndexer:
                 # either, because it may be back the next time. The job says so.
                 raise FileNotFoundError(f'file {file_id} is not at its place')
             found = {}  # what a reader learns besides the segments: the shape of the book
+            if fmt == 'pdf':
+                found['ocr'] = self.recognised_pages(file_id, sha)  # what OCR read of the pages that have no text
             pieces = []  # and a sample of the text, to tell the language when the file does not
-            count = self.write(file_id, generation, reader(full, checkpoint, found), checkpoint, pieces)
+            origins = set()
+            count = self.write(file_id, generation, self.tracked(reader(full, checkpoint, found), origins), checkpoint, pieces)
             metadata_only = fmt in METADATA_ONLY
             detected = None if language or not count or metadata_only else self.detect(pieces)
             none = 'unsupported' if metadata_only else 'empty'
-            status = self.publish(file_id, generation, sha, 'ready' if count else none, language or detected, found.get('structure'))
+            origin = 'mixed' if len(origins) > 1 else ('ocr' if origins == {'ocr'} else 'native')
+            status = self.publish(file_id, generation, sha, 'ready' if count else none, language or detected, found.get('structure'), origin)
             if detected:
                 self.suggest_language(file_id, detected)
             return status
@@ -115,6 +122,21 @@ class TextIndexer:
             self.log(f'   ⚠️ text of file {file_id} could not be read: {err}')
             self.db.execute("SELECT text_extraction_fail(%s, %s, %s, %s)", (file_id, self.version, sha, str(err)[:500]))
             return 'failed'
+
+    def recognised_pages(self, file_id, sha):
+        """{page index: text} of the pages of a PDF that OCR has read, for the file as it is (a file whose bytes
+        changed is not the one that was read)."""
+        rows = self.db.fetchall(
+            """SELECT page, text FROM ocr_pages
+               WHERE file_id = %s AND source_sha256 IS NOT DISTINCT FROM %s AND state = 'done'""", (file_id, sha))
+        return {int(page): text for page, text in rows}
+
+    @staticmethod
+    def tracked(segments, origins):
+        """The segments as they are, noting where their text comes from."""
+        for segment in segments:
+            origins.add(segment.origin)
+            yield segment
 
     def write(self, file_id, generation, segments, checkpoint, pieces=None):
         rows, count = [], 0
@@ -159,8 +181,8 @@ class TextIndexer:
             "INSERT INTO document_segments (file_id, generation, sequence, origin, section, text, locator, locator_version, node) VALUES %s",
             rows, template="(%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)")
 
-    def publish(self, file_id, generation, sha, status, language, structure=None):
-        self.db.fetchone("SELECT text_extraction_publish(%s, %s, %s, %s, %s, 'native', %s, %s::jsonb)",
-                         (file_id, generation, self.version, sha, status, language,
+    def publish(self, file_id, generation, sha, status, language, structure=None, origin='native'):
+        self.db.fetchone("SELECT text_extraction_publish(%s, %s, %s, %s, %s, %s, %s, %s::jsonb)",
+                         (file_id, generation, self.version, sha, status, origin, language,
                           json.dumps(structure, ensure_ascii=False) if structure else None))
         return status

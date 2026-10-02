@@ -19,6 +19,7 @@ const TYPE_LABEL = {
   transfer: 'Mover para o acervo',
   dedupe: 'Busca de duplicatas',
   extract_text: 'Leitura do texto para busca',
+  ocr: 'Leitura de páginas escaneadas (OCR)',
 };
 
 export function JobsTab() {

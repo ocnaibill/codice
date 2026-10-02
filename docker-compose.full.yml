@@ -179,6 +179,39 @@ services:
       - codice_network
     restart: unless-stopped
 
+  # Optional reading of scanned PDFs by OCR (#24). This separate worker, the only one with the engine, starts idle:
+  # the owner turns OCR on in the app (Administração), and only then are the pages of the scans read, once each,
+  # in the background and with one CPU thread (OCR_THREADS). What it reads is kept for everyone. A library that
+  # keeps its files in a folder of its own (referenced) needs that folder mounted here as in the worker.
+  ocr:
+    build:
+      context: ./worker
+      target: ocr
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CODICE_STORAGE_PATH: /app/storage
+      WORKER_JOB_TYPES: ocr
+      JOBS_MAX_CONCURRENT: 1
+      # How much it may cost: CPU threads for the engine, seconds for one page, pages of one file.
+      OCR_THREADS: ${OCR_THREADS:-1}
+      OCR_PAGE_TIMEOUT: ${OCR_PAGE_TIMEOUT:-180}
+      OCR_MAX_PAGES: ${OCR_MAX_PAGES:-3000}
+      WORKER_HEALTH_MAX_AGE: ${WORKER_HEALTH_MAX_AGE:-}
+    volumes:
+      - codice_storage:/app/storage
+    depends_on:
+      backend:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - codice_network
+    restart: unless-stopped
+
   # 5. Web app: static files plus a reverse proxy to the API. The only entry point.
   frontend:
     build:
