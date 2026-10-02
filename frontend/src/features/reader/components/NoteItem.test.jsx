@@ -57,3 +57,20 @@ describe('NoteItem in a list of every note', () => {
     expect(view.text()).toContain('#ideia');
   });
 });
+
+describe('NoteItem, the text of a note', () => {
+  it('marks the concepts that its [[links]] point to, and the ones that do not exist yet', async () => {
+    view = await render({
+      note: { ...note, body: 'Ver [[Medo]] e [[Coragem]]', links: { Medo: { conceptId: 3, name: 'Medo', description: '' }, Coragem: null } },
+    });
+    expect(document.querySelector('[data-concept="3"]').textContent).toBe('Medo');
+    expect(view.button('Coragem')).toBeDefined();
+    expect(view.text()).toContain('Ver Medo e Coragem');
+  });
+
+  it('tells, in the field, that [[Concept]] links to a concept', async () => {
+    view = await render();
+    await view.click(view.button('Editar'));
+    expect(document.querySelector('textarea[aria-label="Sua anotação"]').placeholder).toContain('[[Conceito]]');
+  });
+});

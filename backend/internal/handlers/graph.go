@@ -37,6 +37,7 @@ const (
 	stateDeleted    = "deleted"
 	errNoNode       = "Não achei um dos lados da relação."
 	errSameRelation = "Essa relação já existe."
+	errFromWikilink = "Essa relação vem de um [[link]] no texto de uma nota: para mudá-la, mude o texto da nota."
 )
 
 // Types is the list of the types of relation: what each says from both ends and between which kinds of node it can be
@@ -157,6 +158,15 @@ func saveKeys(r *http.Request, tx *sql.Tx, user string, concept int64, name stri
 	return 0, nil
 }
 
+// conceptKeys is what a concept's name and aliases read as.
+func conceptKeys(name string, aliases []string) []string {
+	keys := []string{graph.Key(name)}
+	for _, a := range aliases {
+		keys = append(keys, graph.Key(a))
+	}
+	return keys
+}
+
 func idParam(r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	return id, err == nil && id > 0
@@ -227,6 +237,12 @@ func (h *GraphHandler) CreateConcept(w http.ResponseWriter, r *http.Request) {
 	}
 	if taken != 0 {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "Já existe um conceito com esse nome ou apelido.", "conceptId": taken})
+		return
+	}
+	// The notes that already cited one of its names (a pending [[link]]) now point to it.
+	if err := resyncNotesCiting(r.Context(), tx, user, conceptKeys(*name, *aliases)); err != nil {
+		log.Println("Error linking notes to a concept:", err)
+		http.Error(w, "Error saving the concept", http.StatusInternalServerError)
 		return
 	}
 	if err := tx.Commit(); err != nil {
@@ -371,6 +387,7 @@ func (h *GraphHandler) UpdateConcept(w http.ResponseWriter, r *http.Request) {
 		kept := []string(currentAliases)
 		aliases = &kept
 	}
+	before := conceptKeys(current, currentAliases)
 	if _, err := tx.ExecContext(r.Context(), `UPDATE concepts SET name = $1, description = $2, aliases = $3, updated_at = now() WHERE id = $4`,
 		*name, *description, pq.Array(*aliases), id); err != nil {
 		http.Error(w, "Error saving the concept", http.StatusInternalServerError)
@@ -384,6 +401,13 @@ func (h *GraphHandler) UpdateConcept(w http.ResponseWriter, r *http.Request) {
 	}
 	if taken != 0 {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "Já existe um conceito com esse nome ou apelido.", "conceptId": taken})
+		return
+	}
+	// A name it no longer answers to leaves the notes that cite it (they become pending, the text untouched), and one
+	// it newly answers to takes the notes that already cited it.
+	if err := resyncNotesCiting(r.Context(), tx, user, symmetricDifference(before, conceptKeys(*name, *aliases))); err != nil {
+		log.Println("Error linking notes to a concept:", err)
+		http.Error(w, "Error saving the concept", http.StatusInternalServerError)
 		return
 	}
 	if err := tx.Commit(); err != nil {
@@ -797,12 +821,16 @@ func (h *GraphHandler) UpdateRelation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := currentUserID(r)
-	var sk, tk, current string
-	if err := h.DB.QueryRowContext(r.Context(), `SELECT source_kind, target_kind, type FROM relations WHERE id = $1 AND user_id = $2`, id, user).Scan(&sk, &tk, &current); errors.Is(err, sql.ErrNoRows) {
+	var sk, tk, current, origin string
+	if err := h.DB.QueryRowContext(r.Context(), `SELECT source_kind, target_kind, type, origin FROM relations WHERE id = $1 AND user_id = $2`, id, user).Scan(&sk, &tk, &current, &origin); errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Relation not found", http.StatusNotFound)
 		return
 	} else if err != nil {
 		http.Error(w, "Error reading the relation", http.StatusInternalServerError)
+		return
+	}
+	if origin == graph.Wikilink {
+		http.Error(w, errFromWikilink, http.StatusConflict)
 		return
 	}
 	newType := current
@@ -855,13 +883,19 @@ func (h *GraphHandler) DeleteRelation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Relation not found", http.StatusNotFound)
 		return
 	}
-	res, err := h.DB.ExecContext(r.Context(), `DELETE FROM relations WHERE id = $1 AND user_id = $2`, id, currentUserID(r))
+	res, err := h.DB.ExecContext(r.Context(), `DELETE FROM relations WHERE id = $1 AND user_id = $2 AND origin <> 'wikilink'`, id, currentUserID(r))
 	if err != nil {
 		log.Println("Error deleting relation:", err)
 		http.Error(w, "Error deleting the relation", http.StatusInternalServerError)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
+		// Nothing was deleted: it is not the caller's, or it comes from a link and is not deleted by hand.
+		var found bool
+		if h.DB.QueryRowContext(r.Context(), `SELECT true FROM relations WHERE id = $1 AND user_id = $2`, id, currentUserID(r)).Scan(&found) == nil {
+			http.Error(w, errFromWikilink, http.StatusConflict)
+			return
+		}
 		http.Error(w, "Relation not found", http.StatusNotFound)
 		return
 	}

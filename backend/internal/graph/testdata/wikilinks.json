@@ -1,0 +1,451 @@
+[
+ {
+  "name": "simple",
+  "text": "Veja [[Estoicismo]] aqui.",
+  "links": [
+   {
+    "name": "Estoicismo",
+    "label": "Estoicismo"
+   }
+  ]
+ },
+ {
+  "name": "shown text",
+  "text": "Veja [[Estoicismo|a escola]] aqui.",
+  "links": [
+   {
+    "name": "Estoicismo",
+    "label": "a escola"
+   }
+  ]
+ },
+ {
+  "name": "trimmed",
+  "text": "[[  Estoicismo  |  a escola ]]",
+  "links": [
+   {
+    "name": "Estoicismo",
+    "label": "a escola"
+   }
+  ]
+ },
+ {
+  "name": "empty shown text is the name",
+  "text": "[[Estoicismo|]]",
+  "links": [
+   {
+    "name": "Estoicismo",
+    "label": "Estoicismo"
+   }
+  ]
+ },
+ {
+  "name": "two on a line",
+  "text": "[[A]] e [[B]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   },
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "repeated stays in order",
+  "text": "[[A]] [[B]] [[A]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   },
+   {
+    "name": "B",
+    "label": "B"
+   },
+   {
+    "name": "A",
+    "label": "A"
+   }
+  ]
+ },
+ {
+  "name": "parentheses are part of the name",
+  "text": "[[Estoicismo (escola)]]",
+  "links": [
+   {
+    "name": "Estoicismo (escola)",
+    "label": "Estoicismo (escola)"
+   }
+  ]
+ },
+ {
+  "name": "accents and symbols",
+  "text": "[[Inteligência Artificial]] e [[C++]]",
+  "links": [
+   {
+    "name": "Inteligência Artificial",
+    "label": "Inteligência Artificial"
+   },
+   {
+    "name": "C++",
+    "label": "C++"
+   }
+  ]
+ },
+ {
+  "name": "no closing",
+  "text": "[[Estoicismo",
+  "links": []
+ },
+ {
+  "name": "closing on another line",
+  "text": "[[Estoi\ncismo]]",
+  "links": []
+ },
+ {
+  "name": "single brackets",
+  "text": "[Estoicismo] e [x](http://a)",
+  "links": []
+ },
+ {
+  "name": "empty",
+  "text": "[[]] e [[   ]] e [[ ... ]] e [[|x]]",
+  "links": []
+ },
+ {
+  "name": "bracket inside",
+  "text": "[[a [b]]",
+  "links": []
+ },
+ {
+  "name": "nested takes the inner",
+  "text": "[[[A]]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   }
+  ]
+ },
+ {
+  "name": "name too long",
+  "text": "[[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]]",
+  "links": []
+ },
+ {
+  "name": "name at the limit",
+  "text": "[[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]]",
+  "links": [
+   {
+    "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  ]
+ },
+ {
+  "name": "name too long counts runes",
+  "text": "[[éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé]]",
+  "links": [
+   {
+    "name": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+    "label": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+   }
+  ]
+ },
+ {
+  "name": "inline code",
+  "text": "`[[A]]` e [[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "double backtick code",
+  "text": "``[[A]] ` [[B]]`` e [[C]]",
+  "links": [
+   {
+    "name": "C",
+    "label": "C"
+   }
+  ]
+ },
+ {
+  "name": "code span over two lines",
+  "text": "`x\n[[A]] y` e [[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "unmatched backtick is text",
+  "text": "` [[A]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   }
+  ]
+ },
+ {
+  "name": "other run of backticks does not close",
+  "text": "``[[A]]` [[B]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   },
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "fenced block",
+  "text": "antes\n```\n[[A]]\n```\ndepois [[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "fenced block with language",
+  "text": "```js\n[[A]]\n```\n[[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "tilde fence",
+  "text": "~~~\n[[A]]\n~~~\n[[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "fence closes with at least as many",
+  "text": "````\n[[A]]\n```\n[[B]]\n````\n[[C]]",
+  "links": [
+   {
+    "name": "C",
+    "label": "C"
+   }
+  ]
+ },
+ {
+  "name": "fence not closed runs to the end",
+  "text": "```\n[[A]]\n[[B]]",
+  "links": []
+ },
+ {
+  "name": "fence interrupts a paragraph",
+  "text": "texto [[A]]\n```\n[[B]]\n```\n[[C]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   },
+   {
+    "name": "C",
+    "label": "C"
+   }
+  ]
+ },
+ {
+  "name": "backtick fence info cannot hold a backtick",
+  "text": "``` a`b\n[[A]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   }
+  ]
+ },
+ {
+  "name": "escaped",
+  "text": "\\[[A]] e [[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "escaped backslash does not escape",
+  "text": "\\\\[[A]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   }
+  ]
+ },
+ {
+  "name": "escaped backtick does not open code",
+  "text": "\\`[[A]]` [[B]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   },
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "in a list",
+  "text": "- um [[A]]\n- dois [[B]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   },
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "in emphasis",
+  "text": "**[[A]]** e _[[B]]_",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   },
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "after a blank line",
+  "text": "[[A]]\n\n[[B]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   },
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "accented text around",
+  "text": "açúcar [[Átomo]] ção",
+  "links": [
+   {
+    "name": "Átomo",
+    "label": "Átomo"
+   }
+  ]
+ },
+ {
+  "name": "a bar later is part of the shown text",
+  "text": "[[A|b|c]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "b|c"
+   }
+  ]
+ },
+ {
+  "name": "too long inside",
+  "text": "[[A|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]]",
+  "links": []
+ },
+ {
+  "name": "a code span does not cross a blank line",
+  "text": "`x\n\n[[A]] y`",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   }
+  ]
+ },
+ {
+  "name": "a fence needs no more than three spaces of indent",
+  "text": "    ```\n[[A]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   }
+  ]
+ },
+ {
+  "name": "a fence may be indented up to three spaces",
+  "text": "   ```\n[[A]]\n   ```\n[[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "a closing fence cannot have text after it",
+  "text": "```\n[[A]]\n``` x\n[[B]]\n```\n[[C]]",
+  "links": [
+   {
+    "name": "C",
+    "label": "C"
+   }
+  ]
+ },
+ {
+  "name": "a fence is not closed by a line indented four spaces",
+  "text": "```\n[[A]]\n    ```\n[[B]]",
+  "links": []
+ },
+ {
+  "name": "a code span is closed by exactly as many backticks",
+  "text": "`x``[[A]]` y [[B]]",
+  "links": [
+   {
+    "name": "B",
+    "label": "B"
+   }
+  ]
+ },
+ {
+  "name": "a tilde fence interrupts a paragraph",
+  "text": "[[A]]\n~~~\n[[B]]\n~~~\n[[C]]",
+  "links": [
+   {
+    "name": "A",
+    "label": "A"
+   },
+   {
+    "name": "C",
+    "label": "C"
+   }
+  ]
+ }
+]

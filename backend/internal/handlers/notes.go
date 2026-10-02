@@ -59,6 +59,9 @@ type Note struct {
 	SourceAvailable bool            `json:"sourceAvailable"`
 	// FileAvailable says whether the exact file the note points into can still be opened.
 	FileAvailable bool `json:"fileAvailable"`
+	// Links says, for each [[link]] in Body (by the name as written), the concept it points to now, or null when
+	// there is none yet (#21). Only a list of notes says it; the export does not.
+	Links map[string]*LinkOut `json:"links,omitempty"`
 }
 
 // CreateNoteRequest saves marginalia against a work. Quote is the passage kept from the
@@ -225,12 +228,25 @@ func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	if canonical != nil {
 		loc, ver = string(canonical), locator.Version
 	}
+	tx, err := h.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Println("Error creating note:", err)
+		http.Error(w, "Error creating note", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
 	var id int
-	err := h.DB.QueryRowContext(r.Context(), `
+	err = tx.QueryRowContext(r.Context(), `
 		INSERT INTO notes (user_id, work_id, file_id, kind, quote, body, tags, locator, locator_version)
 		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8::jsonb, $9)
 		RETURNING id`,
 		userID, workID, req.FileID, kind, quote, body, pq.Array(tags), loc, ver).Scan(&id)
+	if err == nil {
+		err = syncNoteLinks(r.Context(), tx, userID, int64(id), body)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
 	if err != nil {
 		log.Println("Error creating note:", err)
 		http.Error(w, "Error creating note", http.StatusInternalServerError)
@@ -386,6 +402,12 @@ func (h *NotesHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
 		}
 		notes = append(notes, n)
 	}
+	rows.Close()
+	if err := attachLinks(r.Context(), h.DB, userID, notes); err != nil {
+		log.Println("Error reading the links of notes:", err)
+		http.Error(w, "Error listing notes", http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": notes, "total": total})
 }
 
@@ -441,8 +463,16 @@ func (h *NotesHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The database refuses an edit that would leave a note with nothing in it.
+	user := currentUserID(r)
+	tx, err := h.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Println("Error updating note:", err)
+		http.Error(w, "Error updating note", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
 	var updated int
-	err = h.DB.QueryRowContext(r.Context(), `
+	err = tx.QueryRowContext(r.Context(), `
 		UPDATE notes SET
 			quote = CASE WHEN $2::boolean THEN NULLIF($3, '') ELSE quote END,
 			body = CASE WHEN $4::boolean THEN $5 ELSE body END,
@@ -450,7 +480,14 @@ func (h *NotesHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 			updated_at = now()
 		WHERE id = $1 AND user_id = $8
 		RETURNING id`,
-		id, quote.Valid, quote.String, body.Valid, body.String, req.Tags != nil, pq.Array(tags), currentUserID(r)).Scan(&updated)
+		id, quote.Valid, quote.String, body.Valid, body.String, req.Tags != nil, pq.Array(tags), user).Scan(&updated)
+	if err == nil && body.Valid {
+		// The links of the text are what the relations of the note follow.
+		err = syncNoteLinks(r.Context(), tx, user, id, body.String)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
 	var pqErr *pq.Error
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
