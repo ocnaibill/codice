@@ -3,8 +3,10 @@ package handlers
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -255,7 +258,7 @@ func servePageFromZip(w http.ResponseWriter, r *http.Request, zipPath string, pa
 func listCachedPages(rarPath string, workID string, storagePath string) ([]PageInfo, error) {
 	cacheDir := filepath.Join(storagePath, "cache", "pages", workID)
 
-	// If cache doesn't exist, extract via external unrar command
+	// If cache doesn't exist, extract it with bsdtar
 	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
 		if err := extractCBR(rarPath, cacheDir); err != nil {
 			return nil, fmt.Errorf("failed to extract CBR: %w", err)
@@ -290,31 +293,67 @@ func listCachedPages(rarPath string, workID string, storagePath string) ([]PageI
 	return pages, nil
 }
 
+// cbrExtractTimeout bounds one extraction: a comic is a few hundred images, not a day of work.
+const cbrExtractTimeout = 2 * time.Minute
+
+// extractCBR unpacks the pages of a CBR into cacheDir, flat and in reading order, with bsdtar (libarchive: it reads
+// RAR, is free, and is what the worker uses for the same files). The archive goes first into a directory of its own,
+// where only the images are kept, named by their place in the order (00000_page.jpg) so that two folders with a
+// "001.jpg" each do not overwrite one another; then that directory takes the place of cacheDir in one step, so a
+// second request never sees a half-extracted cache. bsdtar itself refuses a name that climbs out of the directory
+// ("..") or goes through a link.
 func extractCBR(rarPath string, cacheDir string) error {
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+	parent := filepath.Dir(cacheDir)
+	if err := os.MkdirAll(parent, 0755); err != nil {
 		return fmt.Errorf("failed to create cache dir: %w", err)
 	}
-
-	// Use system unrar command (available in Docker images via apt/apk)
-	cmd := exec.Command("unrar", "e", "-o+", rarPath, cacheDir+string(os.PathSeparator))
-	output, err := cmd.CombinedOutput()
+	raw, err := os.MkdirTemp(parent, ".unpack-*")
 	if err != nil {
-		os.RemoveAll(cacheDir) // Clean up empty/partial directory on failure
-		return fmt.Errorf("unrar failed: %s - %w", string(output), err)
+		return fmt.Errorf("failed to create a work dir: %w", err)
+	}
+	defer os.RemoveAll(raw)
+
+	ctx, cancel := context.WithTimeout(context.Background(), cbrExtractTimeout)
+	defer cancel()
+	if output, err := exec.CommandContext(ctx, "bsdtar", "-xf", rarPath, "-C", raw).CombinedOutput(); err != nil {
+		return fmt.Errorf("bsdtar failed: %s - %w", strings.TrimSpace(string(output)), err)
 	}
 
-	// Remove non-image files that may have been extracted (ComicInfo.xml, etc.)
-	filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+	// The images, by their path in the archive (a folder per chapter sorts before the next one).
+	var images []string
+	filepath.Walk(raw, func(path string, info os.FileInfo, err error) error {
+		if err != nil || !info.Mode().IsRegular() || !validImageExts[strings.ToLower(filepath.Ext(info.Name()))] {
 			return nil
 		}
-		ext := strings.ToLower(filepath.Ext(info.Name()))
-		if !validImageExts[ext] {
-			os.Remove(path)
+		rel, err := filepath.Rel(raw, path)
+		if err == nil {
+			images = append(images, rel)
 		}
 		return nil
 	})
+	if len(images) == 0 {
+		return errors.New("the archive has no images")
+	}
+	sort.Strings(images)
 
+	flat, err := os.MkdirTemp(parent, ".pages-*")
+	if err != nil {
+		return fmt.Errorf("failed to create a work dir: %w", err)
+	}
+	for i, rel := range images {
+		name := fmt.Sprintf("%05d_%s", i, filepath.Base(rel))
+		if err := os.Rename(filepath.Join(raw, rel), filepath.Join(flat, name)); err != nil {
+			os.RemoveAll(flat)
+			return fmt.Errorf("failed to keep a page: %w", err)
+		}
+	}
+	// Another request may have extracted it meanwhile: then its cache stands and ours is dropped.
+	if err := os.Rename(flat, cacheDir); err != nil {
+		os.RemoveAll(flat)
+		if _, statErr := os.Stat(cacheDir); statErr != nil {
+			return fmt.Errorf("failed to publish the cache: %w", err)
+		}
+	}
 	return nil
 }
 

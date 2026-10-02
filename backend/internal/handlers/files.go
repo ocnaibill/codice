@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -72,6 +73,22 @@ type FilesHandler struct {
 	CacheHeader string
 }
 
+// wildcardPath is the part of the URL the "*" of the route matched, decoded. chi routes on the encoded
+// path (RawPath) whenever it differs from the one Go would write (a comma sent as %2C, a semicolon as %3B,
+// which is how a browser encodes a name written "Seitz, Tim"), and then hands the wildcard over still
+// encoded: a file whose name has one of those characters would never be found. It is decoded once, and
+// only then: an encoded percent sign stays a percent sign.
+func wildcardPath(r *http.Request) string {
+	p := chi.URLParam(r, "*")
+	if r.URL.RawPath == "" {
+		return p
+	}
+	if decoded, err := url.PathUnescape(p); err == nil {
+		return decoded
+	}
+	return p
+}
+
 // cleanRelPath validates the wildcard part of the URL: no traversal, no
 // absolute paths, no directory requests.
 func cleanRelPath(raw string) (string, bool) {
@@ -86,7 +103,7 @@ func cleanRelPath(raw string) (string, bool) {
 }
 
 func (h *FilesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	rel, ok := cleanRelPath(chi.URLParam(r, "*"))
+	rel, ok := cleanRelPath(wildcardPath(r))
 	if !ok {
 		http.NotFound(w, r)
 		return
