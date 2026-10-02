@@ -1,6 +1,8 @@
-import { useOcr, useOcrSettings, useRetryOcr, useSetOcr, describeError } from '../api/admin';
-import { fileProgress, languageName } from '../../../lib/ocr';
+import { useState } from 'react';
+import { useOcr, useOcrSettings, useRetryOcr, useSetOcr, useSetOcrLanguage, describeError } from '../api/admin';
+import { fileProgress, languageLine, languageName, languagesLabel } from '../../../lib/ocr';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
+import { ConfirmDialog } from './ConfirmDialog';
 
 const ENGINE_STATE = {
   idle: 'Parado, esperando páginas para ler.',
@@ -57,10 +59,11 @@ function Settings({ isOwner }) {
           </label>
 
           <fieldset className="mt-4" disabled={save.isPending}>
-            <legend className="text-sm font-medium text-ink">Idioma, quando o PDF não diz qual é</legend>
+            <legend className="text-sm font-medium text-ink">Idioma de reserva</legend>
             <p className="mt-1 text-xs text-ink-soft">
-              Um PDF que declara o idioma é lido nele. Para os outros, escolha o que o acervo costuma ter: ler com mais de um idioma
-              aceita trechos misturados, mas pode errar mais os acentos.
+              Um PDF que declara o idioma é lido nele. Nos outros, o Códice lê algumas páginas, descobre o idioma e lê o resto nele.
+              Só quando não consegue descobrir usa o que estiver marcado aqui: ler com mais de um idioma aceita trechos misturados,
+              mas pode errar mais os acentos. A equipe pode corrigir o idioma de um PDF na lista abaixo.
             </p>
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
               {(state.languages?.length ? state.languages : chosen).map((code) => (
@@ -87,9 +90,57 @@ function Settings({ isOwner }) {
   );
 }
 
+/** Asks which language a file should be read in, with the ones the engine has; the choice is sent as the engine codes joined by "+". */
+function LanguageDialog({ item, available, fallback, onChoose, onCancel }) {
+  const [chosen, setChosen] = useState(String(item.language || fallback || '').split('+').filter(Boolean));
+  const toggle = (code) => {
+    const next = chosen.includes(code) ? chosen.filter((c) => c !== code) : [...chosen, code];
+    if (next.length > 0) setChosen(next);
+  };
+  const options = available.length ? available : chosen;
+  return (
+    <ConfirmDialog
+      title="Em que idioma está este PDF?"
+      onCancel={onCancel}
+      onChoose={onChoose}
+      choices={[{ label: 'Ler de novo neste idioma', value: chosen.join('+'), tone: 'primary' }]}
+      message={
+        <>
+          <p>
+            <strong className="text-ink">{item.title}</strong>
+            {item.language ? ` está sendo lido em ${languagesLabel(item.language)}.` : '.'} Marque o idioma certo e todas as páginas serão lidas de
+            novo, depois das que já estão na fila.
+          </p>
+          <fieldset className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+            <legend className="sr-only">Idiomas do PDF</legend>
+            {options.map((code) => (
+              <label key={code} className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={chosen.includes(code)}
+                  disabled={chosen.length === 1 && chosen[0] === code}
+                  onChange={() => toggle(code)}
+                />
+                {languageName(code)}
+              </label>
+            ))}
+          </fieldset>
+          <p className="mt-3 text-xs">
+            O texto que já é pesquisável continua valendo até a nova leitura terminar. Isto muda só o idioma da leitura, não o idioma
+            da obra.
+          </p>
+        </>
+      }
+    />
+  );
+}
+
 function Files({ enabled }) {
   const { data, isLoading, isError } = useOcr({ live: enabled });
+  const { data: settings } = useOcrSettings();
   const retry = useRetryOcr();
+  const setLanguage = useSetOcrLanguage();
+  const [correcting, setCorrecting] = useState(null);
   const items = data?.data || [];
   return (
     <Section title="PDFs com páginas sem texto" hint="Cada página é lida uma vez e fica guardada. Uma página que falha não é tentada de novo sozinha.">
@@ -108,15 +159,21 @@ function Files({ enabled }) {
                 {total === item.pageCount ? `Todas as ${item.pageCount} páginas são imagem` : `${total} de ${item.pageCount} páginas sem texto`}
               </p>
               <p className={`mt-1 text-[12px] ${TONE[progress.tone]}`}>{progress.text}</p>
+              {languageLine(item) && <p className="text-[12px] text-ink-faint">{languageLine(item)}</p>}
               {(item.state === 'reading' || (item.read > 0 && item.read + item.failed < total)) && (
                 <div className="mt-1 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-surface-alt" role="progressbar" aria-valuenow={done} aria-valuemin={0} aria-valuemax={100}>
                   <div className="h-full rounded-full bg-brand" style={{ width: `${done}%` }} />
                 </div>
               )}
-              {item.failed > 0 && !item.state && enabled && (
-                <div className="mt-2">
-                  <Btn onClick={() => retry.mutate(item.workId)} disabled={retry.isPending}>
-                    Tentar de novo {item.failed === 1 ? 'a página que falhou' : `as ${item.failed} páginas que falharam`}
+              {!item.state && enabled && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {item.failed > 0 && (
+                    <Btn onClick={() => retry.mutate(item.workId)} disabled={retry.isPending}>
+                      Tentar de novo {item.failed === 1 ? 'a página que falhou' : `as ${item.failed} páginas que falharam`}
+                    </Btn>
+                  )}
+                  <Btn onClick={() => setCorrecting(item)} disabled={setLanguage.isPending}>
+                    Idioma errado?
                   </Btn>
                 </div>
               )}
@@ -125,6 +182,19 @@ function Files({ enabled }) {
         })}
       </ul>
       <ErrorNote>{retry.isError && describeError(retry.error)}</ErrorNote>
+      <ErrorNote>{setLanguage.isError && describeError(setLanguage.error)}</ErrorNote>
+      {correcting && (
+        <LanguageDialog
+          item={correcting}
+          available={settings?.languages || []}
+          fallback={settings?.language}
+          onCancel={() => setCorrecting(null)}
+          onChoose={(language) => {
+            setLanguage.mutate({ fileId: correcting.fileId, language });
+            setCorrecting(null);
+          }}
+        />
+      )}
     </Section>
   );
 }

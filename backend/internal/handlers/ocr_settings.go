@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -33,9 +34,14 @@ type ocrWorker struct {
 }
 
 func (h *OCRSettingsHandler) worker(r *http.Request) (ocrWorker, error) {
+	return readOCRWorker(r.Context(), h.DB)
+}
+
+// readOCRWorker is what the OCR service says about itself (the languages it has), and whether it is running.
+func readOCRWorker(ctx context.Context, db *sql.DB) (ocrWorker, error) {
 	var w ocrWorker
 	var languages sql.NullString
-	err := h.DB.QueryRowContext(r.Context(), `
+	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE((SELECT updated_at > now() - interval '2 minutes' FROM settings WHERE key = 'ocr.worker'), false),
 		       COALESCE((SELECT value->>'engine' FROM settings WHERE key = 'ocr.worker'), ''),
 		       COALESCE((SELECT value->>'version' FROM settings WHERE key = 'ocr.worker'), ''),
@@ -51,6 +57,24 @@ func (h *OCRSettingsHandler) worker(r *http.Request) (ocrWorker, error) {
 		json.Unmarshal([]byte(languages.String), &w.Languages)
 	}
 	return w, nil
+}
+
+// missingLanguage is the first language of the set that the engine does not have, or "". With the engine not running,
+// or not saying what it has, nothing can be told to be missing.
+func (w ocrWorker) missingLanguage(set string) string {
+	if !w.Available || len(w.Languages) == 0 {
+		return ""
+	}
+	have := map[string]bool{}
+	for _, l := range w.Languages {
+		have[l] = true
+	}
+	for _, l := range strings.Split(set, "+") {
+		if !have[l] {
+			return l
+		}
+	}
+	return ""
 }
 
 func (h *OCRSettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -97,17 +121,9 @@ func (h *OCRSettingsHandler) Set(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// With the engine running, only the languages it has can be chosen: a language it lacks would fail every page.
-	if worker.Available && len(worker.Languages) > 0 {
-		have := map[string]bool{}
-		for _, l := range worker.Languages {
-			have[l] = true
-		}
-		for _, l := range strings.Split(req.Language, "+") {
-			if !have[l] {
-				http.Error(w, "O serviço de OCR não tem o idioma "+l+".", http.StatusBadRequest)
-				return
-			}
-		}
+	if missing := worker.missingLanguage(req.Language); missing != "" {
+		http.Error(w, "O serviço de OCR não tem o idioma "+missing+".", http.StatusBadRequest)
+		return
 	}
 	if req.Enabled && !worker.Available {
 		http.Error(w, "O serviço de OCR não está em execução.", http.StatusConflict)

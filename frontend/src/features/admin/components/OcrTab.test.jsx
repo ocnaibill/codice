@@ -260,3 +260,116 @@ describe('OcrTab: the scans', () => {
     expect(calls).toBe(seen); // nothing is waiting any more: it does not ask again
   }, 20000);
 });
+
+describe('OcrTab: the language of each scan', () => {
+  const on = () => settings({ enabled: true });
+  const inDialog = (label) => [...view.dialog().querySelectorAll('label')].find((l) => l.textContent.includes(label))?.querySelector('input');
+
+  it('says which language each file is read in and how that was chosen', async () => {
+    await open({ state: on(), files: [
+      scan({ title: 'Declarado', language: 'por', languageSource: 'declared' }),
+      scan({ workId: 2, title: 'Descoberto', fileId: 5, language: 'eng', languageSource: 'detected' }),
+      scan({ workId: 3, title: 'Reserva', fileId: 6, language: 'por+eng', languageSource: 'default' }),
+      scan({ workId: 4, title: 'Da equipe', fileId: 7, language: 'spa', languageSource: 'manual' }),
+      scan({ workId: 5, title: 'Ainda não visto', fileId: 8 }),
+    ] });
+    const text = view.text();
+    expect(text).toContain('Idioma da leitura: Português (o arquivo declara)');
+    expect(text).toContain('Idioma da leitura: Inglês (descoberto pelo Códice lendo algumas páginas)');
+    expect(text).toContain('Idioma da leitura: Português e Inglês (não deu para descobrir, é o padrão do dono do acervo)');
+    expect(text).toContain('Idioma da leitura: Espanhol (escolhido pela equipe)');
+    expect(text.match(/Idioma da leitura/g)).toHaveLength(4);
+  });
+
+  it('explains that the one chosen by the owner is only the reserve', async () => {
+    await open();
+    expect(view.text()).toContain('Idioma de reserva');
+    expect(view.text()).toContain('descobre o idioma e lê o resto nele');
+    expect(view.text()).toContain('A equipe pode corrigir o idioma de um PDF na lista abaixo');
+  });
+
+  it('offers "wrong language?" for each file, when OCR is on and the work is not waiting or being read', async () => {
+    await open({ state: on(), files: [
+      scan({ language: 'eng', languageSource: 'detected' }),
+      scan({ workId: 2, fileId: 5, state: 'queued' }),
+      scan({ workId: 3, fileId: 6, state: 'reading' }),
+    ] });
+    expect([...document.body.querySelectorAll('button')].filter((b) => b.textContent === 'Idioma errado?')).toHaveLength(1);
+    view.unmount();
+    await open({ files: [scan()] });
+    expect(view.buttonMatching(/Idioma errado/)).toBeUndefined();
+  });
+
+  it('is offered to the staff that is not the owner, too', async () => {
+    await open({ state: on(), isOwner: false, files: [scan({ language: 'eng', languageSource: 'detected' })] });
+    expect(view.buttonMatching(/Idioma errado/)).toBeTruthy();
+  });
+
+  it('asks which language, starting from the one it was read in, and reads again in the one chosen', async () => {
+    await open({ state: on(), files: [scan({ title: 'O livro', fileId: 4, language: 'por', languageSource: 'detected' })] });
+    await view.click(view.buttonMatching(/Idioma errado/));
+    expect(view.dialog()).toBeTruthy();
+    expect(view.dialog().textContent).toContain('O livro está sendo lido em Português.');
+    expect(view.dialog().textContent).toContain('lidas de novo');
+    expect(view.dialog().textContent).toContain('continua valendo até a nova leitura terminar');
+    expect(view.dialog().textContent).toContain('não o idioma da obra');
+    expect(inDialog('Português').checked).toBe(true);
+    expect(inDialog('Inglês').checked).toBe(false);
+    expect(inDialog('Português').disabled).toBe(true); // the last one cannot be taken away
+    await view.click(inDialog('Inglês'));
+    await view.click(inDialog('Português'));
+    expect(api.post).not.toHaveBeenCalled(); // nothing is sent until it is confirmed
+    await view.click(view.buttonMatching(/Ler de novo neste idioma/));
+    expect(api.post).toHaveBeenCalledWith('/admin/files/4/ocr/language', { language: 'eng' });
+    expect(view.dialog()).toBeNull();
+  });
+
+  it('joins more than one language with the plus sign, in the order chosen', async () => {
+    await open({ state: on(), files: [scan({ language: 'eng', languageSource: 'detected' })] });
+    await view.click(view.buttonMatching(/Idioma errado/));
+    await view.click(inDialog('Português'));
+    await view.click(view.buttonMatching(/Ler de novo neste idioma/));
+    expect(api.post).toHaveBeenCalledWith('/admin/files/4/ocr/language', { language: 'eng+por' });
+  });
+
+  it('starts from the reserve language for a file not looked at yet', async () => {
+    await open({ state: on(), files: [scan()] });
+    await view.click(view.buttonMatching(/Idioma errado/));
+    expect(inDialog('Português').checked).toBe(true);
+    expect(inDialog('Inglês').checked).toBe(true);
+    expect(inDialog('Espanhol').checked).toBe(false);
+    expect(view.dialog().textContent).not.toContain('está sendo lido em');
+  });
+
+  it('offers only the languages the engine has', async () => {
+    await open({ state: settings({ enabled: true, languages: ['eng', 'por'] }), files: [scan({ language: 'por', languageSource: 'detected' })] });
+    await view.click(view.buttonMatching(/Idioma errado/));
+    expect([...view.dialog().querySelectorAll('label')].map((l) => l.textContent.trim())).toEqual(['Inglês', 'Português']);
+  });
+
+  it('closes without asking for anything when it is cancelled', async () => {
+    await open({ state: on(), files: [scan({ language: 'por', languageSource: 'detected' })] });
+    await view.click(view.buttonMatching(/Idioma errado/));
+    await view.click(view.button('Cancelar'));
+    expect(view.dialog()).toBeNull();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('says what the server said when it refuses', async () => {
+    await open({ state: on(), files: [scan({ language: 'por', languageSource: 'detected' })] });
+    api.post.mockRejectedValue({ response: { status: 409, data: 'Esta obra está na fila ou sendo lida agora. Tente de novo quando terminar.' } });
+    await view.click(view.buttonMatching(/Idioma errado/));
+    await view.click(inDialog('Inglês'));
+    await view.click(view.buttonMatching(/Ler de novo neste idioma/));
+    expect(view.text()).toContain('Esta obra está na fila ou sendo lida agora.');
+  });
+
+  it('asks for the file that was clicked, not the first', async () => {
+    await open({ state: on(), files: [scan({ title: 'Primeiro', fileId: 4 }), scan({ workId: 2, title: 'Segundo', fileId: 9 })] });
+    const buttons = [...document.body.querySelectorAll('button')].filter((b) => b.textContent === 'Idioma errado?');
+    await view.click(buttons[1]);
+    expect(view.dialog().textContent).toContain('Segundo');
+    await view.click(view.buttonMatching(/Ler de novo neste idioma/));
+    expect(api.post).toHaveBeenCalledWith('/admin/files/9/ocr/language', { language: 'por+eng' });
+  });
+});

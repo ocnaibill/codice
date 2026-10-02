@@ -19,6 +19,7 @@ import subprocess
 
 import fitz  # PyMuPDF
 
+from textindex.language import detect as detect_language
 from textindex.pdf import MIN_TEXT_CHARS
 from textindex.store import TextIndexer, resolve
 
@@ -34,6 +35,8 @@ MAX_PIXELS = 40_000_000
 MAX_PAGES = int(os.getenv('OCR_MAX_PAGES', '3000'))
 MAX_CONSECUTIVE_FAILURES = 5
 MIN_DPI, MAX_DPI, DEFAULT_DPI = 150, 300, 200
+# Pages read, spread over the file, to tell its language when nothing declares it.
+LANGUAGE_SAMPLES = 3
 
 # The languages of an edition that map to a code of the engine; the ones it is not installed with are not used.
 ENGINE_LANGUAGES = {
@@ -103,18 +106,33 @@ class Tesseract:
         return out.stdout.decode('utf-8', 'replace')
 
 
+def declared_language(code, available):
+    """The code of the engine for a language of an edition (`pt-BR`, `eng`), when the engine has it; else None."""
+    primary = (code or '').strip().lower().replace('_', '-').split('-')[0]
+    mapped = ENGINE_LANGUAGES.get(primary)
+    return mapped if mapped and mapped in set(available) else None
+
+
 def engine_language(edition_language, fallback, available):
     """The language the engine is told for a file: the one its edition declares when the engine has it, else the
     owner's default (only its parts the engine has). Raises ValueError when there is nothing it can read."""
+    declared = declared_language(edition_language, available)
+    if declared:
+        return declared
     have = set(available)
-    primary = (edition_language or '').strip().lower().replace('_', '-').split('-')[0]
-    mapped = ENGINE_LANGUAGES.get(primary)
-    if mapped and mapped in have:
-        return mapped
     parts = [p for p in (fallback or DEFAULT_LANGUAGE).split('+') if p in have]
     if not parts:
         raise ValueError('the OCR engine has none of the languages chosen')
     return '+'.join(parts)
+
+
+def sample_pages(without_text, count=LANGUAGE_SAMPLES):
+    """The indexes of the pages to read to tell the language: all of them for a short file, else a few spread over it
+    (not the first or the last, which are often a cover or a blank)."""
+    pages = sorted(n - 1 for n in without_text if n >= 1)
+    if len(pages) <= count:
+        return pages
+    return [pages[len(pages) * (i + 1) // (count + 1)] for i in range(count)]
 
 
 def effective_dpi(page):
@@ -260,14 +278,11 @@ class OcrIndexer:
             raise FileNotFoundError(f'file {file_id} is not at its place')
         if not self.engine.installed():
             raise EngineMissing('the OCR engine is not installed')
-        lang = engine_language(language, default, self.engine.languages())
         version = self.engine.version()
 
-        # What was read of another version of the file is not of this one.
+        # What was read, and decided, of another version of the file is not of this one.
         self.db.execute("DELETE FROM ocr_pages WHERE file_id = %s AND source_sha256 IS DISTINCT FROM %s", (file_id, sha))
-        known = {int(page): state for page, state in self.db.fetchall(
-            "SELECT page, state FROM ocr_pages WHERE file_id = %s AND source_sha256 IS NOT DISTINCT FROM %s", (file_id, sha))}
-        todo = [n - 1 for n in without_text if n >= 1 and (n - 1 not in known or (retry_failed and known[n - 1] == 'failed'))]
+        self.db.execute("DELETE FROM ocr_files WHERE file_id = %s AND source_sha256 IS DISTINCT FROM %s", (file_id, sha))
 
         read = failed = in_a_row = 0
         try:
@@ -277,6 +292,10 @@ class OcrIndexer:
         try:
             if doc.needs_pass:
                 raise ValueError('the PDF is encrypted')
+            lang = self.language_of(doc, file_id, sha, language, without_text, default, checkpoint)
+            known = {int(page): state for page, state in self.db.fetchall(
+                "SELECT page, state FROM ocr_pages WHERE file_id = %s AND source_sha256 IS NOT DISTINCT FROM %s", (file_id, sha))}
+            todo = [n - 1 for n in without_text if n >= 1 and (n - 1 not in known or (retry_failed and known[n - 1] == 'failed'))]
             for index in todo:
                 checkpoint()
                 state, text, error, dpi = self.read_page(doc, index, lang)
@@ -292,6 +311,39 @@ class OcrIndexer:
         finally:
             doc.close()
         return {'read': read, 'failed': failed}
+
+    def language_of(self, doc, file_id, sha, declared, without_text, default, checkpoint):
+        """The language to read the file in, decided once and kept (ocr_files): what was decided for this version of the
+        file (including a language a person on the staff chose), else the one its edition declares, else the one found by
+        reading a few pages and telling the language from the text, else the owner's default."""
+        have = self.engine.languages()
+        row = self.db.fetchone("SELECT language, source FROM ocr_files WHERE file_id = %s AND source_sha256 IS NOT DISTINCT FROM %s",
+                               (file_id, sha))
+        # A fallback to the owner's default is not a decision: it is made again, so that a new default (or a better
+        # reading of the pages) is used.
+        if row and row[0] and row[1] != 'default' and all(part in have for part in row[0].split('+')):
+            return row[0]
+        lang = declared_language(declared, have)
+        source = 'declared'
+        if not lang:
+            lang, source = self.detect_language(doc, without_text, default, have, checkpoint)
+        self.db.execute("""INSERT INTO ocr_files (file_id, source_sha256, language, source) VALUES (%s, %s, %s, %s)
+            ON CONFLICT (file_id) DO UPDATE SET source_sha256 = EXCLUDED.source_sha256, language = EXCLUDED.language,
+                source = EXCLUDED.source, decided_at = now()""", (file_id, sha, lang, source))
+        return lang
+
+    def detect_language(self, doc, without_text, default, have, checkpoint):
+        """(language, 'detected') for a few pages read with the owner's default and found to be in one language the engine
+        has; else (the default, 'default'). The pages read for this are not kept: the file is read in the language found."""
+        fallback = engine_language('', default, have)
+        texts = []
+        for index in sample_pages(without_text):
+            checkpoint()
+            state, text, _error, _dpi = self.read_page(doc, index, fallback)
+            if state == 'done':
+                texts.append(text)
+        found = declared_language(detect_language('\n'.join(texts)), have)
+        return (found, 'detected') if found else (fallback, 'default')
 
     def read_page(self, doc, index, lang):
         """(state, text, error, dpi) of one page: done with its text, blank when it has none, failed with why."""

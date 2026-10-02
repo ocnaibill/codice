@@ -294,6 +294,8 @@ func (s *source) keepOCR() {
 		s.exec(`INSERT INTO ocr_pages (file_id, page, source_sha256, state, text, engine, engine_version, language, dpi, error)
 		        SELECT id, $1, sha256, $2, $3, 'tesseract', '5.5.0', 'por+eng', 200, $4 FROM files`, c.page, c.state, c.text, c.err)
 	}
+	// The language each file is read in, with the one a person on the staff chose.
+	s.exec(`INSERT INTO ocr_files (file_id, source_sha256, language, source) SELECT id, sha256, 'eng', 'manual' FROM files`)
 }
 
 func TestBackup_WhatOCRReadTravelsInThePackageAndComesBackWhole(t *testing.T) {
@@ -320,6 +322,11 @@ func TestBackup_WhatOCRReadTravelsInThePackageAndComesBackWhole(t *testing.T) {
 		"0:done:A catedral antiga ficava no alto da colina.:tesseract:5.5.0:por+eng:200:-|1:blank::tesseract:5.5.0:por+eng:200:-|2:failed::tesseract:5.5.0:por+eng:200:EngineError: timed out after 180 s|"+
 			"0:done:A catedral antiga ficava no alto da colina.:tesseract:5.5.0:por+eng:200:-|1:blank::tesseract:5.5.0:por+eng:200:-|2:failed::tesseract:5.5.0:por+eng:200:EngineError: timed out after 180 s" {
 		t.Errorf("the pages that came back: %s", got)
+	}
+	// The language chosen for each file is not lost either: a restored library does not read its scans again in the
+	// language somebody had corrected.
+	if got := scalar(t, db, `SELECT count(*) FROM ocr_files o JOIN files f ON f.id = o.file_id AND o.source_sha256 = f.sha256 WHERE o.language = 'eng' AND o.source = 'manual'`); got != "2" {
+		t.Errorf("language decisions that came back: %s", got)
 	}
 	// They are of the file as it came back (the worker uses a page only when the hash is the same), and which pages
 	// of the file have no text is still known.

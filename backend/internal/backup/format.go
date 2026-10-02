@@ -38,7 +38,7 @@ var credentialTables = []string{"sessions", "app_tokens", "invitations", "passwo
 // it came from. A restored instance asks for it to be extracted anew (see afterRestore), so search is
 // back when that job has run, and a restore is as quick as the database without it.
 //
-// The one text that is NOT here is what OCR read (ocr_pages, #24): the native text is made again in seconds, but
+// The one text that is NOT here is what OCR read (ocr_pages, #24, with the language each file was read in, ocr_files): the native text is made again in seconds, but
 // reading a scanned library again takes hours, and what it found is only text. It travels in the package, and the
 // text of a file is made from those pages when it is extracted anew, so a restore needs no image to be read again.
 var derivedTables = []string{"document_segments", "text_extractions", "document_segment_embeddings", "text_embedding_status"}

@@ -87,6 +87,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	ocrAdmin := &OCRHandler{DB: db}
 	r.Get("/admin/ocr", ocrAdmin.List)
 	r.Post("/admin/works/{id}/ocr/retry", ocrAdmin.Retry)
+	r.Post("/admin/files/{fileId}/ocr/language", ocrAdmin.SetLanguage)
 	ocrSettings := &OCRSettingsHandler{DB: db}
 	r.Get("/admin/ocr/settings", ocrSettings.Get)
 	r.Put("/admin/ocr/settings", ocrSettings.Set)
