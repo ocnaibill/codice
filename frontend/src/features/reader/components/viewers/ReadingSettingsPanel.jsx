@@ -13,8 +13,11 @@ const Group = ({ label, children }) => (
 
 const FONT_STYLE = { 'sem-serifa': { fontFamily: '"Plus Jakarta Sans Variable", system-ui, sans-serif' }, serifada: { fontFamily: '"Newsreader Variable", Georgia, serif' } };
 
-/** How the book looks: the size, the color of the page, the font and the space between lines. Every change is made at once. */
-export default function EpubSettingsPanel({ settings, onChange }) {
+/**
+ * How the text looks, for the EPUB and the text readers alike: the size, the color of the page, the font and the space
+ * between lines. Every change is made at once. `bookLabel` is the name of "what the file has" (the book's own).
+ */
+export default function ReadingSettingsPanel({ settings, onChange, bookLabel = 'Do livro' }) {
   const { theme, font, size, spacing } = settings;
   const choice = (selected) =>
     `flex min-h-11 flex-1 items-center justify-center rounded-lg border px-3 text-sm transition-[background-color,border-color] duration-150 ${
@@ -60,7 +63,7 @@ export default function EpubSettingsPanel({ settings, onChange }) {
         <div className="flex gap-2">
           {READING_FONTS.map((f) => (
             <button key={f.id} role="radio" aria-checked={f.id === font} onClick={() => onChange({ font: f.id })} style={FONT_STYLE[f.id]} className={choice(f.id === font)}>
-              {f.label}
+              {f.id === 'livro' ? bookLabel : f.label}
             </button>
           ))}
         </div>
@@ -70,7 +73,7 @@ export default function EpubSettingsPanel({ settings, onChange }) {
         <div className="flex gap-2">
           {READING_SPACING.map((p) => (
             <button key={p.id} role="radio" aria-checked={p.id === spacing} onClick={() => onChange({ spacing: p.id })} className={choice(p.id === spacing)}>
-              {p.label}
+              {p.id === 'livro' ? bookLabel : p.label}
             </button>
           ))}
         </div>

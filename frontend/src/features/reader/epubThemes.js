@@ -14,9 +14,10 @@ export const READING_THEMES = [
 
 /** The fonts: the book's own (the default), and two of the app's, hosted with it. */
 export const READING_FONTS = [
-  { id: 'livro', label: 'Do livro', stack: null },
-  { id: 'serifada', label: 'Serifada', stack: '"Codice Serif", Georgia, serif' },
-  { id: 'sem-serifa', label: 'Sem serifa', stack: '"Codice Sans", system-ui, sans-serif' },
+  { id: 'livro', label: 'Do livro', stack: null, appStack: null },
+  // `stack` is for the page of a book (an iframe, where the fonts are declared again); `appStack` for the app's own page.
+  { id: 'serifada', label: 'Serifada', stack: '"Codice Serif", Georgia, serif', appStack: '"Newsreader Variable", Georgia, serif' },
+  { id: 'sem-serifa', label: 'Sem serifa', stack: '"Codice Sans", system-ui, sans-serif', appStack: '"Plus Jakarta Sans Variable", system-ui, sans-serif' },
 ];
 
 /** The space between lines: the book's own, or a given one. */

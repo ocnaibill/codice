@@ -9,7 +9,7 @@ import { flattenToc } from '../../epubToc';
 import { tapAction, swipeAction } from '../../pdfGestures';
 import { getEpubSettings, saveEpubSettings } from '../../preferences';
 import { epubPlaceProblem } from '../../placeCheck';
-import EpubSettingsPanel from './EpubSettingsPanel';
+import ReadingSettingsPanel from './ReadingSettingsPanel';
 
 const iconProps = { viewBox: '0 0 24 24', width: 18, height: 18, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
 const Chevron = ({ dir }) => (
@@ -513,7 +513,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
         >
           {panel === 'settings' && (
             <div className="absolute bottom-full left-1/2 mb-2 max-h-[calc(100dvh-9rem)] w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 animate-rise-in overflow-y-auto rounded-xl border border-border-hairline bg-white p-4 shadow-xl">
-              <EpubSettingsPanel settings={settings} onChange={change} />
+              <ReadingSettingsPanel settings={settings} onChange={change} />
             </div>
           )}
           {panel === 'toc' && entries.length > 0 && (
