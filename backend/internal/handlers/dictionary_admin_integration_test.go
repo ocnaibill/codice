@@ -42,7 +42,7 @@ func dictList(t *testing.T, s *catalogStack) map[string]dictPackage {
 func TestDictionaryAdmin_ListsTheCatalogWithNothingInstalled(t *testing.T) {
 	s := newCatalogStack(t)
 	list := dictList(t, s)
-	if len(list) != 20 {
+	if len(list) != 21 {
 		t.Fatalf("packages: %d", len(list))
 	}
 	for id, p := range list {
@@ -54,7 +54,7 @@ func TestDictionaryAdmin_ListsTheCatalogWithNothingInstalled(t *testing.T) {
 		t.Fatalf("installable: pt %v, fr %v, vi %v", list["wikt-pt"].Installable, list["wikt-fr"].Installable, list["wikt-vi"].Installable)
 	}
 	// The address the worker downloads from is the server's business: it is not in what a browser is told.
-	if strings.Contains(s.do(admin, "GET", "/admin/dictionaries", "").Body.String(), "kaikki.org/dictionary/downloads") {
+	if body := s.do(admin, "GET", "/admin/dictionaries", "").Body.String(); strings.Contains(body, "kaikki.org/dictionary/downloads") || strings.Contains(body, "kaikki.org-dictionary-English") {
 		t.Fatal("the download address is shown to the browser")
 	}
 }
@@ -82,6 +82,10 @@ func TestDictionaryAdmin_InstallingQueuesAJobAndSaysWhereItIs(t *testing.T) {
 	// The worker is told which words to keep: the package's, not what a request says.
 	if got := s.scalar(`SELECT array_to_string(ARRAY(SELECT jsonb_array_elements_text(payload->'headwords')), ',') FROM jobs WHERE type = 'dictionary'`); got != "pt,en,es,fr,de,it,ja,zh" {
 		t.Fatalf("the job's headwords: %s", got)
+	}
+	// ... and the languages it keeps translations into only when the package says (the library's otherwise)
+	if got := s.scalar(`SELECT coalesce(payload->'translations', 'null'::jsonb)::text FROM jobs WHERE type = 'dictionary'`); got != "null" {
+		t.Fatalf("the job's translations: %s", got)
 	}
 	if got := s.scalar(`SELECT count(*) FROM dictionary_packages p JOIN jobs j ON j.id = p.job_id WHERE p.id = 'wikt-pt'`); got != "1" {
 		t.Fatal("the package does not know its job")
@@ -294,5 +298,21 @@ func TestDictionaryAdmin_OnlyAnInstallationThatIsRunningCanBeCancelled(t *testin
 	s.exec(`UPDATE dictionary_packages SET state = 'installing', job_id = NULL`)
 	if rec := s.do(admin, "POST", "/admin/dictionaries/wikt-pt/cancel", ""); rec.Code != 409 {
 		t.Fatalf("installing with no job: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDictionaryAdmin_TheEnglishPackageIsInstalledFromItsOwnFileAndKeepsTheTranslationsOfEveryLanguage(t *testing.T) {
+	s := newCatalogStack(t)
+	if rec := s.do(admin, "POST", "/admin/dictionaries/wikt-en/install", ""); rec.Code != 202 {
+		t.Fatalf("install: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := s.scalar(`SELECT payload->>'url' FROM jobs WHERE type = 'dictionary'`); got != "https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl.gz" {
+		t.Fatalf("the job's address: %s", got)
+	}
+	if got := s.scalar(`SELECT array_to_string(ARRAY(SELECT jsonb_array_elements_text(payload->'headwords')), ',') FROM jobs WHERE type = 'dictionary'`); got != "en" {
+		t.Fatalf("headwords: %s", got)
+	}
+	if got := s.scalar(`SELECT array_to_string(ARRAY(SELECT jsonb_array_elements_text(payload->'translations')), ',') FROM jobs WHERE type = 'dictionary'`); got != "cs,de,el,en,es,fr,id,it,ja,ko,ku,ms,nl,pl,pt,ru,th,tr,vi,zh" {
+		t.Fatalf("translations: %s", got)
 	}
 }

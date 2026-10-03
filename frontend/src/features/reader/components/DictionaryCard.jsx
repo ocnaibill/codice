@@ -52,6 +52,45 @@ function Translations({ data, prefer }) {
   );
 }
 
+/**
+ * What the lookup tried through English when the dictionaries do not link the word's language to the one the reader wants
+ * (plan B). Always said as what it is: by way of English, an approximation with candidates, never as the answer.
+ */
+function Bridge({ bridge, word }) {
+  const candidates = bridge.candidates ?? [];
+  return (
+    <section aria-label="Via inglês" className="mt-3 rounded-xl border border-border-hairline bg-surface-alt px-3 py-2.5">
+      <h2 className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">Via inglês</h2>
+      {candidates.length > 0 ? (
+        <>
+          <p className="mt-1 text-[12px] leading-snug text-ink-soft">
+            Os dicionários instalados não ligam “{word}” a {languageName(bridge.to)} diretamente. Pela ponte do inglês, estes são
+            candidatos: uma aproximação, que pode não ser o sentido da palavra aqui.
+          </p>
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {candidates.map((c) => (
+              <li key={c.english} className="text-[14px] leading-snug text-ink">
+                <span className="font-display font-semibold">{c.english}</span>
+                <span className="text-ink-faint"> → </span>
+                {c.words.join(', ')}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="mt-1 text-[12px] leading-snug text-ink-soft">
+          Nem pela ponte do inglês achei “{word}” em {languageName(bridge.to)}.
+        </p>
+      )}
+      {!bridge.available && (
+        <p className="mt-1.5 text-[12px] leading-snug text-ink-soft">
+          O dicionário de inglês não está instalado: com ele a ponte acha mais. O dono do acervo o instala em Administração → Dicionários.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function Entry({ item, prefer }) {
   const { entry } = item;
   const data = typeof entry.data === 'string' ? JSON.parse(entry.data) : entry.data;
@@ -158,7 +197,7 @@ export function DictionaryCard({ word, language, onClose }) {
             Nenhum dicionário está instalado neste servidor. O dono do acervo pode instalar um em Administração → Dicionários.
           </p>
         )}
-        {data?.installed && data.items.length === 0 && (
+        {data?.installed && data.items.length === 0 && !(data.bridge?.candidates?.length > 0) && (
           <p className="text-sm text-ink-soft">
             Não achei “{word}” em {languageName(lang)}. Se a palavra é de outro idioma, troque o idioma acima; se está flexionada ou com grafia
             diferente, tente selecionar só a palavra.
@@ -170,6 +209,7 @@ export function DictionaryCard({ word, language, onClose }) {
             {group.items.map((item) => <Entry key={`${item.kind}-${item.entry.id}`} item={item} prefer={target} />)}
           </section>
         ))}
+        {data?.bridge && <Bridge bridge={data.bridge} word={word} />}
       </div>
 
       {data?.sources.length > 0 && (

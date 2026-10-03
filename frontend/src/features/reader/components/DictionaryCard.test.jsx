@@ -352,3 +352,74 @@ describe('DictionaryCard: translations', () => {
     expect(card().textContent).toContain('Inglês: a, b, c, d, e e mais 2');
   });
 });
+
+describe('DictionaryCard: the bridge through English', () => {
+  const bridge = (extra = {}) => ({ via: 'en', from: 'ja', to: 'pt', available: true, candidates: [{ english: 'run', words: ['correr', 'andar'] }, { english: 'race', words: ['competir'] }], ...extra });
+  const jaEntry = () => ({ kind: 'entry', entry: { ...entry(1, '走る', 'verb', { senses: [{ glosses: ['はしる'] }] }), package: 'wikt-ja', lang: 'ja' } });
+  const bridged = (b, items = [jaEntry()]) => answer(items, { bridge: b, sources: [{ ...source, package: 'wikt-ja', name: 'Wikcionário em japonês' }] });
+  const section = () => card().querySelector('section[aria-label="Via inglês"]');
+
+  it('says the candidates are by way of English, an approximation and not the answer', async () => {
+    await open({ word: '走る', language: 'ja', data: bridged(bridge()) });
+    expect(section().querySelector('h2').textContent).toBe('Via inglês');
+    expect(section().textContent).toContain('não ligam “走る” a Português diretamente');
+    expect(section().textContent).toContain('candidatos');
+    expect(section().textContent).toContain('aproximação');
+  });
+
+  it('shows each English word with the words of the language the reader wants', async () => {
+    await open({ word: '走る', language: 'ja', data: bridged(bridge()) });
+    expect([...section().querySelectorAll('li')].map((li) => li.textContent)).toEqual(['run → correr, andar', 'race → competir']);
+  });
+
+  it('shows a single candidate as a list too', async () => {
+    await open({ word: '走る', language: 'ja', data: bridged(bridge({ candidates: [{ english: 'run', words: ['correr'] }] })) });
+    expect([...section().querySelectorAll('li')].map((li) => li.textContent)).toEqual(['run → correr']);
+    expect(section().textContent).toContain('candidatos');
+    expect(section().textContent).not.toContain('Nem pela ponte');
+  });
+
+  it('does not say the English dictionary is missing when it is installed', async () => {
+    await open({ word: '走る', language: 'ja', data: bridged(bridge()) });
+    expect(section().textContent).not.toContain('não está instalado');
+  });
+
+  it('says the English dictionary would make it better, and where to install it, when it is not installed', async () => {
+    await open({ word: '走る', language: 'ja', data: bridged(bridge({ available: false })) });
+    expect(section().textContent).toContain('O dicionário de inglês não está instalado');
+    expect(section().textContent).toContain('Administração → Dicionários');
+    expect(section().querySelectorAll('li')).toHaveLength(2);
+  });
+
+  it('says it found nothing through English either, in the language the reader wants', async () => {
+    await open({ word: '食べる', language: 'ja', data: bridged(bridge({ candidates: [], to: 'fr' })) });
+    expect(section().textContent).toContain('Nem pela ponte do inglês achei “食べる” em Francês.');
+    expect(section().querySelectorAll('li')).toHaveLength(0);
+    expect(section().textContent).not.toContain('candidatos');
+  });
+
+  it('reads a bridge with no list of candidates as one with none', async () => {
+    await open({ word: 'x', language: 'ja', data: bridged({ via: 'en', from: 'ja', to: 'pt', available: true }) });
+    expect(section().textContent).toContain('Nem pela ponte do inglês');
+  });
+
+  it('shows nothing of the bridge when the lookup did not try it', async () => {
+    await open({ word: 'casa', data: answer([{ kind: 'entry', entry: entry(1, 'casa', 'noun', { senses: [{ glosses: ['moradia'] }] }) }]) });
+    expect(section()).toBeNull();
+  });
+
+  it('says the word was not found only when the bridge has nothing either', async () => {
+    await open({ word: '走る', language: 'ja', data: bridged(bridge(), []) });
+    expect(card().textContent).not.toContain('Não achei');
+    expect(section().querySelectorAll('li')).toHaveLength(2);
+    await open({ word: '食べる', language: 'ja', data: bridged(bridge({ candidates: [] }), []) });
+    expect(card().textContent).toContain('Não achei “食べる” em Japonês.');
+  });
+
+  it('puts the bridge after what the dictionaries say, and the sources at the foot', async () => {
+    await open({ word: '走る', language: 'ja', data: bridged(bridge()) });
+    const body = card().querySelector('.overflow-y-auto');
+    expect(body.lastElementChild).toBe(section());
+    expect(card().querySelector('footer').textContent).toContain('Wikcionário em japonês');
+  });
+});

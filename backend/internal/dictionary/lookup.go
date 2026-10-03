@@ -20,6 +20,9 @@ const (
 	maxLemmas       = 8
 	maxTranslations = 10
 	maxPerLemma     = 6
+	// The bridge through English: how many English words it follows from a word, and how many words it says for each.
+	maxBridgeEnglish = 6
+	maxBridgeWords   = 8
 )
 
 // Entry is one entry of a dictionary, as it was kept (worker/dictionary.py): the word, its class and the data the card is
@@ -81,6 +84,26 @@ func rank(items []Item, prefer, lang string) {
 	})
 }
 
+// Candidate is one way across the bridge: the English word the word is listed under, and the words of the language the
+// reader wants that the dictionaries list for that English word. It is a candidate and not an answer: a word of English
+// has many meanings and the bridge does not know which one the word has.
+type Candidate struct {
+	English string   `json:"english"`
+	Words   []string `json:"words"`
+}
+
+// Bridge is what the lookup tried through English when the two languages were not linked directly (plan B, DEC-117). It is
+// always labelled as what it is: an approximation, by way of English, with candidates.
+type Bridge struct {
+	Via  string `json:"via"`
+	From string `json:"from"`
+	To   string `json:"to"`
+	// Available says whether the English package is installed: without it the bridge goes only through what the other
+	// packages list of English, and the card says the English dictionary would make it better.
+	Available  bool        `json:"available"`
+	Candidates []Candidate `json:"candidates"`
+}
+
 // Result is what a lookup found of a word in a language. Installed says whether there is a dictionary at all: without one
 // there is nothing to find, and the card says so.
 type Result struct {
@@ -90,6 +113,9 @@ type Result struct {
 	Installed bool     `json:"installed"`
 	Items     []Item   `json:"items"`
 	Sources   []Source `json:"sources"`
+	// Bridge is there when the dictionaries do not link the word's language to the one the person wants, and the lookup
+	// tried through English.
+	Bridge *Bridge `json:"bridge,omitempty"`
 }
 
 // readyEntries is what every query of entries starts from: the entries of the packages that are ready.
@@ -269,8 +295,196 @@ func Lookup(ctx context.Context, db *sql.DB, lang, prefer, word string) (Result,
 	}
 
 	rank(res.Items, prefer, lang)
-	res.Sources = sourcesOf(res.Items)
+	var extra []string
+	if wantsBridge(res.Items, lang, prefer) {
+		words := []string{word}
+		for _, it := range res.Items {
+			words = append(words, it.Entry.Word)
+		}
+		var err error
+		res.Bridge, extra, err = bridge(ctx, db, lang, prefer, unique(words))
+		if err != nil {
+			return res, err
+		}
+	}
+	res.Sources = sourcesOf(res.Items, extra)
 	return res, nil
+}
+
+// reaches says whether an item links the word's language to the one the person wants directly: the word is listed under an
+// entry of that language, or it is a word of its own language that the dictionary defines in the wanted one or lists a
+// translation of into it. An English entry is not that, when neither language is English: the word is listed under it,
+// which is the first step of the bridge, and the bridge says so.
+func reaches(it Item, lang, prefer string) bool {
+	if it.Entry.Lang == prefer {
+		return true
+	}
+	if it.Entry.Lang != lang {
+		return false
+	}
+	if p, ok := Find(it.Entry.Package); ok && p.Edition == prefer {
+		return true
+	}
+	var data struct {
+		Translations []struct {
+			Lang string `json:"lang"`
+		} `json:"translations"`
+	}
+	if json.Unmarshal(it.Entry.Data, &data) != nil {
+		return false
+	}
+	for _, t := range data.Translations {
+		if t.Lang == prefer {
+			return true
+		}
+	}
+	return false
+}
+
+// wantsBridge says whether English is tried: when the person said which language they want, it is another than the word's,
+// neither is English (English as a language is a direct link, not a bridge), and nothing the dictionaries found reaches it.
+func wantsBridge(items []Item, lang, prefer string) bool {
+	if prefer == "" || prefer == lang || lang == "en" || prefer == "en" {
+		return false
+	}
+	for _, it := range items {
+		if reaches(it, lang, prefer) {
+			return false
+		}
+	}
+	return true
+}
+
+// bridge goes from the word to English and from there to the language the person wants, through what the dictionaries
+// list: an English word that lists the word as a translation (or that an entry of the word lists), and the words of the
+// wanted language that English word is listed with, from its own translations and from the entries of the wanted language
+// that list it. It returns the packages it used, to be credited.
+func bridge(ctx context.Context, db *sql.DB, lang, prefer string, words []string) (*Bridge, []string, error) {
+	b := &Bridge{Via: "en", From: lang, To: prefer, Candidates: []Candidate{}}
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM dictionary_packages WHERE id = 'wikt-en' AND state = 'ready')`).Scan(&b.Available); err != nil {
+		return nil, nil, err
+	}
+	norms := make([]string, 0, len(words))
+	for _, w := range words {
+		if n := Normalize(w); n != "" {
+			norms = append(norms, n)
+		}
+	}
+	used := map[string]bool{}
+
+	// The English words the word is listed under.
+	rows, err := db.QueryContext(ctx, `
+		SELECT l.target_word, l.package_id FROM dictionary_links l JOIN dictionary_packages p ON p.id = l.package_id AND p.state = 'ready'
+		WHERE l.lang = $1 AND l.norm = ANY($2) AND l.target_lang = 'en'
+		UNION ALL
+		SELECT l.word, l.package_id FROM dictionary_links l JOIN dictionary_packages p ON p.id = l.package_id AND p.state = 'ready'
+		WHERE l.target_lang = $1 AND l.target_word = ANY($3) AND l.lang = 'en'`, lang, pq.Array(norms), pq.Array(words))
+	if err != nil {
+		return nil, nil, err
+	}
+	englishBy := map[string][]string{} // English word -> packages that say so
+	for rows.Next() {
+		var e, pkg string
+		if err := rows.Scan(&e, &pkg); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		englishBy[e] = append(englishBy[e], pkg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	rows.Close()
+	english := make([]string, 0, len(englishBy))
+	for e := range englishBy {
+		english = append(english, e)
+	}
+	// What more than one listing says comes first.
+	sort.Slice(english, func(i, j int) bool {
+		if a, c := len(englishBy[english[i]]), len(englishBy[english[j]]); a != c {
+			return a > c
+		}
+		return english[i] < english[j]
+	})
+	if len(english) > maxBridgeEnglish {
+		english = english[:maxBridgeEnglish]
+	}
+	if len(english) == 0 {
+		return b, nil, nil
+	}
+	for _, e := range english {
+		for _, pkg := range englishBy[e] {
+			used[pkg] = true
+		}
+	}
+
+	// The words of the wanted language each of them is listed with: the English word's own translations, and the entries of
+	// the wanted language that list the English word.
+	englishNorms := make([]string, 0, len(english))
+	byNorm := map[string][]string{} // what an English word reads as -> the English words that read so
+	for _, e := range english {
+		n := Normalize(e)
+		englishNorms = append(englishNorms, n)
+		byNorm[n] = append(byNorm[n], e)
+	}
+	rows, err = db.QueryContext(ctx, `
+		SELECT l.target_word, l.word, l.package_id FROM dictionary_links l JOIN dictionary_packages p ON p.id = l.package_id AND p.state = 'ready'
+		WHERE l.target_lang = 'en' AND l.target_word = ANY($1) AND l.lang = $2
+		UNION ALL
+		SELECT l.word, l.target_word, l.package_id FROM dictionary_links l JOIN dictionary_packages p ON p.id = l.package_id AND p.state = 'ready'
+		WHERE l.lang = 'en' AND l.norm = ANY($3) AND l.target_lang = $2`, pq.Array(english), prefer, pq.Array(englishNorms))
+	if err != nil {
+		return nil, nil, err
+	}
+	support := map[string]map[string]int{} // English word -> word of the wanted language -> how many listings say so
+	said := map[string]map[string]bool{}   // ... and which packages
+	for rows.Next() {
+		var e, c, pkg string
+		if err := rows.Scan(&e, &c, &pkg); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		for _, original := range byNorm[Normalize(e)] {
+			if support[original] == nil {
+				support[original] = map[string]int{}
+				said[original] = map[string]bool{}
+			}
+			support[original][c]++
+			said[original][pkg] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	rows.Close()
+	for _, e := range english {
+		list := make([]string, 0, len(support[e]))
+		for c := range support[e] {
+			list = append(list, c)
+		}
+		sort.Slice(list, func(i, j int) bool {
+			if a, c := support[e][list[i]], support[e][list[j]]; a != c {
+				return a > c
+			}
+			return list[i] < list[j]
+		})
+		if len(list) == 0 {
+			continue
+		}
+		if len(list) > maxBridgeWords {
+			list = list[:maxBridgeWords]
+		}
+		b.Candidates = append(b.Candidates, Candidate{English: e, Words: list})
+		for pkg := range said[e] {
+			used[pkg] = true
+		}
+	}
+	ids := make([]string, 0, len(used))
+	for pkg := range used {
+		ids = append(ids, pkg)
+	}
+	sort.Strings(ids)
+	return b, ids, nil
 }
 
 // entriesOf is the entries of a word of a language, by what it reads as.
@@ -282,15 +496,21 @@ func entriesOf(ctx context.Context, db *sql.DB, lang, word string, limit int) ([
 	return scanEntries(rows)
 }
 
-func sourcesOf(items []Item) []Source {
+// sourcesOf says where what a lookup found comes from: the packages of the items, then the others the bridge used.
+func sourcesOf(items []Item, extra []string) []Source {
 	out := []Source{}
 	seen := map[string]bool{}
+	ids := make([]string, 0, len(items)+len(extra))
 	for _, it := range items {
-		if seen[it.Entry.Package] {
+		ids = append(ids, it.Entry.Package)
+	}
+	ids = append(ids, extra...)
+	for _, id := range ids {
+		if seen[id] {
 			continue
 		}
-		seen[it.Entry.Package] = true
-		if p, ok := Find(it.Entry.Package); ok {
+		seen[id] = true
+		if p, ok := Find(id); ok {
 			out = append(out, Source{Package: p.ID, Name: p.Name, License: p.License, LicenseURL: p.LicenseURL, Source: p.Source, SourceURL: p.SourceURL})
 		}
 	}

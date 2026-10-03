@@ -124,7 +124,8 @@ class TestTrimEntry:
         assert len(first['examples'][0]['text']) == dictionary.MAX_EXAMPLE and len(first['examples'][0]['translation']) == dictionary.MAX_EXAMPLE
         assert len(first['tags']) == 8
         assert len(data['forms']) == dictionary.MAX_FORMS
-        assert len(data['translations']) == dictionary.MAX_TRANSLATIONS
+        assert len(data['translations']) == dictionary.MAX_TRANSLATIONS_PER_LANG  # all of them in one language
+        assert len(trim_entry(raw)['links']) == dictionary.MAX_LINKS_PER_LANG
 
     def test_keeps_the_first_glosses_and_lemmas_of_a_sense_and_no_more(self):
         raw = {'word': 'x', 'lang_code': 'pt', 'senses': [{'glosses': [f'g{i}' for i in range(10)], 'form_of': [{'word': f'l{i}'} for i in range(6)]}]}
@@ -247,3 +248,63 @@ class TestOtherEditions:
     def test_a_chinese_package_finds_the_word_by_either_script(self):
         # the simplified and the traditional form are entries of their own, as in the Portuguese edition
         assert normalize('书') != normalize('書')
+
+
+class TestTheEnglishEdition:
+    """The English Wiktionary, by the language of the words (kaikki.org/dictionary/English): the English words, each with
+    its translations into the other languages, which is what the bridge through English walks."""
+
+    CATALOG = ('pt', 'ja', 'it', 'ru', 'de', 'es', 'fr', 'zh', 'ko')
+
+    def test_keeps_the_english_words_and_their_translations_into_the_languages_of_the_catalog(self):
+        raw = pick('dictionary-sample-en.jsonl.gz', 'en', 'barter', 'noun')
+        entry = trim_entry(raw, headwords=('en',), translations_to=self.CATALOG)
+        assert entry['lang'] == 'en' and entry['word'] == 'barter'
+        assert {l['lang'] for l in entry['links']} >= {'pt', 'ja', 'it', 'ru'}
+        assert all(l['lang'] in self.CATALOG + ('en',) for l in entry['links'])
+
+    def test_shows_a_few_translations_of_each_language_and_links_to_more(self):
+        raw = pick('dictionary-sample-en.jsonl.gz', 'en', 'book', 'verb')
+        entry = trim_entry(raw, headwords=('en',), translations_to=self.CATALOG)
+        shown, links = entry['data']['translations'], entry['links']
+        for lang in {t['lang'] for t in shown}:
+            assert sum(1 for t in shown if t['lang'] == lang) <= dictionary.MAX_TRANSLATIONS_PER_LANG
+        assert len(links) >= len(shown)
+        assert all(sum(1 for l in links if l['lang'] == lang) <= dictionary.MAX_LINKS_PER_LANG for lang in self.CATALOG)
+
+    def test_what_is_shown_is_in_the_links_too(self):
+        raw = pick('dictionary-sample-en.jsonl.gz', 'en', 'accurate', 'adj')
+        entry = trim_entry(raw, headwords=('en',), translations_to=self.CATALOG)
+        assert all(t in entry['links'] for t in entry['data']['translations'])
+
+    def test_a_translation_with_no_word_is_not_a_link(self):
+        raw = {'word': 'x', 'lang_code': 'en', 'senses': [{'glosses': ['a']}], 'translations': [{'lang_code': 'pt', 'note': 'no word'}, {'lang_code': 'pt', 'word': 'x'}]}
+        assert trim_entry(raw, headwords=('en',))['links'] == [{'lang': 'pt', 'word': 'x'}]
+
+    def test_the_same_translation_is_listed_once_but_under_two_senses_twice(self):
+        raw = {'word': 'x', 'lang_code': 'en', 'senses': [{'glosses': ['a']}], 'translations': [
+            {'lang_code': 'pt', 'word': 'y', 'sense': 's1'}, {'lang_code': 'pt', 'word': 'y', 'sense': 's1'}, {'lang_code': 'pt', 'word': 'y', 'sense': 's2'}]}
+        assert [l['sense'] for l in trim_entry(raw, headwords=('en',))['links']] == ['s1', 's2']
+
+    def test_an_inflected_english_word_points_to_its_lemma(self):
+        raw = pick('dictionary-sample-en.jsonl.gz', 'en', 'pies')
+        entry = trim_entry(raw, headwords=('en',))
+        assert any(s.get('form_of') for s in entry['data']['senses'])
+
+    def test_it_keeps_nothing_that_is_not_english_when_told_so(self):
+        assert trim_entry({'word': 'casa', 'lang_code': 'pt', 'senses': [{'glosses': ['a']}]}, headwords=('en',)) is None
+
+    def test_the_links_keep_more_than_the_entry_shows(self):
+        raw = pick('dictionary-sample-en.jsonl.gz', 'en', 'book', 'verb')  # six words in Russian
+        entry = trim_entry(raw, headwords=('en',), translations_to=('ru',))
+        shown = [t for t in entry['data']['translations'] if t['lang'] == 'ru']
+        links = [l for l in entry['links'] if l['lang'] == 'ru']
+        assert len(shown) == dictionary.MAX_TRANSLATIONS_PER_LANG and len(links) == 6
+
+    def test_what_the_entry_shows_is_cut_at_a_hundred_whatever_the_languages(self):
+        langs = tuple(f'a{c}' for c in 'abcdefghijklmnopqrstuvwxy')  # 25 languages, five words each
+        raw = {'word': 'x', 'lang_code': 'en', 'senses': [{'glosses': ['a']}],
+               'translations': [{'lang_code': lang, 'word': f'w{i}'} for lang in langs for i in range(5)]}
+        entry = trim_entry(raw, headwords=('en',), translations_to=langs)
+        assert len(entry['data']['translations']) == dictionary.MAX_TRANSLATIONS == 100
+        assert len(entry['links']) == 125

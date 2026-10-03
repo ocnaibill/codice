@@ -208,6 +208,37 @@ class TestWhichLanguagesAreKept:
         assert world.query("SELECT count(*) FROM dictionary_entries WHERE lang = 'en'")[0][0] == 0
         assert ('en',) in world.query("SELECT DISTINCT lang FROM dictionary_links")  # what the entries list as translations, turned around
 
+    def test_the_english_package_keeps_the_translations_into_the_languages_the_job_says(self, world):
+        world.package()
+        outcome = world.importer(serving(sample_bytes_of('dictionary-sample-en.jsonl.gz'))).run(
+            world.job(headwords=['en'], edition='en', translations=['pt', 'ja']), nothing)
+        assert outcome['languages'] == ['en']
+        assert world.query("SELECT DISTINCT lang FROM dictionary_links ORDER BY lang") == [('ja',), ('pt',)]  # the words the entries translate to, turned around
+        # the entry of "accurate" is found by a Portuguese translation it lists, and says which English word it translates
+        assert world.query("SELECT target_lang, target_word FROM dictionary_links WHERE lang = 'pt' AND norm = 'preciso' LIMIT 1") == [('en', 'accurate')]
+        assert world.query("SELECT count(*) FROM dictionary_links WHERE lang IN ('it', 'ru')")[0][0] == 0
+
+    def test_a_translation_is_found_going_the_other_way_too(self, world):
+        world.package()
+        world.importer(serving(sample_bytes_of('dictionary-sample-en.jsonl.gz'))).run(world.job(headwords=['en'], edition='en', translations=['pt', 'ja']), nothing)
+        # from the English word to what it lists in Portuguese
+        words = [r[0] for r in world.query("SELECT word FROM dictionary_links WHERE target_lang = 'en' AND target_word = 'book' AND lang = 'pt'")]
+        assert 'reservar' in words
+
+    def test_the_links_are_made_of_all_the_translations_kept_and_not_only_of_the_ones_the_entry_shows(self, world):
+        world.package()
+        world.importer(serving(sample_bytes_of('dictionary-sample-en.jsonl.gz'))).run(world.job(headwords=['en'], edition='en', translations=['ru']), nothing)
+        shown = world.query("SELECT jsonb_array_length(data->'translations') FROM dictionary_entries WHERE word = 'book' AND pos = 'verb'")[0][0]
+        links = world.query("SELECT count(*) FROM dictionary_links WHERE target_word = 'book' AND target_lang = 'en' AND lang = 'ru'")[0][0]
+        assert (shown, links) == (5, 6)
+
+    def test_the_translations_of_the_job_are_checked_like_the_languages_of_the_words(self, world):
+        world.package()
+        for bad in ([], 'pt', {'pt': 1}, ['PT'], ['pt', 5], [f'{a}{b}' for a in 'ab' for b in 'abcdefghijklmnop'][:31]):
+            with pytest.raises(ValueError, match='which languages to keep'):
+                world.importer().run(world.job(translations=bad), nothing)
+        assert world.query('SELECT count(*) FROM dictionary_entries')[0][0] == 0
+
     def test_a_japanese_package_finds_the_kanji_that_is_a_form(self, world):
         world.package()
         world.importer(serving(sample_bytes_of('dictionary-sample-ja.jsonl.gz'))).run(world.job(headwords=['ja'], edition='ja'), nothing)
@@ -235,7 +266,7 @@ class TestWhichLanguagesAreKept:
 
     def test_refuses_a_list_of_languages_that_is_not_one(self, world):
         world.package()
-        for bad in ([], 'pt', {'pt': 1}, ('pt',), ['PT'], ['p'], ['portuguese'], ['pt', 5], [None], [['pt']], ['pt;DROP'], ['a' * 3 + 'b'], [f'a{c}' for c in 'abcdefghijklmnopqrstuvwxyz'][:21]):
+        for bad in ([], 'pt', {'pt': 1}, ('pt',), ['PT'], ['p'], ['portuguese'], ['pt', 5], [None], [['pt']], ['pt;DROP'], ['a' * 3 + 'b'], [f'{a}{b}' for a in 'ab' for b in 'abcdefghijklmnop'][:31]):
             with pytest.raises(ValueError, match='which languages to keep'):
                 world.importer().run(world.job(headwords=bad), nothing)
         assert world.query('SELECT count(*) FROM dictionary_entries')[0][0] == 0
