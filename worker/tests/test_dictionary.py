@@ -89,7 +89,7 @@ class TestTrimEntry:
     def test_lets_go_a_language_that_is_not_kept(self):
         assert trim_entry(find('gl', 'casa')) is None
         assert trim_entry({'word': '愛', 'lang_code': 'yue', 'senses': [{'glosses': ['amor']}]}) is None
-        assert trim_entry(find('pt', 'casa'), langs=('en',)) is None
+        assert trim_entry(find('pt', 'casa'), headwords=('en',)) is None
 
     def test_lets_go_an_entry_with_no_sense_and_what_is_not_an_entry(self):
         assert trim_entry({'word': 'vazio', 'lang_code': 'pt', 'senses': [{'tags': ['x']}]}) is None
@@ -193,3 +193,57 @@ class TestRows:
     def test_the_data_of_an_entry_is_stored_as_json_with_its_accents(self):
         row, _, _ = rows_of('p', trim_entry(find('pt', 'saudade')))
         assert 'memória' in json.dumps(row[5].adapted, ensure_ascii=False)
+
+
+def sample(name):
+    out = []
+    with gzip.open(os.path.join(HERE, 'fixtures', name), 'rt', encoding='utf-8') as f:
+        for line in f:
+            out.append(json.loads(line))
+    return out
+
+
+def pick(name, lang, word, pos=None):
+    for raw in sample(name):
+        if raw.get('lang_code') == lang and raw.get('word') == word and (pos is None or raw.get('pos') == pos):
+            return raw
+    raise AssertionError(f'{lang}:{word} is not in {name}')
+
+
+class TestOtherEditions:
+    """The same schema in every edition: what is kept is read the same way, from the Japanese and the Italian Wiktionaries."""
+
+    def test_an_italian_form_points_to_its_lemma_and_the_lemma_lists_its_translations(self):
+        corsero = trim_entry(pick('dictionary-sample-it.jsonl.gz', 'it', 'corsero'), headwords=('it',))
+        assert corsero['data']['senses'][0]['form_of'] == [{'word': 'correre'}]
+        assert 'terza persona plurale' in corsero['data']['senses'][0]['glosses'][0]
+        correre = trim_entry(pick('dictionary-sample-it.jsonl.gz', 'it', 'correre'), headwords=('it',))
+        assert correre['data']['senses'][0]['glosses'] == ['procedere velocemente']
+        assert any(t['lang'] == 'en' for t in correre['data']['translations'])
+
+    def test_a_japanese_kanji_that_is_the_written_form_of_a_word_points_to_it(self):
+        entry = trim_entry(pick('dictionary-sample-ja.jsonl.gz', 'ja', '走る'), headwords=('ja',))
+        assert entry['data']['senses'][0]['form_of'] == [{'word': 'はしる'}]
+        assert entry['pos'] == 'character'
+
+    def test_a_package_keeps_the_words_of_its_own_language_and_lets_go_the_others(self):
+        for name, lang, kept, gone in [('dictionary-sample-it.jsonl.gz', 'it', ('it', 'casa'), ('en', 'house')),
+                                       ('dictionary-sample-ja.jsonl.gz', 'ja', ('ja', '本'), ('it', 'casa'))]:
+            assert trim_entry(pick(name, *kept), headwords=(lang,)) is not None
+            assert trim_entry(pick(name, *gone), headwords=(lang,)) is None
+
+    def test_a_package_can_keep_the_words_of_more_languages(self):
+        raw = pick('dictionary-sample-it.jsonl.gz', 'en', 'house')
+        assert trim_entry(raw, headwords=('it', 'en'))['lang'] == 'en'
+
+    def test_the_translations_kept_are_those_into_the_languages_of_the_library_and_into_the_languages_kept(self):
+        raw = {'word': 'x', 'lang_code': 'ru', 'senses': [{'glosses': ['a']}], 'translations': [
+            {'lang_code': 'pt', 'word': 'um'}, {'lang_code': 'ru', 'word': 'два'}, {'lang_code': 'ko', 'word': '셋'}, {'lang_code': 'xx', 'word': 'y'}]}
+        kept = trim_entry(raw, headwords=('ru',))['data']['translations']
+        assert [t['lang'] for t in kept] == ['pt', 'ru']
+        assert [t['lang'] for t in trim_entry(raw, headwords=('ru', 'ko'))['data']['translations']] == ['pt', 'ru', 'ko']
+        assert [t['lang'] for t in trim_entry(raw, headwords=('ru',), translations_to=('ko',))['data']['translations']] == ['ru', 'ko']
+
+    def test_a_chinese_package_finds_the_word_by_either_script(self):
+        # the simplified and the traditional form are entries of their own, as in the Portuguese edition
+        assert normalize('书') != normalize('書')

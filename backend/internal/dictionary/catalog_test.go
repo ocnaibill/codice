@@ -52,15 +52,85 @@ func TestCatalog_OnlyWhatWasMeasuredSaysWhatItTakesInTheDatabase(t *testing.T) {
 	}
 }
 
-func TestCatalog_OnlyThePortugueseEditionCanBeInstalledForNow(t *testing.T) {
-	var installable []string
+func TestCatalog_EveryEditionTheSourcePublishesCanBeInstalled(t *testing.T) {
+	if len(Catalog) != 20 {
+		t.Fatalf("%d packages", len(Catalog))
+	}
 	for _, p := range Catalog {
-		if p.Installable {
-			installable = append(installable, p.ID)
+		if !p.Installable {
+			t.Errorf("%s cannot be installed", p.ID)
+		}
+		if p.ID != "wikt-"+p.Edition {
+			t.Errorf("%s is the edition %s", p.ID, p.Edition)
 		}
 	}
-	if len(installable) != 1 || installable[0] != "wikt-pt" {
-		t.Fatalf("installable: %v", installable)
+}
+
+func TestCatalog_PortugueseFirstThenTheOthersByTheNameOfTheLanguage(t *testing.T) {
+	var names []string
+	for _, p := range Catalog {
+		names = append(names, strings.TrimPrefix(p.Name, "Wikcionário em "))
+	}
+	want := []string{"português", "alemão", "chinês", "coreano", "curdo", "espanhol", "francês", "grego", "holandês", "indonésio",
+		"inglês simples", "italiano", "japonês", "malaio", "polonês", "russo", "tailandês", "tcheco", "turco", "vietnamita"}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Fatalf("names: %v", names)
+	}
+}
+
+func TestCatalog_EachPackageKeepsTheWordsOfItsOwnLanguage(t *testing.T) {
+	for _, p := range Catalog {
+		if len(p.Headwords) == 0 {
+			t.Errorf("%s keeps no words", p.ID)
+		}
+		listed := map[string]bool{}
+		for _, h := range p.Headwords {
+			listed[h] = true
+		}
+		for _, l := range p.Languages {
+			if !listed[l.Code] {
+				t.Errorf("%s says it covers %s and does not keep its words", p.ID, l.Code)
+			}
+		}
+	}
+	for _, code := range []string{"de", "ja", "zh", "it", "fr", "ru", "ko"} {
+		p, _ := Find("wikt-" + code)
+		if len(p.Headwords) != 1 || p.Headwords[0] != code {
+			t.Errorf("%s keeps %v", code, p.Headwords)
+		}
+	}
+	if pt, _ := Find("wikt-pt"); strings.Join(pt.Headwords, ",") != "pt,en,es,fr,de,it,ja,zh" {
+		t.Errorf("the Portuguese edition keeps the languages of the library: %v", pt.Headwords)
+	}
+	// The simple edition is the Wiktionary in a simpler English: it defines English words.
+	if simple, _ := Find("wikt-simple"); len(simple.Headwords) != 1 || simple.Headwords[0] != "en" || simple.Languages[0].Code != "en" {
+		t.Errorf("simple: %+v", simple)
+	}
+}
+
+func TestCatalog_SaysWhenAPackageIsBig(t *testing.T) {
+	for _, p := range Catalog {
+		big := p.DownloadBytes >= 200*1024*1024
+		says := strings.Contains(p.Description, "É grande")
+		if big != says {
+			t.Errorf("%s: %d bytes, says it is big: %v", p.ID, p.DownloadBytes, says)
+		}
+	}
+	for _, id := range []string{"wikt-fr", "wikt-de", "wikt-zh", "wikt-ru"} {
+		if p, _ := Find(id); !strings.Contains(p.Description, "É grande") {
+			t.Errorf("%s: %s", id, p.Description)
+		}
+	}
+	if p, _ := Find("wikt-ja"); strings.Contains(p.Description, "É grande") {
+		t.Error("ja is not big")
+	}
+}
+
+func TestCatalog_TheSizesAreThoseTheSourceSaid(t *testing.T) {
+	for id, want := range map[string]int64{"wikt-pt": 37_158_613, "wikt-ja": 64_066_672, "wikt-it": 43_612_281, "wikt-fr": 733_854_991, "wikt-simple": 4_719_269} {
+		if p, _ := Find(id); p.DownloadBytes != want {
+			t.Errorf("%s: %d", id, p.DownloadBytes)
+		}
 	}
 }
 

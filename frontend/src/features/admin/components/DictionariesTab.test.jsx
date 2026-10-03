@@ -276,3 +276,63 @@ describe('DictionariesTab: someone who is not the owner', () => {
     expect(view.text()).not.toContain('Só o dono do acervo');
   });
 });
+
+describe('DictionariesTab: finding the language to install', () => {
+  const ja = () => pt({ id: 'wikt-ja', name: 'Wikcionário em japonês', edition: 'ja', downloadBytes: 64066672, storageBytes: 0, languages: [{ code: 'ja', level: 'complete' }] });
+  const de = () => pt({ id: 'wikt-de', name: 'Wikcionário em alemão', edition: 'de', downloadBytes: 308579949, storageBytes: 0, languages: [{ code: 'de', level: 'complete' }] });
+  const names = () => [...view.container.querySelectorAll('li[aria-label]')].map((li) => li.getAttribute('aria-label'));
+  const search = () => view.container.querySelector('input[aria-label="Buscar um idioma"]');
+
+  it('says how many dictionaries there are, and finds one by the name of its language with no accent', async () => {
+    await open([pt({ languages: [{ code: 'pt', level: 'complete' }] }), de(), ja()]);
+    expect(view.text()).toContain('3 dicionários');
+    await view.type(search(), 'JAPONES');
+    expect(names()).toEqual(['Wikcionário em japonês']);
+    expect(view.text()).toContain('1 de 3 dicionários');
+    await view.type(search(), 'alem');
+    expect(names()).toEqual(['Wikcionário em alemão']);
+  });
+
+  it('finds a package that covers the language, and by its code', async () => {
+    await open([pt({ languages: [{ code: 'pt', level: 'complete' }, { code: 'zh', level: 'weak' }] }), de()]);
+    await view.type(search(), 'chinês');
+    expect(names()).toEqual(['Wikcionário em português']);
+    await view.type(search(), 'de');
+    expect(names()).toContain('Wikcionário em alemão');
+  });
+
+  it('shows them all again when the search is cleared, and says when there is none', async () => {
+    await open([pt(), de()]);
+    await view.type(search(), 'xyzzy');
+    expect(names()).toEqual([]);
+    expect(view.text()).toContain('Nenhum dicionário para “xyzzy”.');
+    expect(view.text()).toContain('0 de 2 dicionários');
+    await view.type(search(), '');
+    expect(names()).toEqual(['Wikcionário em português', 'Wikcionário em alemão']);
+    expect(view.text()).not.toContain('Nenhum dicionário para');
+  });
+
+  it('puts what is installed first, then what can be installed', async () => {
+    await open([de(), ja(), pt({ state: 'ready', stage: 'done', progress: 1, entries: 5, installedAt: '2026-10-03T10:00:00Z' })]);
+    expect(names()).toEqual(['Wikcionário em português', 'Wikcionário em alemão', 'Wikcionário em japonês']);
+  });
+
+  it('lets the owner install any of them, and asks first', async () => {
+    await open([ja(), de()]);
+    await view.click(inCard('Wikcionário em japonês', 'Instalar'));
+    expect(dialog().textContent).toContain('Instalar Wikcionário em japonês?');
+    expect(dialog().textContent).toContain('61,1 MB');
+    await choose('Baixar e instalar');
+    expect(api.post).toHaveBeenCalledWith('/admin/dictionaries/wikt-ja/install');
+  });
+
+  it('warns that a big one takes long, and says nothing of the kind of a small one', async () => {
+    await open([ja(), de()]);
+    await view.click(inCard('Wikcionário em alemão', 'Instalar'));
+    expect(dialog().textContent).toContain('294,3 MB');
+    expect(dialog().textContent).toContain('É um arquivo grande');
+    await view.click(view.button('Cancelar'));
+    await view.click(inCard('Wikcionário em japonês', 'Instalar'));
+    expect(dialog().textContent).not.toContain('É um arquivo grande');
+  });
+});

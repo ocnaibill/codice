@@ -165,7 +165,7 @@ func (h *DictionaryAdminHandler) Install(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Error installing the dictionary", http.StatusInternalServerError)
 		return
 	}
-	payload, _ := json.Marshal(map[string]any{"package": p.ID, "url": p.URL, "edition": p.Edition})
+	payload, _ := json.Marshal(map[string]any{"package": p.ID, "url": p.URL, "edition": p.Edition, "headwords": p.Headwords})
 	var jobID int64
 	if err := tx.QueryRowContext(r.Context(), `
 		INSERT INTO jobs (type, payload, priority, created_by) VALUES ($1, $2::jsonb, $3, NULLIF($4, '')::uuid) RETURNING id`,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LOOKUP_LANGUAGES, isLookupable, lookupLanguage, posLabel, senseFormOf, tagLabel, tagsLine, visibleSenses } from './dictionaryLookup';
+import { LOOKUP_LANGUAGES, groupTranslations, isLookupable, languageName, lookupLanguage, posLabel, senseFormOf, tagLabel, tagsLine, visibleSenses } from './dictionaryLookup';
 
 describe('isLookupable', () => {
   it('is true for a word, a word with a hyphen and a short expression', () => {
@@ -50,11 +50,11 @@ describe('lookupLanguage', () => {
   });
 
   it('is nothing for what the dictionary has no words of, or is not a code', () => {
-    for (const code of ['ru', 'ar', 'xx', '', null, undefined, 'portuguese', '-']) expect(lookupLanguage(code), String(code)).toBeNull();
+    for (const code of ['sw', 'ar', 'xx', '', null, undefined, 'portuguese', '-']) expect(lookupLanguage(code), String(code)).toBeNull();
   });
 
   it('offers the languages of the library', () => {
-    expect(LOOKUP_LANGUAGES.map(([c]) => c)).toEqual(['pt', 'en', 'es', 'fr', 'de', 'it', 'ja', 'zh']);
+    expect(LOOKUP_LANGUAGES.map(([c]) => c)).toEqual(['de', 'zh', 'ko', 'ku', 'es', 'fr', 'el', 'nl', 'id', 'en', 'it', 'ja', 'ms', 'pl', 'pt', 'ru', 'th', 'cs', 'tr', 'vi']);
     expect(LOOKUP_LANGUAGES.every(([c]) => lookupLanguage(c) === c)).toBe(true);
   });
 });
@@ -121,5 +121,51 @@ describe('senses', () => {
   it('copes with an entry that has no senses', () => {
     expect(visibleSenses({}).all).toEqual([]);
     expect(visibleSenses(undefined).shown).toEqual([]);
+  });
+});
+
+describe('languageName', () => {
+  it('says the language in Portuguese, and a code it does not know as it came', () => {
+    expect(languageName('ja')).toBe('Japonês');
+    expect(languageName('xx')).toBe('xx');
+  });
+});
+
+describe('groupTranslations', () => {
+  const t = (lang, word) => ({ lang, word });
+
+  it('groups the words by language, in the order they came, the language that is preferred first', () => {
+    expect(groupTranslations([t('en', 'house'), t('fr', 'maison'), t('en', 'home')], 'fr')).toEqual([
+      { lang: 'fr', name: 'Francês', words: ['maison'], more: 0 },
+      { lang: 'en', name: 'Inglês', words: ['house', 'home'], more: 0 },
+    ]);
+  });
+
+  it('keeps the order they came in when none is preferred, or the preferred one is not there', () => {
+    const list = [t('en', 'a'), t('fr', 'b')];
+    expect(groupTranslations(list, 'de').map((g) => g.lang)).toEqual(['en', 'fr']);
+    expect(groupTranslations(list, undefined).map((g) => g.lang)).toEqual(['en', 'fr']);
+  });
+
+  it('says each word once', () => {
+    expect(groupTranslations([t('en', 'house'), t('en', 'house')], 'pt')[0].words).toEqual(['house']);
+  });
+
+  it('shows five words of a language and counts the rest, and four languages', () => {
+    const many = 'abcdefg'.split('').map((w) => t('en', w));
+    expect(groupTranslations(many, 'pt')[0]).toMatchObject({ words: ['a', 'b', 'c', 'd', 'e'], more: 2 });
+    const langs = ['en', 'fr', 'de', 'it', 'es'].map((l) => t(l, 'x'));
+    expect(groupTranslations(langs, 'es').map((g) => g.lang)).toEqual(['es', 'en', 'fr', 'de']);
+  });
+
+  it('leaves out what is not a translation, and gives nothing for nothing', () => {
+    expect(groupTranslations([{ lang: 'en' }, { word: 'x' }, null], 'pt')).toEqual([]);
+    expect(groupTranslations(undefined, 'pt')).toEqual([]);
+  });
+});
+
+describe('the tags of the other editions', () => {
+  it('says the remote past in Portuguese', () => {
+    expect(tagLabel('past-remote')).toBe('pretérito remoto');
   });
 });

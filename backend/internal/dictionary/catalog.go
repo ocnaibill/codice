@@ -41,12 +41,16 @@ type Package struct {
 	DownloadBytes int64 `json:"downloadBytes"`
 	// StorageBytes is about what the package takes in the database once imported, when it has been measured (it is much
 	// more than the download); 0 where it was not.
-	StorageBytes int64      `json:"storageBytes,omitempty"`
-	Languages    []Language `json:"languages"`
-	License      string     `json:"license"`
-	LicenseURL   string     `json:"licenseUrl"`
-	Source       string     `json:"source"`
-	SourceURL    string     `json:"sourceUrl"`
+	StorageBytes int64 `json:"storageBytes,omitempty"`
+	// Headwords are the languages whose words the worker keeps from the package (the language of the edition, and for the
+	// Portuguese one the languages of the library): the rest of the file is let go, which keeps what it takes in the database
+	// to what is read.
+	Headwords  []string   `json:"headwords"`
+	Languages  []Language `json:"languages"`
+	License    string     `json:"license"`
+	LicenseURL string     `json:"licenseUrl"`
+	Source     string     `json:"source"`
+	SourceURL  string     `json:"sourceUrl"`
 	// Installable is whether this version of the server can import the package. The others are listed so that the owner
 	// sees what is coming, and cannot be installed.
 	Installable bool `json:"installable"`
@@ -66,46 +70,81 @@ func edition(code string) string {
 	return fmt.Sprintf("https://%s/dictionary/downloads/%s/%s-extract.jsonl.gz", Host, code, code)
 }
 
-// Catalog lists the packages, in the order they are shown. The sizes are of the compressed files.
-var Catalog = []Package{
-	{
+// wiktionary is one edition of the Wiktionary that kaikki.org publishes: the one in a language, whose definitions are in it.
+type wiktionary struct {
+	code string // of the edition, as in the address
+	// headword is the language of the words the edition defines when it is not the language of the edition (the "simple"
+	// edition defines English words).
+	headword string
+	name     string // of the language, in Portuguese
+	bytes    int64  // compressed, as the server said
+}
+
+// editions are the Wiktionaries kaikki.org extracts (the English one is a package of its own, which is not here: it is
+// 80 times bigger and is the bridge, not a dictionary to read in). Sorted by the name of the language in Portuguese.
+var editions = []wiktionary{
+	{"de", "", "alemão", 308_579_949},
+	{"zh", "", "chinês", 233_265_421},
+	{"ko", "", "coreano", 26_833_091},
+	{"ku", "", "curdo", 57_931_901},
+	{"es", "", "espanhol", 102_038_407},
+	{"fr", "", "francês", 733_854_991},
+	{"el", "", "grego", 113_503_515},
+	{"nl", "", "holandês", 133_385_673},
+	{"id", "", "indonésio", 2_832_536},
+	{"simple", "en", "inglês simples", 4_719_269},
+	{"it", "", "italiano", 43_612_281},
+	{"ja", "", "japonês", 64_066_672},
+	{"ms", "", "malaio", 6_163_151},
+	{"pl", "", "polonês", 137_385_920},
+	{"ru", "", "russo", 306_932_298},
+	{"th", "", "tailandês", 75_885_107},
+	{"cs", "", "tcheco", 39_231_427},
+	{"tr", "", "turco", 44_063_619},
+	{"vi", "", "vietnamita", 33_774_098},
+}
+
+// big is where a package is big enough for the owner to be told it takes a while.
+const big = 200 * 1024 * 1024
+
+func ownEdition(w wiktionary) Package {
+	language := w.headword
+	if language == "" {
+		language = w.code
+	}
+	description := "Definições em " + w.name + ", para quem lê em " + w.name + "."
+	if w.code == "simple" {
+		description = "Definições em inglês simples (a edição \"simple\" do Wikcionário), um dicionário pequeno de inglês."
+	}
+	if w.bytes >= big {
+		description += " É grande: leva um tempo para baixar e importar."
+	}
+	return Package{
+		ID: "wikt-" + w.code, Name: "Wikcionário em " + w.name, Description: description,
+		Edition: w.code, URL: edition(w.code), DownloadBytes: w.bytes,
+		Headwords: []string{language}, Languages: []Language{{language, Complete}},
+		License: licenseName, LicenseURL: licenseURL, Source: sourceName, SourceURL: sourceURL, Installable: true,
+	}
+}
+
+func buildCatalog() []Package {
+	out := []Package{{
 		ID: "wikt-pt", Name: "Wikcionário em português",
-		Description: "Definições em português e tradução para o português. É o dicionário da primeira versão: cobre o português por inteiro, com as formas flexionadas, e traz as demais línguas como tradução.",
+		Description: "Definições em português e tradução para o português. Cobre o português por inteiro, com as formas flexionadas, e traz as demais línguas como tradução.",
 		Edition:     "pt", URL: edition("pt"), DownloadBytes: 37_158_613, StorageBytes: 326_000_000,
+		Headwords: []string{"pt", "en", "es", "fr", "de", "it", "ja", "zh"},
 		Languages: []Language{{"pt", Complete}, {"en", Partial}, {"es", Weak}, {"fr", Weak}, {"de", Weak}, {"it", Weak}, {"ja", Weak}, {"zh", Weak}},
 		License:   licenseName, LicenseURL: licenseURL, Source: sourceName, SourceURL: sourceURL, Installable: true,
-	},
-	{
-		ID: "wikt-it", Name: "Wikcionário em italiano",
-		Description: "Definições em italiano, para quem lê em italiano.",
-		Edition:     "it", URL: edition("it"), DownloadBytes: 43_612_281,
-		Languages: []Language{{"it", Complete}}, License: licenseName, LicenseURL: licenseURL, Source: sourceName, SourceURL: sourceURL,
-	},
-	{
-		ID: "wikt-ja", Name: "Wikcionário em japonês",
-		Description: "Definições em japonês, com as leituras, para quem lê em japonês.",
-		Edition:     "ja", URL: edition("ja"), DownloadBytes: 64_066_672,
-		Languages: []Language{{"ja", Complete}}, License: licenseName, LicenseURL: licenseURL, Source: sourceName, SourceURL: sourceURL,
-	},
-	{
-		ID: "wikt-zh", Name: "Wikcionário em chinês",
-		Description: "Definições em chinês (simplificado e tradicional), com a leitura em pinyin.",
-		Edition:     "zh", URL: edition("zh"), DownloadBytes: 233_265_421,
-		Languages: []Language{{"zh", Complete}}, License: licenseName, LicenseURL: licenseURL, Source: sourceName, SourceURL: sourceURL,
-	},
-	{
-		ID: "wikt-de", Name: "Wikcionário em alemão",
-		Description: "Definições em alemão, para quem lê em alemão.",
-		Edition:     "de", URL: edition("de"), DownloadBytes: 308_579_949,
-		Languages: []Language{{"de", Complete}}, License: licenseName, LicenseURL: licenseURL, Source: sourceName, SourceURL: sourceURL,
-	},
-	{
-		ID: "wikt-fr", Name: "Wikcionário em francês",
-		Description: "Definições em francês, para quem lê em francês. É grande: leva um tempo para baixar e importar.",
-		Edition:     "fr", URL: edition("fr"), DownloadBytes: 733_854_991,
-		Languages: []Language{{"fr", Complete}}, License: licenseName, LicenseURL: licenseURL, Source: sourceName, SourceURL: sourceURL,
-	},
+	}}
+	for _, w := range editions {
+		out = append(out, ownEdition(w))
+	}
+	return out
 }
+
+// Catalog lists the packages, in the order they are shown: the Portuguese edition first, then the others by the name of
+// the language. The sizes are of the compressed files.
+var Catalog = buildCatalog()
 
 // Find returns the package with that id.
 func Find(id string) (Package, bool) {

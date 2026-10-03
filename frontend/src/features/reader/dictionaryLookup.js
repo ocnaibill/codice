@@ -1,11 +1,38 @@
 // Looking up the word a reader selected (#109): which selections are a word to look up, what language to look it up in, and
 // how an entry of the dictionary reads. Kept apart from the card so that the rules can be tested without drawing it.
 
-/** The languages the dictionary has words of, as the card offers them. */
+/** The languages the dictionary can have words of (any edition of the catalog), as the card offers them, by name. */
 export const LOOKUP_LANGUAGES = [
-  ['pt', 'Português'], ['en', 'Inglês'], ['es', 'Espanhol'], ['fr', 'Francês'],
-  ['de', 'Alemão'], ['it', 'Italiano'], ['ja', 'Japonês'], ['zh', 'Chinês'],
+  ['de', 'Alemão'], ['zh', 'Chinês'], ['ko', 'Coreano'], ['ku', 'Curdo'], ['es', 'Espanhol'], ['fr', 'Francês'], ['el', 'Grego'],
+  ['nl', 'Holandês'], ['id', 'Indonésio'], ['en', 'Inglês'], ['it', 'Italiano'], ['ja', 'Japonês'], ['ms', 'Malaio'],
+  ['pl', 'Polonês'], ['pt', 'Português'], ['ru', 'Russo'], ['th', 'Tailandês'], ['cs', 'Tcheco'], ['tr', 'Turco'], ['vi', 'Vietnamita'],
 ];
+
+/** The name of a language in Portuguese; a code that is not one the card knows is shown as it came. */
+export const languageName = (code) => LOOKUP_LANGUAGES.find(([c]) => c === code)?.[1] ?? code;
+
+/** The most languages, and the most words of each, that the translations of an entry show. */
+export const MAX_TRANSLATION_LANGUAGES = 4;
+export const MAX_TRANSLATION_WORDS = 5;
+
+/**
+ * The translations of an entry as the card shows them: by language, the one the reader wants definitions in first, each
+ * word once, and no more than fit in a card. A language that is not a known one is shown by its code.
+ */
+export function groupTranslations(translations, prefer) {
+  const byLang = new Map();
+  for (const t of translations ?? []) {
+    if (!t?.lang || !t.word) continue;
+    const words = byLang.get(t.lang) ?? [];
+    if (!words.includes(t.word)) words.push(t.word);
+    byLang.set(t.lang, words);
+  }
+  const codes = [...byLang.keys()];
+  const ordered = [...codes.filter((c) => c === prefer), ...codes.filter((c) => c !== prefer)];
+  return ordered.slice(0, MAX_TRANSLATION_LANGUAGES).map((code) => ({
+    lang: code, name: languageName(code), words: byLang.get(code).slice(0, MAX_TRANSLATION_WORDS), more: Math.max(0, byLang.get(code).length - MAX_TRANSLATION_WORDS),
+  }));
+}
 
 /** The longest selection that is looked up, and the most words in it: a word, a word with a hyphen, a short expression. */
 export const MAX_LOOKUP_LENGTH = 40;
@@ -39,7 +66,7 @@ export const posLabel = (pos) => (pos ? (POS[pos] ?? pos) : '');
 const TAGS = {
   singular: 'singular', plural: 'plural', masculine: 'masculino', feminine: 'feminino', neuter: 'neutro', 'first-person': '1ª pessoa',
   'second-person': '2ª pessoa', 'third-person': '3ª pessoa', indicative: 'indicativo', subjunctive: 'subjuntivo', imperative: 'imperativo',
-  present: 'presente', past: 'pretérito', preterite: 'pretérito perfeito', imperfect: 'imperfeito', pluperfect: 'mais-que-perfeito',
+  present: 'presente', past: 'pretérito', 'past-remote': 'pretérito remoto', preterite: 'pretérito perfeito', imperfect: 'imperfeito', pluperfect: 'mais-que-perfeito',
   future: 'futuro', conditional: 'condicional', infinitive: 'infinitivo', gerund: 'gerúndio', participle: 'particípio',
   'past-participle': 'particípio passado', 'present-participle': 'particípio presente', archaic: 'arcaico', colloquial: 'coloquial',
   informal: 'informal', formal: 'formal', figurative: 'figurado', literary: 'literário', slang: 'gíria', vulgar: 'vulgar',

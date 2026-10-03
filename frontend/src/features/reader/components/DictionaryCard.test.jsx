@@ -7,6 +7,7 @@ vi.mock('../../../lib/api', () => ({ api: { get: vi.fn() } }));
 
 import { api } from '../../../lib/api';
 import { DictionaryCard } from './DictionaryCard';
+import { getDictionaryTarget, setPreferenceOwner } from '../preferences';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -27,10 +28,18 @@ async function open({ word = 'correram', language = 'pt', data = answer([]) } = 
 }
 const card = () => container.querySelector('[role="dialog"]');
 const select = () => container.querySelector('select[aria-label="Idioma da palavra"]');
+const targetSelect = () => container.querySelector('label select');
+const choose = async (el, value) => {
+  const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+  await act(async () => { set.call(el, value); el.dispatchEvent(new Event('change', { bubbles: true })); });
+  await flush();
+};
 const click = (el) => act(async () => { el.click(); });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
+  setPreferenceOwner('ana');
   onClose = vi.fn();
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -45,20 +54,20 @@ describe('DictionaryCard: asking', () => {
   it('asks the server for the word, in the language of the file, and says which word it is', async () => {
     await open({ word: 'correram', language: 'pt' });
     expect(api.get).toHaveBeenCalledTimes(1);
-    expect(api.get).toHaveBeenCalledWith('/dictionary', { params: { word: 'correram', lang: 'pt' } });
+    expect(api.get).toHaveBeenCalledWith('/dictionary', { params: { word: 'correram', lang: 'pt', prefer: 'pt' } });
     expect(card().getAttribute('aria-label')).toBe('Dicionário: correram');
     expect(card().textContent).toContain('correram');
     expect(select().value).toBe('pt');
   });
 
-  it('offers the languages of the library, and asks again when another is chosen', async () => {
+  it('offers the languages of the catalog, and asks again when another is chosen', async () => {
     await open({ word: '走る', language: 'ja' });
-    expect([...select().options].map((o) => o.value)).toEqual(['pt', 'en', 'es', 'fr', 'de', 'it', 'ja', 'zh']);
+    expect([...select().options].map((o) => o.value)).toEqual(['de', 'zh', 'ko', 'ku', 'es', 'fr', 'el', 'nl', 'id', 'en', 'it', 'ja', 'ms', 'pl', 'pt', 'ru', 'th', 'cs', 'tr', 'vi']);
     expect(select().value).toBe('ja');
     const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
     await act(async () => { set.call(select(), 'zh'); select().dispatchEvent(new Event('change', { bubbles: true })); });
     await flush();
-    expect(api.get).toHaveBeenLastCalledWith('/dictionary', { params: { word: '走る', lang: 'zh' } });
+    expect(api.get).toHaveBeenLastCalledWith('/dictionary', { params: { word: '走る', lang: 'zh', prefer: 'pt' } });
     expect(select().value).toBe('zh');
   });
 
@@ -70,7 +79,7 @@ describe('DictionaryCard: asking', () => {
     await act(async () => { root.render(<QueryClientProvider client={client}><DictionaryCard word="livro" language="pt" onClose={onClose} /></QueryClientProvider>); });
     await flush();
     expect(select().value).toBe('pt');
-    expect(api.get).toHaveBeenLastCalledWith('/dictionary', { params: { word: 'livro', lang: 'pt' } });
+    expect(api.get).toHaveBeenLastCalledWith('/dictionary', { params: { word: 'livro', lang: 'pt', prefer: 'pt' } });
   });
 
   it('shows a placeholder while it asks, and says it could not when it fails', async () => {
@@ -257,5 +266,89 @@ describe('DictionaryCard: closing', () => {
   it('is above the menu by a selection and the toolbars of the viewers', async () => {
     await open();
     expect(Number(/\bz-\[(\d+)\]/.exec(card().className)[1])).toBeGreaterThan(60);
+  });
+});
+
+describe('DictionaryCard: the language of the definitions', () => {
+  it('asks for the definitions in Portuguese until the reader chooses, and says it', async () => {
+    await open({ word: 'casa' });
+    expect(targetSelect().value).toBe('pt');
+    expect(card().textContent).toContain('Definições primeiro em');
+    expect(api.get.mock.calls[0][1].params.prefer).toBe('pt');
+  });
+
+  it('asks again with the language chosen, and remembers it for the next word and the next time', async () => {
+    await open({ word: 'casa' });
+    await choose(targetSelect(), 'fr');
+    expect(api.get).toHaveBeenLastCalledWith('/dictionary', { params: { word: 'casa', lang: 'pt', prefer: 'fr' } });
+    expect(getDictionaryTarget()).toBe('fr');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ word: 'livro' });
+    expect(targetSelect().value).toBe('fr');
+    expect(api.get).toHaveBeenLastCalledWith('/dictionary', { params: { word: 'livro', lang: 'pt', prefer: 'fr' } });
+  });
+
+  it('keeps the language of the word as it was when the definitions are changed', async () => {
+    await open({ word: '走る', language: 'ja' });
+    await choose(targetSelect(), 'en');
+    expect(select().value).toBe('ja');
+  });
+});
+
+describe('DictionaryCard: more than one dictionary', () => {
+  const two = () => answer([
+    { kind: 'entry', entry: { ...entry(1, 'Haus', 'noun', { senses: [{ glosses: ['casa'] }] }), package: 'wikt-it' } },
+    { kind: 'entry', entry: entry(2, 'Haus', 'noun', { senses: [{ glosses: ['moradia'] }] }) },
+  ], { sources: [source, { ...source, package: 'wikt-it', name: 'Wikcionário em italiano' }] });
+
+  it('says under which dictionary each entry is, when the words are from more than one', async () => {
+    await open({ word: 'Haus', language: 'de', data: two() });
+    expect([...card().querySelectorAll('section > h2')].map((h) => h.textContent)).toEqual(['Wikcionário em italiano', 'Wikcionário em português']);
+    expect(card().querySelectorAll('section article')).toHaveLength(2);
+  });
+
+  it('puts what the same dictionary says together under one name', async () => {
+    const items = [
+      { kind: 'entry', entry: { ...entry(1, 'Haus', 'noun', { senses: [{ glosses: ['a'] }] }), package: 'wikt-it' } },
+      { kind: 'entry', entry: { ...entry(2, 'Haus', 'verb', { senses: [{ glosses: ['b'] }] }), package: 'wikt-it' } },
+      { kind: 'entry', entry: entry(3, 'Haus', 'noun', { senses: [{ glosses: ['c'] }] }) },
+    ];
+    await open({ word: 'Haus', language: 'de', data: answer(items, { sources: [source, { ...source, package: 'wikt-it', name: 'Wikcionário em italiano' }] }) });
+    expect([...card().querySelectorAll('section')].map((s) => s.querySelectorAll('article').length)).toEqual([2, 1]);
+  });
+
+  it('names no dictionary when there is only one', async () => {
+    await open({ data: answer([{ kind: 'entry', entry: entry(1, 'x', 'noun', { senses: [{ glosses: ['a'] }] }) }, { kind: 'entry', entry: entry(2, 'y', 'noun', { senses: [{ glosses: ['b'] }] }) }]) });
+    expect(card().querySelector('section > h2')).toBeNull();
+  });
+
+  it('says the id of the dictionary when its name is not known', async () => {
+    const data = two();
+    data.sources = [source];
+    await open({ word: 'Haus', language: 'de', data });
+    expect([...card().querySelectorAll('section > h2')].map((h) => h.textContent)).toEqual(['wikt-it', 'Wikcionário em português']);
+  });
+});
+
+describe('DictionaryCard: translations', () => {
+  const withTranslations = (translations) => answer([{ kind: 'entry', entry: entry(1, 'casa', 'noun', { senses: [{ glosses: ['moradia'] }], translations }) }]);
+
+  it('shows what an entry translates to, by language, with the language of the reader first', async () => {
+    await open({ data: withTranslations([{ lang: 'en', word: 'house' }, { lang: 'fr', word: 'maison' }, { lang: 'en', word: 'home' }]) });
+    await choose(targetSelect(), 'fr');
+    const blocks = [...card().querySelectorAll('article > p:last-child > span.block')].map((b) => b.textContent);
+    expect(blocks).toEqual(['Francês: maison', 'Inglês: house, home']);
+  });
+
+  it('shows no translation when an entry has none', async () => {
+    await open({ data: answer([{ kind: 'entry', entry: entry(1, 'x', 'noun', { senses: [{ glosses: ['a'] }] }) }]) });
+    expect(card().textContent).not.toContain('Tradução');
+  });
+
+  it('says how many more there are when a language has more than fit', async () => {
+    const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((word) => ({ lang: 'en', word }));
+    await open({ data: withTranslations(many) });
+    expect(card().textContent).toContain('Inglês: a, b, c, d, e e mais 2');
   });
 });

@@ -2,7 +2,11 @@
 // where its installation is. Kept apart from the screen so that the wording can be tested without drawing it.
 import { formatBytes, formatDate } from './format';
 
-const LANGUAGES = { pt: 'Português', en: 'Inglês', es: 'Espanhol', fr: 'Francês', de: 'Alemão', it: 'Italiano', ja: 'Japonês', zh: 'Chinês' };
+const LANGUAGES = {
+  pt: 'Português', en: 'Inglês', es: 'Espanhol', fr: 'Francês', de: 'Alemão', it: 'Italiano', ja: 'Japonês', zh: 'Chinês',
+  cs: 'Tcheco', nl: 'Holandês', el: 'Grego', id: 'Indonésio', ko: 'Coreano', ku: 'Curdo', ms: 'Malaio', pl: 'Polonês', ru: 'Russo',
+  th: 'Tailandês', tr: 'Turco', vi: 'Vietnamita',
+};
 const LEVELS = { complete: 'completo', partial: 'parcial', weak: 'só tradução' };
 
 export const languageLabel = (code) => LANGUAGES[code] ?? code;
@@ -57,3 +61,24 @@ export function readyLine(pkg) {
   if (day) parts.push(`arquivo de ${day}`);
   return parts.join(' · ');
 }
+
+/** Text as it is searched: no case and no accent ("Francês" is found by "frances"). */
+const plain = (text) => String(text ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
+
+/** Whether a package is what was searched for: by the name of the package, of a language it covers, or the code of one. */
+export function matchesSearch(pkg, query) {
+  const wanted = plain(query);
+  if (!wanted) return true;
+  const haystack = [pkg.name, ...(pkg.languages ?? []).flatMap((l) => [languageLabel(l.code), l.code])].map(plain);
+  return haystack.some((text) => text.includes(wanted));
+}
+
+/** What is installed, or being installed, or failed, first (it is what the owner comes to look at), and then what can be installed. */
+export function orderPackages(packages) {
+  const rank = (p) => (p.state === 'available' ? 1 : 0);
+  return [...packages].sort((a, b) => rank(a) - rank(b));
+}
+
+/** Whether a package is big enough for the owner to be told it takes a while. */
+export const BIG_DOWNLOAD = 200 * 1024 * 1024;
+export const isBig = (pkg) => Number(pkg.downloadBytes) >= BIG_DOWNLOAD;

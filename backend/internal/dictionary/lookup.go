@@ -58,11 +58,35 @@ type Source struct {
 	SourceURL  string `json:"sourceUrl"`
 }
 
+// Rank orders what a lookup found by whose definitions they are: first the ones in the language the person wants to read
+// them in, then the ones in the language of the word, then the rest. It keeps the order inside a package (the entries of
+// a word, the lemma it comes from, what it translates).
+func rank(items []Item, prefer, lang string) {
+	edition := func(it Item) int {
+		p, _ := Find(it.Entry.Package)
+		switch {
+		case prefer != "" && p.Edition == prefer:
+			return 0
+		case p.Edition == lang:
+			return 1
+		}
+		return 2
+	}
+	// A package's items stay together: the ones of two packages that rank the same do not mix.
+	sort.SliceStable(items, func(i, j int) bool {
+		if a, b := edition(items[i]), edition(items[j]); a != b {
+			return a < b
+		}
+		return items[i].Entry.Package < items[j].Entry.Package
+	})
+}
+
 // Result is what a lookup found of a word in a language. Installed says whether there is a dictionary at all: without one
 // there is nothing to find, and the card says so.
 type Result struct {
 	Word      string   `json:"word"`
 	Lang      string   `json:"lang"`
+	Prefer    string   `json:"prefer,omitempty"`
 	Installed bool     `json:"installed"`
 	Items     []Item   `json:"items"`
 	Sources   []Source `json:"sources"`
@@ -114,13 +138,14 @@ func formOf(e Entry) []string {
 }
 
 // Lookup finds a word of a language: the entries it has, the words it is a form of, and the entries that list it as a
-// translation. What is found first is what the word is, then what it comes from, then what it translates.
-func Lookup(ctx context.Context, db *sql.DB, lang, word string) (Result, error) {
+// translation. What is found first is what the word is, then what it comes from, then what it translates. `prefer` is the
+// language the person wants the definitions in ("" for none): the ones in it come first.
+func Lookup(ctx context.Context, db *sql.DB, lang, prefer, word string) (Result, error) {
 	key := Normalize(word)
 	if key == "" {
 		return Result{}, ErrNoWord
 	}
-	res := Result{Word: word, Lang: lang, Items: []Item{}, Sources: []Source{}}
+	res := Result{Word: word, Lang: lang, Prefer: prefer, Items: []Item{}, Sources: []Source{}}
 	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM dictionary_packages WHERE state = 'ready')`).Scan(&res.Installed); err != nil {
 		return res, err
 	}
@@ -243,6 +268,7 @@ func Lookup(ctx context.Context, db *sql.DB, lang, word string) (Result, error) 
 		}
 	}
 
+	rank(res.Items, prefer, lang)
 	res.Sources = sourcesOf(res.Items)
 	return res, nil
 }

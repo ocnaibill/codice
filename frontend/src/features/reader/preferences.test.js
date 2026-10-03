@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { getComicMode, saveComicMode, setPreferenceOwner } from './preferences';
+import { getComicMode, getDictionaryTarget, saveComicMode, saveDictionaryTarget, setPreferenceOwner } from './preferences';
 
 describe('comic mode', () => {
   beforeEach(() => {
@@ -48,5 +48,46 @@ describe('comic mode', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
     expect(getComicMode()).toBe('ltr');
     expect(() => saveComicMode('rtl')).not.toThrow();
+  });
+});
+
+describe('language of the definitions', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setPreferenceOwner('ana');
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('is Portuguese until chosen, and is remembered', () => {
+    expect(getDictionaryTarget()).toBe('pt');
+    saveDictionaryTarget('ja');
+    expect(getDictionaryTarget()).toBe('ja');
+  });
+
+  it('belongs to the account, and nothing is remembered with nobody signed in', () => {
+    saveDictionaryTarget('fr');
+    setPreferenceOwner('bob');
+    expect(getDictionaryTarget()).toBe('pt');
+    setPreferenceOwner(null);
+    saveDictionaryTarget('de');
+    localStorage.setItem('codice:dictionary-target:null', 'de');
+    expect(getDictionaryTarget()).toBe('pt');
+    setPreferenceOwner('ana');
+    expect(getDictionaryTarget()).toBe('fr');
+  });
+
+  it('does not keep a language that is not one, and reads what is stored that is not one as the default', () => {
+    saveDictionaryTarget('xx');
+    expect(localStorage.getItem('codice:dictionary-target:ana')).toBeNull(); // not even written
+    expect(getDictionaryTarget()).toBe('pt');
+    localStorage.setItem('codice:dictionary-target:ana', 'klingon');
+    expect(getDictionaryTarget()).toBe('pt');
+  });
+
+  it('works when the storage is blocked', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    expect(getDictionaryTarget()).toBe('pt');
+    expect(() => saveDictionaryTarget('fr')).not.toThrow();
   });
 });
