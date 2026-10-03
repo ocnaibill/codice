@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { Notice } from '../../../components/ui/Notice';
 import { api } from '../../../lib/api';
+import { serverMessage } from '../../../lib/serverMessage';
 import { AuthCard } from './AuthCard';
 import { FormField } from './FormField';
 
@@ -38,7 +40,7 @@ export function FirstRunSetup({ onSetupComplete }) {
       localStorage.setItem('codice_token', res.data.token);
       onSetupComplete();
     } catch (err) {
-      setError(err.response?.data || 'Falha ao concluir a configuração inicial.');
+      setError(serverMessage(err, 'Falha ao concluir a configuração inicial.'));
     } finally {
       setLoading(false);
     }
@@ -56,9 +58,7 @@ export function FirstRunSetup({ onSetupComplete }) {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 font-body text-[13px] text-red-700">
-          {error}
-        </div>
+        <Notice tone="danger" className="mb-4">{error}</Notice>
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">

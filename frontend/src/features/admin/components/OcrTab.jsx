@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useOcr, useOcrSettings, useRetryOcr, useSetOcr, useSetOcrLanguage, describeError } from '../api/admin';
 import { fileProgress, languageLine, languageName, languagesLabel } from '../../../lib/ocr';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
+import { LoadError } from '../../../components/ui/LoadError';
 import { ConfirmDialog } from './ConfirmDialog';
 
 const ENGINE_STATE = {
@@ -10,13 +11,13 @@ const ENGINE_STATE = {
   error: 'O serviço de OCR não conseguiu trabalhar.',
 };
 
-const TONE = { ok: 'text-success', warn: 'text-amber-800', plain: 'text-ink-faint' };
+const TONE = { ok: 'text-success', warn: 'text-warning', plain: 'text-ink-faint' };
 
 function Settings({ isOwner }) {
-  const { data: state, isLoading, isError } = useOcrSettings();
+  const { data: state, isLoading, isError, refetch, isRefetching } = useOcrSettings();
   const save = useSetOcr();
   if (isLoading) return <Loading />;
-  if (isError || !state) return <ErrorNote>Não foi possível carregar a configuração do OCR.</ErrorNote>;
+  if (isError || !state) return <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a configuração do OCR.</LoadError>;
 
   const chosen = String(state.language || '').split('+').filter(Boolean);
   const change = (enabled, language = state.language) => save.mutate({ enabled, language });
@@ -136,7 +137,7 @@ function LanguageDialog({ item, available, fallback, onChoose, onCancel }) {
 }
 
 function Files({ enabled }) {
-  const { data, isLoading, isError } = useOcr({ live: enabled });
+  const { data, isLoading, isError, refetch, isRefetching } = useOcr({ live: enabled });
   const { data: settings } = useOcrSettings();
   const retry = useRetryOcr();
   const setLanguage = useSetOcrLanguage();
@@ -145,7 +146,7 @@ function Files({ enabled }) {
   return (
     <Section title="PDFs com páginas sem texto" hint="Cada página é lida uma vez e fica guardada. Uma página que falha não é tentada de novo sozinha.">
       {isLoading && <Loading />}
-      {isError && <ErrorNote>Não foi possível carregar a lista.</ErrorNote>}
+      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a lista.</LoadError>}
       {!isLoading && !isError && items.length === 0 && <Empty>Nenhum PDF precisa de OCR.</Empty>}
       <ul className="divide-y divide-border-hairline text-[13px]">
         {items.map((item) => {

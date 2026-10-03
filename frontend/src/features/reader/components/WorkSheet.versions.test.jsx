@@ -144,7 +144,7 @@ describe('WorkSheet: putting the files of one book under one work (#37)', () => 
     await act(async () => { [...dialog('Juntar com outra obra').querySelectorAll('button')].find((b) => b.textContent.includes('Dune')).click(); });
     await act(async () => { button('Juntar').click(); });
     await flush();
-    expect(dialog('Juntar com outra obra').textContent).toContain('a retired work cannot be joined');
+    expect(dialog('Juntar com outra obra').textContent).toContain('Uma obra retirada não pode ser juntada: restaure-a antes.');
     expect(useGlobalStore.getState().sheetWorkId).toBe(7);
   });
 
@@ -201,7 +201,7 @@ describe('WorkSheet: putting the files of one book under one work (#37)', () => 
     await act(async () => { button('Separar em obra própria').click(); });
     await act(async () => { button('Separar').click(); });
     await flush();
-    expect(container.querySelector('[role=status]').textContent).toContain('the only edition');
+    expect(container.querySelector('[role=status]').textContent).toContain('A única edição de uma obra não pode ser separada dela.');
     expect(dialog('Confirmar a separação')).toBeNull();
   });
 });

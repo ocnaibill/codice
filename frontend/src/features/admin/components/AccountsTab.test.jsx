@@ -93,6 +93,6 @@ describe('AccountsTab', () => {
   it('shows what the server said when it refuses', async () => {
     api.post.mockRejectedValue({ response: { status: 403, data: 'Forbidden\n' } });
     await view.click(view.button('Desbloquear'));
-    expect(view.container.querySelector('[role="alert"]').textContent).toBe('Forbidden');
+    expect(view.container.querySelector('[role="alert"]').textContent).toBe('Você não tem permissão para isso.');
   });
 });

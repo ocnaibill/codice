@@ -65,13 +65,13 @@ function Connect({ created, username, onDone }) {
         <CopyRow label="Senha" value={created.token} secret />
       </div>
       {isLocalAddress() && (
-        <p className="mt-3 rounded bg-amber-50 p-3 text-[13px] text-amber-900">
+        <p className="mt-3 rounded bg-warning-soft/50 p-3 text-[13px] text-warning">
           Você abriu o Códice por <strong>{window.location.hostname}</strong>, que só funciona neste computador. No celular ou no
           leitor, troque esse trecho do endereço pelo endereço do computador onde o Códice está, na sua rede. O usuário e a senha
           são os mesmos.
         </p>
       )}
-      <p className="mt-3 text-[13px] font-medium text-amber-900">
+      <p className="mt-3 text-[13px] font-medium text-warning">
         Esta senha aparece só agora e não é a senha da sua conta. Se perder, crie outro acesso e remova este.
       </p>
       <div className="mt-4 flex justify-end">
@@ -117,7 +117,7 @@ function CreateForm({ onCreate, busy, error }) {
         ))}
       </div>
       <p className="text-[12px] text-ink-faint">O nome serve só para você reconhecer o acesso depois, na lista.</p>
-      {error && <p role="alert" className="text-[13px] text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
       <div>
         <button type="submit" disabled={busy || !name.trim()} className="rounded bg-brand px-4 py-2 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50">
           {busy ? 'Criando…' : 'Criar acesso'}
@@ -175,7 +175,7 @@ export function AppsModal({ onClose }) {
 
         <h3 className="mt-6 text-[13px] font-medium text-ink">Acessos que você já criou</h3>
         {isLoading && <p className="py-3 text-[13px] text-ink-faint">Carregando…</p>}
-        {isError && <p role="alert" className="py-3 text-[13px] text-red-700">Não foi possível carregar a lista.</p>}
+        {isError && <p role="alert" className="py-3 text-[13px] text-danger">Não foi possível carregar a lista.</p>}
         {!isLoading && !isError && tokens?.length === 0 && (
           <p className="py-3 text-[13px] text-ink-faint">Nenhum ainda. Quando criar, ele aparece aqui.</p>
         )}
@@ -192,14 +192,14 @@ export function AppsModal({ onClose }) {
               <button
                 onClick={() => setRemoving(token)}
                 aria-label={`Remover o acesso ${token.name}`}
-                className="shrink-0 rounded bg-surface-alt px-3 py-1.5 text-[12px] text-red-700 hover:brightness-95"
+                className="shrink-0 rounded bg-surface-alt px-3 py-1.5 text-[12px] text-danger hover:brightness-95"
               >
                 Remover
               </button>
             </li>
           ))}
         </ul>
-        {revoke.isError && <p role="alert" className="mt-2 text-[13px] text-red-700">Não foi possível remover o acesso.</p>}
+        {revoke.isError && <p role="alert" className="mt-2 text-[13px] text-danger">Não foi possível remover o acesso.</p>}
 
         <p className="mt-4 text-[12px] text-ink-faint">
           Ainda estamos testando com cada aplicativo. Se algum não conectar, avise: o endereço, o usuário e a senha são tudo o que ele precisa.

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { languageName } from '../files';
 
 const label = ({ file, edition }) => {
@@ -12,12 +12,21 @@ const label = ({ file, edition }) => {
  * other was read to the end. "No" leaves the other version where it is.
  */
 export function FinishWorkPrompt({ finished, others, busy, onFinish, onKeep }) {
+  // Escape is the careful answer: the other version is left where it is, and nothing is marked.
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key === 'Escape') onKeep();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onKeep]);
+
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-label="Obra finalizada?">
-      <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
-        <h2 className="text-lg font-semibold text-zinc-100">Você terminou esta versão</h2>
-        <p className="mt-2 text-sm text-zinc-300">{finished}</p>
-        <p className="mt-3 text-sm text-zinc-400">
+    <div className="fixed inset-0 z-[70] flex animate-fade-in items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Obra finalizada?">
+      <div className="w-full max-w-md animate-pop-in rounded-2xl bg-white p-6 shadow-2xl">
+        <h2 className="font-display text-xl font-semibold text-ink">Você terminou esta versão</h2>
+        <p className="mt-2 text-sm text-ink-soft">{finished}</p>
+        <p className="mt-3 text-sm text-ink-soft">
           Você ainda está em {others.map(label).join(' e ')}. Quer marcar a obra toda como finalizada? Ela sai de "Continuar
           lendo", e a outra versão não é dada como lida.
         </p>
@@ -25,14 +34,14 @@ export function FinishWorkPrompt({ finished, others, busy, onFinish, onKeep }) {
           <button
             onClick={onFinish}
             disabled={busy}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+            className="min-h-11 rounded-lg bg-brand px-4 text-sm font-semibold text-white transition-[filter] hover:brightness-110 disabled:opacity-40"
           >
             Sim, a obra está finalizada
           </button>
           <button
             onClick={onKeep}
             disabled={busy}
-            className="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+            className="min-h-11 rounded-lg bg-surface-alt px-4 text-sm font-medium text-ink transition-[filter] hover:brightness-95 disabled:opacity-40"
           >
             Não, continuar a outra versão depois
           </button>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { LoadError } from '../../components/ui/LoadError';
 import { useGlobalStore } from '../../store/useGlobalStore';
 import { NoteItem } from '../reader/components/NoteItem';
 import { ExportNotes } from './components/ExportNotes';
@@ -33,7 +34,7 @@ export function NotesPage() {
   useEffect(() => setPage(1), [q, kind, tag, work?.id]);
 
   const filters = { q, kind, tag, workId: work?.id };
-  const { data, isLoading, isError, isFetching } = useNotesList(filters, page);
+  const { data, isLoading, isError, isFetching, refetch, isRefetching } = useNotesList(filters, page);
   const { data: facets } = useNotesFacets(filters);
   const notes = data?.data ?? [];
   const total = data?.total ?? 0;
@@ -118,7 +119,7 @@ export function NotesPage() {
             <Skeleton className="h-28" />
           </div>
         )}
-        {isError && <p role="alert" className="text-sm text-red-700">Não foi possível carregar as anotações.</p>}
+        {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as anotações.</LoadError>}
         {!isLoading && !isError && notes.length === 0 && (
           <p className="rounded-xl border border-dashed border-border-hairline bg-white p-4 text-sm text-ink-soft">
             {filtered

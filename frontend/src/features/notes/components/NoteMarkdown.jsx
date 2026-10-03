@@ -40,7 +40,7 @@ function PendingLink({ name, children }) {
           >
             Criar conceito
           </button>
-          {create.isError && <span className="text-red-700">{reason(create.error, 'Não foi possível criar o conceito.')}</span>}
+          {create.isError && <span className="text-danger">{reason(create.error, 'Não foi possível criar o conceito.')}</span>}
         </span>
       )}
     </span>

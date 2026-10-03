@@ -37,6 +37,6 @@ describe('LibraryNameOrder', () => {
     await open();
     api.put.mockRejectedValue({ response: { status: 403, data: 'Forbidden\n' } });
     await view.click(radio('Sobrenome, Nome'));
-    expect(view.text()).toContain('Forbidden');
+    expect(view.text()).toContain('Você não tem permissão para isso.');
   });
 });

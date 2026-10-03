@@ -29,9 +29,9 @@ export function OwnershipBanner({ me }) {
   return (
     <div className="flex flex-col gap-2 px-4 pt-3 sm:px-6">
       {notices.map((notice) => (
-        <div key={notice.id} role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-[13px] text-red-800">
+        <div key={notice.id} role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger-soft/40 p-3 text-[13px] text-danger">
           <span>{(NOTICE_TEXT[notice.kind] || (() => 'Aviso de segurança.'))(notice.details)}</span>
-          <button onClick={() => ack.mutate(notice.id)} className="rounded bg-white px-3 py-1 text-[12px] text-red-800 hover:brightness-95">Entendi</button>
+          <button onClick={() => ack.mutate(notice.id)} className="rounded bg-white px-3 py-1 text-[12px] text-danger hover:brightness-95">Entendi</button>
         </div>
       ))}
 
@@ -60,8 +60,8 @@ export function OwnershipBanner({ me }) {
               <button onClick={() => decline.mutate()} disabled={decline.isPending} className="rounded bg-surface-alt px-3 py-1.5 text-[12px] text-ink hover:brightness-95">Recusar</button>
             </div>
           )}
-          {accept.isError && <p role="alert" className="mt-2 text-red-700">{describeError(accept.error)}</p>}
-          {decline.isError && <p role="alert" className="mt-2 text-red-700">{describeError(decline.error)}</p>}
+          {accept.isError && <p role="alert" className="mt-2 text-danger">{describeError(accept.error)}</p>}
+          {decline.isError && <p role="alert" className="mt-2 text-danger">{describeError(decline.error)}</p>}
         </div>
       )}
     </div>

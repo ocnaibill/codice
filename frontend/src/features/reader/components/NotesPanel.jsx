@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { LoadError } from '../../../components/ui/LoadError';
 import { downloadFile } from '../../../lib/download';
 import { useCreateNote, useWorkNotes } from '../api/useWorkNotes';
 import { parseTags, placeLabel } from '../files';
@@ -47,7 +48,7 @@ function NewNote({ workId, fileId, getLocator, selected }) {
       <p className="mt-2 font-mono text-[11px] text-ink-soft">
         {locator ? `Fica ligada a: ${placeLabel(locator)}` : 'Sem ponto do arquivo ainda: avance uma página para ligar a nota a ele.'}
       </p>
-      {create.isError && <p className="mt-2 text-xs text-red-700">{reason(create.error, 'Não foi possível salvar.')}</p>}
+      {create.isError && <p className="mt-2 text-xs text-danger">{reason(create.error, 'Não foi possível salvar.')}</p>}
       <div className="mt-3 flex justify-between gap-2">
         <button
           onClick={bookmark}
@@ -75,7 +76,7 @@ function NewNote({ workId, fileId, getLocator, selected }) {
  * anyone else. The text of a note is Markdown and is rendered without HTML.
  */
 export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose, draft }) {
-  const { data, isLoading, isError } = useWorkNotes(workId);
+  const { data, isLoading, isError, refetch, isRefetching } = useWorkNotes(workId);
   const notes = data?.data ?? [];
   const total = data?.total ?? notes.length;
   const [exportError, setExportError] = useState(false);
@@ -162,7 +163,7 @@ export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose, draf
           </div>
 
           {isLoading && <p className="animate-pulse text-sm text-ink-soft">Carregando…</p>}
-          {isError && <p className="text-sm text-red-700">Não foi possível carregar as anotações.</p>}
+          {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as anotações.</LoadError>}
           {!isLoading && !isError && notes.length === 0 && (
             <p className="rounded-xl border border-dashed border-border-hairline bg-white p-4 text-sm text-ink-soft">Nenhuma anotação neste livro ainda. Só você as vê.</p>
           )}
@@ -188,7 +189,7 @@ export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose, draf
               JSON
             </button>
           </div>
-          {exportError && <p className="text-xs text-red-700">Não foi possível exportar.</p>}
+          {exportError && <p className="text-xs text-danger">Não foi possível exportar.</p>}
         </footer>
       )}
     </aside>

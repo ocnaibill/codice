@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useJobs, useRerunJob, useCancelJob, describeError } from '../api/admin';
 import { formatDate } from '../format';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
+import { LoadError } from '../../../components/ui/LoadError';
 
 const STATES = [
   ['', 'Todos'],
@@ -24,7 +25,7 @@ const TYPE_LABEL = {
 
 export function JobsTab() {
   const [state, setState] = useState('');
-  const { data, isLoading, isError } = useJobs({ state });
+  const { data, isLoading, isError, refetch, isRefetching } = useJobs({ state });
   const rerun = useRerunJob();
   const cancel = useCancelJob();
   const jobs = data?.data || [];
@@ -49,7 +50,7 @@ export function JobsTab() {
       </div>
 
       {isLoading && <Loading />}
-      {isError && <ErrorNote>Não foi possível carregar os trabalhos.</ErrorNote>}
+      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar os trabalhos.</LoadError>}
       {!isLoading && !isError && jobs.length === 0 && <Empty>Nenhum trabalho neste filtro.</Empty>}
 
       {jobs.length > 0 && (
@@ -64,7 +65,7 @@ export function JobsTab() {
                 <p className="text-[12px] text-ink-faint">
                   {STATE_LABEL[job.state] || job.state} · tentativa {job.attempts}/{job.maxAttempts} · {formatDate(job.createdAt)}
                 </p>
-                {job.lastError && <p className="mt-1 text-[12px] text-red-700">{job.lastError}</p>}
+                {job.lastError && <p className="mt-1 text-[12px] text-danger">{job.lastError}</p>}
               </div>
               <div className="flex gap-2">
                 {(job.state === 'failed' || job.state === 'cancelled') && (

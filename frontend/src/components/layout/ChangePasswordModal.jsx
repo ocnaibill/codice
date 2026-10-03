@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../lib/api';
+import { serverMessage } from '../../lib/serverMessage';
 
 const MIN_PASSWORD = 8;
 
@@ -22,8 +23,7 @@ export function ChangePasswordModal({ onClose }) {
       await api.post('/auth/password', { current, new: next });
       setDone(true);
     } catch (err) {
-      const data = err.response?.data;
-      setError((typeof data === 'string' && data.trim()) || 'Não foi possível alterar a senha.');
+      setError(serverMessage(err, 'Não foi possível alterar a senha.'));
     } finally {
       setBusy(false);
     }
@@ -52,7 +52,7 @@ export function ChangePasswordModal({ onClose }) {
           </>
         ) : (
           <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
-            {error && <p role="alert" className="text-[13px] text-red-700">{error}</p>}
+            {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
             {field('Senha atual', current, setCurrent, true)}
             {field('Nova senha', next, setNext)}
             {field('Confirmar nova senha', confirm, setConfirm)}

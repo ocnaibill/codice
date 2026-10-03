@@ -183,9 +183,9 @@ describe('EditBookModal: the metadata of a work (#70)', () => {
 
   it('shows what the server said when saving fails, and keeps the modal open', async () => {
     await render({ tab: 'edit' });
-    api.put.mockRejectedValue({ response: { data: 'The work is retired' } });
+    api.put.mockRejectedValue({ response: { data: 'Title is required' } });
     await click(button('Salvar'));
-    expect(container.querySelector('[role="alert"]').textContent).toBe('The work is retired');
+    expect(container.querySelector('[role="alert"]').textContent).toBe('Informe o título.');
     expect(onClose).not.toHaveBeenCalled();
   });
 

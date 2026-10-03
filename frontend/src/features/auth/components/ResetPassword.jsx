@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { Notice } from '../../../components/ui/Notice';
 import { api } from '../../../lib/api';
+import { serverMessage } from '../../../lib/serverMessage';
 import { AuthCard } from './AuthCard';
 import { FormField } from './FormField';
 
@@ -32,10 +34,9 @@ export function ResetPassword({ token, onDone }) {
       await api.post('/auth/reset', { token, password });
       setDone(true);
     } catch (err) {
-      const data = err.response?.data;
       setError(err.response?.status === 404
         ? 'Este link não vale mais. Peça um novo a quem administra o acervo.'
-        : (typeof data === 'string' && data.trim()) || 'Não foi possível alterar a senha.');
+        : serverMessage(err, 'Não foi possível alterar a senha.'));
     } finally {
       setLoading(false);
     }
@@ -65,7 +66,7 @@ export function ResetPassword({ token, onDone }) {
 
   return (
     <AuthCard title="Redefinir senha" subtitle={`Escolha uma nova senha para ${info.username}`}>
-      {error && <div role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 font-body text-[13px] text-red-700">{error}</div>}
+      {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
       <form onSubmit={submit} className="flex flex-col gap-4">
         <FormField label="Nova senha" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Pelo menos 8 caracteres" required autoFocus />
         <FormField label="Confirmar senha" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Repita a senha" required />

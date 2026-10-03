@@ -81,7 +81,7 @@ describe('AcceptInvite', () => {
 
     api.post.mockRejectedValueOnce({ response: { status: 409, data: 'That username or email is already taken\n' } });
     await submit();
-    expect(view.container.querySelector('[role="alert"]').textContent).toBe('That username or email is already taken');
+    expect(view.container.querySelector('[role="alert"]').textContent).toBe('Esse usuário ou e-mail já está em uso.');
     expect(localStorage.getItem('codice_token')).toBeNull();
   });
 });

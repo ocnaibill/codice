@@ -78,7 +78,7 @@ export function WorkSuggestions({ workId, emptyText }) {
       <p className="text-sm text-ink-soft">
         Nada muda até você aceitar. Aceitar um campo o trava contra a extração automática; etiquetas e pessoas só são acrescentadas.
       </p>
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <ul className="flex flex-col gap-3">
         {candidates.map((candidate) => (
           <Suggestion key={candidate.id} candidate={candidate} onDecide={onDecide} busy={decide.isPending} />

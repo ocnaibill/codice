@@ -3,6 +3,7 @@ import { formatBytes } from '../format';
 import { coverageLabel, isBig, matchesSearch, orderPackages, percent, progressLine, readyLine, sizeLine } from '../dictionaryText';
 import { describeError, useCancelDictionary, useDictionaries, useInstallDictionary, useRemoveDictionary } from '../api/admin';
 import { Btn, ErrorNote, Loading, Section } from './ui';
+import { LoadError } from '../../../components/ui/LoadError';
 import { ConfirmDialog } from './ConfirmDialog';
 
 /** The warning that comes before any installation: the file is not the project's, and the owner is the one who downloads it. */
@@ -132,7 +133,7 @@ const QUESTIONS = {
 };
 
 export function DictionariesTab({ isOwner }) {
-  const { data, isLoading, isError } = useDictionaries();
+  const { data, isLoading, isError, refetch, isRefetching } = useDictionaries();
   const install = useInstallDictionary();
   const cancel = useCancelDictionary();
   const remove = useRemoveDictionary();
@@ -152,7 +153,7 @@ export function DictionariesTab({ isOwner }) {
   const failure = [install, cancel, remove].find((m) => m.isError);
 
   if (isLoading) return <Loading />;
-  if (isError || !data) return <ErrorNote>Não foi possível carregar os dicionários.</ErrorNote>;
+  if (isError || !data) return <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar os dicionários.</LoadError>;
   const dialog = question && QUESTIONS[question.kind](question.pkg);
   const shown = orderPackages(data.packages).filter((pkg) => matchesSearch(pkg, search));
   return (

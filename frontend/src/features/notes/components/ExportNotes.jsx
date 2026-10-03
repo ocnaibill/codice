@@ -74,7 +74,7 @@ export function ExportNotes({ filters, total, onClose }) {
             <strong>{total === 1 ? '1 anotação' : `${total} anotações`}</strong>: {describeFilters(filters)}.
           </p>
           {capped && (
-            <p role="note" className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
+            <p role="note" className="rounded-lg bg-warning-soft/50 p-3 text-xs text-warning">
               Um arquivo leva no máximo {EXPORT_CAP.toLocaleString('pt-BR')} anotações, as mais antigas primeiro. Estreite os filtros para exportar o resto.
             </p>
           )}
@@ -95,7 +95,7 @@ export function ExportNotes({ filters, total, onClose }) {
           <section aria-label="Prévia do arquivo">
             <p className="mb-1 text-xs font-medium text-ink-soft">Prévia do arquivo</p>
             {state.status === 'loading' && <p className="animate-pulse text-sm text-ink-faint">Preparando o arquivo…</p>}
-            {state.status === 'error' && <p role="alert" className="text-sm text-red-700">Não foi possível preparar o arquivo.</p>}
+            {state.status === 'error' && <p role="alert" className="text-sm text-danger">Não foi possível preparar o arquivo.</p>}
             {ready && (
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border-hairline bg-white p-3 font-mono text-[11px] leading-relaxed text-ink">
                 {state.text.length > PREVIEW_CHARS ? `${state.text.slice(0, PREVIEW_CHARS)}\n…` : state.text}

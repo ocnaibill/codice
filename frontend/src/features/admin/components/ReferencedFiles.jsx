@@ -12,12 +12,12 @@ const STATES = [['', 'Todos'], ['ok', 'No disco'], ['missing', 'Ausentes'], ['co
 
 const OUTCOME = {
   moved: { label: 'movido', tone: 'text-success' },
-  moved_original_kept: { label: 'movido; o original ficou', tone: 'text-amber-800' },
-  failed: { label: 'não foi movido', tone: 'text-red-700' },
+  moved_original_kept: { label: 'movido; o original ficou', tone: 'text-warning' },
+  failed: { label: 'não foi movido', tone: 'text-danger' },
   cancelled: { label: 'cancelado', tone: 'text-ink-faint' },
   queued: { label: 'na fila', tone: 'text-ink-soft' },
   running: { label: 'movendo…', tone: 'text-ink-soft' },
-  not_queued: { label: 'não entrou na fila', tone: 'text-red-700' },
+  not_queued: { label: 'não entrou na fila', tone: 'text-danger' },
 };
 
 function useDebounced(value, ms) {
@@ -57,7 +57,7 @@ function Results({ asked, onClose }) {
       </div>
       {transfers.isError && <ErrorNote>Não foi possível acompanhar a transferência. O que já foi pedido continua na fila (veja em Trabalhos).</ErrorNote>}
       {kept.length > 0 && (
-        <p className="mt-2 text-[13px] text-amber-900">
+        <p className="mt-2 text-[13px] text-warning">
           {kept.length === 1 ? 'Um original não pôde ser apagado' : `${kept.length} originais não puderam ser apagados`}: a cópia gerenciada está correta, e eles
           aguardam em “Originais que não puderam ser apagados”, mais abaixo.
         </p>
@@ -246,10 +246,10 @@ export function ReferencedFiles({ maxSelected = MAX_SELECTED }) {
                 <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-ink-soft">
                   {file.format && <span className="rounded bg-surface-alt px-1.5 py-0.5 font-mono uppercase">{file.format}</span>}
                   <span>{file.sizeBytes != null ? formatBytes(file.sizeBytes) : 'tamanho desconhecido'}</span>
-                  <span className={file.state === 'ok' ? 'text-success' : 'text-red-700'}>{STATE_LABEL[file.state] || file.state}</span>
+                  <span className={file.state === 'ok' ? 'text-success' : 'text-danger'}>{STATE_LABEL[file.state] || file.state}</span>
                 </p>
                 {STATE_HINT[file.state] && <p className="text-[12px] text-ink-faint">{STATE_HINT[file.state]}</p>}
-                {badge && <p className={`text-[12px] ${badge.tone === 'error' ? 'text-red-700' : 'text-ink-soft'}`}>{badge.text}</p>}
+                {badge && <p className={`text-[12px] ${badge.tone === 'error' ? 'text-danger' : 'text-ink-soft'}`}>{badge.text}</p>}
               </div>
             </li>
           );

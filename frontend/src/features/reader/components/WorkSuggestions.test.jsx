@@ -120,10 +120,10 @@ describe('WorkSuggestions (#70)', () => {
 
   it('shows what the server said when a decision fails, and clears it on the next try', async () => {
     let fail = true;
-    await show([author], { post: async () => { if (fail) throw { response: { data: 'The author is locked' } }; return { data: {} }; } });
+    await show([author], { post: async () => { if (fail) throw { response: { data: 'Candidate not found' } }; return { data: {} }; } });
     await act(async () => { button('Aceitar').click(); });
     await flush();
-    expect(container.querySelector('[role="alert"]').textContent).toBe('The author is locked');
+    expect(container.querySelector('[role="alert"]').textContent).toBe('Sugestão não encontrada.');
     fail = false;
     await act(async () => { button('Aceitar').click(); });
     await flush();

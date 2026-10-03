@@ -202,7 +202,7 @@ export function Reader() {
   if (isError || !book || !file?.url || file.availability === 'missing') {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-[#faf8f4] px-6 text-center">
-        <span className="font-body text-sm font-medium text-red-700">
+        <span className="font-body text-sm font-medium text-danger">
           {file?.availability === 'missing' ? 'Este arquivo não está mais no disco do servidor.' : 'Não foi possível abrir este arquivo.'}
         </span>
         <button
@@ -397,8 +397,9 @@ export function Reader() {
       {/* Dynamic Reader Router Viewport */}
       <div className="min-h-0 flex-1 overflow-y-auto bg-[#eae5dc]">
         <Suspense fallback={<div className="flex justify-center p-10 text-sm text-ink-soft animate-pulse">Preparando o leitor…</div>}>
-          <ErrorBoundary>
-            <React.Fragment key={`${file.id}-${seek?.n ?? 0}-${fromStart}`}>{renderViewer()}</React.Fragment>
+          {/* It starts again with each file and each place asked for, so that a book that broke does not leave the next one broken */}
+          <ErrorBoundary key={`${file.id}-${seek?.n ?? 0}-${fromStart}`} where="o leitor" onBack={closeBook}>
+            {renderViewer()}
           </ErrorBoundary>
         </Suspense>
       </div>

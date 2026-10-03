@@ -1,4 +1,5 @@
 import React from 'react';
+import { LoadError } from '../../../components/ui/LoadError';
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { reasonOf, useJoinWork, useNotTheSame, useWorkSearch } from '../api/useVersions';
 
@@ -82,7 +83,7 @@ export function JoinVersionsDialog({ work, onClose, onJoined }) {
                 />
               </label>
               {search.isFetching && <p className="animate-pulse text-sm text-ink-faint">Procurando…</p>}
-              {search.isError && <p className="text-sm text-red-700">Não foi possível procurar.</p>}
+              {search.isError && <LoadError onRetry={() => search.refetch()} retrying={search.isRefetching}>Não foi possível procurar.</LoadError>}
               {term.trim().length >= 2 && !search.isFetching && !search.isError && results.length === 0 && (
                 <p className="text-sm text-ink-faint">Nenhuma outra obra encontrada.</p>
               )}

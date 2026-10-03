@@ -67,6 +67,6 @@ describe('Invitations', () => {
     await open();
     api.post.mockRejectedValue({ response: { status: 403, data: 'Forbidden\n' } });
     await view.click(view.button('Criar convite'));
-    expect(view.container.querySelector('[role="alert"]').textContent).toBe('Forbidden');
+    expect(view.container.querySelector('[role="alert"]').textContent).toBe('Você não tem permissão para isso.');
   });
 });

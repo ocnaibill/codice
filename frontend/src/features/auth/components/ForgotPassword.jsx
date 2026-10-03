@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Notice } from '../../../components/ui/Notice';
 import { api } from '../../../lib/api';
 import { AuthCard } from './AuthCard';
 import { FormField } from './FormField';
@@ -39,7 +40,7 @@ export function ForgotPassword({ initialUsername = '', onBack }) {
         </>
       ) : (
         <form onSubmit={submit} className="flex flex-col gap-4">
-          {error && <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 font-body text-[13px] text-red-700">{error}</div>}
+          {error && <Notice tone="danger">{error}</Notice>}
           <FormField label="Usuário" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Seu usuário" required autoFocus />
           <button type="submit" disabled={loading}
             className="w-full rounded-md bg-brand py-2.5 font-body text-sm font-medium text-white hover:brightness-110 disabled:opacity-50">

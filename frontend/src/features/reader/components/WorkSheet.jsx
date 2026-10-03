@@ -1,4 +1,5 @@
 import React from 'react';
+import { LoadError } from '../../../components/ui/LoadError';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { authenticatedUrl } from '../../../lib/api';
 import { useWork } from '../api/useWork';
@@ -12,7 +13,7 @@ import { completionText, formatSize, languageName, whereYouAre } from '../files'
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { sheetNote } from '../../../lib/ocr';
 
-const NOTE_TONE = { ok: 'text-success', warn: 'text-amber-800', plain: 'text-ink-soft' };
+const NOTE_TONE = { ok: 'text-success', warn: 'text-warning', plain: 'text-ink-soft' };
 
 function FileRow({ file, onRead, onComplete, onReread, busy }) {
   const percent = Math.round(file.percentComplete || 0);
@@ -28,7 +29,7 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
           {file.sizeBytes != null && <span className="font-mono text-[11px] text-ink-faint">{formatSize(file.sizeBytes)}</span>}
           {ocrNote && <span className={`text-xs ${NOTE_TONE[ocrNote.tone]}`} title={ocrNote.title}>{ocrNote.text}</span>}
           {file.textStatus === 'ready' && <span className="text-xs text-success" title="O texto deste arquivo está indexado para a busca">texto indexado</span>}
-          {file.textStatus === 'failed' && <span className="text-xs text-amber-800" title="O arquivo abre, mas o texto não pôde ser lido para a busca">texto não lido</span>}
+          {file.textStatus === 'failed' && <span className="text-xs text-warning" title="O arquivo abre, mas o texto não pôde ser lido para a busca">texto não lido</span>}
         </div>
         <span className="shrink-0 font-mono text-[11px] text-ink-soft">
           {file.completed ? 'Concluído' : percent > 0 ? `${percent}% lido` : started ? 'Em andamento' : 'Não iniciado'}
@@ -87,7 +88,7 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
             </a>
           </>
         ) : (
-          <span className="text-xs text-red-700">
+          <span className="text-xs text-danger">
             {file.availability === 'blocked' ? 'Arquivo bloqueado' : 'Arquivo ausente no servidor'}
           </span>
         )}
@@ -199,7 +200,7 @@ export function WorkSheet() {
   const openBook = useGlobalStore((state) => state.openBook);
   const closeButtonRef = React.useRef(null);
   const dialogRef = React.useRef(null);
-  const { data: work, isLoading, isError } = useWork(workId, { fresh: true });
+  const { data: work, isLoading, isError, refetch, isRefetching } = useWork(workId, { fresh: true });
   const setCompletion = useSetCompletion();
   const setWorkFinished = useSetWorkFinished();
   // Putting the files of one book under one work, and taking them out again, is for owner and admin (#37).
@@ -270,7 +271,7 @@ export function WorkSheet() {
 
         <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
         {isLoading && <p className="animate-pulse text-sm text-ink-faint">Carregando a obra…</p>}
-        {isError && <p className="text-sm text-red-700">Não foi possível abrir esta obra.</p>}
+        {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta obra.</LoadError>}
 
         {work && (
           <div className="flex flex-col gap-7">

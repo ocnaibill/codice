@@ -112,7 +112,7 @@ describe('PeopleMerges', () => {
     api.post.mockRejectedValue({ response: { status: 404, data: 'Candidate not found\n' } });
     await view.click(view.buttonMatching(/mantendo “Frank Herbert”/));
     await view.click(view.button('Unir pessoas'));
-    expect(view.text()).toContain('Candidate not found');
+    expect(view.text()).toContain('Sugestão não encontrada.');
   });
 
   it('says it could not load when the list fails', async () => {

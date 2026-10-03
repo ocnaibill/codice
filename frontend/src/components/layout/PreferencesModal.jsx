@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { LoadError } from '../ui/LoadError';
 import { NAME_ORDERS, usePreferences, useSetNameOrder } from '../../features/auth/api/usePreferences';
 
 /**
@@ -6,7 +7,7 @@ import { NAME_ORDERS, usePreferences, useSetNameOrder } from '../../features/aut
  * changes what is shown: what is stored is never touched (#64). "The library's" is the default the owner set.
  */
 export function PreferencesModal({ onClose }) {
-  const { data: prefs, isLoading, isError } = usePreferences();
+  const { data: prefs, isLoading, isError, refetch, isRefetching } = usePreferences();
   const save = useSetNameOrder();
 
   useEffect(() => {
@@ -32,7 +33,7 @@ export function PreferencesModal({ onClose }) {
           <p className="mt-1 text-[12px] text-ink-soft">
             Muda só como o nome aparece e como o acervo se ordena por autor; nada do que está guardado é alterado.
           </p>
-          {isError && <p className="mt-3 text-[13px] text-red-700">Não foi possível carregar as preferências.</p>}
+          {isError && <LoadError className="mt-3" onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as preferências.</LoadError>}
           <div className="mt-3 flex flex-col gap-2">
             {options.map((option) => (
               <label key={option.value || 'library'} className="flex cursor-pointer items-start gap-3 rounded-lg border border-border-hairline p-3 text-[14px] text-ink has-[:checked]:border-brand">
@@ -51,7 +52,7 @@ export function PreferencesModal({ onClose }) {
             ))}
           </div>
         </fieldset>
-        {save.isError && <p role="alert" className="mt-3 text-[13px] text-red-700">Não foi possível salvar.</p>}
+        {save.isError && <p role="alert" className="mt-3 text-[13px] text-danger">Não foi possível salvar.</p>}
         <div className="mt-5 flex justify-end">
           <button onClick={onClose} className="rounded-lg bg-surface-alt px-4 py-2 text-[13px] text-ink hover:brightness-95">Fechar</button>
         </div>
