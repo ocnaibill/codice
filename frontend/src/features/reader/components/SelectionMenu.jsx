@@ -9,7 +9,7 @@ const item =
  * above the selection, with a finger below it (the system draws its own menu above). It closes with Esc, and the
  * buttons do not take the selection from the text when they are pressed.
  */
-export function SelectionMenu({ selection, onCopy, onHighlight, onNote, onClose, busy = false }) {
+export function SelectionMenu({ selection, onCopy, onHighlight, onNote, onDictionary, onClose, busy = false }) {
   const ref = useRef(null);
   const [place, setPlace] = useState(null);
 
@@ -45,6 +45,7 @@ export function SelectionMenu({ selection, onCopy, onHighlight, onNote, onClose,
       <button onClick={onCopy} className={item}>Copiar</button>
       <button onClick={onHighlight} disabled={busy} className={item}>Destacar</button>
       <button onClick={onNote} className={item}>Nota</button>
+      {onDictionary && <button onClick={onDictionary} className={item}>Dicionário</button>}
     </div>
   );
 }

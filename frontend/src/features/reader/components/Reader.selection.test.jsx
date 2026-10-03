@@ -37,9 +37,9 @@ import { Reader } from './Reader';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const work = (format) => ({
+const work = (format, language = 'pt') => ({
   id: 7, title: 'Duna', author: 'Frank Herbert', fileId: 10, fileUrl: '/f/10', format, finished: false,
-  editions: [{ id: 1, language: 'pt', files: [
+  editions: [{ id: 1, language, files: [
     { id: 10, format, availability: 'available', url: '/f/10' },
     { id: 11, format, availability: 'available', url: '/f/11' },
   ] }],
@@ -62,9 +62,10 @@ const menu = () => container.querySelector('[role="toolbar"]');
 const press = (label, scope = container) => act(async () => { [...scope.querySelectorAll('button')].find((b) => b.textContent === label).click(); });
 const toasts = () => useToasts.getState().items;
 
-async function open(format, { saved = null } = {}) {
+async function open(format, { saved = null, language = 'pt' } = {}) {
   api.get.mockImplementation(async (url) => {
-    if (url === '/works/7') return { data: work(format) };
+    if (url === '/works/7') return { data: work(format, language) };
+    if (url === '/dictionary') return { data: { word: 'x', lang: 'pt', installed: true, items: [], sources: [] } };
     if (url.startsWith('/progress/files/')) return { data: { revision: 1, position: '', locator: saved } };
     if (url === '/notes') return { data: { data: notes, total: notes.length } };
     throw new Error(`unexpected GET ${url}`);
@@ -254,5 +255,79 @@ describe('Reader: the passages underlined on an EPUB', () => {
   it('gives the viewer the passages of this file that were highlighted or written on, by the range of the book', async () => {
     await open('epub');
     expect(sent.marks).toEqual([RANGE, 'epubcfi(/6/6!/4/2,/1:3,/1:9)']);
+  });
+});
+
+describe('Reader: looking a word up in the dictionary', () => {
+  const dictionaryCalls = () => api.get.mock.calls.filter(([url]) => url === '/dictionary');
+  const card = () => container.querySelector('[role="dialog"][aria-label^="Dicionário"]');
+
+  it('offers the dictionary for a word, and opens the card with it, in the language of the file', async () => {
+    sent.selection.text = 'correram';
+    await open('txt', { language: 'pt-BR' });
+    await selectIt();
+    expect([...menu().querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Copiar', 'Destacar', 'Nota', 'Dicionário']);
+    await press('Dicionário', menu());
+    await flush();
+    expect(card().getAttribute('aria-label')).toBe('Dicionário: correram');
+    expect(dictionaryCalls().at(-1)[1]).toEqual({ params: { word: 'correram', lang: 'pt' } });
+    expect(menu()).toBeNull();
+    expect(sent.selection.clear).toHaveBeenCalled();
+    expect(api.post.mock.calls.filter(([url]) => url.includes('/notes'))).toEqual([]); // nothing is saved
+  });
+
+  it('looks a word up in the language of the file, whichever it is', async () => {
+    sent.selection.text = 'house';
+    await open('epub', { language: 'en-GB' });
+    await selectIt();
+    await press('Dicionário', menu());
+    await flush();
+    expect(dictionaryCalls().at(-1)[1]).toEqual({ params: { word: 'house', lang: 'en' } });
+  });
+
+  it('starts in Portuguese for a file whose language is not one the dictionary has, or is not said', async () => {
+    sent.selection.text = 'слово';
+    await open('txt', { language: 'ru' });
+    await selectIt();
+    await press('Dicionário', menu());
+    await flush();
+    expect(dictionaryCalls().at(-1)[1].params.lang).toBe('pt');
+  });
+
+  it('does not offer the dictionary for a passage', async () => {
+    sent.selection.text = 'Era uma vez um texto longo demais para uma palavra';
+    await open('txt');
+    await selectIt();
+    expect([...menu().querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Copiar', 'Destacar', 'Nota']);
+  });
+
+  it('closes the card, and takes it away when another file is opened', async () => {
+    sent.selection.text = 'casa';
+    await open('txt');
+    await selectIt();
+    await press('Dicionário', menu());
+    await flush();
+    await act(async () => { container.querySelector('button[aria-label="Fechar o dicionário"]').click(); });
+    expect(card()).toBeNull();
+    await selectIt();
+    await press('Dicionário', menu());
+    await flush();
+    expect(card()).not.toBeNull();
+    await act(async () => { useGlobalStore.setState({ activeFileId: 11 }); });
+    await flush();
+    expect(card()).toBeNull();
+  });
+
+  it('shows the card of the new word when another is selected while one is open', async () => {
+    sent.selection.text = 'casa';
+    await open('txt');
+    await selectIt();
+    await press('Dicionário', menu());
+    await flush();
+    sent.selection = { ...sent.selection, text: 'livro' };
+    await selectIt();
+    await press('Dicionário', menu());
+    await flush();
+    expect(card().getAttribute('aria-label')).toBe('Dicionário: livro');
   });
 });

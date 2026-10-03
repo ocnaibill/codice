@@ -11,6 +11,8 @@ import { useAcceptEquivalentPosition, useEquivalentPosition } from '../api/useEq
 import { api } from '../../../lib/api';
 import { NotesPanel } from './NotesPanel';
 import { SelectionMenu } from './SelectionMenu';
+import { DictionaryCard } from './DictionaryCard';
+import { isLookupable, lookupLanguage } from '../dictionaryLookup';
 import { useCreateNote, useWorkNotes } from '../api/useWorkNotes';
 import { copyText } from '../copyText';
 import { reason as noteReason } from '../noteText';
@@ -47,7 +49,8 @@ export function Reader() {
   // What is selected in the text, and what the menu by it does with it (copy, highlight, a note on it).
   const [selection, setSelection] = useState(null);
   const [noteDraft, setNoteDraft] = useState(null);
-  useEffect(() => setSelection(null), [file?.id]);
+  const [lookup, setLookup] = useState(null); // the word the dictionary is asked of: { word, language }
+  useEffect(() => { setSelection(null); setLookup(null); }, [file?.id]);
   // The passage a note was asked on is for that note: closing the panel lets it go (it is not there when it opens again).
   useEffect(() => { if (!showNotes) setNoteDraft(null); }, [showNotes]);
   const createNote = useCreateNote(activeBookId);
@@ -167,6 +170,11 @@ export function Reader() {
         onError: (error) => toast.error('Não foi possível salvar o destaque', { message: noteReason(error, '') || undefined }),
       }
     );
+    afterSelection();
+  };
+  const lookUpSelection = () => {
+    if (!selection) return;
+    setLookup({ word: selection.text, language: lookupLanguage(file?.edition?.language) ?? 'pt' });
     afterSelection();
   };
   const noteOnSelection = () => {
@@ -370,10 +378,13 @@ export function Reader() {
           onCopy={copySelection}
           onHighlight={highlightSelection}
           onNote={noteOnSelection}
+          onDictionary={isLookupable(selection.text) ? lookUpSelection : undefined}
           onClose={afterSelection}
           busy={createNote.isPending}
         />
       )}
+
+      {lookup && <DictionaryCard word={lookup.word} language={lookup.language} onClose={() => setLookup(null)} />}
 
       {/* Dynamic Reader Router Viewport */}
       <div className="min-h-0 flex-1 overflow-y-auto bg-[#eae5dc]">
