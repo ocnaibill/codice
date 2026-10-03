@@ -69,6 +69,7 @@ func newRouter(d routerDeps) http.Handler {
 	equivalenceHandler := &handlers.EquivalenceHandler{DB: db}
 	embeddingsAdmin := &handlers.EmbeddingsAdminHandler{DB: db}
 	dictionaryAdmin := &handlers.DictionaryAdminHandler{DB: db, RedisClient: d.RedisClient}
+	dictionaryLookup := &handlers.DictionaryLookupHandler{DB: db}
 	ocrAdmin := &handlers.OCRHandler{DB: db}
 	ocrSettings := &handlers.OCRSettingsHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
@@ -242,6 +243,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Post("/admin/ldap/check", ldapAdmin.Check)
 	// Dictionaries (#109, DEC-115): third-party data. The staff sees which there are; only the owner installs, cancels or
 	// removes one (installing makes the server download it).
+	// Whoever reads can look a word up (what was installed is the owner's choice).
+	r.With(auth).Get("/dictionary", dictionaryLookup.Lookup)
 	r.With(staff).Get("/admin/dictionaries", dictionaryAdmin.List)
 	r.With(owner).Post("/admin/dictionaries/{id}/install", dictionaryAdmin.Install)
 	r.With(owner).Post("/admin/dictionaries/{id}/cancel", dictionaryAdmin.Cancel)

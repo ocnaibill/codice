@@ -41,6 +41,16 @@ describe('SelectionMenu', () => {
     expect([...menu().querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Copiar', 'Destacar', 'Nota']);
   });
 
+  it('offers the dictionary only when it is told what to do with it, and does it', async () => {
+    await show();
+    expect([...menu().querySelectorAll('button')].map((b) => b.textContent)).not.toContain('Dicionário');
+    const onDictionary = vi.fn();
+    await show(selection(), { onDictionary });
+    expect([...menu().querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Copiar', 'Destacar', 'Nota', 'Dicionário']);
+    await act(async () => { button('Dicionário').click(); });
+    expect(onDictionary).toHaveBeenCalledTimes(1);
+  });
+
   it('does what each button says', async () => {
     await show();
     await act(async () => { button('Copiar').click(); });

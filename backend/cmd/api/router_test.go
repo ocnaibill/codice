@@ -292,6 +292,13 @@ func TestOldStyleTokenWithRoleClaimIsRefused(t *testing.T) {
 	}
 }
 
+func TestDictionaryLookup_NeedsASignedInReader(t *testing.T) {
+	h := testRouter(t)
+	if rec := do(h, "GET", "/dictionary?lang=pt&word=casa", "", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("anonymous: got %d, want 401", rec.Code)
+	}
+}
+
 func TestOwnerOnlyRoutes_ThatNeedTheDatabaseAreStillGuarded(t *testing.T) {
 	// Removing an authorised directory reaches the database once past the guard,
 	// so only the guard itself is checked here.
