@@ -22,6 +22,7 @@ from health import Heartbeat
 from textindex.store import TextIndexer
 from embeddings import EmbeddingIndexer, SentenceTransformersProvider
 from ocr import OcrIndexer
+from dictionary import DictionaryImporter, connect_from_env
 
 # 1. Loads variables from .env, trying multiple locations
 env_paths = ["../.env", ".env"]
@@ -121,6 +122,10 @@ def build_runner(db, client, heartbeat=None):
     os.makedirs(covers_dir, exist_ok=True)
 
     indexer = TextIndexer(db, storage_path)
+    # A dictionary the owner asked to install: downloaded from the address in the server's catalog, imported in one
+    # transaction. The file is kept only while it is read.
+    dictionaries = DictionaryImporter(connect_from_env(), workdir=os.path.join(storage_path, 'tmp'))
+    os.makedirs(dictionaries.workdir, exist_ok=True)
     # Only the worker that is given the job type reads by OCR: it is the one the image with the engine is for.
     ocr = OcrIndexer(db, storage_path) if 'ocr' in [t.strip() for t in os.getenv('WORKER_JOB_TYPES', '').split(',')] else None
     embeddings = None
@@ -129,6 +134,11 @@ def build_runner(db, client, heartbeat=None):
         embeddings.enqueue_missing()
 
     def process(job, checkpoint):
+        if job.get('type') == 'dictionary':
+            print(f"\n📖 Dictionary job {job['id']} ({job['payload'].get('package')}, attempt {job['attempts']}/{job['max_attempts']})")
+            outcome = dictionaries.run(job, checkpoint)
+            print(f"   📖 {outcome}")
+            return outcome
         if job.get('type') == 'ocr':
             # Reading the pages of a scan is a job of its own, and slow: what it reads is kept page by page, so a job
             # that is stopped (or a worker that dies) does not lose it. It never changes the status of the work.
@@ -175,6 +185,9 @@ def build_runner(db, client, heartbeat=None):
         print(f"✅ Job {job['id']} completed.")
 
     def on_failure(job, kind, message):
+        if job.get('type') == 'dictionary':
+            dictionaries.fail(job, message)
+            return
         if not is_ingest(job):
             print(f"   ❌ Text job {job['id']} failed: {message}")
             return
@@ -182,6 +195,9 @@ def build_runner(db, client, heartbeat=None):
         publish(client, {"type": "WORK_ERROR", "work_id": job['work_id'], "error": message})
 
     def on_retry(job, message):
+        if job.get('type') == 'dictionary':
+            dictionaries.retrying(job, message)
+            return
         if not is_ingest(job):
             print(f"   🔁 Text job will retry: {message}")
             return

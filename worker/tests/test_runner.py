@@ -215,14 +215,16 @@ class TestJobsClientClaim:
             self.calls.append((" ".join(query.split()), params))
             return None
 
-    def test_it_asks_only_for_ingestion_jobs(self):
+    def test_it_asks_only_for_the_jobs_of_the_default_worker(self):
         from runner import JobsClient
 
         db = self.RecordingDB()
         JobsClient(db, "worker-1", lease_seconds=60, max_running=2).claim()
         query, params = db.calls[0]
         assert "jobs_claim(%s, %s, %s, %s::text[])" in query
-        assert params == ("worker-1", 60, 2, ['ingest', 'extract_text'])
+        # ingestion, reading the text, and the dictionaries the owner installs; reading by OCR and the embeddings are for the
+        # workers that are given those types
+        assert params == ("worker-1", 60, 2, ['ingest', 'extract_text', 'dictionary'])
 
     def test_the_types_can_be_narrowed_or_widened_explicitly(self):
         from runner import JobsClient
