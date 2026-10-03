@@ -135,7 +135,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
           height: '100%',
           flow: 'paginated',
           manager: 'default',
-          allowScriptedContent: true,
+          allowScriptedContent: false, // a book never runs scripts on the origin of the app: they could read the session token
         });
         renditionRef.current = rendition;
         markedRef.current = new Map();
