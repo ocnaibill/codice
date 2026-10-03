@@ -3,9 +3,11 @@ import { createRoot } from 'react-dom/client';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../../lib/api', () => ({ authenticatedUrl: (u) => u }));
+vi.mock('../../readingSync', () => ({ pushReadingSettings: vi.fn() }));
 
 import TextViewer from './TextViewer';
 import { setPreferenceOwner } from '../../preferences';
+import { pushReadingSettings } from '../../readingSync';
 import { MOUSE_DELAY } from '../../useSelectionWatcher';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -266,7 +268,55 @@ describe('the text reader: the look of the text', () => {
     expect(text().style.fontFamily).toContain('Plus Jakarta Sans Variable');
     await click(radio('Entrelinha', 'Média'));
     expect(text().style.lineHeight).toBe('1.5');
-    expect(JSON.parse(localStorage.getItem(settingsKey))).toEqual({ theme: 'sepia', font: 'sem-serifa', size: 120, spacing: 'media' });
+    expect(JSON.parse(localStorage.getItem(settingsKey))).toEqual({ theme: 'sepia', font: 'sem-serifa', size: 120, spacing: 'media', margins: 'livro', justify: false });
+  });
+
+  it('offers the font for dyslexia, and draws the text with it', async () => {
+    await open();
+    await click(button('Aparência do texto'));
+    expect([...panel().querySelector('[role="group"][aria-label="Fonte"]').querySelectorAll('[role="radio"]')].map((b) => b.textContent)).toEqual(['Padrão', 'Serifada', 'Sem serifa', 'Dislexia']);
+    await click(radio('Fonte', 'Dislexia'));
+    expect(text().style.fontFamily).toContain('OpenDyslexic');
+  });
+
+  it('gives the page the room chosen on each side, and the page\'s own until then', async () => {
+    await open();
+    expect(text().style.paddingInline).toBe('');
+    await click(button('Aparência do texto'));
+    expect([...panel().querySelector('[role="group"][aria-label="Margens"]').querySelectorAll('[role="radio"]')].map((b) => b.textContent)).toEqual(['Padrão', 'Estreita', 'Média', 'Larga']);
+    await click(radio('Margens', 'Larga'));
+    expect(text().style.paddingInline).toBe('14%');
+    await click(radio('Margens', 'Média'));
+    expect(text().style.paddingInline).toBe('6%');
+    await click(radio('Margens', 'Estreita'));
+    expect(text().style.paddingInline).toBe('0px');
+    await click(radio('Margens', 'Padrão'));
+    expect(text().style.paddingInline).toBe('');
+  });
+
+  it('justifies the lines when the switch is turned on, and not before', async () => {
+    await open();
+    expect(text().style.textAlign).toBe('');
+    await click(button('Aparência do texto'));
+    const justify = () => panel().querySelector('[role="switch"]');
+    expect(justify().getAttribute('aria-checked')).toBe('false');
+    await click(justify());
+    expect(justify().getAttribute('aria-checked')).toBe('true');
+    expect(text().style.textAlign).toBe('justify');
+    await click(justify());
+    expect(text().style.textAlign).toBe('');
+  });
+
+  it('keeps the margins and the justified lines with the rest, and sends the whole choice to be kept on the server', async () => {
+    pushReadingSettings.mockClear();
+    await open();
+    await click(button('Aparência do texto'));
+    await click(radio('Margens', 'Larga'));
+    await click(panel().querySelector('[role="switch"]'));
+    const kept = JSON.parse(localStorage.getItem(settingsKey));
+    expect(kept).toMatchObject({ margins: 'larga', justify: true, theme: 'papel' });
+    expect(pushReadingSettings).toHaveBeenCalledTimes(2);
+    expect(pushReadingSettings).toHaveBeenLastCalledWith(kept);
   });
 
   it('does not take the style of the person from the file', async () => {

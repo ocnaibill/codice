@@ -11,8 +11,8 @@ describe('how the EPUB reader looks, remembered', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('starts with the paper page and the book as it is, and remembers what was chosen', () => {
-    expect(getEpubSettings()).toEqual({ theme: 'papel', font: 'livro', size: 100, spacing: 'livro' });
-    const chosen = { theme: 'preto', font: 'serifada', size: 140, spacing: 'ampla' };
+    expect(getEpubSettings()).toEqual({ theme: 'papel', font: 'livro', size: 100, spacing: 'livro', margins: 'livro', justify: false });
+    const chosen = { theme: 'preto', font: 'serifada', size: 140, spacing: 'ampla', margins: 'larga', justify: true };
     saveEpubSettings(chosen);
     expect(getEpubSettings()).toEqual(chosen);
   });
@@ -43,7 +43,7 @@ describe('how the EPUB reader looks, remembered', () => {
 
   it('does not keep what is not in the lists, and reads damaged storage as the default', () => {
     saveEpubSettings({ theme: 'rosa', font: 'livro', size: 999, spacing: 'livro' });
-    expect(JSON.parse(localStorage.getItem('codice:epub-settings:ana'))).toEqual({ theme: 'papel', font: 'livro', size: 100, spacing: 'livro' });
+    expect(JSON.parse(localStorage.getItem('codice:epub-settings:ana'))).toEqual({ theme: 'papel', font: 'livro', size: 100, spacing: 'livro', margins: 'livro', justify: false });
     localStorage.setItem('codice:epub-settings:ana', '{not json');
     expect(getEpubSettings().theme).toBe('papel');
     localStorage.setItem('codice:epub-settings:ana', JSON.stringify({ theme: 'x', size: 130 }));

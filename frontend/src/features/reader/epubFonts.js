@@ -5,4 +5,8 @@ import serifItalic from '@fontsource-variable/newsreader/files/newsreader-latin-
 import sans from '@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2?url';
 import sansItalic from '@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-italic.woff2?url';
 
-export const FONT_FILES = { serif, serifItalic, sans, sansItalic };
+import dyslexic from '@fontsource/opendyslexic/files/opendyslexic-latin-400-normal.woff2?url';
+import dyslexicBold from '@fontsource/opendyslexic/files/opendyslexic-latin-700-normal.woff2?url';
+import dyslexicItalic from '@fontsource/opendyslexic/files/opendyslexic-latin-400-italic.woff2?url';
+
+export const FONT_FILES = { serif, serifItalic, sans, sansItalic, dyslexic, dyslexicBold, dyslexicItalic };

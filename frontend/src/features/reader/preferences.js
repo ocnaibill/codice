@@ -48,6 +48,16 @@ export function getEpubSettings() {
   }
 }
 
+/** Whether this account has chosen how the text looks on this device (and not only the default the reader starts from). */
+export function hasSavedEpubSettings() {
+  if (!owner) return false;
+  try {
+    return localStorage.getItem(EPUB_PREFIX + owner) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function saveEpubSettings(settings) {
   if (!owner) return;
   try {

@@ -2,6 +2,10 @@
 @import "@fontsource-variable/newsreader/wght-italic.css";
 @import "@fontsource-variable/plus-jakarta-sans";
 @import "@fontsource-variable/jetbrains-mono";
+/* The font for dyslexia that the reader offers (#106): OpenDyslexic, SIL OFL 1.1. Hosted with the app; the browser fetches a file only when the font is used. */
+@import "@fontsource/opendyslexic/400.css";
+@import "@fontsource/opendyslexic/700.css";
+@import "@fontsource/opendyslexic/400-italic.css";
 @import "tailwindcss";
 
 @theme {
