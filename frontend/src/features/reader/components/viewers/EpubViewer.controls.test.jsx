@@ -36,7 +36,9 @@ vi.mock('epubjs', () => ({
   },
 }));
 
+vi.mock('../../readingSync', () => ({ pushReadingSettings: vi.fn() }));
 import EpubViewer from './EpubViewer';
+import { pushReadingSettings } from '../../readingSync';
 import { setPreferenceOwner } from '../../preferences';
 import { themeName } from '../../epubThemes';
 import { MOUSE_DELAY, TOUCH_DELAY } from '../../useSelectionWatcher';
@@ -236,7 +238,7 @@ describe('the EPUB reader: the look of the text', () => {
     expect(state.rendition.themes.select).toHaveBeenLastCalledWith(themeName({ theme: 'papel', font: 'serifada', spacing: 'livro' }));
     await click(radio('Entrelinha', 'Ampla'));
     expect(state.rendition.themes.select).toHaveBeenLastCalledWith(themeName({ theme: 'papel', font: 'serifada', spacing: 'ampla' }));
-    expect(JSON.parse(localStorage.getItem(settingsKey))).toEqual({ theme: 'papel', font: 'serifada', size: 100, spacing: 'ampla' });
+    expect(JSON.parse(localStorage.getItem(settingsKey))).toEqual({ theme: 'papel', font: 'serifada', size: 100, spacing: 'ampla', margins: 'livro', justify: false });
     expect(radio('Fonte', 'Serifada').getAttribute('aria-checked')).toBe('true');
     expect(radio('Fonte', 'Do livro').getAttribute('aria-checked')).toBe('false');
     expect(radio('Entrelinha', 'Ampla').getAttribute('aria-checked')).toBe('true');
@@ -247,13 +249,73 @@ describe('the EPUB reader: the look of the text', () => {
     expect(state.rendition.themes.select).toHaveBeenLastCalledWith(themeName({ theme: 'papel', font: 'sem-serifa', spacing: 'media' }));
   });
 
+  describe('the font for dyslexia, the margins and the justified lines', () => {
+    const group = (label) => panel().querySelector(`[role="group"][aria-label="${label}"]`);
+    const radio = (groupLabel, text) => [...group(groupLabel).querySelectorAll('[role="radio"]')].find((b) => b.textContent === text);
+    const page = () => container.querySelector('[data-epub-page]').parentElement;
+    const lastRules = () => state.rendition.themes.register.mock.calls.at(-1)[1];
+
+    it('has the font for dyslexia among the fonts, and gives it to the book', async () => {
+      await open();
+      await click(button('Aparência do texto'));
+      expect([...group('Fonte').querySelectorAll('[role="radio"]')].map((b) => b.textContent)).toEqual(['Do livro', 'Serifada', 'Sem serifa', 'Dislexia']);
+      await click(radio('Fonte', 'Dislexia'));
+      expect(state.rendition.themes.select).toHaveBeenLastCalledWith(themeName({ theme: 'papel', font: 'dislexia', spacing: 'livro' }));
+      const rule = Object.entries(lastRules()).find(([selector]) => selector.includes(':not(pre)'))[1];
+      expect(rule['font-family']).toContain('Codice OpenDyslexic');
+    });
+
+    it('gives the page the room chosen on each side, and none of its own until then', async () => {
+      await open();
+      expect(page().style.paddingInline).toBe('');
+      await click(button('Aparência do texto'));
+      expect([...group('Margens').querySelectorAll('[role="radio"]')].map((b) => b.textContent)).toEqual(['Do livro', 'Estreita', 'Média', 'Larga']);
+      await click(radio('Margens', 'Larga'));
+      expect(page().style.paddingInline).toBe('14%');
+      await click(radio('Margens', 'Do livro'));
+      expect(page().style.paddingInline).toBe('');
+    });
+
+    it('starts with the margins it was left with', async () => {
+      localStorage.setItem(settingsKey, JSON.stringify({ theme: 'papel', font: 'livro', size: 100, spacing: 'livro', margins: 'media', justify: true }));
+      await open();
+      expect(page().style.paddingInline).toBe('6%');
+      const rule = Object.entries(lastRules()).find(([selector]) => selector.includes('blockquote'))[1];
+      expect(rule['text-align']).toBe('justify !important');
+    });
+
+    it('justifies the paragraphs of the book when the switch is on, and takes it back when it is off', async () => {
+      await open();
+      await click(button('Aparência do texto'));
+      const justify = () => panel().querySelector('[role="switch"]');
+      expect(justify().getAttribute('aria-checked')).toBe('false');
+      expect(Object.values(lastRules()).some((r) => 'text-align' in r)).toBe(false);
+      await click(justify());
+      expect(justify().getAttribute('aria-checked')).toBe('true');
+      expect(Object.values(lastRules()).some((r) => r['text-align'] === 'justify !important')).toBe(true);
+      expect(state.rendition.themes.select).toHaveBeenLastCalledWith(themeName({ theme: 'papel', font: 'livro', spacing: 'livro', justify: true }));
+      await click(justify());
+      expect(Object.values(lastRules()).some((r) => 'text-align' in r)).toBe(false);
+    });
+
+    it('sends the whole choice to be kept on the server, each time it changes', async () => {
+      pushReadingSettings.mockClear();
+      await open();
+      await click(button('Aparência do texto'));
+      await click(radio('Margens', 'Média'));
+      await click(panel().querySelector('[role="switch"]'));
+      expect(pushReadingSettings).toHaveBeenCalledTimes(2);
+      expect(pushReadingSettings).toHaveBeenLastCalledWith({ theme: 'papel', font: 'livro', size: 100, spacing: 'livro', margins: 'media', justify: true });
+    });
+  });
+
   it('keeps each choice when another one is made', async () => {
     await open();
     await click(button('Aparência do texto'));
     await click(button('Sépia'));
     await click(button('Aumentar a letra'));
     await click(button('Aumentar a letra'));
-    expect(JSON.parse(localStorage.getItem(settingsKey))).toEqual({ theme: 'sepia', font: 'livro', size: 120, spacing: 'livro' });
+    expect(JSON.parse(localStorage.getItem(settingsKey))).toEqual({ theme: 'sepia', font: 'livro', size: 120, spacing: 'livro', margins: 'livro', justify: false });
   });
 
   it('closes by Escape and by a press outside, but not by a press inside it or on the bar it opens from', async () => {

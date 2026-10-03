@@ -15,6 +15,7 @@ import { AdminPage } from './features/admin/AdminPage';
 import { NoPermission } from './components/ui/PermissionNote';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
 import { OwnershipBanner } from './features/ownership/OwnershipBanner';
+import { ReadingPreferencesSync } from './features/reader/ReadingPreferencesSync';
 import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
 import { PreferencesModal } from './components/layout/PreferencesModal';
 import { AppsModal } from './components/layout/AppsModal';
@@ -275,6 +276,7 @@ function App() {
       <ToastRegion />
       <UploadModal />
       <OwnershipBanner me={me} />
+      <ReadingPreferencesSync key={me?.id ?? "none"} userId={me?.id} />
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
       {preferencesOpen && <PreferencesModal onClose={() => setPreferencesOpen(false)} />}
       {appsOpen && <AppsModal onClose={() => setAppsOpen(false)} />}

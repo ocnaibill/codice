@@ -1,4 +1,5 @@
-// How the reader of an EPUB looks (#77, #106): the colors of the page, the font, the size and the space between lines.
+// How the reader of an EPUB looks (#77, #106): the colors of the page, the font, the size, the space between lines, the margins
+// and whether the lines are justified.
 // The choices come from short closed lists, so that every combination of them can be read: no color is typed by hand.
 import { FONT_FILES } from './epubFonts';
 
@@ -12,12 +13,21 @@ export const READING_THEMES = [
   { id: 'preto', label: 'Preto', background: '#000000', text: '#d4d4d8', link: '#93c5fd' },
 ];
 
-/** The fonts: the book's own (the default), and two of the app's, hosted with it. */
+/** The fonts: the book's own (the default), two of the app's, and one made for dyslexia (OpenDyslexic), all hosted with it. */
 export const READING_FONTS = [
   { id: 'livro', label: 'Do livro', stack: null, appStack: null },
   // `stack` is for the page of a book (an iframe, where the fonts are declared again); `appStack` for the app's own page.
   { id: 'serifada', label: 'Serifada', stack: '"Codice Serif", Georgia, serif', appStack: '"Newsreader Variable", Georgia, serif' },
   { id: 'sem-serifa', label: 'Sem serifa', stack: '"Codice Sans", system-ui, sans-serif', appStack: '"Plus Jakarta Sans Variable", system-ui, sans-serif' },
+  { id: 'dislexia', label: 'Dislexia', stack: '"Codice OpenDyslexic", system-ui, sans-serif', appStack: '"OpenDyslexic", system-ui, sans-serif' },
+];
+
+/** The margins: the page's own, or the room left on each side of the text (a share of the width of the page). */
+export const READING_MARGINS = [
+  { id: 'livro', label: 'Do livro', value: null },
+  { id: 'estreita', label: 'Estreita', value: '0px' },
+  { id: 'media', label: 'Média', value: '6%' },
+  { id: 'larga', label: 'Larga', value: '14%' },
 ];
 
 /** The space between lines: the book's own, or a given one. */
@@ -31,7 +41,7 @@ export const SIZE_MIN = 80;
 export const SIZE_MAX = 200;
 export const SIZE_STEP = 10;
 
-export const DEFAULT_SETTINGS = { theme: 'papel', font: 'livro', size: 100, spacing: 'livro' };
+export const DEFAULT_SETTINGS = { theme: 'papel', font: 'livro', size: 100, spacing: 'livro', margins: 'livro', justify: false };
 
 const has = (list, id) => list.some((item) => item.id === id);
 
@@ -45,6 +55,8 @@ export function sanitizeSettings(raw) {
     font: has(READING_FONTS, value.font) ? value.font : DEFAULT_SETTINGS.font,
     size: onStep ? size : DEFAULT_SETTINGS.size,
     spacing: has(READING_SPACING, value.spacing) ? value.spacing : DEFAULT_SETTINGS.spacing,
+    margins: has(READING_MARGINS, value.margins) ? value.margins : DEFAULT_SETTINGS.margins,
+    justify: value.justify === true,
   };
 }
 
@@ -64,20 +76,29 @@ export function contrastRatio(a, b) {
 
 /** The @font-face of the app's fonts, to be declared inside the page of a book. `base` is where the files are served from. */
 export function fontFaceCss(base = window.location.href) {
-  const face = (family, file, style) =>
-    `@font-face{font-family:"${family}";font-style:${style};font-weight:200 800;font-display:swap;src:url("${new URL(file, base).href}") format("woff2");}`;
+  const face = (family, file, style, weight = '200 800') =>
+    `@font-face{font-family:"${family}";font-style:${style};font-weight:${weight};font-display:swap;src:url("${new URL(file, base).href}") format("woff2");}`;
   return [
     face('Codice Serif', FONT_FILES.serif, 'normal'),
     face('Codice Serif', FONT_FILES.serifItalic, 'italic'),
     face('Codice Sans', FONT_FILES.sans, 'normal'),
     face('Codice Sans', FONT_FILES.sansItalic, 'italic'),
+    face('Codice OpenDyslexic', FONT_FILES.dyslexic, 'normal', '400'),
+    face('Codice OpenDyslexic', FONT_FILES.dyslexicBold, 'normal', '700'),
+    face('Codice OpenDyslexic', FONT_FILES.dyslexicItalic, 'italic', '400'),
   ].join('\n');
+}
+
+/** The room on each side of the text, as an inline style for the box that holds the page; nothing for "Do livro". */
+export function marginStyle(settings) {
+  const value = READING_MARGINS.find((m) => m.id === sanitizeSettings(settings).margins)?.value;
+  return value ? { paddingInline: value } : {};
 }
 
 const TEXT_ELEMENTS = '*:not(pre):not(code):not(kbd):not(samp):not(pre *)';
 
 /** The name of the theme epub.js is given for these settings: it is a class on the page of the book. */
-export const themeName = (settings) => `read-${settings.theme}-${settings.font}-${settings.spacing}`;
+export const themeName = (settings) => `read-${settings.theme}-${settings.font}-${settings.spacing}-${settings.justify ? 'j' : 'l'}`;
 
 /**
  * The rules for the page of the book. The reader wins over what the book forces (a book can set black text, or its own
@@ -99,6 +120,8 @@ export function epubRules(settings) {
   rules[`${n}::selection, ${n} *::selection`] = { background: `${luminance(theme.background) < 0.2 ? SELECTION_ON_DARK : SELECTION_ON_LIGHT} !important` };
   if (font.stack) rules[`${n} ${TEXT_ELEMENTS}`] = { 'font-family': `${font.stack} !important` };
   if (spacing.value) rules[`${n} p, ${n} li, ${n} blockquote, ${n} dd, ${n} div`] = { 'line-height': `${spacing.value} !important` };
+  // Justified lines, with hyphens where the book says its language: only the paragraphs of text, and not a heading, a table or a poem's lines.
+  if (s.justify) rules[`${n} p, ${n} li, ${n} blockquote, ${n} dd`] = { 'text-align': 'justify !important', hyphens: 'auto !important', '-webkit-hyphens': 'auto !important' };
   return rules;
 }
 

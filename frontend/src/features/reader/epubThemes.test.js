@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  READING_THEMES, READING_FONTS, READING_SPACING, DEFAULT_SETTINGS, SIZE_MIN, SIZE_MAX, SIZE_STEP,
+  READING_THEMES, READING_FONTS, READING_SPACING, READING_MARGINS, DEFAULT_SETTINGS, marginStyle, SIZE_MIN, SIZE_MAX, SIZE_STEP,
   sanitizeSettings, contrastRatio, epubRules, SELECTION_ON_LIGHT, SELECTION_ON_DARK, themeName, applyEpubSettings, fontFaceCss,
 } from './epubThemes';
 
@@ -34,14 +35,14 @@ describe('the pages of the reader', () => {
   });
 
   it('keep the paper of before as the default', () => {
-    expect(DEFAULT_SETTINGS).toEqual({ theme: 'papel', font: 'livro', size: 100, spacing: 'livro' });
+    expect(DEFAULT_SETTINGS).toEqual({ theme: 'papel', font: 'livro', size: 100, spacing: 'livro', margins: 'livro', justify: false });
     expect(READING_THEMES.find((t) => t.id === 'papel')).toMatchObject({ background: '#faf8f4', text: '#18181b' });
   });
 });
 
 describe('sanitizeSettings', () => {
   it('keeps what is in the lists', () => {
-    const all = { theme: 'sepia', font: 'serifada', size: 130, spacing: 'ampla' };
+    const all = { theme: 'sepia', font: 'dislexia', size: 130, spacing: 'ampla', margins: 'media', justify: true };
     expect(sanitizeSettings(all)).toEqual(all);
   });
 
@@ -63,7 +64,7 @@ describe('sanitizeSettings', () => {
   });
 
   it('returns only the four choices, whatever else came with them', () => {
-    expect(Object.keys(sanitizeSettings({ theme: 'preto', extra: '<script>', __proto__: { a: 1 } }))).toEqual(['theme', 'font', 'size', 'spacing']);
+    expect(Object.keys(sanitizeSettings({ theme: 'preto', extra: '<script>', __proto__: { a: 1 } }))).toEqual(['theme', 'font', 'size', 'spacing', 'margins', 'justify']);
   });
 });
 
@@ -161,7 +162,7 @@ describe('applyEpubSettings', () => {
 describe('fontFaceCss', () => {
   it('declares the four files of the two fonts, in both styles, with addresses on the app', () => {
     const css = fontFaceCss('http://app.test/leitor');
-    expect((css.match(/@font-face/g) || []).length).toBe(4);
+    expect((css.match(/@font-face/g) || []).length).toBe(7);
     expect(css).toContain('font-family:"Codice Serif";font-style:normal');
     expect(css).toContain('font-family:"Codice Serif";font-style:italic');
     expect(css).toContain('font-family:"Codice Sans";font-style:normal');
@@ -169,5 +170,95 @@ describe('fontFaceCss', () => {
     expect(css).toContain('url("http://app.test/');
     expect(css).toContain('font-weight:200 800');
     expect(css).toContain('format("woff2")');
+  });
+});
+
+describe('the font for dyslexia', () => {
+  it('is one of the fonts, and has a stack for a book and one for the app, both with a fallback', () => {
+    const font = READING_FONTS.find((f) => f.id === 'dislexia');
+    expect(font.label).toBe('Dislexia');
+    expect(font.stack).toBe('"Codice OpenDyslexic", system-ui, sans-serif');
+    expect(font.appStack).toBe('"OpenDyslexic", system-ui, sans-serif');
+  });
+
+  it('is declared inside the page of a book, in its regular, bold and italic, as files of the app', () => {
+    const css = fontFaceCss('http://app.test/leitor');
+    expect(css).toMatch(/font-family:"Codice OpenDyslexic";font-style:normal;font-weight:400;/);
+    expect(css).toMatch(/font-family:"Codice OpenDyslexic";font-style:normal;font-weight:700;/);
+    expect(css).toMatch(/font-family:"Codice OpenDyslexic";font-style:italic;font-weight:400;/);
+    expect(css).not.toContain('https://fonts.');
+  });
+
+  it('is the font of the book when chosen, over what the book says', () => {
+    const n = `.${themeName({ ...DEFAULT_SETTINGS, font: 'dislexia' })}`;
+    const rule = epubRules({ ...DEFAULT_SETTINGS, font: 'dislexia' })[`${n} *:not(pre):not(code):not(kbd):not(samp):not(pre *)`];
+    expect(rule['font-family']).toBe('"Codice OpenDyslexic", system-ui, sans-serif !important');
+  });
+});
+
+describe('the margins', () => {
+  it('are the page\'s own, narrow, medium or wide, and "Do livro" is the first', () => {
+    expect(READING_MARGINS.map((m) => m.id)).toEqual(['livro', 'estreita', 'media', 'larga']);
+    expect(READING_MARGINS.map((m) => m.label)).toEqual(['Do livro', 'Estreita', 'Média', 'Larga']);
+    expect(DEFAULT_SETTINGS.margins).toBe('livro');
+  });
+
+  it('are the room left on each side of the text, and nothing for the page\'s own', () => {
+    expect(marginStyle({ ...DEFAULT_SETTINGS, margins: 'livro' })).toEqual({});
+    expect(marginStyle({ ...DEFAULT_SETTINGS, margins: 'estreita' })).toEqual({ paddingInline: '0px' });
+    expect(marginStyle({ ...DEFAULT_SETTINGS, margins: 'media' })).toEqual({ paddingInline: '6%' });
+    expect(marginStyle({ ...DEFAULT_SETTINGS, margins: 'larga' })).toEqual({ paddingInline: '14%' });
+    expect(marginStyle({ margins: 'enorme' })).toEqual({});
+    expect(marginStyle(undefined)).toEqual({});
+  });
+
+  it('are kept when they are in the list, and are the page\'s own when they are not', () => {
+    expect(sanitizeSettings({ margins: 'larga' }).margins).toBe('larga');
+    for (const bad of ['enorme', '', null, 5, undefined, {}]) expect(sanitizeSettings({ margins: bad }).margins, String(bad)).toBe('livro');
+  });
+});
+
+describe('justified lines', () => {
+  it('are off by default, and on only for a true', () => {
+    expect(DEFAULT_SETTINGS.justify).toBe(false);
+    expect(sanitizeSettings({ justify: true }).justify).toBe(true);
+    for (const bad of ['true', 1, 'sim', null, undefined, {}, []]) expect(sanitizeSettings({ justify: bad }).justify, String(bad)).toBe(false);
+  });
+
+  it('are made of the paragraphs and not of the headings, with hyphens, winning over the book', () => {
+    const on = { ...DEFAULT_SETTINGS, justify: true };
+    const n = `.${themeName(on)}`;
+    const rule = epubRules(on)[`${n} p, ${n} li, ${n} blockquote, ${n} dd`];
+    expect(rule).toEqual({ 'text-align': 'justify !important', hyphens: 'auto !important', '-webkit-hyphens': 'auto !important' });
+  });
+
+  it('leave the text as the book has it when off', () => {
+    const rules = epubRules(DEFAULT_SETTINGS);
+    expect(Object.values(rules).some((r) => 'text-align' in r || 'hyphens' in r)).toBe(false);
+  });
+
+  it('change the name of the page of the book, which is how epub.js tells one set of rules from another', () => {
+    expect(themeName({ ...DEFAULT_SETTINGS, justify: true })).not.toBe(themeName(DEFAULT_SETTINGS));
+    expect(themeName({ ...DEFAULT_SETTINGS, justify: true })).toMatch(/-j$/);
+    expect(themeName(DEFAULT_SETTINGS)).toMatch(/-l$/);
+  });
+});
+
+// The lists are the server's too (backend/internal/reading/settings.go): a value this reader offers and the server refuses
+// would be lost when it is kept, so that they are the same is checked, from the source of the server.
+describe('the lists, as the server has them', () => {
+  const go = readFileSync('../backend/internal/reading/settings.go', 'utf8');
+  const listOf = (name) => [...go.match(new RegExp(`${name}\\s*=\\s*\\[\\]string\\{([^}]*)\\}`))[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+
+  it('are the same: themes, fonts, spacings and margins', () => {
+    expect(listOf('Themes')).toEqual(READING_THEMES.map((t) => t.id));
+    expect(listOf('Fonts')).toEqual(READING_FONTS.map((f) => f.id));
+    expect(listOf('Spacings')).toEqual(READING_SPACING.map((p) => p.id));
+    expect(listOf('Margins')).toEqual(READING_MARGINS.map((m) => m.id));
+  });
+
+  it('have the same size, from the least to the most, in the same steps', () => {
+    const number = (name) => Number(go.match(new RegExp(`${name}\\s*=\\s*(\\d+)`))[1]);
+    expect([number('SizeMin'), number('SizeMax'), number('SizeStep')]).toEqual([SIZE_MIN, SIZE_MAX, SIZE_STEP]);
   });
 });
