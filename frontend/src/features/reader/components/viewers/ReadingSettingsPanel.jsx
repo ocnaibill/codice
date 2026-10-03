@@ -1,5 +1,5 @@
 import React from 'react';
-import { READING_THEMES, READING_FONTS, READING_SPACING, SIZE_MIN, SIZE_MAX, SIZE_STEP } from '../../epubThemes';
+import { READING_THEMES, READING_FONTS, READING_MARGINS, READING_SPACING, SIZE_MIN, SIZE_MAX, SIZE_STEP } from '../../epubThemes';
 
 const stepButton =
   'flex h-11 min-w-11 items-center justify-center rounded-full border border-border-hairline bg-white text-ink transition-[background-color,transform] duration-150 hover:bg-surface-alt active:scale-95 disabled:opacity-30 disabled:hover:bg-white disabled:active:scale-100';
@@ -11,14 +11,18 @@ const Group = ({ label, children }) => (
   </div>
 );
 
-const FONT_STYLE = { 'sem-serifa': { fontFamily: '"Plus Jakarta Sans Variable", system-ui, sans-serif' }, serifada: { fontFamily: '"Newsreader Variable", Georgia, serif' } };
+const FONT_STYLE = {
+  'sem-serifa': { fontFamily: '"Plus Jakarta Sans Variable", system-ui, sans-serif' },
+  serifada: { fontFamily: '"Newsreader Variable", Georgia, serif' },
+  dislexia: { fontFamily: '"OpenDyslexic", system-ui, sans-serif' },
+};
 
 /**
- * How the text looks, for the EPUB and the text readers alike: the size, the color of the page, the font and the space
- * between lines. Every change is made at once. `bookLabel` is the name of "what the file has" (the book's own).
+ * How the text looks, for the EPUB and the text readers alike: the size, the color of the page, the font, the space
+ * between lines, the margins and whether the lines are justified. Every change is made at once. `bookLabel` is the name of "what the file has" (the book's own).
  */
 export default function ReadingSettingsPanel({ settings, onChange, bookLabel = 'Do livro' }) {
-  const { theme, font, size, spacing } = settings;
+  const { theme, font, size, spacing, margins, justify } = settings;
   const choice = (selected) =>
     `flex min-h-11 flex-1 items-center justify-center rounded-lg border px-3 text-sm transition-[background-color,border-color] duration-150 ${
       selected ? 'border-brand bg-brand/10 font-medium text-brand' : 'border-border-hairline bg-white text-ink-soft hover:bg-surface-alt hover:text-ink'
@@ -60,7 +64,7 @@ export default function ReadingSettingsPanel({ settings, onChange, bookLabel = '
       </Group>
 
       <Group label="Fonte">
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {READING_FONTS.map((f) => (
             <button key={f.id} role="radio" aria-checked={f.id === font} onClick={() => onChange({ font: f.id })} style={FONT_STYLE[f.id]} className={choice(f.id === font)}>
               {f.id === 'livro' ? bookLabel : f.label}
@@ -78,6 +82,28 @@ export default function ReadingSettingsPanel({ settings, onChange, bookLabel = '
           ))}
         </div>
       </Group>
+
+      <Group label="Margens">
+        <div className="grid grid-cols-2 gap-2">
+          {READING_MARGINS.map((m) => (
+            <button key={m.id} role="radio" aria-checked={m.id === margins} onClick={() => onChange({ margins: m.id })} className={choice(m.id === margins)}>
+              {m.id === 'livro' ? bookLabel : m.label}
+            </button>
+          ))}
+        </div>
+      </Group>
+
+      <button
+        role="switch"
+        aria-checked={justify}
+        onClick={() => onChange({ justify: !justify })}
+        className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border-hairline bg-white px-3 text-sm text-ink transition-[background-color] duration-150 hover:bg-surface-alt"
+      >
+        <span>Justificar o texto</span>
+        <span aria-hidden="true" className={`flex h-6 w-10 items-center rounded-full p-0.5 transition-colors duration-150 ${justify ? 'bg-brand' : 'bg-border-hairline'}`}>
+          <span className={`size-5 rounded-full bg-white shadow transition-transform duration-150 ${justify ? 'translate-x-4' : ''}`} />
+        </span>
+      </button>
     </div>
   );
 }

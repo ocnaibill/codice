@@ -25,7 +25,9 @@ vi.mock('./features/auth/api/useMe', () => ({
   useMe: () => ({ data: { id: 'u1', username: 'ana', role: state.role } }),
   isStaff: (me) => me?.role === 'owner' || me?.role === 'admin',
 }));
-vi.mock('./features/reader/preferences', () => ({ setPreferenceOwner: vi.fn() }));
+vi.mock('./features/reader/preferences', () => ({
+  setPreferenceOwner: vi.fn(), getEpubSettings: () => ({}), hasSavedEpubSettings: () => false, saveEpubSettings: vi.fn(),
+}));
 vi.mock('./lib/refreshLibrary', () => ({ refreshLibrary: vi.fn() }));
 vi.mock('./components/layout/AppShell', () => ({ AppShell: ({ children }) => <main>{children}</main> }));
 vi.mock('./pages/HomePage', () => ({ HomePage: () => <div>Acervo</div> }));

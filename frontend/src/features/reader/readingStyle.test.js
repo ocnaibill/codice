@@ -41,4 +41,20 @@ describe('readingStyle', () => {
     expect(s.page.backgroundColor).toBe('#faf8f4');
     expect(s.text.fontSize).toBe('16px');
   });
+
+  it('uses the font for dyslexia of the app when it is chosen', () => {
+    expect(readingStyle({ ...DEFAULT_SETTINGS, font: 'dislexia' }).text.fontFamily).toBe('"OpenDyslexic", system-ui, sans-serif');
+  });
+
+  it('justifies the lines, with hyphens, only when it is chosen', () => {
+    expect(readingStyle({ ...DEFAULT_SETTINGS, justify: true }).text).toMatchObject({ textAlign: 'justify', hyphens: 'auto' });
+    const off = readingStyle(DEFAULT_SETTINGS).text;
+    expect('textAlign' in off || 'hyphens' in off).toBe(false);
+  });
+
+  it('gives the margins chosen, as room on each side, and nothing for the page\'s own', () => {
+    expect(readingStyle(DEFAULT_SETTINGS).margins).toEqual({});
+    expect(readingStyle({ ...DEFAULT_SETTINGS, margins: 'larga' }).margins).toEqual({ paddingInline: '14%' });
+    expect(readingStyle({ ...DEFAULT_SETTINGS, margins: 'estreita' }).margins).toEqual({ paddingInline: '0px' });
+  });
 });

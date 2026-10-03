@@ -3,13 +3,14 @@ import ePub from 'epubjs';
 import { api } from '../../../../lib/api';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { buildEpubProgress } from '../../epubProgress';
-import { applyEpubSettings, fontFaceCss, sanitizeSettings, READING_THEMES } from '../../epubThemes';
+import { applyEpubSettings, fontFaceCss, marginStyle, sanitizeSettings, READING_THEMES } from '../../epubThemes';
 import { toScreen, acrossPage } from '../../epubGestures';
 import { cleanQuote } from '../../selection';
 import { MOUSE_DELAY, TOUCH_DELAY } from '../../useSelectionWatcher';
 import { flattenToc } from '../../epubToc';
 import { tapAction, swipeAction } from '../../pdfGestures';
 import { getEpubSettings, saveEpubSettings } from '../../preferences';
+import { pushReadingSettings } from '../../readingSync';
 import { epubPlaceProblem } from '../../placeCheck';
 import { highlightColor } from '../../highlightColors';
 import ReadingSettingsPanel from './ReadingSettingsPanel';
@@ -324,6 +325,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
   const change = (patch) => {
     const next = sanitizeSettings({ ...settingsRef.current, ...patch });
     saveEpubSettings(next);
+    pushReadingSettings(next);
     setSettings(next);
   };
   // A bigger letter, another font or another spacing lays the text out again: the book goes back to where the page in
@@ -542,7 +544,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
       {/* The page. Room is left under it for the controls, so that showing them does not move the text. */}
       <div
         className="absolute inset-x-0 bottom-[4.5rem] mx-auto w-full max-w-3xl px-2 sm:px-6"
-        style={{ height: room ? room - ROOM_FOR_CONTROLS - 12 : 'calc(100% - 4.5rem - 0.75rem)' }}
+        style={{ height: room ? room - ROOM_FOR_CONTROLS - 12 : 'calc(100% - 4.5rem - 0.75rem)', ...marginStyle(settings) }}
       >
         <div ref={viewerRef} data-epub-page className="h-full w-full overflow-hidden" />
       </div>

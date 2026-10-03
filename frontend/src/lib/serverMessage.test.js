@@ -79,6 +79,9 @@ describe('what the server says', () => {
 
   // Messages for programs that call the API, which no screen of the app brings about: they are not translated.
   const FOR_PROGRAMS = [
+    // the choices of the reader, which the app sends from the lists it offers
+    'reader is a choice of the lists of the reader',
+    'the reading preferences are not valid',
     // the command line of the backup, which a person runs on the server and reads in the terminal
     'other connections are using the target database: stop the API and the worker first',
     'pg_dump and pg_restore are needed (install the PostgreSQL client tools)',

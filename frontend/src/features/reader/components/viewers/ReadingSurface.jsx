@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { tapAction } from '../../pdfGestures';
 import { getEpubSettings, saveEpubSettings } from '../../preferences';
+import { pushReadingSettings } from '../../readingSync';
 import { readingStyle } from '../../readingStyle';
 import { sanitizeSettings } from '../../epubThemes';
 import { scrollFraction, scrollerOf, useScrollPosition } from '../../scrollPosition';
@@ -52,6 +53,7 @@ export default function ReadingSurface({
   const change = (patch) => {
     const next = sanitizeSettings({ ...settings, ...patch });
     saveEpubSettings(next);
+    pushReadingSettings(next);
     setSettings(next);
   };
 
@@ -156,7 +158,7 @@ export default function ReadingSurface({
         ref={textRef}
         data-reading-text
         className="mx-auto w-full max-w-3xl px-5 pb-28 pt-8 sm:px-8"
-        style={{ ...style.text, '--reading-link': style.theme.link }}
+        style={{ ...style.text, ...style.margins, '--reading-link': style.theme.link }}
       >
         {children}
       </div>

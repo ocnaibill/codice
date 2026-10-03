@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/people"
+	"github.com/ocnaibill/codice/backend/internal/reading"
 )
 
 // PeopleHandler lets owner and admin review people who may be the same person ("Herbert, Frank" and "Frank
@@ -84,24 +85,63 @@ func (h *PeopleHandler) Merge(w http.ResponseWriter, r *http.Request) {
 // GetPreferences tells an account how names are shown to it (#64): its own choice, the library's default, and
 // what applies.
 func (h *PeopleHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, people.OrderFor(r.Context(), h.DB, currentUserID(r)))
+	h.writePreferences(w, r)
 }
 
-// SetPreferences records an account's own choice of how names are shown; empty goes back to the library's.
+// preferencesResponse is what an account has chosen: how names are shown, and how the text of a book looks (#106). Reader
+// is null until the person has made a choice.
+type preferencesResponse struct {
+	people.Preference
+	Reader *reading.Settings `json:"reader"`
+}
+
+func (h *PeopleHandler) writePreferences(w http.ResponseWriter, r *http.Request) {
+	userID := currentUserID(r)
+	saved, err := reading.Get(r.Context(), h.DB, userID)
+	if err != nil {
+		log.Println("Error reading the reading preferences:", err)
+		http.Error(w, "Error reading the preferences", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, preferencesResponse{Preference: people.OrderFor(r.Context(), h.DB, userID), Reader: saved})
+}
+
+// SetPreferences records an account's own choices: how names are shown (empty goes back to the library's) and how the text of
+// a book looks (null takes the choice away). What the request does not mention stays as it is.
 func (h *PeopleHandler) SetPreferences(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		NameOrder string `json:"nameOrder"`
+		NameOrder *string         `json:"nameOrder"`
+		Reader    json.RawMessage `json:"reader"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req); err != nil || (req.NameOrder != "" && !people.ValidOrder(req.NameOrder)) {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req); err != nil || (req.NameOrder != nil && *req.NameOrder != "" && !people.ValidOrder(*req.NameOrder)) {
 		http.Error(w, "nameOrder is given_first, family_first or empty", http.StatusBadRequest)
 		return
 	}
-	if err := people.SetChoice(r.Context(), h.DB, currentUserID(r), req.NameOrder); err != nil {
-		log.Println("Error saving a name order:", err)
-		http.Error(w, "Error saving the preference", http.StatusInternalServerError)
-		return
+	var choice *reading.Settings
+	if len(req.Reader) > 0 && string(req.Reader) != "null" {
+		parsed, err := reading.Parse(req.Reader)
+		if err != nil {
+			http.Error(w, "reader is a choice of the lists of the reader", http.StatusBadRequest)
+			return
+		}
+		choice = &parsed
 	}
-	writeJSON(w, http.StatusOK, people.OrderFor(r.Context(), h.DB, currentUserID(r)))
+	userID := currentUserID(r)
+	if req.NameOrder != nil {
+		if err := people.SetChoice(r.Context(), h.DB, userID, *req.NameOrder); err != nil {
+			log.Println("Error saving a name order:", err)
+			http.Error(w, "Error saving the preference", http.StatusInternalServerError)
+			return
+		}
+	}
+	if len(req.Reader) > 0 {
+		if err := reading.Set(r.Context(), h.DB, userID, choice); err != nil {
+			log.Println("Error saving the reading preferences:", err)
+			http.Error(w, "Error saving the preference", http.StatusInternalServerError)
+			return
+		}
+	}
+	h.writePreferences(w, r)
 }
 
 // SetLibraryOrder records the library's default (the owner's).
