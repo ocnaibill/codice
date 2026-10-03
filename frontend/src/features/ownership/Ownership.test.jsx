@@ -140,6 +140,6 @@ describe('TransferOwnership', () => {
     await view.type(view.container.querySelector('input[type="password"]'), 'errada');
     await view.click(view.button('Oferecer a titularidade'));
     await view.click(view.button('Oferecer'));
-    expect(view.container.querySelector('[role="alert"]').textContent).toBe('The password is not correct');
+    expect(view.container.querySelector('[role="alert"]').textContent).toBe('A senha não está correta.');
   });
 });

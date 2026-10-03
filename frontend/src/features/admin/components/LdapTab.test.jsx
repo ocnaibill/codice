@@ -63,6 +63,6 @@ describe('LdapTab', () => {
     await open(state());
     api.put.mockRejectedValue({ response: { status: 400, data: 'revalidateHours must be between 1 and 336\n' } });
     await view.click(view.button('Salvar política'));
-    expect(view.container.querySelector('[role="alert"]').textContent).toContain('between 1 and 336');
+    expect(view.container.querySelector('[role="alert"]').textContent).toContain('O intervalo de revalidação vai de 1 a 336 horas.');
   });
 });

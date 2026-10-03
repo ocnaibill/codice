@@ -406,12 +406,12 @@ describe('ReferencedFiles: moving to the managed storage', () => {
 
   it('says so, and keeps the choice, when the request itself fails', async () => {
     await open([file(1)]);
-    api.post.mockRejectedValue({ response: { status: 403, data: 'Not allowed' } });
+    api.post.mockRejectedValue({ response: { status: 403, data: 'Forbidden' } });
     await view.click(box('Livro 1'));
     await view.click(moveButton());
     await view.click(view.button('Mover'));
     await flush();
-    expect(view.text()).toContain('Not allowed');
+    expect(view.text()).toContain('Você não tem permissão para isso.');
     expect(view.text()).toContain('1 escolhido(s)');
     expect(document.body.querySelector('[aria-label="Resultado da transferência"]')).toBeNull();
   });

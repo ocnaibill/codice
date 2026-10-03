@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { describeError, useEmbeddings, useSetEmbeddings } from '../api/admin';
 import { ErrorNote, Loading, Section } from './ui';
+import { LoadError } from '../../../components/ui/LoadError';
 
 const STATE = {
   idle: 'Aguardando texto para processar.',
@@ -10,9 +11,9 @@ const STATE = {
 };
 
 export function EmbeddingsTab() {
-  const { data, isLoading, isError } = useEmbeddings();
+  const { data, isLoading, isError, refetch, isRefetching } = useEmbeddings();
   if (isLoading) return <Loading />;
-  if (isError || !data) return <ErrorNote>Não foi possível carregar a configuração.</ErrorNote>;
+  if (isError || !data) return <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a configuração.</LoadError>;
   return <EmbeddingsForm key={`${data.enabled}-${data.available}-${data.state}-${data.model}`} state={data} />;
 }
 

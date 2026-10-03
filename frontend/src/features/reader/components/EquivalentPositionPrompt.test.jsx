@@ -86,3 +86,47 @@ describe('EquivalentPositionPrompt', () => {
     expect(button('Não, abrir minha posição').disabled).toBe(true);
   });
 });
+
+describe('EquivalentPositionPrompt: in the system of the app', () => {
+  it('is a modal dialog drawn in the colors of the app, with buttons the thumb can hit', async () => {
+    await render();
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.innerHTML).not.toMatch(/zinc-|blue-\d|red-\d/);
+    expect(button('Continuar daqui').className).toContain('bg-brand');
+    expect(button('Continuar daqui').className).toContain('min-h-11');
+    expect(button('Não, abrir minha posição').className).toContain('min-h-11');
+  });
+
+  it('takes Escape for declining, and listens to nothing else, or once it is gone', async () => {
+    const onDecline = vi.fn();
+    const onAccept = vi.fn();
+    await render({ onDecline, onAccept });
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(onDecline).toHaveBeenCalledTimes(1);
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); });
+    expect(onDecline).toHaveBeenCalledTimes(1);
+    expect(onAccept).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(onDecline).toHaveBeenCalledTimes(1);
+    root = createRoot(container);
+  });
+
+  it('answers Escape with the function it was last given', async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    await render({ onDecline: first });
+    await render({ onDecline: second });
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
+  });
+
+  it('marks the candidate that is chosen with the brand', async () => {
+    await render({ status: 'ambiguous', candidates: ambiguous });
+    const labels = [...container.querySelectorAll('label')];
+    expect(labels.every((l) => l.className.includes('has-[:checked]:border-brand'))).toBe(true);
+    expect(container.querySelector('input[type="radio"]').className).toContain('accent-brand');
+  });
+});

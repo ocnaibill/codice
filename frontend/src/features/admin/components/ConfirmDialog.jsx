@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 const TONES = {
   neutral: 'bg-surface-alt text-ink hover:brightness-95',
   primary: 'bg-brand text-white hover:brightness-110',
-  danger: 'bg-red-700 text-white hover:brightness-110',
+  danger: 'bg-danger text-white hover:brightness-110',
 };
 
 /**

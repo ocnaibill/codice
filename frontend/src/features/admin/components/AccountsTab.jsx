@@ -3,6 +3,7 @@ import { useAccounts, useBlockAccount, useUnblockAccount, useDeleteAccount, desc
 import { formatDate } from '../format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
+import { LoadError } from '../../../components/ui/LoadError';
 import { Invitations } from './Invitations';
 import { PasswordResets } from './PasswordResets';
 import { TransferOwnership } from './TransferOwnership';
@@ -15,7 +16,7 @@ const ROLE = { owner: 'Dono', admin: 'Administrador', reader: 'Leitor' };
  * so the rules about who may act on whom live in one place only.
  */
 export function AccountsTab({ isOwner }) {
-  const { data, isLoading, isError } = useAccounts();
+  const { data, isLoading, isError, refetch, isRefetching } = useAccounts();
   const block = useBlockAccount();
   const unblock = useUnblockAccount();
   const remove = useDeleteAccount();
@@ -30,7 +31,7 @@ export function AccountsTab({ isOwner }) {
       hint="Bloquear impede a pessoa de entrar e encerra na hora as sessões, os tokens de aplicativo e as conexões abertas dela. Notas e progresso ficam guardados, e o bloqueio se desfaz. Excluir é outra coisa: apaga a conta e os dados pessoais de vez."
     >
       {isLoading && <Loading />}
-      {isError && <ErrorNote>Não foi possível carregar as contas.</ErrorNote>}
+      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as contas.</LoadError>}
       {!isLoading && !isError && accounts.length === 0 && <Empty>Nenhuma conta.</Empty>}
       <ul className="divide-y divide-border-hairline">
         {accounts.map((account) => (
@@ -43,7 +44,7 @@ export function AccountsTab({ isOwner }) {
                   <span className="ml-2 rounded bg-surface-alt px-2 py-0.5 text-[11px] text-ink-soft" title="Entra com a senha do diretório (LDAP)">Diretório</span>
                 )}
                 {account.blockedAt && (
-                  <span className="ml-2 rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Bloqueada</span>
+                  <span className="ml-2 rounded bg-danger-soft/40 px-2 py-0.5 text-[11px] text-danger">Bloqueada</span>
                 )}
               </p>
               <p className="text-[12px] text-ink-faint">

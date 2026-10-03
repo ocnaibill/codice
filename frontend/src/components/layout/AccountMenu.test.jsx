@@ -101,6 +101,6 @@ describe('ChangePasswordModal', () => {
     view = await mount(<ChangePasswordModal onClose={() => {}} />);
     await fill(['errada-000', 'nova-senha-1', 'nova-senha-1']);
     await submit();
-    expect(document.querySelector('[role="alert"]').textContent).toBe('The current password is not correct');
+    expect(document.querySelector('[role="alert"]').textContent).toBe('A senha atual não está correta.');
   });
 });

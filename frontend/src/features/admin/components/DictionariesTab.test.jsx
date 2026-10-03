@@ -228,7 +228,7 @@ describe('DictionariesTab: what is installed', () => {
     expect(dialog().textContent).toContain('Remover Wikcionário em português?');
     expect(dialog().textContent).toContain('saem do banco');
     expect(api.delete).not.toHaveBeenCalled();
-    expect([...dialog().querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remover').className).toContain('bg-red-700'); // what cannot be undone is red
+    expect([...dialog().querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remover').className).toContain('bg-danger'); // what cannot be undone is red
     await choose('Remover');
     expect(api.delete).toHaveBeenCalledWith('/admin/dictionaries/wikt-pt');
   });

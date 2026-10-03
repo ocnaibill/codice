@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { serverMessage } from '../../../lib/serverMessage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import { refreshLibrary } from '../../../lib/refreshLibrary';
@@ -45,6 +46,5 @@ export function useNotTheSame() {
 
 /** What the server said, for showing; it answers with plain text. */
 export function reasonOf(error, fallback) {
-  const text = error?.response?.data;
-  return typeof text === 'string' && text.trim() ? text.trim() : fallback;
+  return serverMessage(error, fallback);
 }

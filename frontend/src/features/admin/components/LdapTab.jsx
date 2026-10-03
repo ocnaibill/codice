@@ -36,7 +36,7 @@ function LdapForm({ state }) {
       >
         {state.configured ? (
           <p className="text-[13px] text-ink">
-            <span className="mr-2 rounded bg-green-100 px-2 py-0.5 text-[11px] text-green-800">Configurado</span>
+            <span className="mr-2 rounded bg-success-soft/40 px-2 py-0.5 text-[11px] text-success">Configurado</span>
             {state.host} · base {state.baseDN} · {state.linkedAccounts} conta(s) ligada(s)
           </p>
         ) : (
@@ -46,7 +46,7 @@ function LdapForm({ state }) {
           </p>
         )}
         {check.data && (
-          <p role="status" className={`mt-3 text-[13px] ${check.data.ok ? 'text-green-800' : 'text-red-700'}`}>
+          <p role="status" className={`mt-3 text-[13px] ${check.data.ok ? 'text-success' : 'text-danger'}`}>
             {check.data.ok ? 'Conexão e conta de serviço funcionando.' : REASON[check.data.reason] || REASON.error}
           </p>
         )}

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { Notice } from '../../../components/ui/Notice';
 import { api } from '../../../lib/api';
+import { serverMessage } from '../../../lib/serverMessage';
 import { AuthCard } from './AuthCard';
 import { FormField } from './FormField';
 import { ForgotPassword } from './ForgotPassword';
@@ -39,7 +41,7 @@ export function Auth({ onLoginSuccess }) {
     } catch (err) {
       setError(err.response?.status === 503
         ? 'O servidor de login (diretório) não respondeu. Tente de novo em instantes.'
-        : err.response?.data || 'Falha na autenticação. Verifique suas credenciais.');
+        : serverMessage(err, 'Falha na autenticação. Verifique suas credenciais.'));
     } finally {
       setLoading(false);
     }
@@ -63,9 +65,7 @@ export function Auth({ onLoginSuccess }) {
   return (
     <AuthCard title={isLogin ? 'Bem-vindo de volta' : 'Crie sua conta'} subtitle={isLogin ? 'Entre para acessar seu acervo' : 'Comece a organizar sua biblioteca'}>
       {error && (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 font-body text-[13px] text-red-700">
-          {error}
-        </div>
+        <Notice tone="danger" className="mb-4">{error}</Notice>
       )}
       {success && (
         <div className="mb-4 rounded-md border border-success/30 bg-success/10 p-3 font-body text-[13px] text-success">

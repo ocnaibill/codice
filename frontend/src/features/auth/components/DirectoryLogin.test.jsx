@@ -46,7 +46,7 @@ describe('login with a directory', () => {
     api.post.mockRejectedValueOnce({ response: { status: 503, data: 'The sign-in directory is not answering.' } });
     view = await mount(<Auth onLoginSuccess={() => {}} />);
     await signIn('ana', 'x');
-    expect(view.container.querySelector('.text-red-700').textContent).toContain('diretório) não respondeu');
+    expect(view.container.querySelector('[role="alert"]').textContent).toContain('diretório) não respondeu');
   });
 
   it('goes back to the login from the link step', async () => {

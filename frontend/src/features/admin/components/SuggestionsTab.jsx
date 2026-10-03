@@ -2,6 +2,7 @@ import { useMetadataProviders, useSuggestionQueue } from '../api/admin';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { FIELD_LABELS } from '../../../lib/suggestionFields';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
+import { LoadError } from '../../../components/ui/LoadError';
 
 const fieldNames = (fields) => fields.map((f) => FIELD_LABELS[f] || f).join(', ');
 
@@ -11,7 +12,7 @@ const fieldNames = (fields) => fields.map((f) => FIELD_LABELS[f] || f).join(', '
  * work leaves the queue when its last suggestion is decided.
  */
 export function SuggestionsTab({ isOwner, onOpenProviders }) {
-  const { data, isLoading, isError } = useSuggestionQueue();
+  const { data, isLoading, isError, refetch, isRefetching } = useSuggestionQueue();
   const providers = useMetadataProviders().data?.data;
   // Known to be off, not merely not loaded yet: a banner that flashes on every open would be noise.
   const allOff = !!providers && providers.length > 0 && providers.every((p) => !p.enabled);
@@ -35,7 +36,7 @@ export function SuggestionsTab({ isOwner, onOpenProviders }) {
         </p>
       )}
       {isLoading && <Loading />}
-      {isError && <ErrorNote>Não foi possível carregar a fila.</ErrorNote>}
+      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a fila.</LoadError>}
       {!isLoading && !isError && works.length === 0 && <Empty>Nenhuma obra com sugestões esperando.</Empty>}
       <ul className="divide-y divide-border-hairline">
         {works.map((work) => (

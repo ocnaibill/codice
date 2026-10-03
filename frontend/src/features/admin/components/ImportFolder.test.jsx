@@ -79,6 +79,6 @@ describe('ImportFolder', () => {
     await view.click(view.button('Importar'));
     await view.click(view.button('Manter originais'));
 
-    expect(view.container.querySelector('[role="alert"]').textContent).toContain('outside the allowed import roots');
+    expect(view.container.querySelector('[role="alert"]').textContent).toContain('Essa pasta está fora das pastas autorizadas.');
   });
 });

@@ -143,8 +143,8 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
       expect(box('ComicVine').disabled).toBe(true);
       expect(box('Google Books').disabled).toBe(false);
       const noteOf = (text) => [...document.body.querySelectorAll('li p')].find((p) => p.textContent.includes(text));
-      expect(noteOf('Falta a chave de API').className).toContain('text-red-700');
-      expect(noteOf('Chave de API configurada').className).not.toContain('text-red-700');
+      expect(noteOf('Falta a chave de API').className).toContain('text-danger');
+      expect(noteOf('Chave de API configurada').className).not.toContain('text-danger');
     });
 
     it('still lets one that is on be turned off when its key is gone', async () => {

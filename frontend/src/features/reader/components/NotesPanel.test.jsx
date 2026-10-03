@@ -188,7 +188,7 @@ describe('NotesPanel', () => {
     api.post.mockRejectedValueOnce({ response: { status: 400, data: 'a tag has at most 40 characters\n' } });
     await act(async () => { button('Salvar nota').click(); });
     await flush();
-    expect(container.textContent).toContain('a tag has at most 40 characters');
+    expect(container.textContent).toContain('Uma tag tem no máximo 40 caracteres.');
 
     api.post.mockRejectedValueOnce({ response: { status: 500, data: 'pq: connection refused' } });
     await act(async () => { button('Salvar nota').click(); });

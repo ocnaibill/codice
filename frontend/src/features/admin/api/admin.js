@@ -1,11 +1,13 @@
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { messageOf } from '../../../lib/serverMessage';
 import { api } from '../../../lib/api';
 
 /** Turns an error from the API into a sentence a person can act on. */
 export function describeError(error) {
   const res = error?.response;
   if (!res) return 'Não foi possível falar com o servidor.';
-  if (typeof res.data === 'string' && res.data.trim()) return res.data.trim();
+  const said = res.status < 500 ? messageOf(res.data) : ''; // what the server said that a person can use, in Portuguese
+  if (said) return said;
   if (res.status === 403) return 'Você não tem permissão para isso.';
   return 'Algo deu errado.';
 }

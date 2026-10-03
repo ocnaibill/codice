@@ -9,9 +9,10 @@ import { ImportFolder } from './ImportFolder';
 import { ReferencedFiles } from './ReferencedFiles';
 import { explainCleanupReason } from '../storageText';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
+import { LoadError } from '../../../components/ui/LoadError';
 
 function Roots({ isOwner }) {
-  const { data, isLoading } = useRoots();
+  const { data, isLoading, isError, refetch, isRefetching } = useRoots();
   const add = useAddRoot();
   const remove = useRemoveRoot();
   const scan = useScanRoot();
@@ -25,7 +26,8 @@ function Roots({ isOwner }) {
       hint="Pastas do servidor que o acervo pode ler sem copiar. Só o dono autoriza uma pasta; varrer cataloga os livros novos."
     >
       {isLoading && <Loading />}
-      {!isLoading && roots.length === 0 && <Empty>Nenhuma pasta autorizada.</Empty>}
+      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as pastas autorizadas.</LoadError>}
+      {!isLoading && !isError && roots.length === 0 && <Empty>Nenhuma pasta autorizada.</Empty>}
       <ul className="divide-y divide-border-hairline">
         {roots.map((root) => (
           <li key={root.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -148,7 +150,7 @@ function Cleanups() {
 }
 
 function Orphans() {
-  const { data, isLoading } = useOrphans();
+  const { data, isLoading, isError, refetch, isRefetching } = useOrphans();
   const trash = useTrashOrphans();
   const [picked, setPicked] = useState({});
   const [confirming, setConfirming] = useState(false);
@@ -162,7 +164,8 @@ function Orphans() {
       actions={<Btn tone="danger" disabled={paths.length === 0 || trash.isPending} onClick={() => setConfirming(true)}>Enviar {paths.length} para a lixeira</Btn>}
     >
       {isLoading && <Loading />}
-      {!isLoading && orphans.length === 0 && <Empty>Nenhum arquivo órfão.</Empty>}
+      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar os arquivos órfãos.</LoadError>}
+      {!isLoading && !isError && orphans.length === 0 && <Empty>Nenhum arquivo órfão.</Empty>}
       <ul className="divide-y divide-border-hairline">
         {orphans.map((orphan) => (
           <li key={orphan.path} className="flex items-center gap-3 py-2 text-[13px]">
@@ -201,7 +204,7 @@ const DAY = 24 * 60 * 60 * 1000;
  * is called out.
  */
 function Backup() {
-  const { data, isLoading } = useBackup();
+  const { data, isLoading, isError, refetch, isRefetching } = useBackup();
   const last = data?.lastBackup;
   const stale = last && Date.now() - new Date(last.at).getTime() > 2 * DAY;
   return (
@@ -210,11 +213,12 @@ function Backup() {
       hint="O Códice não agenda backups: você agenda o comando no servidor. O pacote leva o banco e a lista de arquivos com seus hashes (e os arquivos, com --include-files). Sessões, tokens e convites nunca entram."
     >
       {isLoading && <Loading />}
-      {!isLoading && !last && (
-        <p role="alert" className="text-[13px] text-red-700">Nenhum backup registrado nesta instância.</p>
+      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar o estado do backup.</LoadError>}
+      {!isLoading && !isError && !last && (
+        <p role="alert" className="text-[13px] text-danger">Nenhum backup registrado nesta instância.</p>
       )}
       {last && (
-        <p className={`text-[13px] ${stale ? 'text-red-700' : 'text-ink'}`} role={stale ? 'alert' : undefined}>
+        <p className={`text-[13px] ${stale ? 'text-danger' : 'text-ink'}`} role={stale ? 'alert' : undefined}>
           Último backup: {formatDate(last.at)} ({formatBytes(last.bytes)}
           {last.includesFiles ? `, com ${last.files} arquivo(s)` : ', só banco e lista de arquivos'}
           {last.encrypted ? ', criptografado' : ', sem criptografia'}).

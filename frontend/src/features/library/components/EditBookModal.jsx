@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { LoadError } from '../../../components/ui/LoadError';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import { refreshLibrary } from '../../../lib/refreshLibrary';
@@ -148,15 +149,15 @@ function EditForm({ work, onClose }) {
         ))}
       </fieldset>
 
-      {save.isError && <p role="alert" className="text-sm text-red-700">{reasonOf(save.error, 'Não foi possível salvar.')}</p>}
-      {retire.isError && <p role="alert" className="text-sm text-red-700">{reasonOf(retire.error, 'Não foi possível retirar a obra.')}</p>}
+      {save.isError && <p role="alert" className="text-sm text-danger">{reasonOf(save.error, 'Não foi possível salvar.')}</p>}
+      {retire.isError && <p role="alert" className="text-sm text-danger">{reasonOf(retire.error, 'Não foi possível retirar a obra.')}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-hairline pt-4">
         <button
           type="button"
           onClick={() => setRetiring(true)}
           disabled={busy}
-          className="min-h-10 rounded-lg border border-red-200 bg-white px-4 py-2 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
+          className="min-h-10 rounded-lg border border-danger/30 bg-white px-4 py-2 text-xs text-danger hover:bg-danger-soft/40 disabled:opacity-40"
           title="Tira a obra do acervo. Arquivos, notas e progresso ficam guardados e ela pode ser restaurada."
         >
           Retirar do acervo
@@ -192,7 +193,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
   const [tab, setTab] = useState(initialTab);
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
-  const { data: work, isLoading, isError } = useWork(workId, { fresh: true });
+  const { data: work, isLoading, isError, refetch, isRefetching } = useWork(workId, { fresh: true });
   const { data: candidates } = useCandidates(workId);
   const pending = candidates?.length ?? 0;
 
@@ -234,7 +235,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
         </div>
         <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6">
           {isLoading && <p className="animate-pulse text-sm text-ink-faint">Carregando a obra…</p>}
-          {isError && <p className="text-sm text-red-700">Não foi possível abrir esta obra.</p>}
+          {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta obra.</LoadError>}
           {work && tab === 'suggestions' && <WorkSuggestions workId={work.id} emptyText="Nenhuma sugestão esperando decisão." />}
           {work && tab === 'edit' && <EditForm work={work} onClose={onClose} />}
         </div>

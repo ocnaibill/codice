@@ -5,6 +5,7 @@ import { useWorks } from '../library/api/useWorks';
 import { useWork } from '../reader/api/useWork';
 import { useGlobalStore } from '../../store/useGlobalStore';
 import { sheetNote } from '../../lib/ocr';
+import { LoadError } from '../../components/ui/LoadError';
 
 const PAGE_SIZE = 10;
 
@@ -16,7 +17,7 @@ export function HighlightedSnippet({ text = '', matches = [] }) {
     const start = Math.max(at, Math.min(chars.length, rawStart));
     const end = Math.max(start, Math.min(chars.length, rawEnd));
     if (start > at) spans.push(chars.slice(at, start).join(''));
-    if (end > start) spans.push(<mark key={`${start}-${end}`} className="rounded bg-amber-200 px-0.5 text-ink">{chars.slice(start, end).join('')}</mark>);
+    if (end > start) spans.push(<mark key={`${start}-${end}`} className="rounded bg-warning-soft px-0.5 text-ink">{chars.slice(start, end).join('')}</mark>);
     at = end;
   }
   if (at < chars.length) spans.push(chars.slice(at).join(''));
@@ -89,13 +90,13 @@ export function SearchPage({ query }) {
       <h1 className="font-display text-2xl text-ink">Resultados da busca</h1>
       <p className="mt-1 text-sm text-ink-soft">{scope ? `Em “${scope.title}”` : `Em todo o acervo`} · {query.trim()}</p>
       {scope && <button type="button" onClick={() => setScope(null)} className="mt-2 text-sm text-brand hover:underline">Buscar em todo o acervo</button>}
-      {query.trim().length > 200 && <p role="alert" className="mt-2 text-sm text-amber-700">A busca usa os primeiros 200 caracteres.</p>}
+      {query.trim().length > 200 && <p role="alert" className="mt-2 text-sm text-warning">A busca usa os primeiros 200 caracteres.</p>}
     </div>
 
     <section aria-label="Obras" className="rounded-lg bg-white p-5 shadow-sm">
       <h2 className="font-display text-xl text-ink">Obras</h2>
       {!active || (scope ? selected.isLoading : works.isLoading) ? <p className="mt-3 text-sm text-ink-soft">Buscando obras…</p>
-        : (scope ? selected.isError : works.isError) ? <p role="alert" className="mt-3 text-sm text-red-700">Não foi possível buscar obras.</p>
+        : (scope ? selected.isError : works.isError) ? <LoadError className="mt-3" onRetry={() => (scope ? selected : works).refetch()} retrying={(scope ? selected : works).isRefetching}>Não foi possível buscar obras.</LoadError>
           : workItems.length === 0 ? <p className="mt-3 text-sm text-ink-soft">Nenhuma obra encontrada.</p>
             : <ul className="mt-3 space-y-3">{workItems.map((work) => <li key={work.id} className="rounded border border-surface-alt p-3">
               <button type="button" onClick={() => openWork(work.id)} className="font-semibold text-ink hover:text-brand">{work.title}</button>
@@ -114,7 +115,7 @@ export function SearchPage({ query }) {
       {!!passages.data?.data?.length && passages.data.mode === 'stem' && <p className="mt-1 text-xs text-ink-soft">Inclui outras formas das palavras (“correr” acha “corrida”). Para a palavra exata, use aspas.</p>}
       {!!passages.data?.data?.length && passages.data.mode === 'exact' && <p className="mt-1 text-xs text-ink-soft">Busca exata: só as palavras como estão escritas.</p>}
       {!active || passages.isLoading ? <p className="mt-3 text-sm text-ink-soft">Buscando passagens…</p>
-        : passages.isError ? <p role="alert" className="mt-3 text-sm text-red-700">Não foi possível buscar passagens.</p>
+        : passages.isError ? <LoadError className="mt-3" onRetry={() => passages.refetch()} retrying={passages.isRefetching}>Não foi possível buscar passagens.</LoadError>
           : !passages.data?.data?.length ? <p className="mt-3 text-sm text-ink-soft">Nenhuma passagem encontrada.</p>
             : <ul className="mt-3 space-y-3">{passages.data.data.map((hit) => <li key={hit.segmentId} className="rounded border border-surface-alt p-3">
               <p className="text-sm font-semibold text-ink">{hit.workTitle} <span className="font-normal text-ink-soft">· {hit.workAuthor}</span></p>
@@ -131,7 +132,7 @@ export function SearchPage({ query }) {
     <section aria-label="Anotações" className="rounded-lg bg-white p-5 shadow-sm">
       <h2 className="font-display text-xl text-ink">Suas anotações</h2>
       {!active || notes.isLoading ? <p className="mt-3 text-sm text-ink-soft">Buscando anotações…</p>
-        : notes.isError ? <p role="alert" className="mt-3 text-sm text-red-700">Não foi possível buscar anotações.</p>
+        : notes.isError ? <LoadError className="mt-3" onRetry={() => notes.refetch()} retrying={notes.isRefetching}>Não foi possível buscar anotações.</LoadError>
           : !notes.data?.data?.length ? <p className="mt-3 text-sm text-ink-soft">Nenhuma anotação encontrada.</p>
             : <ul className="mt-3 space-y-3">{notes.data.data.map((note) => <li key={note.id} className="rounded border border-surface-alt p-3">
               <p className="text-sm font-semibold text-ink">{note.workTitle} <span className="font-normal text-ink-soft">· {note.workAuthor}</span></p>

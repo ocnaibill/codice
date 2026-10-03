@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { candidateLabel, whereYouAre } from '../files';
 
 /**
@@ -11,48 +11,57 @@ export function EquivalentPositionPrompt({ from, sourceExcerpt, status, candidat
   const [chosen, setChosen] = useState(0);
   const ambiguous = status === 'ambiguous';
 
+  // Escape is declining: the file opens where its own saved position is.
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key === 'Escape') onDecline();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onDecline]);
+
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-label="Continuar de onde parou?">
-      <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
-        <h2 className="text-lg font-semibold text-zinc-100">Continuar de onde parou na outra versão?</h2>
-        <p className="mt-2 text-sm text-zinc-300">{whereYouAre(from)}</p>
-        {sourceExcerpt && <blockquote className="mt-2 border-l-2 border-zinc-700 pl-3 text-xs italic text-zinc-500">{sourceExcerpt}</blockquote>}
+    <div className="fixed inset-0 z-[70] flex animate-fade-in items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Continuar de onde parou?">
+      <div className="max-h-[90dvh] w-full max-w-md animate-pop-in overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+        <h2 className="font-display text-xl font-semibold text-ink">Continuar de onde parou na outra versão?</h2>
+        <p className="mt-2 text-sm text-ink-soft">{whereYouAre(from)}</p>
+        {sourceExcerpt && <blockquote className="mt-2 border-l-2 border-brand pl-3 font-display text-sm italic text-ink-soft">{sourceExcerpt}</blockquote>}
 
         {ambiguous ? (
           <div className="mt-4 flex flex-col gap-2">
-            <p className="text-xs text-zinc-400">Encontramos mais de um lugar parecido; escolha um, ou abra a sua posição própria.</p>
+            <p className="text-xs text-ink-soft">Encontramos mais de um lugar parecido; escolha um, ou abra a sua posição própria.</p>
             {candidates.map((c, i) => (
-              <label key={i} className="flex cursor-pointer items-start gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm has-[:checked]:border-blue-600">
-                <input type="radio" name="candidate" className="mt-1" checked={chosen === i} onChange={() => setChosen(i)} />
+              <label key={i} className="flex min-h-11 cursor-pointer items-start gap-2 rounded-xl border border-border-hairline bg-surface p-3 text-sm has-[:checked]:border-brand has-[:checked]:bg-info-soft/40">
+                <input type="radio" name="candidate" className="mt-1 accent-brand" checked={chosen === i} onChange={() => setChosen(i)} />
                 <span>
-                  <span className="block text-xs text-zinc-500">{candidateLabel(c)}{c.section ? ` · ${c.section}` : ''}</span>
-                  <span className="text-zinc-300">{c.excerpt}</span>
+                  <span className="block text-xs text-ink-faint">{candidateLabel(c)}{c.section ? ` · ${c.section}` : ''}</span>
+                  <span className="text-ink">{c.excerpt}</span>
                 </span>
               </label>
             ))}
           </div>
         ) : (
           candidates[0] && (
-            <div className="mt-4 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm">
-              <p className="text-xs text-zinc-500">{candidateLabel(candidates[0])}{candidates[0].section ? ` · ${candidates[0].section}` : ''}</p>
-              <p className="text-zinc-300">{candidates[0].excerpt}</p>
+            <div className="mt-4 rounded-xl border border-border-hairline bg-surface p-3 text-sm">
+              <p className="text-xs text-ink-faint">{candidateLabel(candidates[0])}{candidates[0].section ? ` · ${candidates[0].section}` : ''}</p>
+              <p className="text-ink">{candidates[0].excerpt}</p>
             </div>
           )
         )}
-        <p className="mt-2 text-xs text-zinc-500">É uma posição aproximada, ligada aqui uma única vez: cada versão continua com o seu próprio progresso.</p>
+        <p className="mt-2 text-xs text-ink-faint">É uma posição aproximada, ligada aqui uma única vez: cada versão continua com o seu próprio progresso.</p>
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row-reverse">
           <button
             onClick={() => onAccept(candidates[ambiguous ? chosen : 0])}
             disabled={busy}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+            className="min-h-11 rounded-lg bg-brand px-4 text-sm font-semibold text-white transition-[filter] hover:brightness-110 disabled:opacity-40"
           >
             Continuar daqui
           </button>
           <button
             onClick={onDecline}
             disabled={busy}
-            className="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+            className="min-h-11 rounded-lg bg-surface-alt px-4 text-sm font-medium text-ink transition-[filter] hover:brightness-95 disabled:opacity-40"
           >
             Não, abrir minha posição
           </button>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Notice } from '../../../components/ui/Notice';
 import { api } from '../../../lib/api';
 import { AuthCard } from './AuthCard';
 import { FormField } from './FormField';
@@ -34,7 +35,7 @@ export function LinkAccount({ ticket, username, onLinked, onBack }) {
         Você entrou com a senha do diretório. Para ligar essa identidade à conta local {username}, e manter suas notas e seu progresso,
         confirme também a senha local. Depois disso você entra sempre pela senha do diretório.
       </p>
-      {error && <div role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 font-body text-[13px] text-red-700">{error}</div>}
+      {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
       <form onSubmit={submit} className="flex flex-col gap-4">
         <FormField label="Senha local" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="A senha da conta local" required autoFocus />
         <button type="submit" disabled={loading}

@@ -100,7 +100,7 @@ export function NoteItem({ note, onOpenAt, showSource = false, onFilterWork, onF
         <>
           <NoteFields {...draft} onChange={(change) => setDraft((d) => ({ ...d, ...change }))} />
           {painted && <ColorChoice value={draft.color} onChange={(c) => setDraft((d) => ({ ...d, color: c }))} />}
-          {update.isError && <p className="text-xs text-red-700">{reason(update.error, 'Não foi possível salvar.')}</p>}
+          {update.isError && <p className="text-xs text-danger">{reason(update.error, 'Não foi possível salvar.')}</p>}
           <div className="flex justify-end gap-2">
             <button onClick={() => setEditing(false)} className="min-h-10 px-3 py-2 text-xs text-ink-soft hover:text-ink">
               Cancelar
@@ -127,7 +127,7 @@ export function NoteItem({ note, onOpenAt, showSource = false, onFilterWork, onF
               )}
               {note.workAuthor && <span> · {note.workAuthor}</span>}
               {!note.sourceAvailable && (
-                <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] uppercase text-amber-900" title="A obra saiu do acervo; o texto da anotação ficou">
+                <span className="ml-2 rounded bg-warning-soft/50 px-1.5 py-0.5 font-mono text-[10px] uppercase text-warning" title="A obra saiu do acervo; o texto da anotação ficou">
                   fonte indisponível
                 </span>
               )}
@@ -178,12 +178,12 @@ export function NoteItem({ note, onOpenAt, showSource = false, onFilterWork, onF
               <button
                 onClick={() => remove.mutate(note.id)}
                 disabled={remove.isPending}
-                className="min-h-9 font-semibold text-red-700 hover:text-red-900"
+                className="min-h-9 font-semibold text-danger hover:text-danger"
               >
                 Confirmar exclusão
               </button>
             ) : (
-              <button onClick={() => setConfirming(true)} className="min-h-9 text-ink-soft hover:text-red-700">
+              <button onClick={() => setConfirming(true)} className="min-h-9 text-ink-soft hover:text-danger">
                 Excluir
               </button>
             )}

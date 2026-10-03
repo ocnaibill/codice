@@ -103,7 +103,7 @@ describe('WorkSheet: the pages of a scan (#24)', () => {
   it('says some pages failed', async () => {
     await show(withOcr({ pages: 10, read: 7, failed: 3 }));
     expect(note().textContent).toBe('Texto reconhecido por OCR em 7 de 10 páginas; 3 falharam');
-    expect(note().className).toContain('amber');
+    expect(note().className).toContain('text-warning');
   });
 
   it('says the pages have no text when nothing was read, and says nothing for a file that has none without text', async () => {

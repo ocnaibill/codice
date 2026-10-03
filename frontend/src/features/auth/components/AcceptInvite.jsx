@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { Notice } from '../../../components/ui/Notice';
 import { api } from '../../../lib/api';
+import { serverMessage } from '../../../lib/serverMessage';
 import { AuthCard } from './AuthCard';
 import { FormField } from './FormField';
 
@@ -34,10 +36,9 @@ export function AcceptInvite({ token, onAccepted, onCancel }) {
       localStorage.setItem('codice_token', res.data.token);
       onAccepted();
     } catch (err) {
-      const data = err.response?.data;
       setError(err.response?.status === 404
         ? 'Este convite não vale mais. Peça um novo a quem o enviou.'
-        : (typeof data === 'string' && data.trim()) || 'Não foi possível criar a conta.');
+        : serverMessage(err, 'Não foi possível criar a conta.'));
     } finally {
       setLoading(false);
     }
@@ -60,7 +61,7 @@ export function AcceptInvite({ token, onAccepted, onCancel }) {
   return (
     <AuthCard title="Você foi convidado" subtitle={invite.role === 'admin' ? 'Crie sua conta de administrador' : 'Crie sua conta para acessar o acervo'}>
       {error && (
-        <div role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 font-body text-[13px] text-red-700">{error}</div>
+        <Notice tone="danger" className="mb-4">{error}</Notice>
       )}
       <form onSubmit={submit} className="flex flex-col gap-4">
         <FormField label="Usuário" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Como você quer ser chamado" required autoFocus />

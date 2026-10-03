@@ -19,7 +19,7 @@ export function Btn({ tone = 'neutral', className = '', ...props }) {
   const tones = {
     neutral: 'bg-surface-alt text-ink hover:brightness-95',
     primary: 'bg-brand text-white hover:brightness-110',
-    danger: 'bg-red-700 text-white hover:brightness-110',
+    danger: 'bg-danger text-white hover:brightness-110',
   };
   return (
     <button
@@ -34,7 +34,7 @@ export function Empty({ children }) {
 }
 
 export function ErrorNote({ children }) {
-  return children ? <p role="alert" className="mt-2 text-[13px] text-red-700">{children}</p> : null;
+  return children ? <p role="alert" className="mt-2 text-[13px] text-danger">{children}</p> : null;
 }
 
 export function Loading() {
