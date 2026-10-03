@@ -11,6 +11,7 @@ import { flattenToc } from '../../epubToc';
 import { tapAction, swipeAction } from '../../pdfGestures';
 import { getEpubSettings, saveEpubSettings } from '../../preferences';
 import { epubPlaceProblem } from '../../placeCheck';
+import { highlightColor } from '../../highlightColors';
 import ReadingSettingsPanel from './ReadingSettingsPanel';
 
 const iconProps = { viewBox: '0 0 24 24', width: 18, height: 18, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
@@ -60,7 +61,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
   const keyRef = useRef(() => {});
   const selectRef = useRef(onSelection);
   selectRef.current = onSelection;
-  const markedRef = useRef(new Set()); // the passages underlined on the page now, by their CFI
+  const markedRef = useRef(new Map()); // the passages underlined on the page now: their CFI, and the color
   const surfaceRef = useRef(null);
   const placeRef = useRef(null); // where the page in view starts (a CFI), to come back to it when the text is laid out again
   const layoutRef = useRef(null);
@@ -137,7 +138,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
           allowScriptedContent: true,
         });
         renditionRef.current = rendition;
-        markedRef.current = new Set();
+        markedRef.current = new Map();
 
         // 7. What the book looks like, and what a finger or a key does on it (the book is in an iframe of its own)
         applyEpubSettings(rendition, settingsRef.current);
@@ -380,22 +381,22 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
   }, []);
 
   // The passages the person highlighted are underlined on the page (those saved with the place of a range of the book).
-  const marksKey = (marks ?? []).join('\n');
+  const marksKey = (marks ?? []).map((m) => `${m.cfi}|${m.color ?? ''}`).join('\n');
   useEffect(() => {
     const annotations = renditionRef.current?.annotations;
     if (!annotations || loading) return;
-    const wanted = new Set(marks ?? []);
-    for (const cfi of markedRef.current) {
-      if (!wanted.has(cfi)) {
+    const wanted = new Map((marks ?? []).map((m) => [m.cfi, highlightColor(m.color).id]));
+    for (const [cfi, color] of markedRef.current) {
+      if (wanted.get(cfi) !== color) { // gone, or painted another color now
         annotations.remove(cfi, 'highlight');
         markedRef.current.delete(cfi);
       }
     }
-    for (const cfi of wanted) {
+    for (const [cfi, color] of wanted) {
       if (markedRef.current.has(cfi)) continue;
       try {
-        annotations.highlight(cfi, {}, null, 'codice-highlight', { fill: '#944516', 'fill-opacity': '0.28', 'mix-blend-mode': 'multiply' });
-        markedRef.current.add(cfi);
+        annotations.highlight(cfi, {}, null, 'codice-highlight', { fill: highlightColor(color).hex, 'fill-opacity': '0.28', 'mix-blend-mode': 'multiply' });
+        markedRef.current.set(cfi, color);
       } catch {
         // A passage the book no longer has is not underlined; nothing else depends on it.
       }

@@ -34,6 +34,7 @@ import { copyText } from '../copyText';
 import { useToasts } from '../../../components/ui/toast';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { Reader } from './Reader';
+import { getHighlightColor, saveHighlightColor, setPreferenceOwner } from '../preferences';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -59,6 +60,8 @@ let container;
 let root;
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 const menu = () => container.querySelector('[role="toolbar"]');
+const labels = () => [...menu().querySelectorAll('button')].map((b) => b.textContent).filter(Boolean); // the colors have no text, only a name
+const colorButton = (name) => menu().querySelector(`button[aria-label="Destacar em ${name}"]`);
 const press = (label, scope = container) => act(async () => { [...scope.querySelectorAll('button')].find((b) => b.textContent === label).click(); });
 const toasts = () => useToasts.getState().items;
 
@@ -82,6 +85,8 @@ const selectIt = async () => { await press('select'); };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
+  setPreferenceOwner('ana');
   useToasts.getState().clear();
   sent.selection = { text: 'um trecho escolhido', rect: { left: 100, top: 300, width: 100, height: 20, bottom: 320, right: 200 }, touch: false, clear: vi.fn() };
   sent.marks = null;
@@ -140,10 +145,35 @@ describe('Reader: the menu by a selection', () => {
     await selectIt();
     await press('Destacar', menu());
     await flush();
-    expect(api.post).toHaveBeenCalledWith('/works/7/notes', { kind: 'highlight', quote: 'um trecho escolhido', fileId: 10, locator: { type: 'pdf', page: 4 } });
+    expect(api.post).toHaveBeenCalledWith('/works/7/notes', { kind: 'highlight', quote: 'um trecho escolhido', color: 'terracotta', fileId: 10, locator: { type: 'pdf', page: 4 } });
     expect(sent.selection.clear).toHaveBeenCalled();
     expect(menu()).toBeNull();
     expect(toasts().map((t) => [t.tone, t.title])).toEqual([['success', 'Destaque salvo']]);
+  });
+
+  it('paints the highlight with the color that was touched, and keeps it for the next', async () => {
+    await open('txt');
+    await selectIt();
+    expect(colorButton('terracota').getAttribute('aria-current')).toBe('true');
+    await act(async () => { colorButton('sálvia').click(); });
+    await flush();
+    expect(api.post.mock.calls.at(-1)[1]).toMatchObject({ kind: 'highlight', color: 'sage' });
+    expect(getHighlightColor()).toBe('sage');
+    await selectIt();
+    expect(colorButton('sálvia').getAttribute('aria-current')).toBe('true');
+    await press('Destacar', menu());
+    await flush();
+    expect(api.post.mock.calls.at(-1)[1]).toMatchObject({ color: 'sage' });
+  });
+
+  it('starts from the color the account used last time', async () => {
+    saveHighlightColor('indigo');
+    await open('txt');
+    await selectIt();
+    expect(colorButton('índigo').getAttribute('aria-current')).toBe('true');
+    await press('Destacar', menu());
+    await flush();
+    expect(api.post.mock.calls.at(-1)[1]).toMatchObject({ color: 'indigo' });
   });
 
   it('highlights with the place the viewer gave of the passage (a range of an EPUB), and not with the reader\'s', async () => {
@@ -152,7 +182,7 @@ describe('Reader: the menu by a selection', () => {
     await selectIt();
     await press('Destacar', menu());
     await flush();
-    expect(api.post.mock.calls.at(-1)[1]).toEqual({ kind: 'highlight', quote: 'um trecho escolhido', fileId: 10, locator: { type: 'epub', cfi: RANGE, excerpt: 'um trecho' } });
+    expect(api.post.mock.calls.at(-1)[1]).toEqual({ kind: 'highlight', quote: 'um trecho escolhido', color: 'terracotta', fileId: 10, locator: { type: 'epub', cfi: RANGE, excerpt: 'um trecho' } });
   });
 
   it('highlights without a place when the reader has none yet', async () => {
@@ -160,7 +190,7 @@ describe('Reader: the menu by a selection', () => {
     await selectIt();
     await press('Destacar', menu());
     await flush();
-    expect(api.post.mock.calls.at(-1)[1]).toEqual({ kind: 'highlight', quote: 'um trecho escolhido' });
+    expect(api.post.mock.calls.at(-1)[1]).toEqual({ kind: 'highlight', quote: 'um trecho escolhido', color: 'terracotta' });
   });
 
   it('says why when it could not save the highlight', async () => {
@@ -254,7 +284,24 @@ describe('Reader: the menu by a selection', () => {
 describe('Reader: the passages underlined on an EPUB', () => {
   it('gives the viewer the passages of this file that were highlighted or written on, by the range of the book', async () => {
     await open('epub');
-    expect(sent.marks).toEqual([RANGE, 'epubcfi(/6/6!/4/2,/1:3,/1:9)']);
+    expect(sent.marks.map((m) => m.cfi)).toEqual([RANGE, 'epubcfi(/6/6!/4/2,/1:3,/1:9)']);
+  });
+
+  it('gives it the color of each', async () => {
+    notes[0].color = 'indigo';
+    notes[1].color = 'sepia';
+    try {
+      await open('epub');
+      expect(sent.marks.map((m) => m.color)).toEqual(['indigo', 'sepia']);
+    } finally {
+      delete notes[0].color;
+      delete notes[1].color;
+    }
+  });
+
+  it('gives it no color for the highlights of a server that does not say, which are terracotta', async () => {
+    await open('epub');
+    expect(sent.marks.map((m) => m.color)).toEqual([undefined, undefined]);
   });
 });
 
@@ -266,7 +313,7 @@ describe('Reader: looking a word up in the dictionary', () => {
     sent.selection.text = 'correram';
     await open('txt', { language: 'pt-BR' });
     await selectIt();
-    expect([...menu().querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Copiar', 'Destacar', 'Nota', 'Dicionário']);
+    expect(labels()).toEqual(['Copiar', 'Destacar', 'Nota', 'Dicionário']);
     await press('Dicionário', menu());
     await flush();
     expect(card().getAttribute('aria-label')).toBe('Dicionário: correram');
@@ -274,6 +321,25 @@ describe('Reader: looking a word up in the dictionary', () => {
     expect(menu()).toBeNull();
     expect(sent.selection.clear).toHaveBeenCalled();
     expect(api.post.mock.calls.filter(([url]) => url.includes('/notes'))).toEqual([]); // nothing is saved
+  });
+
+  it('looks a word up in the language of its script when that is not the file\'s, and in the file\'s for Latin letters', async () => {
+    sent.selection.text = '走る';
+    await open('txt', { language: 'pt-BR' });
+    await selectIt();
+    await press('Dicionário', menu());
+    await flush();
+    expect(dictionaryCalls().at(-1)[1].params.lang).toBe('ja');
+    expect(container.querySelector('select[aria-label="Idioma da palavra"]').value).toBe('ja');
+  });
+
+  it('does not take Han alone for Japanese: the file\'s language stands', async () => {
+    sent.selection.text = '猫';
+    await open('txt', { language: 'zh' });
+    await selectIt();
+    await press('Dicionário', menu());
+    await flush();
+    expect(dictionaryCalls().at(-1)[1].params.lang).toBe('zh');
   });
 
   it('looks a word up in the language of the file, whichever it is', async () => {
@@ -286,7 +352,7 @@ describe('Reader: looking a word up in the dictionary', () => {
   });
 
   it('starts in Portuguese for a file whose language is not one the dictionary has, or is not said', async () => {
-    sent.selection.text = 'слово';
+    sent.selection.text = 'neno';
     await open('txt', { language: 'sw' });
     await selectIt();
     await press('Dicionário', menu());
@@ -298,7 +364,7 @@ describe('Reader: looking a word up in the dictionary', () => {
     sent.selection.text = 'Era uma vez um texto longo demais para uma palavra';
     await open('txt');
     await selectIt();
-    expect([...menu().querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Copiar', 'Destacar', 'Nota']);
+    expect(labels()).toEqual(['Copiar', 'Destacar', 'Nota']);
   });
 
   it('closes the card, and takes it away when another file is opened', async () => {

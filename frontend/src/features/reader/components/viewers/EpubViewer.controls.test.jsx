@@ -754,19 +754,43 @@ describe('the EPUB reader: what is selected on the page of the book', () => {
 describe('the EPUB reader: the highlights underlined on the page', () => {
   const A = 'epubcfi(/6/4!/4/2,/1:0,/1:20)';
   const B = 'epubcfi(/6/6!/4/2,/1:3,/1:9)';
+  const mark = (cfi, color) => ({ cfi, color });
 
   it('underlines each passage it is given, in the color of the app, once the book is open', async () => {
-    await open({ marks: [A, B] });
+    await open({ marks: [mark(A), mark(B)] });
     const calls = state.rendition.annotations.highlight.mock.calls;
     expect(calls.map((c) => c[0])).toEqual([A, B]);
     expect(calls[0][3]).toBe('codice-highlight');
     expect(calls[0][4]).toEqual({ fill: '#944516', 'fill-opacity': '0.28', 'mix-blend-mode': 'multiply' });
   });
 
+  it('paints each passage with the color it was given, and terracotta when it has none or one that is not one', async () => {
+    await open({ marks: [mark(A, 'indigo'), mark(B, 'sage'), mark('epubcfi(/6/8!/4/2,/1:0,/1:4)', 'sepia'), mark('epubcfi(/6/10!/4/2,/1:0,/1:4)'), mark('epubcfi(/6/12!/4/2,/1:0,/1:4)', 'pink')] });
+    const fills = state.rendition.annotations.highlight.mock.calls.map((c) => c[4].fill);
+    expect(fills).toEqual(['#3c4d9c', '#4f7a55', '#a8801c', '#944516', '#944516']);
+    for (const c of state.rendition.annotations.highlight.mock.calls) expect(c[4]['fill-opacity']).toBe('0.28');
+  });
+
+  it('paints a passage again, in the new color, when its color is changed, and leaves the others', async () => {
+    await open({ marks: [mark(A, 'terracotta'), mark(B, 'sage')] });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A, 'indigo'), mark(B, 'sage')]} />); });
+    expect(state.rendition.annotations.remove.mock.calls).toEqual([[A, 'highlight']]);
+    const calls = state.rendition.annotations.highlight.mock.calls;
+    expect(calls.map((c) => [c[0], c[4].fill])).toEqual([[A, '#944516'], [B, '#4f7a55'], [A, '#3c4d9c']]);
+  });
+
+  it('does not paint a passage again when it comes back in the same color', async () => {
+    await open({ marks: [mark(A, 'sage')] });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A, 'sage')]} />); });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A, 'sage'), mark(B, 'sage')]} />); });
+    expect(state.rendition.annotations.remove).not.toHaveBeenCalled();
+    expect(state.rendition.annotations.highlight).toHaveBeenCalledTimes(2);
+  });
+
   it('underlines the passages once the book has been opened, and not before', async () => {
     let release;
     getBook.mockReturnValue(new Promise((r) => { release = r; }));
-    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A]} />); });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A)]} />); });
     await act(async () => { release({ data: new ArrayBuffer(8) }); });
     await flush();
     await flush();
@@ -774,16 +798,16 @@ describe('the EPUB reader: the highlights underlined on the page', () => {
   });
 
   it('underlines a new passage, and does not do it again for the ones that are already', async () => {
-    await open({ marks: [A] });
-    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A, B]} />); });
+    await open({ marks: [mark(A)] });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A), mark(B)]} />); });
     expect(state.rendition.annotations.highlight.mock.calls.map((c) => c[0])).toEqual([A, B]);
-    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A, B]} />); });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A), mark(B)]} />); });
     expect(state.rendition.annotations.highlight).toHaveBeenCalledTimes(2);
   });
 
   it('takes away the underline of a passage that is not given any more', async () => {
-    await open({ marks: [A, B] });
-    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[B]} />); });
+    await open({ marks: [mark(A), mark(B)] });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(B)]} />); });
     expect(state.rendition.annotations.remove).toHaveBeenCalledTimes(1);
     expect(state.rendition.annotations.remove).toHaveBeenCalledWith(A, 'highlight');
     await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} />); });
@@ -791,16 +815,16 @@ describe('the EPUB reader: the highlights underlined on the page', () => {
   });
 
   it('underlines again a passage that was taken away and then given back', async () => {
-    await open({ marks: [A] });
+    await open({ marks: [mark(A)] });
     await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[]} />); });
-    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A]} />); });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A)]} />); });
     expect(state.rendition.annotations.highlight.mock.calls.map((c) => c[0])).toEqual([A, A]);
   });
 
   it('underlines the passages again on the page of another book, which is a new page', async () => {
-    await open({ marks: [A] });
+    await open({ marks: [mark(A)] });
     const first = state.rendition;
-    await act(async () => { root.render(<EpubViewer fileUrl="/g.epub" onProgress={vi.fn()} marks={[A]} />); });
+    await act(async () => { root.render(<EpubViewer fileUrl="/g.epub" onProgress={vi.fn()} marks={[mark(A)]} />); });
     await flush();
     await flush();
     expect(state.rendition).not.toBe(first);
@@ -808,16 +832,16 @@ describe('the EPUB reader: the highlights underlined on the page', () => {
   });
 
   it('is not stopped by a passage the book does not have any more', async () => {
-    await open({ marks: [A] });
+    await open({ marks: [mark(A)] });
     state.rendition.annotations.highlight.mockImplementationOnce(() => { throw new Error('No Section Found'); });
-    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A, B]} />); });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A), mark(B)]} />); });
     expect(state.rendition.annotations.highlight.mock.calls.map((c) => c[0])).toContain(B);
   });
 
   it('does it again for a book that is opened again (after a failure, asked to try again)', async () => {
     getBook.mockRejectedValueOnce(new Error('falhou'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    await open({ marks: [A] });
+    await open({ marks: [mark(A)] });
     expect(container.querySelector('[role="alert"]')).not.toBeNull();
     await click([...container.querySelectorAll('[role="alert"] button')].find((b) => b.textContent === 'Tentar de novo'));
     await flush();
@@ -826,9 +850,9 @@ describe('the EPUB reader: the highlights underlined on the page', () => {
   });
 
   it('copes with a book whose page has no annotations', async () => {
-    await open({ marks: [A] });
+    await open({ marks: [mark(A)] });
     state.rendition.annotations = undefined;
-    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A, B]} />); });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A), mark(B)]} />); });
     expect(container.querySelector('[data-epub-page]')).not.toBeNull();
   });
 });

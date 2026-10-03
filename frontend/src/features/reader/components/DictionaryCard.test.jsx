@@ -416,10 +416,27 @@ describe('DictionaryCard: the bridge through English', () => {
     expect(card().textContent).toContain('Não achei “食べる” em Japonês.');
   });
 
-  it('puts the bridge after what the dictionaries say, and the sources at the foot', async () => {
+  it('puts the bridge first when it found candidates, and the entries after it', async () => {
     await open({ word: '走る', language: 'ja', data: bridged(bridge()) });
     const body = card().querySelector('.overflow-y-auto');
-    expect(body.lastElementChild).toBe(section());
+    expect(body.firstElementChild).toBe(section());
+    expect(body.querySelector('article')).not.toBeNull();
     expect(card().querySelector('footer').textContent).toContain('Wikcionário em japonês');
+  });
+
+  it('puts what it says of finding nothing after the entries, which are what there is', async () => {
+    await open({ word: '食べる', language: 'ja', data: bridged(bridge({ candidates: [] })) });
+    const body = card().querySelector('.overflow-y-auto');
+    expect(body.lastElementChild).toBe(section());
+    expect(body.firstElementChild).not.toBe(section());
+  });
+
+  it('leaves a space between the bridge and the entries that come after it, and none below the last one', async () => {
+    await open({ word: '走る', language: 'ja', data: bridged(bridge()) });
+    expect(section().className).toContain('mb-3');
+    expect(section().className).not.toContain('mt-3');
+    await open({ word: '食べる', language: 'ja', data: bridged(bridge({ candidates: [] })) });
+    expect(section().className).toContain('mt-3');
+    expect(section().className).not.toContain('mb-3');
   });
 });

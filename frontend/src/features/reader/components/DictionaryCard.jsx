@@ -56,10 +56,10 @@ function Translations({ data, prefer }) {
  * What the lookup tried through English when the dictionaries do not link the word's language to the one the reader wants
  * (plan B). Always said as what it is: by way of English, an approximation with candidates, never as the answer.
  */
-function Bridge({ bridge, word }) {
+function Bridge({ bridge, word, first = false }) {
   const candidates = bridge.candidates ?? [];
   return (
-    <section aria-label="Via inglês" className="mt-3 rounded-xl border border-border-hairline bg-surface-alt px-3 py-2.5">
+    <section aria-label="Via inglês" className={`${first ? 'mb-3' : 'mt-3'} rounded-xl border border-border-hairline bg-surface-alt px-3 py-2.5`}>
       <h2 className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">Via inglês</h2>
       {candidates.length > 0 ? (
         <>
@@ -151,6 +151,9 @@ export function DictionaryCard({ word, language, onClose }) {
     if (last && last.package === item.entry.package) last.items.push(item);
     else groups.push({ package: item.entry.package, items: [item] });
   }
+  // What the bridge found is what the person is after when the dictionaries do not link the two languages, and the English
+  // entries that come before it are only its first step: it is shown first, and the entries after.
+  const bridgeFirst = (data?.bridge?.candidates?.length ?? 0) > 0;
   const showGroups = new Set(items.map((i) => i.entry.package)).size > 1;
   return (
     <aside
@@ -203,13 +206,14 @@ export function DictionaryCard({ word, language, onClose }) {
             diferente, tente selecionar só a palavra.
           </p>
         )}
+        {bridgeFirst && <Bridge bridge={data.bridge} word={word} first />}
         {groups.map((group) => (
           <section key={group.package}>
             {showGroups && <h2 className="mb-1 mt-3 font-mono text-[10px] uppercase tracking-widest text-ink-faint first:mt-0">{sourceName(group.package)}</h2>}
             {group.items.map((item) => <Entry key={`${item.kind}-${item.entry.id}`} item={item} prefer={target} />)}
           </section>
         ))}
-        {data?.bridge && <Bridge bridge={data.bridge} word={word} />}
+        {data?.bridge && !bridgeFirst && <Bridge bridge={data.bridge} word={word} />}
       </div>
 
       {data?.sources.length > 0 && (

@@ -52,6 +52,36 @@ export function lookupLanguage(code) {
   return LOOKUP_LANGUAGES.some(([c]) => c === base) ? base : null;
 }
 
+// The scripts that say which language a word is in (the ones the catalog has one language of): kana is Japanese, hangul
+// Korean, Cyrillic Russian, Greek Greek, Thai Thai. Han alone is Chinese or Japanese and says nothing, and Latin letters are
+// the language of the file.
+const SCRIPTS = [
+  ['ja', /[\p{Script=Hiragana}\p{Script=Katakana}]/gu],
+  ['ko', /\p{Script=Hangul}/gu],
+  ['ru', /\p{Script=Cyrillic}/gu],
+  ['el', /\p{Script=Greek}/gu],
+  ['th', /\p{Script=Thai}/gu],
+];
+
+/**
+ * The language a selection is in by its letters, when they say it (a Japanese word in a Portuguese book): the language of the
+ * script that has more of them than the Latin letters do. Otherwise nothing, and the language of the file stands.
+ */
+export function scriptLanguage(text) {
+  const value = String(text ?? '');
+  const latin = (value.match(/\p{Script=Latin}/gu) ?? []).length;
+  let best = null;
+  let bestCount = latin;
+  for (const [code, pattern] of SCRIPTS) {
+    const count = (value.match(pattern) ?? []).length;
+    if (count > bestCount) {
+      best = code;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
 const POS = {
   noun: 'substantivo', verb: 'verbo', adj: 'adjetivo', adv: 'advérbio', pron: 'pronome', prep: 'preposição', conj: 'conjunção',
   intj: 'interjeição', num: 'numeral', det: 'determinante', article: 'artigo', phrase: 'locução', prefix: 'prefixo', suffix: 'sufixo',
