@@ -217,3 +217,66 @@ describe('NotesPanel', () => {
     expect(button('Markdown')).toBeUndefined();
   });
 });
+
+describe('NotesPanel: a passage selected in the text to write on', () => {
+  const place = { type: 'epub', cfi: 'epubcfi(/6/4!/4/2,/1:0,/1:20)' };
+  const draft = (extra = {}) => ({ quote: 'um trecho escolhido', locator: place, n: 1, ...extra });
+  const lastPost = () => api.post.mock.calls.at(-1);
+
+  it('opens with the passage in the quote field, ready for the person to write on it', async () => {
+    await render({ draft: draft() });
+    expect(field('Trecho do livro').value).toBe('um trecho escolhido');
+    expect(field('Sua anotação').value).toBe('');
+  });
+
+  it('ties the note to the place of the passage, not to where the reader is now', async () => {
+    await render({ draft: draft() });
+    await type(field('Sua anotação'), 'minha ideia');
+    await act(async () => { button('Salvar nota').click(); });
+    expect(lastPost()[0]).toBe('/works/7/notes');
+    expect(lastPost()[1]).toMatchObject({ kind: 'note', quote: 'um trecho escolhido', body: 'minha ideia', fileId: 4, locator: place });
+  });
+
+  it('goes back to the place of the reader for the next note, once the note is saved', async () => {
+    await render({ draft: draft() });
+    await type(field('Sua anotação'), 'primeira');
+    await act(async () => { button('Salvar nota').click(); });
+    await flush();
+    await type(field('Sua anotação'), 'segunda');
+    await act(async () => { button('Salvar nota').click(); });
+    expect(lastPost()[1]).toMatchObject({ body: 'segunda', locator: pdfPlace });
+    expect(lastPost()[1].quote).toBe('');
+  });
+
+  it('takes a new passage when one is chosen while the panel is open, and not the same one again', async () => {
+    await render({ draft: draft() });
+    await type(field('Trecho do livro'), 'editado pela pessoa');
+    await act(async () => { root.render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><NotesPanel {...props} draft={draft()} /></QueryClientProvider>); });
+    await flush();
+    expect(field('Trecho do livro').value).toBe('editado pela pessoa'); // the same passage (the same n) is not put back
+  });
+
+  it('puts the new passage in, with its own place', async () => {
+    await render({ draft: draft() });
+    const other = { type: 'epub', cfi: 'epubcfi(/6/8!/4/2,/1:5,/1:9)' };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><NotesPanel {...props} draft={draft({ quote: 'outro trecho', locator: other, n: 2 })} /></QueryClientProvider>); });
+    await flush();
+    expect(field('Trecho do livro').value).toBe('outro trecho');
+    await type(field('Sua anotação'), 'x');
+    await act(async () => { button('Salvar nota').click(); });
+    expect(lastPost()[1].locator).toEqual(other);
+  });
+
+  it('keeps the place of the reader when the passage came without one (a text)', async () => {
+    await render({ draft: draft({ locator: null }) });
+    await type(field('Sua anotação'), 'x');
+    await act(async () => { button('Salvar nota').click(); });
+    expect(lastPost()[1].locator).toEqual(pdfPlace);
+  });
+
+  it('starts empty when nothing was selected', async () => {
+    await render();
+    expect(field('Trecho do livro').value).toBe('');
+  });
+});

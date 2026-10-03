@@ -3,7 +3,7 @@ import ReadingSurface from './ReadingSurface';
 import { useTextFile } from './useTextFile';
 
 /** A plain text file, read by scrolling, in the page color, the font and the size the person chose. */
-export default function TextViewer({ fileUrl, onProgress, initialProgress, immersive, onImmersiveChange }) {
+export default function TextViewer({ fileUrl, onProgress, initialProgress, immersive, onImmersiveChange, onSelection }) {
   const { content, loading, error, retry } = useTextFile(fileUrl);
   return (
     <ReadingSurface
@@ -18,6 +18,7 @@ export default function TextViewer({ fileUrl, onProgress, initialProgress, immer
       onImmersiveChange={onImmersiveChange}
       onProgress={onProgress}
       initialProgress={initialProgress}
+      onSelection={onSelection}
     >
       <pre className="whitespace-pre-wrap break-words [font:inherit]">{content}</pre>
     </ReadingSurface>

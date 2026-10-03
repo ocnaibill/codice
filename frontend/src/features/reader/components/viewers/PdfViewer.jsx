@@ -6,6 +6,7 @@ import { completionFor } from '../../progressRules';
 import { pdfPlaceProblem } from '../../placeCheck';
 import { loadOutline } from '../../pdfOutline';
 import { ZOOMS, readingWidth, tapAction, swipeAction } from '../../pdfGestures';
+import { useSelectionWatcher } from '../../useSelectionWatcher';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -32,7 +33,7 @@ const control =
  * a tap on the left or the right of the page turns it, a tap in the middle hides or shows the controls, and a swipe
  * turns it too; on a keyboard the arrows, Page Up and Page Down, Home and End do, and + and - zoom.
  */
-export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlaceFailed, immersive = false, onImmersiveChange }) {
+export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlaceFailed, immersive = false, onImmersiveChange, onSelection }) {
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(initialProgress ? parseInt(initialProgress, 10) || 1 : 1);
   const [outline, setOutline] = useState([]);
@@ -44,6 +45,13 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlac
   const rootRef = useRef(null);
   const gesture = useRef(null);
   const outlineRef = useRef(null);
+  // What is selected on the page is told to whoever offers what to do with it (the menu by the selection).
+  // It is tied to the page it is on (the page number is the person's: the one shown now).
+  useSelectionWatcher(
+    rootRef,
+    (found) => onSelection?.(found && { text: found.text, rect: found.rect, touch: found.touch, clear: found.clear, locator: { type: 'pdf', page: pageNumber - 1 } }),
+    !!onSelection
+  );
   const outlineOpenerRef = useRef(null);
 
   // How wide the page may be: what the screen gives, up to a comfortable measure, and it follows the screen

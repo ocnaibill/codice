@@ -10,6 +10,11 @@ import { useSetWorkFinished } from '../api/useCompletion';
 import { useAcceptEquivalentPosition, useEquivalentPosition } from '../api/useEquivalentPosition';
 import { api } from '../../../lib/api';
 import { NotesPanel } from './NotesPanel';
+import { SelectionMenu } from './SelectionMenu';
+import { useCreateNote, useWorkNotes } from '../api/useWorkNotes';
+import { copyText } from '../copyText';
+import { reason as noteReason } from '../noteText';
+import { toast } from '../../../components/ui/toast';
 import { FinishWorkPrompt } from './FinishWorkPrompt';
 import { EquivalentPositionPrompt } from './EquivalentPositionPrompt';
 import { PlaceNotice } from './PlaceNotice';
@@ -39,6 +44,22 @@ export function Reader() {
   useReadingHeartbeat(activeBookId, file?.id);
   const favoriteToggle = useFavoriteToggle(activeBookId);
   const [showNotes, setShowNotes] = useState(false);
+  // What is selected in the text, and what the menu by it does with it (copy, highlight, a note on it).
+  const [selection, setSelection] = useState(null);
+  const [noteDraft, setNoteDraft] = useState(null);
+  useEffect(() => setSelection(null), [file?.id]);
+  // The passage a note was asked on is for that note: closing the panel lets it go (it is not there when it opens again).
+  useEffect(() => { if (!showNotes) setNoteDraft(null); }, [showNotes]);
+  const createNote = useCreateNote(activeBookId);
+  // The passages of this book that were highlighted are underlined on the page of an EPUB (only the ones saved with the
+  // place of a passage, a CFI that is a range).
+  const workNotes = useWorkNotes(activeBookId);
+  const marks = useMemo(
+    () => (workNotes.data?.data ?? [])
+      .filter((n) => n.fileId === file?.id && (n.kind === 'highlight' || n.kind === 'note') && n.locator?.type === 'epub' && n.locator.cfi?.includes(','))
+      .map((n) => n.locator.cfi),
+    [workNotes.data, file?.id]
+  );
   // Only the page on the screen: the header goes away (a viewer asks for it, with a tap in the middle of the page) and
   // comes back the same way. It starts again with each file.
   const [immersive, setImmersive] = useState(false);
@@ -125,6 +146,36 @@ export function Reader() {
     [saveProgress, askIfWorkIsFinished]
   );
 
+  const afterSelection = () => {
+    selection?.clear?.();
+    setSelection(null);
+  };
+  const copySelection = async () => {
+    const text = selection?.text;
+    if (!text) return;
+    afterSelection();
+    if (await copyText(text)) toast.success('Trecho copiado');
+    else toast.error('Não foi possível copiar', { message: 'O navegador não deixou. Selecione e copie pelo menu do sistema.' });
+  };
+  const highlightSelection = () => {
+    if (!selection) return;
+    const locator = selection.locator ?? currentLocator.current;
+    createNote.mutate(
+      { kind: 'highlight', quote: selection.text, ...(file?.id && locator ? { fileId: file.id, locator } : {}) },
+      {
+        onSuccess: () => toast.success('Destaque salvo'),
+        onError: (error) => toast.error('Não foi possível salvar o destaque', { message: noteReason(error, '') || undefined }),
+      }
+    );
+    afterSelection();
+  };
+  const noteOnSelection = () => {
+    if (!selection) return;
+    setNoteDraft({ quote: selection.text, locator: selection.locator ?? null, n: (noteDraft?.n ?? 0) + 1 });
+    setShowNotes(true);
+    afterSelection();
+  };
+
   if (isLoading || (file && progress.isLoading)) {
     return (
       <div className="flex h-dvh items-center justify-center bg-[#faf8f4]">
@@ -160,16 +211,16 @@ export function Reader() {
   const renderViewer = () => {
     switch (format) {
       case 'pdf':
-        return <PdfViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
+        return <PdfViewer fileUrl={fileUrl} onSelection={setSelection} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'epub':
-        return <EpubViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
+        return <EpubViewer fileUrl={fileUrl} onSelection={setSelection} marks={marks} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'cbz':
       case 'cbr':
         return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} declaredMode={file.declaredMode} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'txt':
-        return <TextViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
+        return <TextViewer fileUrl={fileUrl} onSelection={setSelection} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'md':
-        return <MarkdownViewer fileUrl={fileUrl} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
+        return <MarkdownViewer fileUrl={fileUrl} onSelection={setSelection} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'mp3':
       case 'm4a':
       case 'm4b':
@@ -261,6 +312,7 @@ export function Reader() {
 
       {showNotes && (
         <NotesPanel
+          draft={noteDraft}
           workId={book.id}
           fileId={file.id}
           getLocator={() => currentLocator.current}
@@ -309,6 +361,17 @@ export function Reader() {
           busy={setWorkFinished.isPending}
           onKeep={() => setFinishPrompt(null)}
           onFinish={() => setWorkFinished.mutate({ workId, finished: true }, { onSuccess: () => setFinishPrompt(null) })}
+        />
+      )}
+
+      {selection && !showNotes && (
+        <SelectionMenu
+          selection={selection}
+          onCopy={copySelection}
+          onHighlight={highlightSelection}
+          onNote={noteOnSelection}
+          onClose={afterSelection}
+          busy={createNote.isPending}
         />
       )}
 

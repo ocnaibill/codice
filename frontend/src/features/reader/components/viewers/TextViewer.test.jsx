@@ -6,6 +6,7 @@ vi.mock('../../../../lib/api', () => ({ authenticatedUrl: (u) => u }));
 
 import TextViewer from './TextViewer';
 import { setPreferenceOwner } from '../../preferences';
+import { MOUSE_DELAY } from '../../useSelectionWatcher';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -440,5 +441,67 @@ describe('the text reader under a finger', () => {
   it('leaves the vertical scroll and the pinch to the browser', async () => {
     await open();
     expect(page().style.touchAction).toBe('pan-y pinch-zoom');
+  });
+});
+
+describe('the text reader: what is selected in the text', () => {
+  const selectWords = async (from, to) => {
+    const node = container.querySelector('pre').firstChild;
+    const range = document.createRange();
+    range.setStart(node, from);
+    range.setEnd(node, to);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    await act(async () => { document.dispatchEvent(new Event('selectionchange')); });
+    vi.useRealTimers();
+    await wait(MOUSE_DELAY + 80);
+  };
+  beforeEach(() => { Range.prototype.getBoundingClientRect = () => ({ left: 10, top: 20, width: 100, height: 16, bottom: 36, right: 110 }); });
+  afterEach(() => { window.getSelection().removeAllRanges(); delete Range.prototype.getBoundingClientRect; });
+
+  it('is told to whoever offers what to do with it, with the passage and where it is', async () => {
+    const onSelection = vi.fn();
+    await open({ onSelection });
+    await selectWords(0, 11);
+    expect(onSelection).toHaveBeenCalledTimes(1);
+    const found = onSelection.mock.calls[0][0];
+    expect(found.text).toBe('Era uma vez');
+    expect(found.rect.top).toBe(20);
+  });
+
+  it('is tied to where it is in the text: the offset of the file, exactly, for a plain text', async () => {
+    const onSelection = vi.fn();
+    await open({ onSelection });
+    await selectWords(12, 20);
+    expect(onSelection.mock.calls[0][0].text).toBe(TEXT.slice(12, 20));
+    expect(onSelection.mock.calls[0][0].locator).toEqual({ type: 'text', offset: 12 });
+    expect('before' in onSelection.mock.calls[0][0]).toBe(false); // that is not for whoever receives it
+  });
+
+  it('is told that it is gone, without a place', async () => {
+    const onSelection = vi.fn();
+    await open({ onSelection });
+    await selectWords(0, 11);
+    window.getSelection().removeAllRanges();
+    await act(async () => { document.dispatchEvent(new Event('selectionchange')); });
+    await wait(MOUSE_DELAY + 80);
+    expect(onSelection).toHaveBeenLastCalledWith(null);
+  });
+
+  it('is not told about a file that is still coming, or when nobody asked', async () => {
+    const onSelection = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    await act(async () => { root.render(<Scene onSelection={onSelection} />); });
+    await act(async () => { document.dispatchEvent(new Event('selectionchange')); });
+    vi.useRealTimers();
+    await wait(MOUSE_DELAY + 80);
+    expect(onSelection).not.toHaveBeenCalled();
+  });
+
+  it('works without anyone listening', async () => {
+    await open();
+    await selectWords(0, 11);
+    expect(container.querySelector('pre')).not.toBeNull();
   });
 });

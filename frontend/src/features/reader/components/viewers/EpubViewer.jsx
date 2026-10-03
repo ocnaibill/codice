@@ -5,6 +5,8 @@ import { Skeleton } from '../../../../components/ui/Skeleton';
 import { buildEpubProgress } from '../../epubProgress';
 import { applyEpubSettings, fontFaceCss, sanitizeSettings, READING_THEMES } from '../../epubThemes';
 import { toScreen, acrossPage } from '../../epubGestures';
+import { cleanQuote } from '../../selection';
+import { MOUSE_DELAY, TOUCH_DELAY } from '../../useSelectionWatcher';
 import { flattenToc } from '../../epubToc';
 import { tapAction, swipeAction } from '../../pdfGestures';
 import { getEpubSettings, saveEpubSettings } from '../../preferences';
@@ -37,7 +39,7 @@ const control =
  * on the left or right of the page turns it, a tap in the middle hides or shows the controls, and a swipe turns it too;
  * on a keyboard the arrows, Page Up and Page Down do.
  */
-export default function EpubViewer({ fileUrl, onProgress, initialProgress, locator, onPlaceFailed, immersive = false, onImmersiveChange }) {
+export default function EpubViewer({ fileUrl, onProgress, initialProgress, locator, onPlaceFailed, immersive = false, onImmersiveChange, onSelection, marks }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0); // opening the book again
@@ -56,6 +58,9 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
   const gesture = useRef(null);
   const touchRef = useRef({ down() {}, up() {}, cancel() {} });
   const keyRef = useRef(() => {});
+  const selectRef = useRef(onSelection);
+  selectRef.current = onSelection;
+  const markedRef = useRef(new Set()); // the passages underlined on the page now, by their CFI
   const surfaceRef = useRef(null);
   const placeRef = useRef(null); // where the page in view starts (a CFI), to come back to it when the text is laid out again
   const layoutRef = useRef(null);
@@ -132,6 +137,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
           allowScriptedContent: true,
         });
         renditionRef.current = rendition;
+        markedRef.current = new Set();
 
         // 7. What the book looks like, and what a finger or a key does on it (the book is in an iframe of its own)
         applyEpubSettings(rendition, settingsRef.current);
@@ -151,6 +157,38 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
             }));
           doc.addEventListener('pointercancel', () => touchRef.current.cancel());
           doc.addEventListener('keyup', (e) => keyRef.current(e));
+          // What is selected on the page of the book is told to whoever offers what to do with it, once it has rested,
+          // with the place of the passage in the book (a CFI of the range) and where it is on the screen.
+          let timer = null;
+          let shown = false;
+          let touch = false;
+          const say = (value) => {
+            shown = value !== null;
+            selectRef.current?.(value);
+          };
+          doc.addEventListener('pointerdown', (e) => { touch = e.pointerType !== 'mouse'; }, true);
+          doc.addEventListener('selectionchange', () => {
+            if (!selectRef.current) return;
+            clearTimeout(timer);
+            if (shown) say(null);
+            timer = setTimeout(() => {
+              const selection = doc.getSelection?.();
+              if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+              const range = selection.getRangeAt(0);
+              const text = cleanQuote(selection.toString());
+              if (!text) return;
+              const box = range.getBoundingClientRect();
+              const at = frame ? frame.getBoundingClientRect() : { left: 0, top: 0 };
+              const corner = toScreen({ frameLeft: at.left, frameTop: at.top, clientX: box.left, clientY: box.top });
+              say({
+                text,
+                rect: { left: corner.x, top: corner.y, width: box.width, height: box.height, right: corner.x + box.width, bottom: corner.y + box.height },
+                touch,
+                locator: { type: 'epub', cfi: contents.cfiFromRange(range), excerpt: text.slice(0, 120) },
+                clear: () => selection.removeAllRanges(),
+              });
+            }, touch ? TOUCH_DELAY : MOUSE_DELAY);
+          });
         });
 
         // 8. Track location changes
@@ -177,6 +215,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
         };
         rendition.on('relocated', (location) => {
           if (!location || !location.start || settlingRef.current) return;
+          selectRef.current?.(null); // the page turned: the selection is not on it any more
           placeRef.current = location.start.cfi;
           accept(location);
         });
@@ -339,6 +378,30 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
       observer.disconnect();
     };
   }, []);
+
+  // The passages the person highlighted are underlined on the page (those saved with the place of a range of the book).
+  const marksKey = (marks ?? []).join('\n');
+  useEffect(() => {
+    const annotations = renditionRef.current?.annotations;
+    if (!annotations || loading) return;
+    const wanted = new Set(marks ?? []);
+    for (const cfi of markedRef.current) {
+      if (!wanted.has(cfi)) {
+        annotations.remove(cfi, 'highlight');
+        markedRef.current.delete(cfi);
+      }
+    }
+    for (const cfi of wanted) {
+      if (markedRef.current.has(cfi)) continue;
+      try {
+        annotations.highlight(cfi, {}, null, 'codice-highlight', { fill: '#944516', 'fill-opacity': '0.28', 'mix-blend-mode': 'multiply' });
+        markedRef.current.add(cfi);
+      } catch {
+        // A passage the book no longer has is not underlined; nothing else depends on it.
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marksKey, loading]);
 
   // The page of the book follows the room it is given (the header folds away, a phone is turned): the book is
   // laid out again, at the same place.

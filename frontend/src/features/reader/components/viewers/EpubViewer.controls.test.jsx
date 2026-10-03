@@ -17,6 +17,7 @@ vi.mock('epubjs', () => ({
       prev: vi.fn(),
       next: vi.fn(),
       resize: vi.fn(),
+      annotations: { highlight: vi.fn(), remove: vi.fn() },
       currentLocation: () => state.current,
       destroy: vi.fn(),
     };
@@ -38,6 +39,7 @@ vi.mock('epubjs', () => ({
 import EpubViewer from './EpubViewer';
 import { setPreferenceOwner } from '../../preferences';
 import { themeName } from '../../epubThemes';
+import { MOUSE_DELAY, TOUCH_DELAY } from '../../useSelectionWatcher';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -628,5 +630,205 @@ describe('the EPUB reader: what is on screen', () => {
     height = 0;
     await open();
     expect(pageFrame().style.height).toBe('calc(100% - 5.25rem)');
+  });
+});
+
+describe('the EPUB reader: what is selected on the page of the book', () => {
+  const RANGE = 'epubcfi(/6/4!/4/2,/1:0,/1:20)';
+  let frame;
+  let doc;
+  let contents;
+  const wait = (ms) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
+  async function bookPage(onSelection) {
+    await open({ onSelection });
+    frame = document.createElement('iframe');
+    container.appendChild(frame);
+    doc = frame.contentDocument;
+    doc.body.innerHTML = '<p id="p">Era uma vez um texto que se lê devagar.</p>';
+    contents = { document: doc, addStylesheetCss: vi.fn(), cfiFromRange: vi.fn(() => RANGE) };
+    state.hooks[0](contents);
+    // jsdom lays nothing out: the passage is given the box a browser would measure, and the iframe a place on the screen.
+    doc.defaultView.Range.prototype.getBoundingClientRect = () => ({ left: 30, top: 40, width: 100, height: 16 });
+    vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue({ left: -600, top: 50, width: 1200, height: 600 });
+  }
+  const selectWords = async (from, to, pointerType = 'mouse') => {
+    const node = doc.querySelector('#p').firstChild;
+    const range = doc.createRange();
+    range.setStart(node, from);
+    range.setEnd(node, to);
+    const sel = doc.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    const down = new frame.contentWindow.MouseEvent('pointerdown', { bubbles: true });
+    Object.defineProperty(down, 'pointerType', { value: pointerType });
+    await act(async () => { doc.dispatchEvent(down); });
+    await act(async () => { doc.dispatchEvent(new frame.contentWindow.Event('selectionchange')); });
+  };
+
+  it('is told to whoever offers what to do with it: the passage, the range of the book it is, and where it is on the screen', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await selectWords(0, 11);
+    expect(onSelection).not.toHaveBeenCalled();
+    await wait(MOUSE_DELAY + 80);
+    expect(onSelection).toHaveBeenCalledTimes(1);
+    const found = onSelection.mock.calls[0][0];
+    expect(found.text).toBe('Era uma vez');
+    expect(found.locator).toEqual({ type: 'epub', cfi: RANGE, excerpt: 'Era uma vez' });
+    expect(found.touch).toBe(false);
+    // the iframe is at -600, 50 on the screen: the passage at 30, 40 inside it is at -570, 90
+    expect(found.rect).toEqual({ left: -570, top: 90, width: 100, height: 16, right: -470, bottom: 106 });
+    expect(contents.cfiFromRange).toHaveBeenCalled();
+    found.clear();
+    expect(doc.getSelection().isCollapsed).toBe(true);
+  });
+
+  it('waits longer for a finger, and says it was one', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await selectWords(0, 11, 'touch');
+    await wait(MOUSE_DELAY + 80);
+    expect(onSelection).not.toHaveBeenCalled();
+    await wait(TOUCH_DELAY);
+    expect(onSelection.mock.calls[0][0].touch).toBe(true);
+  });
+
+  it('cuts the excerpt of a long passage', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    doc.body.innerHTML = `<p id="p">${'palavra '.repeat(40)}</p>`;
+    await selectWords(0, 300);
+    await wait(MOUSE_DELAY + 80);
+    expect(onSelection.mock.calls[0][0].locator.excerpt.length).toBe(120);
+  });
+
+  it('says nothing again while the selection changes, and not when nothing is selected', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await selectWords(0, 11);
+    await wait(MOUSE_DELAY + 80);
+    await selectWords(0, 4);
+    expect(onSelection).toHaveBeenLastCalledWith(null);
+    doc.getSelection().removeAllRanges();
+    await act(async () => { doc.dispatchEvent(new frame.contentWindow.Event('selectionchange')); });
+    await wait(MOUSE_DELAY + 80);
+    expect(onSelection.mock.calls.filter(([v]) => v !== null)).toHaveLength(1);
+  });
+
+  it('does not tell about a selection of only spaces', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    doc.body.innerHTML = '<p id="p">a        b</p>';
+    await selectWords(1, 8);
+    await wait(MOUSE_DELAY + 80);
+    expect(onSelection).not.toHaveBeenCalled();
+  });
+
+  it('takes the selection away when the page turns, which leaves it behind', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await selectWords(0, 11);
+    await wait(MOUSE_DELAY + 80);
+    await relocate('epubcfi(/6/4!/4/6)');
+    expect(onSelection).toHaveBeenLastCalledWith(null);
+  });
+
+  it('listens to nothing when nobody asked', async () => {
+    await open();
+    frame = document.createElement('iframe');
+    container.appendChild(frame);
+    doc = frame.contentDocument;
+    doc.body.innerHTML = '<p id="p">Era uma vez um texto.</p>';
+    state.hooks[0]({ document: doc, addStylesheetCss: vi.fn(), cfiFromRange: vi.fn() });
+    const node = doc.querySelector('#p').firstChild;
+    const range = doc.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, 5);
+    doc.getSelection().addRange(range);
+    await act(async () => { doc.dispatchEvent(new frame.contentWindow.Event('selectionchange')); });
+    await wait(MOUSE_DELAY + 80);
+    expect(container.querySelector('[data-epub-page]')).not.toBeNull();
+  });
+});
+
+describe('the EPUB reader: the highlights underlined on the page', () => {
+  const A = 'epubcfi(/6/4!/4/2,/1:0,/1:20)';
+  const B = 'epubcfi(/6/6!/4/2,/1:3,/1:9)';
+
+  it('underlines each passage it is given, in the color of the app, once the book is open', async () => {
+    await open({ marks: [A, B] });
+    const calls = state.rendition.annotations.highlight.mock.calls;
+    expect(calls.map((c) => c[0])).toEqual([A, B]);
+    expect(calls[0][3]).toBe('codice-highlight');
+    expect(calls[0][4]).toEqual({ fill: '#944516', 'fill-opacity': '0.28', 'mix-blend-mode': 'multiply' });
+  });
+
+  it('underlines the passages once the book has been opened, and not before', async () => {
+    let release;
+    getBook.mockReturnValue(new Promise((r) => { release = r; }));
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A]} />); });
+    await act(async () => { release({ data: new ArrayBuffer(8) }); });
+    await flush();
+    await flush();
+    expect(state.rendition.annotations.highlight).toHaveBeenCalledTimes(1);
+  });
+
+  it('underlines a new passage, and does not do it again for the ones that are already', async () => {
+    await open({ marks: [A] });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A, B]} />); });
+    expect(state.rendition.annotations.highlight.mock.calls.map((c) => c[0])).toEqual([A, B]);
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A, B]} />); });
+    expect(state.rendition.annotations.highlight).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes away the underline of a passage that is not given any more', async () => {
+    await open({ marks: [A, B] });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[B]} />); });
+    expect(state.rendition.annotations.remove).toHaveBeenCalledTimes(1);
+    expect(state.rendition.annotations.remove).toHaveBeenCalledWith(A, 'highlight');
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} />); });
+    expect(state.rendition.annotations.remove).toHaveBeenCalledWith(B, 'highlight');
+  });
+
+  it('underlines again a passage that was taken away and then given back', async () => {
+    await open({ marks: [A] });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[]} />); });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A]} />); });
+    expect(state.rendition.annotations.highlight.mock.calls.map((c) => c[0])).toEqual([A, A]);
+  });
+
+  it('underlines the passages again on the page of another book, which is a new page', async () => {
+    await open({ marks: [A] });
+    const first = state.rendition;
+    await act(async () => { root.render(<EpubViewer fileUrl="/g.epub" onProgress={vi.fn()} marks={[A]} />); });
+    await flush();
+    await flush();
+    expect(state.rendition).not.toBe(first);
+    expect(state.rendition.annotations.highlight.mock.calls.map((c) => c[0])).toEqual([A]);
+  });
+
+  it('is not stopped by a passage the book does not have any more', async () => {
+    await open({ marks: [A] });
+    state.rendition.annotations.highlight.mockImplementationOnce(() => { throw new Error('No Section Found'); });
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A, B]} />); });
+    expect(state.rendition.annotations.highlight.mock.calls.map((c) => c[0])).toContain(B);
+  });
+
+  it('does it again for a book that is opened again (after a failure, asked to try again)', async () => {
+    getBook.mockRejectedValueOnce(new Error('falhou'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await open({ marks: [A] });
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    await click([...container.querySelectorAll('[role="alert"] button')].find((b) => b.textContent === 'Tentar de novo'));
+    await flush();
+    await flush();
+    expect(state.rendition.annotations.highlight.mock.calls.map((c) => c[0])).toEqual([A]);
+  });
+
+  it('copes with a book whose page has no annotations', async () => {
+    await open({ marks: [A] });
+    state.rendition.annotations = undefined;
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[A, B]} />); });
+    expect(container.querySelector('[data-epub-page]')).not.toBeNull();
   });
 });
