@@ -216,3 +216,15 @@ func TestCatalog_EveryAddressIsOneThatMayBeDownloadedFrom(t *testing.T) {
 		}
 	}
 }
+
+func TestCatalog_ThePackageDefinesInTheLanguageOfItsEdition(t *testing.T) {
+	for _, p := range Catalog {
+		want := p.Edition
+		if p.ID == "wikt-simple" {
+			want = "en" // the simple edition is English in a simpler form
+		}
+		if p.Language() != want {
+			t.Errorf("%s: %s", p.ID, p.Language())
+		}
+	}
+}

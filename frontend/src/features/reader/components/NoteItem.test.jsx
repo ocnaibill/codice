@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../lib/api', () => ({ api: { patch: vi.fn(), delete: vi.fn() } }));
+import { api } from '../../../lib/api';
 
 import { mount } from '../../admin/testUtils';
 import { NoteItem } from './NoteItem';
@@ -72,5 +73,65 @@ describe('NoteItem, the text of a note', () => {
     view = await render();
     await view.click(view.button('Editar'));
     expect(document.querySelector('textarea[aria-label="Sua anotação"]').placeholder).toContain('[[Conceito]]');
+  });
+});
+
+describe('NoteItem: the color of a passage', () => {
+  const dot = () => document.querySelector('[role="img"][aria-label^="Cor: "]');
+  const radios = () => [...document.querySelectorAll('[role="radiogroup"] [role="radio"]')];
+
+  it('shows the color of a highlight by a dot, by its name, and on the quotation', async () => {
+    view = await render({ note: { ...note, color: 'sage' } });
+    expect(dot().getAttribute('aria-label')).toBe('Cor: Sálvia');
+    expect(dot().style.backgroundColor).toBe('rgb(79, 122, 85)');
+    expect(document.querySelector('blockquote').style.borderColor).toBe('rgb(79, 122, 85)');
+  });
+
+  it('is terracotta when the server does not say', async () => {
+    view = await render({ note: { ...note, color: undefined } });
+    expect(dot().getAttribute('aria-label')).toBe('Cor: Terracota');
+  });
+
+  it('shows the color of a note on a passage too, and none for a bookmark', async () => {
+    view = await render({ note: { ...note, kind: 'note', color: 'indigo' } });
+    expect(dot().getAttribute('aria-label')).toBe('Cor: Índigo');
+    view.unmount();
+    view = await render({ note: { ...note, kind: 'bookmark', quote: '', color: 'sepia' } });
+    expect(dot()).toBeNull();
+    await view.click(view.button('Editar'));
+    expect(radios()).toHaveLength(0);
+  });
+
+  it('offers the four colors when editing, with the one it has chosen', async () => {
+    view = await render({ note: { ...note, color: 'sepia' } });
+    expect(radios()).toHaveLength(0);
+    await view.click(view.button('Editar'));
+    expect(radios().map((r) => r.getAttribute('aria-label'))).toEqual(['Terracota', 'Sépia', 'Sálvia', 'Índigo']);
+    expect(radios().map((r) => r.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false', 'false']);
+  });
+
+  it('saves the color that was chosen, and says nothing of it when it was not changed', async () => {
+    api.patch.mockResolvedValue({ data: {} });
+    view = await render({ note: { ...note, color: 'sepia' } });
+    await view.click(view.button('Editar'));
+    await view.click(radios()[3]);
+    expect(radios().map((r) => r.getAttribute('aria-checked'))).toEqual(['false', 'false', 'false', 'true']);
+    await view.click(view.button('Salvar'));
+    expect(api.patch).toHaveBeenCalledWith('/notes/1', { quote: note.quote, body: '', tags: ['medo', 'ideia'], color: 'indigo' });
+    view.unmount();
+    api.patch.mockClear();
+    view = await render({ note: { ...note, color: 'sepia' } });
+    await view.click(view.button('Editar'));
+    await view.click(view.button('Salvar'));
+    expect(api.patch).toHaveBeenCalledWith('/notes/1', { quote: note.quote, body: '', tags: ['medo', 'ideia'] });
+  });
+
+  it('does not keep a color that was chosen when the edit is cancelled', async () => {
+    view = await render({ note: { ...note, color: 'sepia' } });
+    await view.click(view.button('Editar'));
+    await view.click(radios()[1]);
+    await view.click(radios()[2]);
+    await view.click(view.button('Cancelar'));
+    expect(dot().getAttribute('aria-label')).toBe('Cor: Sépia');
   });
 });

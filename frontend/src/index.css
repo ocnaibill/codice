@@ -68,6 +68,12 @@ body {
   font-family: var(--font-body);
 }
 
+/* A selected text is painted with the color of the app, terracotta, and not with the blue of every page of the web: in the
+   app's own text, in a PDF's text layer (its text is transparent, so only this shows) and, by epubRules, in a book. */
+::selection {
+  background-color: color-mix(in srgb, var(--color-brand) 30%, transparent);
+}
+
 /* Whoever asks the system for less motion gets none: no entrance, no exit, no shimmer, no smooth scroll. A notice or a
    dialog still appears and goes away, only without moving (the code never waits for an animation to end). */
 @media (prefers-reduced-motion: reduce) {

@@ -359,3 +359,68 @@ func TestNotes_AMarkdownExportCannotBeBrokenOutOfItsComment(t *testing.T) {
 		t.Errorf("the comment could be closed from inside: %q", inner)
 	}
 }
+
+func TestNotes_ACommentIsPaintedWithOneOfFourColors(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _, _ := s.bookWithTwoFiles()
+
+	// terracotta until the person chooses
+	_, plain := s.addNote(ana, work, `{"kind":"highlight","quote":"sem cor"}`)
+	if got := s.scalar(`SELECT color FROM notes WHERE id = $1`, plain); got != "terracotta" {
+		t.Fatalf("the default: %q", got)
+	}
+	for _, color := range []string{"terracotta", "sepia", "sage", "indigo"} {
+		code, id := s.addNote(ana, work, fmt.Sprintf(`{"kind":"highlight","quote":"trecho","color":%q}`, color))
+		if code != http.StatusCreated || s.scalar(`SELECT color FROM notes WHERE id = $1`, id) != color {
+			t.Errorf("%s: %d", color, code)
+		}
+	}
+	// a color that is not one of the four is refused, and nothing is saved
+	before := s.scalar(`SELECT count(*) FROM notes`)
+	for _, bad := range []string{"red", "Sepia", "#944516", " sage", "terracotta;DROP"} {
+		if code, _ := s.addNote(ana, work, fmt.Sprintf(`{"kind":"highlight","quote":"x","color":%q}`, bad)); code != http.StatusBadRequest {
+			t.Errorf("%q: %d", bad, code)
+		}
+	}
+	if got := s.scalar(`SELECT count(*) FROM notes`); got != before {
+		t.Errorf("a refused note was saved: %s -> %s", before, got)
+	}
+}
+
+func TestNotes_TheColorIsInTheListAndCanBeChanged(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _, _ := s.bookWithTwoFiles()
+	_, id := s.addNote(ana, work, `{"kind":"highlight","quote":"trecho","color":"sage"}`)
+	if got := s.notes(ana, "").Data[0].Color; got != "sage" {
+		t.Fatalf("listed: %q", got)
+	}
+	url := fmt.Sprintf("/notes/%d", id)
+	if rec := s.do(ana, "PATCH", url, `{"color":"indigo"}`); rec.Code != 200 {
+		t.Fatalf("change: %d %s", rec.Code, rec.Body)
+	}
+	after := s.notes(ana, "").Data[0]
+	if after.Color != "indigo" || after.Quote != "trecho" {
+		t.Errorf("only the color changes: %+v", after)
+	}
+	// an edit that does not mention the color leaves it
+	if rec := s.do(ana, "PATCH", url, `{"body":"anotei"}`); rec.Code != 200 || s.notes(ana, "").Data[0].Color != "indigo" {
+		t.Errorf("an edit of the text kept the color: %d", rec.Code)
+	}
+	// one that is not a color is refused and changes nothing; so does one for a note that is not the caller's
+	if rec := s.do(ana, "PATCH", url, `{"color":"pink"}`); rec.Code != 400 || s.notes(ana, "").Data[0].Color != "indigo" || !strings.Contains(rec.Body.String(), "color is terracotta") {
+		t.Errorf("a color that is not one (it is said, not left to the database): %d %s", rec.Code, rec.Body)
+	}
+	if rec := s.do(bob, "PATCH", url, `{"color":"sepia"}`); rec.Code != 404 || s.notes(ana, "").Data[0].Color != "indigo" {
+		t.Errorf("somebody else's note: %d", rec.Code)
+	}
+}
+
+func TestNotes_TheColorIsInTheExport(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _, _ := s.bookWithTwoFiles()
+	s.addNote(ana, work, `{"kind":"highlight","quote":"trecho","color":"sepia"}`)
+	rec := s.do(ana, "GET", "/notes/export?format=json", "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"color": "sepia"`) && !strings.Contains(rec.Body.String(), `"color":"sepia"`) {
+		t.Fatalf("export: %d %s", rec.Code, rec.Body)
+	}
+}

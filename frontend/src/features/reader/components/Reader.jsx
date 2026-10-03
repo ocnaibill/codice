@@ -12,7 +12,9 @@ import { api } from '../../../lib/api';
 import { NotesPanel } from './NotesPanel';
 import { SelectionMenu } from './SelectionMenu';
 import { DictionaryCard } from './DictionaryCard';
-import { isLookupable, lookupLanguage } from '../dictionaryLookup';
+import { isLookupable, lookupLanguage, scriptLanguage } from '../dictionaryLookup';
+import { isHighlightColor } from '../highlightColors';
+import { getHighlightColor, saveHighlightColor } from '../preferences';
 import { useCreateNote, useWorkNotes } from '../api/useWorkNotes';
 import { copyText } from '../copyText';
 import { reason as noteReason } from '../noteText';
@@ -49,6 +51,7 @@ export function Reader() {
   // What is selected in the text, and what the menu by it does with it (copy, highlight, a note on it).
   const [selection, setSelection] = useState(null);
   const [noteDraft, setNoteDraft] = useState(null);
+  const [highlightColor, setHighlightColor] = useState(getHighlightColor); // what "Destacar" paints with: the last one used
   const [lookup, setLookup] = useState(null); // the word the dictionary is asked of: { word, language }
   useEffect(() => { setSelection(null); setLookup(null); }, [file?.id]);
   // The passage a note was asked on is for that note: closing the panel lets it go (it is not there when it opens again).
@@ -60,7 +63,7 @@ export function Reader() {
   const marks = useMemo(
     () => (workNotes.data?.data ?? [])
       .filter((n) => n.fileId === file?.id && (n.kind === 'highlight' || n.kind === 'note') && n.locator?.type === 'epub' && n.locator.cfi?.includes(','))
-      .map((n) => n.locator.cfi),
+      .map((n) => ({ cfi: n.locator.cfi, color: n.color })),
     [workNotes.data, file?.id]
   );
   // Only the page on the screen: the header goes away (a viewer asks for it, with a tap in the middle of the page) and
@@ -160,11 +163,14 @@ export function Reader() {
     if (await copyText(text)) toast.success('Trecho copiado');
     else toast.error('Não foi possível copiar', { message: 'O navegador não deixou. Selecione e copie pelo menu do sistema.' });
   };
-  const highlightSelection = () => {
+  const highlightSelection = (chosen) => {
     if (!selection) return;
+    const color = isHighlightColor(chosen) ? chosen : highlightColor;
+    setHighlightColor(color);
+    saveHighlightColor(color);
     const locator = selection.locator ?? currentLocator.current;
     createNote.mutate(
-      { kind: 'highlight', quote: selection.text, ...(file?.id && locator ? { fileId: file.id, locator } : {}) },
+      { kind: 'highlight', quote: selection.text, color, ...(file?.id && locator ? { fileId: file.id, locator } : {}) },
       {
         onSuccess: () => toast.success('Destaque salvo'),
         onError: (error) => toast.error('Não foi possível salvar o destaque', { message: noteReason(error, '') || undefined }),
@@ -174,7 +180,8 @@ export function Reader() {
   };
   const lookUpSelection = () => {
     if (!selection) return;
-    setLookup({ word: selection.text, language: lookupLanguage(file?.edition?.language) ?? 'pt' });
+    // A word in a script of its own (a Japanese word in a Portuguese book) is looked up in that language first.
+    setLookup({ word: selection.text, language: scriptLanguage(selection.text) ?? lookupLanguage(file?.edition?.language) ?? 'pt' });
     afterSelection();
   };
   const noteOnSelection = () => {
@@ -377,6 +384,7 @@ export function Reader() {
           selection={selection}
           onCopy={copySelection}
           onHighlight={highlightSelection}
+          color={highlightColor}
           onNote={noteOnSelection}
           onDictionary={isLookupable(selection.text) ? lookUpSelection : undefined}
           onClose={afterSelection}

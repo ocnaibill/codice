@@ -542,3 +542,14 @@ func TestDictionaryLookup_APackageThatIsNotInTheCatalogComesLastWithoutAPreferen
 		t.Fatalf("items: %s", got)
 	}
 }
+
+func TestDictionaryLookup_TheSimpleEditionIsInEnglishForWhoWantsEnglish(t *testing.T) {
+	s := newCatalogStack(t)
+	s.exec(`INSERT INTO dictionary_packages (id, state, source_url) VALUES ('wikt-pt', 'ready', 'x'), ('wikt-simple', 'ready', 'x')`)
+	s.exec(`INSERT INTO dictionary_entries (package_id, lang, word, norm, pos, data) VALUES
+		('wikt-pt', 'de', 'Haus', 'haus', 'noun', '{"senses":[{"glosses":["casa"]}]}'),
+		('wikt-simple', 'de', 'Haus', 'haus', 'noun', '{"senses":[{"glosses":["house"]}]}')`)
+	if got := packagesOf(lookupPreferring(t, s, "de", "en", "Haus")); got != "wikt-simple:noun wikt-pt:noun" {
+		t.Fatalf("wanting English: %s", got)
+	}
+}

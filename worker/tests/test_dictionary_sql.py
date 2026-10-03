@@ -23,7 +23,8 @@ pytestmark = pytest.mark.skipif(not URL, reason='TEST_DATABASE_URL is not set')
 
 HERE = os.path.dirname(__file__)
 SAMPLE = os.path.join(HERE, 'fixtures', 'dictionary-sample.jsonl.gz')
-MIGRATION = os.path.join(HERE, '..', '..', 'backend', 'internal', 'database', 'migrations', '00042_dictionary.sql')
+MIGRATIONS = [os.path.join(HERE, '..', '..', 'backend', 'internal', 'database', 'migrations', name)
+              for name in ('00042_dictionary.sql', '00045_dictionary_link_languages.sql')]
 ADDRESS = 'https://kaikki.org/dictionary/downloads/pt/pt-extract.jsonl.gz'
 
 
@@ -67,9 +68,10 @@ def world(tmp_path):
         conn.commit()
         return conn
 
-    up = open(MIGRATION, encoding='utf-8').read().split('-- +goose Down')[0].replace('-- +goose Up', '')
     conn = connect()
-    conn.cursor().execute(up)
+    for migration in MIGRATIONS:
+        up = open(migration, encoding='utf-8').read().split('-- +goose Down')[0].replace('-- +goose Up', '')
+        conn.cursor().execute(up)
     conn.commit()
     conn.close()
 
@@ -217,6 +219,12 @@ class TestWhichLanguagesAreKept:
         # the entry of "accurate" is found by a Portuguese translation it lists, and says which English word it translates
         assert world.query("SELECT target_lang, target_word FROM dictionary_links WHERE lang = 'pt' AND norm = 'preciso' LIMIT 1") == [('en', 'accurate')]
         assert world.query("SELECT count(*) FROM dictionary_links WHERE lang IN ('it', 'ru')")[0][0] == 0
+
+    def test_the_package_says_which_languages_it_finds_words_of_by_the_translations_it_lists(self, world):
+        world.package()
+        world.importer(serving(sample_bytes_of('dictionary-sample-en.jsonl.gz'))).run(world.job(headwords=['en'], edition='en', translations=['pt', 'ja']), nothing)
+        row = world.query("SELECT languages, link_languages FROM dictionary_packages WHERE id = 'wikt-pt'")[0]
+        assert row == (['en'], ['ja', 'pt'])
 
     def test_a_translation_is_found_going_the_other_way_too(self, world):
         world.package()
