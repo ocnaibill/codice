@@ -83,7 +83,7 @@ export function JoinVersionsDialog({ work, onClose, onJoined }) {
                 />
               </label>
               {search.isFetching && <p className="animate-pulse text-sm text-ink-faint">Procurando…</p>}
-              {search.isError && <LoadError onRetry={() => search.refetch()} retrying={search.isRefetching}>Não foi possível procurar.</LoadError>}
+              {search.isError && <LoadError error={search.error} onRetry={() => search.refetch()} retrying={search.isRefetching}>Não foi possível procurar.</LoadError>}
               {term.trim().length >= 2 && !search.isFetching && !search.isError && results.length === 0 && (
                 <p className="text-sm text-ink-faint">Nenhuma outra obra encontrada.</p>
               )}

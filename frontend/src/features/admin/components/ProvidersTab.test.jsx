@@ -84,7 +84,7 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
     await open({ isOwner: false });
     expect(box('Open Library').checked).toBe(true);
     for (const name of ['Google Books', 'Open Library', 'ComicVine']) expect(box(name).disabled).toBe(true);
-    expect(view.text()).toContain('Só o owner liga ou desliga os provedores.');
+    expect(view.text()).toContain('Só o dono do acervo liga ou desliga os provedores.');
   });
 
   it('does not say that only the owner changes it to the owner', async () => {

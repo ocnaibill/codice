@@ -12,6 +12,7 @@ import { isTopmostDialog } from '../../../lib/topDialog';
 import { completionText, formatSize, languageName, whereYouAre } from '../files';
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { sheetNote } from '../../../lib/ocr';
+import { fileTextState } from '../../../lib/processing';
 
 const NOTE_TONE = { ok: 'text-success', warn: 'text-warning', plain: 'text-ink-soft' };
 
@@ -20,6 +21,7 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
   const started = file.started || percent > 0 || file.completed;
   const usable = file.availability === 'available' && !!file.url;
   const ocrNote = sheetNote(file);
+  const textState = fileTextState(file, ocrNote); // readable now, searchable when the text has been read (RN-018)
 
   return (
     <li className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
@@ -28,8 +30,7 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
           <span className="rounded bg-brand/10 px-2 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-brand">{file.format || '?'}</span>
           {file.sizeBytes != null && <span className="font-mono text-[11px] text-ink-faint">{formatSize(file.sizeBytes)}</span>}
           {ocrNote && <span className={`text-xs ${NOTE_TONE[ocrNote.tone]}`} title={ocrNote.title}>{ocrNote.text}</span>}
-          {file.textStatus === 'ready' && <span className="text-xs text-success" title="O texto deste arquivo está indexado para a busca">texto indexado</span>}
-          {file.textStatus === 'failed' && <span className="text-xs text-warning" title="O arquivo abre, mas o texto não pôde ser lido para a busca">texto não lido</span>}
+          {textState && <span className={`text-xs ${NOTE_TONE[textState.tone]}`} title={textState.title}>{textState.text}</span>}
         </div>
         <span className="shrink-0 font-mono text-[11px] text-ink-soft">
           {file.completed ? 'Concluído' : percent > 0 ? `${percent}% lido` : started ? 'Em andamento' : 'Não iniciado'}
@@ -200,7 +201,7 @@ export function WorkSheet() {
   const openBook = useGlobalStore((state) => state.openBook);
   const closeButtonRef = React.useRef(null);
   const dialogRef = React.useRef(null);
-  const { data: work, isLoading, isError, refetch, isRefetching } = useWork(workId, { fresh: true });
+  const { data: work, isLoading, isError, error, refetch, isRefetching } = useWork(workId, { fresh: true });
   const setCompletion = useSetCompletion();
   const setWorkFinished = useSetWorkFinished();
   // Putting the files of one book under one work, and taking them out again, is for owner and admin (#37).
@@ -271,7 +272,7 @@ export function WorkSheet() {
 
         <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
         {isLoading && <p className="animate-pulse text-sm text-ink-faint">Carregando a obra…</p>}
-        {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta obra.</LoadError>}
+        {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta obra.</LoadError>}
 
         {work && (
           <div className="flex flex-col gap-7">

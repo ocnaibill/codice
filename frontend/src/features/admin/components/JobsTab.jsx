@@ -25,7 +25,7 @@ const TYPE_LABEL = {
 
 export function JobsTab() {
   const [state, setState] = useState('');
-  const { data, isLoading, isError, refetch, isRefetching } = useJobs({ state });
+  const { data, isLoading, isError, error, refetch, isRefetching } = useJobs({ state });
   const rerun = useRerunJob();
   const cancel = useCancelJob();
   const jobs = data?.data || [];
@@ -50,7 +50,7 @@ export function JobsTab() {
       </div>
 
       {isLoading && <Loading />}
-      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar os trabalhos.</LoadError>}
+      {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar os trabalhos.</LoadError>}
       {!isLoading && !isError && jobs.length === 0 && <Empty>Nenhum trabalho neste filtro.</Empty>}
 
       {jobs.length > 0 && (

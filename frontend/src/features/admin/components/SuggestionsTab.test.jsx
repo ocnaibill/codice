@@ -88,7 +88,7 @@ describe('SuggestionsTab: the queue of suggestions (#70)', () => {
     it('tells an admin to ask the owner, with no button', async () => {
       providerList = off();
       await open({ data: [], total: 0 }, { isOwner: false, onOpenProviders: vi.fn() });
-      expect(view.text()).toContain('Só o owner liga os provedores.');
+      expect(view.text()).toContain('Só o dono do acervo liga os provedores.');
       expect(view.button('Escolher os provedores')).toBeUndefined();
     });
 

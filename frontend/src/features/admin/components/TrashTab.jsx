@@ -7,6 +7,7 @@ import { formatBytes, formatDate } from '../format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 import { LoadError } from '../../../components/ui/LoadError';
+import { PermissionNote } from '../../../components/ui/PermissionNote';
 
 function Policy({ policy, isOwner }) {
   const [enabled, setEnabled] = useState(policy.enabled);
@@ -18,9 +19,12 @@ function Policy({ policy, isOwner }) {
 
   if (!isOwner) {
     return (
-      <p className="text-[13px] text-ink-soft">
-        {policy.enabled ? `Itens são apagados de vez ${policy.days} dia(s) depois de irem para a lixeira.` : 'A lixeira não é esvaziada sozinha.'}
-      </p>
+      <div className="flex flex-col gap-2">
+        <p className="text-[13px] text-ink-soft">
+          {policy.enabled ? `Itens são apagados de vez ${policy.days} dia(s) depois de irem para a lixeira.` : 'A lixeira não é esvaziada sozinha.'}
+        </p>
+        <PermissionNote>Só o dono do acervo muda isso e apaga de vez.</PermissionNote>
+      </div>
     );
   }
 
@@ -65,7 +69,7 @@ function Policy({ policy, isOwner }) {
 }
 
 export function TrashTab({ isOwner }) {
-  const { data, isLoading, isError, refetch, isRefetching } = useTrash();
+  const { data, isLoading, isError, error, refetch, isRefetching } = useTrash();
   const restore = useRestoreTrash();
   const remove = useDeleteTrash();
   const empty = useEmptyTrash();
@@ -85,7 +89,7 @@ export function TrashTab({ isOwner }) {
       >
         {data && <p className="mb-3 text-[13px] text-ink-soft">Ocupa {formatBytes(data.totalBytes)} em {items.length} item(ns).</p>}
         {isLoading && <Loading />}
-        {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a lixeira.</LoadError>}
+        {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a lixeira.</LoadError>}
         {!isLoading && !isError && items.length === 0 && <Empty>A lixeira está vazia.</Empty>}
         <ul className="divide-y divide-border-hairline">
           {items.map((item) => (

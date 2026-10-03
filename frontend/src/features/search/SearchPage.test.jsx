@@ -77,6 +77,39 @@ it('limits passages and notes to a selected work and reports files without searc
   expect(container.textContent).toContain('Falha ao ler o texto');
 });
 
+const searchWith = (coverage) => api.get.mockImplementation(async (url) => {
+  if (url.startsWith('/works?')) return { data: { data: [work], totalPages: 1 } };
+  if (url === '/search') return { data: { data: [], hasMore: false, mode: 'stem', ...(coverage === undefined ? {} : { coverage }) } };
+  if (url === '/notes') return { data: { data: [], total: 0 } };
+  throw new Error(url);
+});
+const passagesBox = () => container.querySelector('[aria-label="Passagens"]');
+
+it('says what the search cannot see yet, under the passages, in a notice', async () => {
+  searchWith({ reading: 2, failed: 1, noText: 0 });
+  await act(async () => root.render(<QueryClientProvider client={client}><SearchPage query="nada" /></QueryClientProvider>));
+  await flush();
+  const note = passagesBox().querySelector('[role="status"]');
+  expect(note.textContent).toContain('A busca ainda não vê tudo: o texto de 2 arquivos ainda está sendo lido e o texto de 1 arquivo não pôde ser lido.');
+  expect(passagesBox().textContent).toContain('Nenhuma passagem encontrada.');
+  expect(container.querySelector('[aria-label="Obras"] [role="status"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Anotações"] [role="status"]')).toBeNull();
+});
+
+it('says nothing of it when the search sees everything, or the server does not say', async () => {
+  searchWith({ reading: 0, failed: 0, noText: 0 });
+  await act(async () => root.render(<QueryClientProvider client={client}><SearchPage query="nada" /></QueryClientProvider>));
+  await flush();
+  expect(passagesBox().querySelector('[role="status"]')).toBeNull();
+  act(() => root.unmount());
+  root = createRoot(container);
+  client.clear();
+  searchWith(null);
+  await act(async () => root.render(<QueryClientProvider client={client}><SearchPage query="outra" /></QueryClientProvider>));
+  await flush();
+  expect(passagesBox().querySelector('[role="status"]')).toBeNull();
+});
+
 it('uses character offsets from the backend even before an astral Unicode symbol', async () => {
   await act(async () => root.render(<HighlightedSnippet text="a💫b" matches={[[1, 2]]} />));
   expect(container.querySelector('mark').textContent).toBe('💫');

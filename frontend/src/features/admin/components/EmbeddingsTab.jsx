@@ -11,9 +11,9 @@ const STATE = {
 };
 
 export function EmbeddingsTab() {
-  const { data, isLoading, isError, refetch, isRefetching } = useEmbeddings();
+  const { data, isLoading, isError, error, refetch, isRefetching } = useEmbeddings();
   if (isLoading) return <Loading />;
-  if (isError || !data) return <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a configuração.</LoadError>;
+  if (isError || !data) return <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a configuração.</LoadError>;
   return <EmbeddingsForm key={`${data.enabled}-${data.available}-${data.state}-${data.model}`} state={data} />;
 }
 

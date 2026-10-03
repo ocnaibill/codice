@@ -34,7 +34,7 @@ export function NotesPage() {
   useEffect(() => setPage(1), [q, kind, tag, work?.id]);
 
   const filters = { q, kind, tag, workId: work?.id };
-  const { data, isLoading, isError, isFetching, refetch, isRefetching } = useNotesList(filters, page);
+  const { data, isLoading, isError, error, isFetching, refetch, isRefetching } = useNotesList(filters, page);
   const { data: facets } = useNotesFacets(filters);
   const notes = data?.data ?? [];
   const total = data?.total ?? 0;
@@ -119,7 +119,7 @@ export function NotesPage() {
             <Skeleton className="h-28" />
           </div>
         )}
-        {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as anotações.</LoadError>}
+        {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as anotações.</LoadError>}
         {!isLoading && !isError && notes.length === 0 && (
           <p className="rounded-xl border border-dashed border-border-hairline bg-white p-4 text-sm text-ink-soft">
             {filtered

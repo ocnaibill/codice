@@ -65,7 +65,7 @@ describe('AdminPage: the external providers (#68)', () => {
 
     view = await mount(<AdminPage isOwner={false} />);
     await view.click(view.button('Provedores'));
-    expect(view.text()).toContain('Só o owner liga ou desliga os provedores.');
+    expect(view.text()).toContain('Só o dono do acervo liga ou desliga os provedores.');
   });
 });
 

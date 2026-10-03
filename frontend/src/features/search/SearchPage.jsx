@@ -6,6 +6,8 @@ import { useWork } from '../reader/api/useWork';
 import { useGlobalStore } from '../../store/useGlobalStore';
 import { sheetNote } from '../../lib/ocr';
 import { LoadError } from '../../components/ui/LoadError';
+import { Notice } from '../../components/ui/Notice';
+import { coverageNote } from '../../lib/processing';
 
 const PAGE_SIZE = 10;
 
@@ -96,7 +98,7 @@ export function SearchPage({ query }) {
     <section aria-label="Obras" className="rounded-lg bg-white p-5 shadow-sm">
       <h2 className="font-display text-xl text-ink">Obras</h2>
       {!active || (scope ? selected.isLoading : works.isLoading) ? <p className="mt-3 text-sm text-ink-soft">Buscando obras…</p>
-        : (scope ? selected.isError : works.isError) ? <LoadError className="mt-3" onRetry={() => (scope ? selected : works).refetch()} retrying={(scope ? selected : works).isRefetching}>Não foi possível buscar obras.</LoadError>
+        : (scope ? selected.isError : works.isError) ? <LoadError className="mt-3" error={(scope ? selected : works).error} onRetry={() => (scope ? selected : works).refetch()} retrying={(scope ? selected : works).isRefetching}>Não foi possível buscar obras.</LoadError>
           : workItems.length === 0 ? <p className="mt-3 text-sm text-ink-soft">Nenhuma obra encontrada.</p>
             : <ul className="mt-3 space-y-3">{workItems.map((work) => <li key={work.id} className="rounded border border-surface-alt p-3">
               <button type="button" onClick={() => openWork(work.id)} className="font-semibold text-ink hover:text-brand">{work.title}</button>
@@ -112,10 +114,11 @@ export function SearchPage({ query }) {
 
     <section aria-label="Passagens" className="rounded-lg bg-white p-5 shadow-sm">
       <h2 className="font-display text-xl text-ink">Passagens</h2>
+      {active && !passages.isError && coverageNote(passages.data?.coverage) && <Notice tone="info" className="mt-2">{coverageNote(passages.data.coverage)}</Notice>}
       {!!passages.data?.data?.length && passages.data.mode === 'stem' && <p className="mt-1 text-xs text-ink-soft">Inclui outras formas das palavras (“correr” acha “corrida”). Para a palavra exata, use aspas.</p>}
       {!!passages.data?.data?.length && passages.data.mode === 'exact' && <p className="mt-1 text-xs text-ink-soft">Busca exata: só as palavras como estão escritas.</p>}
       {!active || passages.isLoading ? <p className="mt-3 text-sm text-ink-soft">Buscando passagens…</p>
-        : passages.isError ? <LoadError className="mt-3" onRetry={() => passages.refetch()} retrying={passages.isRefetching}>Não foi possível buscar passagens.</LoadError>
+        : passages.isError ? <LoadError className="mt-3" error={passages.error} onRetry={() => passages.refetch()} retrying={passages.isRefetching}>Não foi possível buscar passagens.</LoadError>
           : !passages.data?.data?.length ? <p className="mt-3 text-sm text-ink-soft">Nenhuma passagem encontrada.</p>
             : <ul className="mt-3 space-y-3">{passages.data.data.map((hit) => <li key={hit.segmentId} className="rounded border border-surface-alt p-3">
               <p className="text-sm font-semibold text-ink">{hit.workTitle} <span className="font-normal text-ink-soft">· {hit.workAuthor}</span></p>
@@ -132,7 +135,7 @@ export function SearchPage({ query }) {
     <section aria-label="Anotações" className="rounded-lg bg-white p-5 shadow-sm">
       <h2 className="font-display text-xl text-ink">Suas anotações</h2>
       {!active || notes.isLoading ? <p className="mt-3 text-sm text-ink-soft">Buscando anotações…</p>
-        : notes.isError ? <LoadError className="mt-3" onRetry={() => notes.refetch()} retrying={notes.isRefetching}>Não foi possível buscar anotações.</LoadError>
+        : notes.isError ? <LoadError className="mt-3" error={notes.error} onRetry={() => notes.refetch()} retrying={notes.isRefetching}>Não foi possível buscar anotações.</LoadError>
           : !notes.data?.data?.length ? <p className="mt-3 text-sm text-ink-soft">Nenhuma anotação encontrada.</p>
             : <ul className="mt-3 space-y-3">{notes.data.data.map((note) => <li key={note.id} className="rounded border border-surface-alt p-3">
               <p className="text-sm font-semibold text-ink">{note.workTitle} <span className="font-normal text-ink-soft">· {note.workAuthor}</span></p>

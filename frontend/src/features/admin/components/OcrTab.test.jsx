@@ -120,7 +120,7 @@ describe('OcrTab: the settings', () => {
 
   it('is only to be read by the staff that is not the owner', async () => {
     await open({ state: settings({ enabled: true }), isOwner: false });
-    expect(view.text()).toContain('O OCR está ligado. Quem decide é o dono do acervo.');
+    expect(view.text()).toContain('O OCR está ligado.');
     expect(box('Ler as páginas escaneadas')).toBeUndefined();
     expect(box('Português')).toBeUndefined();
     view.unmount();
