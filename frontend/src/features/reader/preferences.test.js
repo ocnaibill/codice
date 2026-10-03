@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { getComicMode, getDictionaryTarget, saveComicMode, saveDictionaryTarget, setPreferenceOwner } from './preferences';
+import { getComicMode, getDictionaryTarget, getHighlightColor, saveComicMode, saveDictionaryTarget, saveHighlightColor, setPreferenceOwner } from './preferences';
 
 describe('comic mode', () => {
   beforeEach(() => {
@@ -89,5 +89,45 @@ describe('language of the definitions', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
     expect(getDictionaryTarget()).toBe('pt');
     expect(() => saveDictionaryTarget('fr')).not.toThrow();
+  });
+});
+
+describe('color of the highlights', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setPreferenceOwner('ana');
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('is terracotta until chosen, and is remembered', () => {
+    expect(getHighlightColor()).toBe('terracotta');
+    saveHighlightColor('sage');
+    expect(getHighlightColor()).toBe('sage');
+  });
+
+  it('belongs to the account, and nothing is remembered with nobody signed in', () => {
+    saveHighlightColor('indigo');
+    setPreferenceOwner('bob');
+    expect(getHighlightColor()).toBe('terracotta');
+    setPreferenceOwner(null);
+    saveHighlightColor('sepia');
+    localStorage.setItem('codice:highlight-color:null', 'sepia');
+    expect(getHighlightColor()).toBe('terracotta');
+    setPreferenceOwner('ana');
+    expect(getHighlightColor()).toBe('indigo');
+  });
+
+  it('does not keep what is not a color, and reads what is stored that is not one as terracotta', () => {
+    saveHighlightColor('red');
+    expect(localStorage.getItem('codice:highlight-color:ana')).toBeNull();
+    localStorage.setItem('codice:highlight-color:ana', 'pink');
+    expect(getHighlightColor()).toBe('terracotta');
+  });
+
+  it('works when the storage is blocked', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    expect(getHighlightColor()).toBe('terracotta');
+    expect(() => saveHighlightColor('sage')).not.toThrow();
   });
 });

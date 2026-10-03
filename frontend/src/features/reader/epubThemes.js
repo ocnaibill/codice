@@ -52,6 +52,8 @@ const channel = (hex, at) => {
   const v = parseInt(hex.slice(at, at + 2), 16) / 255;
   return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 };
+export const SELECTION_ON_LIGHT = 'rgba(148, 69, 22, 0.3)'; // the brand, #944516
+export const SELECTION_ON_DARK = 'rgba(179, 93, 44, 0.55)'; // the lighter brand, #b35d2c
 const luminance = (hex) => 0.2126 * channel(hex, 1) + 0.7152 * channel(hex, 3) + 0.0722 * channel(hex, 5);
 
 /** The contrast of two colors written #rrggbb, from 1 (none) to 21 (black on white): WCAG asks 4.5 for text. */
@@ -93,6 +95,8 @@ export function epubRules(settings) {
     [`${n}, ${n} *`]: { color: `${theme.text} !important` },
     [`${n} a, ${n} a *`]: { color: `${theme.link} !important` },
   };
+  // The selection is terracotta, as in the rest of the app; on a dark page the lighter terracotta, and stronger, to be seen.
+  rules[`${n}::selection, ${n} *::selection`] = { background: `${luminance(theme.background) < 0.2 ? SELECTION_ON_DARK : SELECTION_ON_LIGHT} !important` };
   if (font.stack) rules[`${n} ${TEXT_ELEMENTS}`] = { 'font-family': `${font.stack} !important` };
   if (spacing.value) rules[`${n} p, ${n} li, ${n} blockquote, ${n} dd, ${n} div`] = { 'line-height': `${spacing.value} !important` };
   return rules;

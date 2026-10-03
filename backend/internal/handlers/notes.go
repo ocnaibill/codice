@@ -35,7 +35,12 @@ const (
 	kindNote   = "note"
 	kindMark   = "highlight"
 	kindBookmk = "bookmark"
+	// defaultColor is what a highlight is painted with until the person chooses another.
+	defaultColor = "terracotta"
 )
+
+// noteColors are the colors a passage can be painted with (the migration says the same).
+var noteColors = map[string]bool{"terracotta": true, "sepia": true, "sage": true, "indigo": true}
 
 // Note is a piece of marginalia. Its title and author come from the reference stored on the
 // note, so it stays complete when the work is retired or deleted; SourceAvailable then turns
@@ -52,6 +57,7 @@ type Note struct {
 	Quote           string          `json:"quote"`
 	Body            string          `json:"body"`
 	Tags            []string        `json:"tags"`
+	Color           string          `json:"color"`
 	Locator         json.RawMessage `json:"locator"`
 	LocatorVersion  *int            `json:"locatorVersion"`
 	CreatedAt       time.Time       `json:"createdAt"`
@@ -72,6 +78,7 @@ type CreateNoteRequest struct {
 	Quote   string          `json:"quote"`
 	Body    string          `json:"body"`
 	Tags    []string        `json:"tags"`
+	Color   string          `json:"color"`
 	FileID  *int64          `json:"fileId"`
 	Locator json.RawMessage `json:"locator"`
 }
@@ -175,6 +182,14 @@ func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "kind is note, highlight or bookmark", http.StatusBadRequest)
 		return
 	}
+	color := req.Color
+	if color == "" {
+		color = defaultColor
+	}
+	if !noteColors[color] {
+		http.Error(w, "color is terracotta, sepia, sage or indigo", http.StatusBadRequest)
+		return
+	}
 	hasLocator := isRaw(req.Locator)
 	if kind == kindBookmk && !hasLocator {
 		http.Error(w, "A bookmark needs a place", http.StatusBadRequest)
@@ -237,10 +252,10 @@ func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 	var id int
 	err = tx.QueryRowContext(r.Context(), `
-		INSERT INTO notes (user_id, work_id, file_id, kind, quote, body, tags, locator, locator_version)
-		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8::jsonb, $9)
+		INSERT INTO notes (user_id, work_id, file_id, kind, quote, body, tags, locator, locator_version, color)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8::jsonb, $9, $10)
 		RETURNING id`,
-		userID, workID, req.FileID, kind, quote, body, pq.Array(tags), loc, ver).Scan(&id)
+		userID, workID, req.FileID, kind, quote, body, pq.Array(tags), loc, ver, color).Scan(&id)
 	if err == nil {
 		err = syncNoteLinks(r.Context(), tx, userID, int64(id), body)
 	}
@@ -320,7 +335,7 @@ func (f noteFilter) where(userID string) (string, []any) {
 
 const noteSelect = `
 	SELECT n.id, n.kind, n.work_id, n.source_title, COALESCE(n.source_author, 'Unknown Author'),
-	       n.file_id, COALESCE(f.format, ''), COALESCE(n.quote, ''), n.body, n.tags,
+	       n.file_id, COALESCE(f.format, ''), COALESCE(n.quote, ''), n.body, n.tags, n.color,
 	       n.locator, n.locator_version, n.created_at, n.updated_at,
 	       (w.id IS NOT NULL AND w.retired_at IS NULL),
 	       (f.id IS NOT NULL AND f.availability = 'available' AND w.id IS NOT NULL AND w.retired_at IS NULL)
@@ -334,7 +349,7 @@ func scanNote(rows *sql.Rows) (Note, error) {
 	var tags pq.StringArray
 	var loc []byte
 	if err := rows.Scan(&n.ID, &n.Kind, &workID, &n.WorkTitle, &n.WorkAuthor, &fileID, &n.FileFormat,
-		&n.Quote, &n.Body, &tags, &loc, &ver, &n.CreatedAt, &n.UpdatedAt, &n.SourceAvailable, &n.FileAvailable); err != nil {
+		&n.Quote, &n.Body, &tags, &n.Color, &loc, &ver, &n.CreatedAt, &n.UpdatedAt, &n.SourceAvailable, &n.FileAvailable); err != nil {
 		return n, err
 	}
 	if workID.Valid {
@@ -417,6 +432,7 @@ type UpdateNoteRequest struct {
 	Quote *string   `json:"quote"`
 	Body  *string   `json:"body"`
 	Tags  *[]string `json:"tags"`
+	Color *string   `json:"color"`
 }
 
 // UpdateNote edits the quotation, text or tags of one of the caller's notes.
@@ -462,6 +478,15 @@ func (h *NotesHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if req.Color != nil && !noteColors[*req.Color] {
+		http.Error(w, "color is terracotta, sepia, sage or indigo", http.StatusBadRequest)
+		return
+	}
+	var color string
+	if req.Color != nil {
+		color = *req.Color
+	}
+
 	// The database refuses an edit that would leave a note with nothing in it.
 	user := currentUserID(r)
 	tx, err := h.DB.BeginTx(r.Context(), nil)
@@ -477,10 +502,11 @@ func (h *NotesHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 			quote = CASE WHEN $2::boolean THEN NULLIF($3, '') ELSE quote END,
 			body = CASE WHEN $4::boolean THEN $5 ELSE body END,
 			tags = CASE WHEN $6::boolean THEN $7::text[] ELSE tags END,
+			color = CASE WHEN $9::boolean THEN $10 ELSE color END,
 			updated_at = now()
 		WHERE id = $1 AND user_id = $8
 		RETURNING id`,
-		id, quote.Valid, quote.String, body.Valid, body.String, req.Tags != nil, pq.Array(tags), user).Scan(&updated)
+		id, quote.Valid, quote.String, body.Valid, body.String, req.Tags != nil, pq.Array(tags), user, req.Color != nil, color).Scan(&updated)
 	if err == nil && body.Valid {
 		// The links of the text are what the relations of the note follow.
 		err = syncNoteLinks(r.Context(), tx, user, id, body.String)

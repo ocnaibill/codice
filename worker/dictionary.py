@@ -337,7 +337,7 @@ class DictionaryImporter:
             cur = conn.cursor()
             for table in ('dictionary_entries', 'dictionary_forms', 'dictionary_links'):
                 cur.execute(f'DELETE FROM {table} WHERE package_id = %s', (package_id,))
-            entries, forms, links, langs, skipped = [], [], [], set(), 0
+            entries, forms, links, langs, link_langs, skipped = [], [], [], set(), set(), 0
             totals = {'entries': 0, 'forms': 0, 'links': 0}
 
             def flush():
@@ -381,6 +381,7 @@ class DictionaryImporter:
                             entries.append(entry_row)
                             forms.extend(form_rows)
                             links.extend(link_rows)
+                            link_langs.update(row[1] for row in link_rows)
                             if len(entries) >= BATCH:
                                 flush()
                                 checkpoint()
@@ -396,9 +397,9 @@ class DictionaryImporter:
             # Everything is in: the package says so in the same transaction, so that it is ready exactly when its data is.
             cur.execute(
                 """UPDATE dictionary_packages SET state = 'ready', stage = 'done', progress = 1, entries = %s, forms = %s, links = %s,
-                          languages = %s, sha256 = %s, source_date = %s, error = '', installed_at = now(), updated_at = now()
+                          languages = %s, link_languages = %s, sha256 = %s, source_date = %s, error = '', installed_at = now(), updated_at = now()
                    WHERE id = %s""",
-                (totals['entries'], totals['forms'], totals['links'], sorted(langs), info['sha256'], info['source_date'], package_id))
+                (totals['entries'], totals['forms'], totals['links'], sorted(langs), sorted(link_langs), info['sha256'], info['source_date'], package_id))
             conn.commit()
             return {**totals, 'skipped': skipped, 'languages': sorted(langs)}
         except BaseException:

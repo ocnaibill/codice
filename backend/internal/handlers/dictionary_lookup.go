@@ -31,6 +31,18 @@ func baseLanguage(code string) string {
 	return code
 }
 
+// Languages answers GET /dictionary/languages: the languages the installed dictionaries can be asked in.
+func (h *DictionaryLookupHandler) Languages(w http.ResponseWriter, r *http.Request) {
+	res, err := dictionary.InstalledLanguages(r.Context(), h.DB)
+	if err != nil {
+		log.Println("Error reading the languages of the dictionaries:", err)
+		http.Error(w, "Error reading the languages", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+
 // Lookup answers GET /dictionary?lang=pt&word=correram. The language is the one the word is in, as a code (pt, pt-BR and
 // pt_BR are all pt).
 func (h *DictionaryLookupHandler) Lookup(w http.ResponseWriter, r *http.Request) {

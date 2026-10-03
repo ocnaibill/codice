@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LOOKUP_LANGUAGES, groupTranslations, isLookupable, languageName, lookupLanguage, posLabel, senseFormOf, tagLabel, tagsLine, visibleSenses } from './dictionaryLookup';
+import { LOOKUP_LANGUAGES, groupTranslations, scriptLanguage, isLookupable, languageName, lookupLanguage, posLabel, senseFormOf, tagLabel, tagsLine, visibleSenses } from './dictionaryLookup';
 
 describe('isLookupable', () => {
   it('is true for a word, a word with a hyphen and a short expression', () => {
@@ -167,5 +167,37 @@ describe('groupTranslations', () => {
 describe('the tags of the other editions', () => {
   it('says the remote past in Portuguese', () => {
     expect(tagLabel('past-remote')).toBe('pretérito remoto');
+  });
+});
+
+describe('scriptLanguage', () => {
+  it('says the language of a word by its script', () => {
+    expect(scriptLanguage('走る')).toBe('ja');
+    expect(scriptLanguage('ありがとう')).toBe('ja');
+    expect(scriptLanguage('カタカナ')).toBe('ja');
+    expect(scriptLanguage('사람')).toBe('ko');
+    expect(scriptLanguage('слово')).toBe('ru');
+    expect(scriptLanguage('λόγος')).toBe('el');
+    expect(scriptLanguage('สวัสดี')).toBe('th');
+  });
+
+  it('says nothing for Latin letters, which are the language of the file', () => {
+    for (const w of ['casa', 'Ação', "l'amour", 'Straße', 'çà', '123']) expect(scriptLanguage(w), w).toBeNull();
+  });
+
+  it('says nothing for Han alone, which is Chinese or Japanese', () => {
+    expect(scriptLanguage('猫')).toBeNull();
+    expect(scriptLanguage('学习')).toBeNull();
+  });
+
+  it('goes by the script that has more letters, and by the file when the Latin ones are as many', () => {
+    expect(scriptLanguage('猫です')).toBe('ja'); // Han and kana: kana says it
+    expect(scriptLanguage('go 走る')).toBeNull(); // two Latin letters and one of kana: the file
+    expect(scriptLanguage('a走る')).toBeNull(); // as many as the Latin ones is not more
+    expect(scriptLanguage('a ありがとう')).toBe('ja');
+  });
+
+  it('says nothing for nothing', () => {
+    for (const w of ['', '   ', null, undefined]) expect(scriptLanguage(w)).toBeNull();
   });
 });

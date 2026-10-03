@@ -4,10 +4,12 @@
 // another book.
 import { DEFAULT_SETTINGS, sanitizeSettings } from './epubThemes';
 import { LOOKUP_LANGUAGES } from './dictionaryLookup';
+import { DEFAULT_HIGHLIGHT_COLOR, isHighlightColor } from './highlightColors';
 
 const PREFIX = 'codice:comic-mode:';
 const EPUB_PREFIX = 'codice:epub-settings:';
 const DICTIONARY_PREFIX = 'codice:dictionary-target:';
+const HIGHLIGHT_PREFIX = 'codice:highlight-color:';
 export const COMIC_MODES = ['ltr', 'rtl', 'webtoon', 'double'];
 
 let owner = null;
@@ -70,6 +72,26 @@ export function saveDictionaryTarget(code) {
   if (!owner || !LOOKUP_LANGUAGES.some(([c]) => c === code)) return;
   try {
     localStorage.setItem(DICTIONARY_PREFIX + owner, code);
+  } catch {
+    // not being able to remember it is not a problem
+  }
+}
+
+/** The color this account painted its last highlight with, which the next one has (terracotta until one is chosen). */
+export function getHighlightColor() {
+  if (!owner) return DEFAULT_HIGHLIGHT_COLOR;
+  try {
+    const value = localStorage.getItem(HIGHLIGHT_PREFIX + owner);
+    return isHighlightColor(value) ? value : DEFAULT_HIGHLIGHT_COLOR;
+  } catch {
+    return DEFAULT_HIGHLIGHT_COLOR;
+  }
+}
+
+export function saveHighlightColor(color) {
+  if (!owner || !isHighlightColor(color)) return;
+  try {
+    localStorage.setItem(HIGHLIGHT_PREFIX + owner, color);
   } catch {
     // not being able to remember it is not a problem
   }
