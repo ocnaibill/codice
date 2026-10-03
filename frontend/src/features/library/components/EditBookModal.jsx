@@ -193,7 +193,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
   const [tab, setTab] = useState(initialTab);
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
-  const { data: work, isLoading, isError, refetch, isRefetching } = useWork(workId, { fresh: true });
+  const { data: work, isLoading, isError, error, refetch, isRefetching } = useWork(workId, { fresh: true });
   const { data: candidates } = useCandidates(workId);
   const pending = candidates?.length ?? 0;
 
@@ -235,7 +235,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
         </div>
         <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6">
           {isLoading && <p className="animate-pulse text-sm text-ink-faint">Carregando a obra…</p>}
-          {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta obra.</LoadError>}
+          {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta obra.</LoadError>}
           {work && tab === 'suggestions' && <WorkSuggestions workId={work.id} emptyText="Nenhuma sugestão esperando decisão." />}
           {work && tab === 'edit' && <EditForm work={work} onClose={onClose} />}
         </div>

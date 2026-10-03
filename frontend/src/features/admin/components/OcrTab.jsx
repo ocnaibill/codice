@@ -3,6 +3,7 @@ import { useOcr, useOcrSettings, useRetryOcr, useSetOcr, useSetOcrLanguage, desc
 import { fileProgress, languageLine, languageName, languagesLabel } from '../../../lib/ocr';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 import { LoadError } from '../../../components/ui/LoadError';
+import { PermissionNote } from '../../../components/ui/PermissionNote';
 import { ConfirmDialog } from './ConfirmDialog';
 
 const ENGINE_STATE = {
@@ -14,10 +15,10 @@ const ENGINE_STATE = {
 const TONE = { ok: 'text-success', warn: 'text-warning', plain: 'text-ink-faint' };
 
 function Settings({ isOwner }) {
-  const { data: state, isLoading, isError, refetch, isRefetching } = useOcrSettings();
+  const { data: state, isLoading, isError, error, refetch, isRefetching } = useOcrSettings();
   const save = useSetOcr();
   if (isLoading) return <Loading />;
-  if (isError || !state) return <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a configuração do OCR.</LoadError>;
+  if (isError || !state) return <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a configuração do OCR.</LoadError>;
 
   const chosen = String(state.language || '').split('+').filter(Boolean);
   const change = (enabled, language = state.language) => save.mutate({ enabled, language });
@@ -82,9 +83,10 @@ function Settings({ isOwner }) {
           </fieldset>
         </>
       ) : (
-        <p className="mt-4 text-sm text-ink-soft">
-          {state.enabled ? 'O OCR está ligado.' : 'O OCR está desligado.'} Quem decide é o dono do acervo.
-        </p>
+        <>
+          <p className="mt-4 text-sm text-ink-soft">{state.enabled ? 'O OCR está ligado.' : 'O OCR está desligado.'}</p>
+          <PermissionNote className="mt-3">Só o dono do acervo liga ou desliga o OCR e escolhe os idiomas.</PermissionNote>
+        </>
       )}
       <ErrorNote>{save.isError && describeError(save.error)}</ErrorNote>
     </Section>
@@ -137,7 +139,7 @@ function LanguageDialog({ item, available, fallback, onChoose, onCancel }) {
 }
 
 function Files({ enabled }) {
-  const { data, isLoading, isError, refetch, isRefetching } = useOcr({ live: enabled });
+  const { data, isLoading, isError, error, refetch, isRefetching } = useOcr({ live: enabled });
   const { data: settings } = useOcrSettings();
   const retry = useRetryOcr();
   const setLanguage = useSetOcrLanguage();
@@ -146,7 +148,7 @@ function Files({ enabled }) {
   return (
     <Section title="PDFs com páginas sem texto" hint="Cada página é lida uma vez e fica guardada. Uma página que falha não é tentada de novo sozinha.">
       {isLoading && <Loading />}
-      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a lista.</LoadError>}
+      {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a lista.</LoadError>}
       {!isLoading && !isError && items.length === 0 && <Empty>Nenhum PDF precisa de OCR.</Empty>}
       <ul className="divide-y divide-border-hairline text-[13px]">
         {items.map((item) => {

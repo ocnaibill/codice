@@ -19,6 +19,35 @@ type SearchHandler struct {
 	DB *sql.DB
 }
 
+// Coverage says how much of the library the search of the text cannot see yet (RN-018: a work can be readable and not
+// searchable): the files whose text is still being read, the ones whose text could not be read, and the ones with no text
+// at all (a scan, which OCR may give one). It is what makes "found nothing" mean "nothing" or "not looked at everywhere".
+type Coverage struct {
+	Reading int `json:"reading"`
+	Failed  int `json:"failed"`
+	NoText  int `json:"noText"`
+}
+
+// coverage counts them for the files that can be opened, of works that are not retired. A failure to count is not one of the
+// search: the answer goes without it.
+func (h *SearchHandler) coverage(r *http.Request) *Coverage {
+	var c Coverage
+	if err := h.DB.QueryRowContext(r.Context(), `SELECT count(*) FROM jobs WHERE type = 'extract_text' AND state IN ('pending', 'running')`).Scan(&c.Reading); err != nil {
+		log.Println("Error counting the text still being read:", err)
+		return nil
+	}
+	if err := h.DB.QueryRowContext(r.Context(), `
+		SELECT count(*) FILTER (WHERE tx.status = 'failed'), count(*) FILTER (WHERE tx.status = 'empty')
+		FROM text_extractions tx
+		JOIN files f ON f.id = tx.file_id AND f.availability = 'available'
+		JOIN editions e ON e.id = f.edition_id
+		JOIN works w ON w.id = e.work_id AND w.retired_at IS NULL`).Scan(&c.Failed, &c.NoText); err != nil {
+		log.Println("Error counting the text that could not be read:", err)
+		return nil
+	}
+	return &c
+}
+
 // SearchHit is one passage of one file that matches, with where it is.
 type SearchHit struct {
 	SegmentID  int64  `json:"segmentId"`
@@ -185,7 +214,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	if exact {
 		mode = "exact"
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": hits, "hasMore": more, "query": q, "mode": mode})
+	writeJSON(w, http.StatusOK, map[string]any{"data": hits, "hasMore": more, "query": q, "mode": mode, "coverage": h.coverage(r)})
 }
 
 // unmark takes the marks ts_headline put around the words found off the text, and says where they

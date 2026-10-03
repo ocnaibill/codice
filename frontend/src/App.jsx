@@ -12,6 +12,7 @@ import { Auth } from './features/auth/components/Auth';
 import { useMe, isStaff } from './features/auth/api/useMe';
 import { setPreferenceOwner } from './features/reader/preferences';
 import { AdminPage } from './features/admin/AdminPage';
+import { NoPermission } from './components/ui/PermissionNote';
 import { FirstRunSetup } from './features/auth/components/FirstRunSetup';
 import { OwnershipBanner } from './features/ownership/OwnershipBanner';
 import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
@@ -293,7 +294,11 @@ function App() {
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >
-          {adminOpen && staff ? (
+          {adminOpen && !staff ? (
+            <NoPermission title="A administração é de quem cuida do acervo" onBack={closeBook}>
+              Sua conta é de leitura. Se você precisa mexer no acervo, peça a quem administra.
+            </NoPermission>
+          ) : adminOpen ? (
             <AdminPage isOwner={me.role === 'owner'} onClose={closeBook} />
           ) : notesOpen && !searchQuery.trim() ? (
             <NotesPage />

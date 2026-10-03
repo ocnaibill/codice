@@ -21,16 +21,18 @@ import { JoinVersionsDialog } from './reader/components/JoinVersionsDialog';
 
 let view;
 let failing;
+let failure;
 beforeEach(() => {
   vi.clearAllMocks();
   failing = true;
+  failure = new Error('fora do ar');
   useGlobalStore.setState({ sheetWorkId: 7 });
 });
 afterEach(() => view?.unmount());
 
 function serve(payload) {
   api.get.mockImplementation(async () => {
-    if (failing) throw new Error('fora do ar');
+    if (failing) throw failure;
     return { data: payload };
   });
 }
@@ -86,5 +88,16 @@ describe('the screens that cannot load what they show', () => {
     await view.click([...alerts()[0].querySelectorAll('button')].find((b) => b.textContent === 'Tentar de novo'));
     expect(api.get.mock.calls.length).toBeGreaterThan(before);
     expect(said('Não foi possível procurar.')).toBe(0);
+  });
+});
+
+describe('and when the server says the person may not see it', () => {
+  it.each(CASES)('says so, and does not offer to try again, for %s', async (_name, element, message, payload) => {
+    failure = { response: { status: 403, data: 'Forbidden' } };
+    serve(payload);
+    view = await mount(element());
+    const notes = [...document.body.querySelectorAll('[role="note"]')].map((n) => n.textContent);
+    expect(notes.some((n) => n.includes('Você não tem permissão para ver isto')), message).toBe(true);
+    expect([...document.body.querySelectorAll('[role="alert"]')].some((a) => a.textContent.includes(message)), `${message} is not said as a failure`).toBe(false);
   });
 });

@@ -20,7 +20,7 @@ function Side({ work }) {
 }
 
 function Duplicates() {
-  const { data, isLoading, isError, refetch, isRefetching } = useDuplicates();
+  const { data, isLoading, isError, error, refetch, isRefetching } = useDuplicates();
   const scan = useScanDuplicates();
   const dismiss = useDismissDuplicate();
   const link = useLinkDuplicate();
@@ -35,7 +35,7 @@ function Duplicates() {
     >
       {scan.isSuccess && <p role="status" className="mb-3 text-[13px] text-ink-soft">Comparação na fila; acompanhe em Trabalhos.</p>}
       {isLoading && <Loading />}
-      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as sugestões.</LoadError>}
+      {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as sugestões.</LoadError>}
       {!isLoading && !isError && pairs.length === 0 && <Empty>Nenhuma sugestão pendente.</Empty>}
       <ul className="divide-y divide-border-hairline">
         {pairs.map((pair) => (

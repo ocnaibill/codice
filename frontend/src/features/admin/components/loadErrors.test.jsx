@@ -23,16 +23,18 @@ import { StorageTab } from './StorageTab';
 
 let view;
 let failing;
+let failure;
 beforeEach(() => {
   vi.clearAllMocks();
   failing = true;
+  failure = new Error('fora do ar');
 });
 afterEach(() => view?.unmount());
 
 // What each tab asks for, and the least of an answer that it can draw. A request fails while `failing` is set.
 function serve(payload) {
   api.get.mockImplementation(async () => {
-    if (failing) throw new Error('fora do ar');
+    if (failing) throw failure;
     return { data: payload };
   });
 }
@@ -84,5 +86,16 @@ describe('the admin tabs that cannot load what they show', () => {
     expect(text).not.toContain('Nenhuma pasta autorizada.');
     expect(text).not.toContain('Nenhum arquivo órfão.');
     expect(text).not.toContain('Nenhum backup registrado');
+  });
+});
+
+describe('and when the server says the person may not see it', () => {
+  it.each(CASES)('says so, and does not offer to try again, for %s', async (_name, element, message, payload) => {
+    failure = { response: { status: 403, data: 'Forbidden' } };
+    serve(payload);
+    view = await mount(element());
+    const notes = [...document.body.querySelectorAll('[role="note"]')].map((n) => n.textContent);
+    expect(notes.some((n) => n.includes('Você não tem permissão para ver isto')), message).toBe(true);
+    expect([...document.body.querySelectorAll('[role="alert"]')].some((a) => a.textContent.includes(message)), `${message} is not said as a failure`).toBe(false);
   });
 });

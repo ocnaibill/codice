@@ -31,3 +31,18 @@ Um teste lê o **código do servidor** (`http.Error(...)` e os `ErrXxx = errors.
 ## Diálogos
 
 Modal de decisão: fundo `bg-black/50` com `animate-fade-in`, painel branco `rounded-2xl` com `animate-pop-in`, título em `font-display`, botões de **44 px** (`min-h-11`), o principal em `brand` e o outro em `surface-alt`; **Escape** é a resposta cuidadosa (não marca nada, não muda de posição). Foi feito em "Obra finalizada?" e "Continuar de onde parou?"; o `ConfirmDialog` da administração segue o mesmo desenho.
+
+## Sem permissão
+
+"Você não pode" não é "falhou": nada deu errado, a conta é assim. Três formas, todas em `components/ui/PermissionNote.jsx`:
+
+- **`PermissionNote`**, uma nota **onde a coisa estaria**: uma seção que a pessoa pode ver e não mudar diz **quem pode** ("Só o dono do acervo liga ou desliga os provedores."), com um cadeado, no mesmo texto em toda parte e **nunca "owner"** (é "o dono do acervo" ou "quem administra"). Está nos Provedores, Dicionários, OCR, Pastas autorizadas, Lixeira e Sugestões.
+- **`NoPermission`**, a **tela inteira** que a pessoa não pode ver: o que é, o que fazer, e um caminho de volta. A administração para uma conta de leitura.
+- **`LoadError` com o `error`**: quando o servidor diz **403**, ele diz que a pessoa não tem permissão e **não oferece "Tentar de novo"**, que só repetiria o mesmo não. Um teste exige que todo `LoadError` receba o `error`.
+
+## Processamento parcial (RN-018)
+
+Uma obra pode estar **legível e ainda não pesquisável**: o arquivo abre, o texto ainda está na fila, uma digitalização não tem texto até o OCR. `lib/processing.js` diz isso do mesmo jeito na ficha e na busca:
+
+- **Na ficha**, cada arquivo mostra o estado do **texto para a busca** (`fileTextState`): *texto indexado* (verde), *texto na fila* (o arquivo já pode ser aberto), *sem texto pesquisável* e *texto não lido* (aviso); uma digitalização deixa a frase para o OCR, e quadrinho e audiolivro **não** dizem "texto na fila".
+- **Na busca**, abaixo de "Passagens", **uma frase diz o que a busca ainda não vê** (`coverageNote`): quantos arquivos têm o texto ainda sendo lido, quantos não puderam ser lidos e quantos não têm texto. Vem de `coverage` na resposta de `GET /search` (`reading`: trabalhos `extract_text` na fila ou rodando; `failed` e `noText`: arquivos disponíveis de obras não retiradas), para que "nenhuma passagem" signifique "nada" ou "ainda não olhei em tudo".

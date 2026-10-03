@@ -430,3 +430,59 @@ func TestExtractText_TheMigrationQueuesTheFilesAlreadyThere(t *testing.T) {
 		t.Errorf("queued for %q, want only the work in the library", got)
 	}
 }
+
+type coverageResult struct {
+	Coverage *struct {
+		Reading int `json:"reading"`
+		Failed  int `json:"failed"`
+		NoText  int `json:"noText"`
+	} `json:"coverage"`
+}
+
+func (s *catalogStack) coverage() coverageResult {
+	s.t.Helper()
+	rec := s.do(ana, "GET", "/search?"+q("qualquer"), "")
+	if rec.Code != 200 {
+		s.t.Fatalf("search: %d %s", rec.Code, rec.Body)
+	}
+	var out coverageResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		s.t.Fatal(err)
+	}
+	return out
+}
+
+func TestSearch_SaysHowMuchOfTheLibraryItCannotSeeYet(t *testing.T) {
+	s := newCatalogStack(t)
+	_, epub, pdf := s.bookWithTwoFiles()
+
+	if c := s.coverage(); c.Coverage == nil || *c.Coverage != (struct {
+		Reading int `json:"reading"`
+		Failed  int `json:"failed"`
+		NoText  int `json:"noText"`
+	}{}) {
+		t.Fatalf("a library with nothing to say: %+v", c.Coverage)
+	}
+
+	s.exec(`INSERT INTO jobs (type, payload, priority) VALUES ('extract_text', '{}', 0), ('extract_text', '{}', 0)`)
+	s.exec(`INSERT INTO jobs (type, payload, priority, state) VALUES ('extract_text', '{}', 0, 'running'), ('extract_text', '{}', 0, 'succeeded'), ('extract_text', '{}', 0, 'failed'), ('extract_text', '{}', 0, 'cancelled'), ('ingest', '{}', 0, 'pending')`)
+	s.exec(`INSERT INTO text_extractions (file_id, generation, extractor_version, status) VALUES ($1, 0, 1, 'failed'), ($2, 0, 1, 'empty')`, epub, pdf)
+	c := s.coverage().Coverage
+	if c.Reading != 3 || c.Failed != 1 || c.NoText != 1 {
+		t.Fatalf("what it cannot see: %+v (only the text still being read counts, queued or running, not what is done, failed or of another kind)", c)
+	}
+}
+
+func TestSearch_DoesNotCountWhatCannotBeOpenedOrIsRetired(t *testing.T) {
+	s := newCatalogStack(t)
+	work, epub, pdf := s.bookWithTwoFiles()
+	s.exec(`INSERT INTO text_extractions (file_id, generation, extractor_version, status) VALUES ($1, 0, 1, 'failed'), ($2, 0, 1, 'empty')`, epub, pdf)
+	s.exec(`UPDATE files SET availability = 'missing' WHERE id = $1`, epub)
+	if c := s.coverage().Coverage; c.Failed != 0 || c.NoText != 1 {
+		t.Fatalf("a file that is not there is not a failure of the text: %+v", c)
+	}
+	s.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, work)
+	if c := s.coverage().Coverage; c.NoText != 0 {
+		t.Fatalf("a work that is retired is not in the library: %+v", c)
+	}
+}

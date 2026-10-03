@@ -26,7 +26,7 @@ function Side({ person }) {
  * the name that goes becomes another way of writing the one that stays, and searching for it still works.
  */
 export function PeopleMerges() {
-  const { data, isLoading, isError, refetch, isRefetching } = usePeopleMerges();
+  const { data, isLoading, isError, error, refetch, isRefetching } = usePeopleMerges();
   const merge = useMergePeople();
   const dismiss = useDismissPeopleMerge();
   const [merging, setMerging] = useState(null); // { pair, keep, other }
@@ -38,7 +38,7 @@ export function PeopleMerges() {
       hint="Nomes feitos das mesmas palavras, como “Herbert, Frank” e “Frank Herbert”, ou duas pessoas com a mesma chave de uma fonte de referência (as com chave vêm primeiro). O sistema só sugere: nada é unido sem você decidir."
     >
       {isLoading && <Loading />}
-      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as sugestões.</LoadError>}
+      {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as sugestões.</LoadError>}
       {!isLoading && !isError && pairs.length === 0 && <Empty>Nenhuma sugestão pendente.</Empty>}
       <ul className="divide-y divide-border-hairline">
         {pairs.map((pair) => (

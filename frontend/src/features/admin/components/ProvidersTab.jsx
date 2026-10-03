@@ -3,6 +3,7 @@ import { describeError, useMetadataProviders, useSetMetadataProvider } from '../
 import { ConfirmDialog } from './ConfirmDialog';
 import { Empty, ErrorNote, Loading, Section } from './ui';
 import { LoadError } from '../../../components/ui/LoadError';
+import { PermissionNote } from '../../../components/ui/PermissionNote';
 
 // What each provider is, where it lives, and what asking it hands over: the owner decides knowing (DEC-045).
 const ABOUT = {
@@ -42,7 +43,7 @@ const sendsText = (provider) => provider.sends.map((s) => SENDS[s] || s).join(',
  * only the owner changes it.
  */
 export function ProvidersTab({ isOwner }) {
-  const { data, isLoading, isError, refetch, isRefetching } = useMetadataProviders();
+  const { data, isLoading, isError, error, refetch, isRefetching } = useMetadataProviders();
   const set = useSetMetadataProvider();
   const [turningOn, setTurningOn] = useState(null);
   const providers = data?.data || [];
@@ -53,7 +54,7 @@ export function ProvidersTab({ isOwner }) {
       hint="Serviços externos que sugerem autor, sinopse, capa e outros dados de uma obra. Todos começam desligados: ligar um envia o título de cada obra analisada a esse serviço. As sugestões nunca mudam nada sozinhas. Extração do arquivo e detecção de idioma seguem locais, ligados ou não."
     >
       {isLoading && <Loading />}
-      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar os provedores.</LoadError>}
+      {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar os provedores.</LoadError>}
       {!isLoading && !isError && providers.length === 0 && <Empty>Nenhum provedor.</Empty>}
       <ul className="divide-y divide-border-hairline">
         {providers.map((provider) => {
@@ -88,7 +89,7 @@ export function ProvidersTab({ isOwner }) {
           );
         })}
       </ul>
-      {!isOwner && <p className="mt-3 text-[12px] text-ink-faint">Só o owner liga ou desliga os provedores.</p>}
+      {!isOwner && <PermissionNote className="mt-3">Só o dono do acervo liga ou desliga os provedores.</PermissionNote>}
       <ErrorNote>{set.isError && describeError(set.error)}</ErrorNote>
 
       {turningOn && (

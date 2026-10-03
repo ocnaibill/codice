@@ -68,6 +68,53 @@ afterEach(() => {
   useGlobalStore.setState({ sheetWorkId: null, activeBookId: null, activeFileId: null, fromStart: false });
 });
 
+describe('WorkSheet: a work that is only partly processed (RN-018)', () => {
+  const file = (id, format, extra = {}) => ({ id, format, availability: 'available', url: `/file/${id}`, percentComplete: 0, completed: false, ...extra });
+  const withFiles = (...files) => ({ ...work, editions: [{ id: 2, language: 'pt', isPrimary: true, files }] });
+  const rows = () => [...container.querySelectorAll('li')].filter((li) => li.querySelector('button'));
+
+  async function show(w) {
+    api.get.mockResolvedValue({ data: w });
+    useGlobalStore.setState({ sheetWorkId: 7, activeBookId: null, activeFileId: null, fromStart: false });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkSheet /></QueryClientProvider>); });
+    await flush();
+  }
+
+  it('says the file can be opened while its text is still waiting to be read', async () => {
+    await show(withFiles(file(30, 'pdf', { textStatus: '' })));
+    expect(rows()[0].textContent).toContain('texto na fila');
+    expect(rows()[0].textContent).toContain('Ler'); // readable now, searchable later
+  });
+
+  it('says a file read with no text has none to find, and one read with segments is indexed', async () => {
+    await show(withFiles(file(31, 'epub', { textStatus: 'ready', textSegments: 0 }), file(32, 'txt', { textStatus: 'empty' }), file(33, 'md', { textStatus: 'ready', textSegments: 9 })));
+    const text = rows().map((r) => r.textContent);
+    expect(text[0]).toContain('nenhum texto pesquisável');
+    expect(text[1]).toContain('sem texto pesquisável');
+    expect(text[2]).toContain('texto indexado');
+  });
+
+  it('says nothing of text for a comic or an audiobook that has not been read, and nothing for a kind that has none', async () => {
+    await show(withFiles(file(34, 'cbz', { textStatus: '' }), file(35, 'mp3', { textStatus: 'unsupported' })));
+    for (const row of rows()) expect(row.textContent).not.toContain('texto');
+  });
+
+  it('leaves a scan to the note of the OCR and does not say it has no text twice', async () => {
+    await show(withFiles(file(36, 'pdf', { textStatus: 'empty', needsOcr: true })));
+    expect(rows()[0].textContent).toContain('Páginas sem texto');
+    expect(rows()[0].textContent).not.toContain('sem texto pesquisável');
+  });
+
+  it('tells the tone of each: warning for a failure, plain for waiting, success for indexed', async () => {
+    await show(withFiles(file(37, 'pdf', { textStatus: 'failed' }), file(38, 'epub', { textStatus: '' }), file(39, 'txt', { textStatus: 'ready', textSegments: 3 })));
+    const chip = (i, text) => [...rows()[i].querySelectorAll('span')].find((s) => s.textContent === text);
+    expect(chip(0, 'texto não lido').className).toContain('text-warning');
+    expect(chip(1, 'texto na fila').className).toContain('text-ink-soft');
+    expect(chip(2, 'texto indexado').className).toContain('text-success');
+  });
+});
+
 describe('WorkSheet: the pages of a scan (#24)', () => {
   const withOcr = (ocr, extra = {}) => ({
     ...work,

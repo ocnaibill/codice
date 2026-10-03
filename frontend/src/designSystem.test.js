@@ -38,6 +38,14 @@ describe('a screen that cannot load what it shows', () => {
     expect(without).toEqual([]);
   });
 
+  it('is told what failed, so that a "no" is not offered a second try: every LoadError is given its error', () => {
+    const without = FILES.flatMap((file) => {
+      const text = readFileSync(file, 'utf8');
+      return [...text.matchAll(/<LoadError\b([^>]*)>/g)].filter((m) => !/\berror=/.test(m[1])).map(() => file);
+    });
+    expect(without).toEqual([]);
+  });
+
   it('is used by the screens, and not left only in the components that it was made in', () => {
     const users = FILES.filter((file) => /<LoadError\b/.test(readFileSync(file, 'utf8')) && !file.endsWith('LoadError.jsx'));
     expect(users.length).toBeGreaterThanOrEqual(15);

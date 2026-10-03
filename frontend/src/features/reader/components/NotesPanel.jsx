@@ -76,7 +76,7 @@ function NewNote({ workId, fileId, getLocator, selected }) {
  * anyone else. The text of a note is Markdown and is rendered without HTML.
  */
 export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose, draft }) {
-  const { data, isLoading, isError, refetch, isRefetching } = useWorkNotes(workId);
+  const { data, isLoading, isError, error, refetch, isRefetching } = useWorkNotes(workId);
   const notes = data?.data ?? [];
   const total = data?.total ?? notes.length;
   const [exportError, setExportError] = useState(false);
@@ -163,7 +163,7 @@ export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose, draf
           </div>
 
           {isLoading && <p className="animate-pulse text-sm text-ink-soft">Carregando…</p>}
-          {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as anotações.</LoadError>}
+          {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar as anotações.</LoadError>}
           {!isLoading && !isError && notes.length === 0 && (
             <p className="rounded-xl border border-dashed border-border-hairline bg-white p-4 text-sm text-ink-soft">Nenhuma anotação neste livro ainda. Só você as vê.</p>
           )}

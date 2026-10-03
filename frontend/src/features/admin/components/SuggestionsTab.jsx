@@ -12,7 +12,7 @@ const fieldNames = (fields) => fields.map((f) => FIELD_LABELS[f] || f).join(', '
  * work leaves the queue when its last suggestion is decided.
  */
 export function SuggestionsTab({ isOwner, onOpenProviders }) {
-  const { data, isLoading, isError, refetch, isRefetching } = useSuggestionQueue();
+  const { data, isLoading, isError, error, refetch, isRefetching } = useSuggestionQueue();
   const providers = useMetadataProviders().data?.data;
   // Known to be off, not merely not loaded yet: a banner that flashes on every open would be noise.
   const allOff = !!providers && providers.length > 0 && providers.every((p) => !p.enabled);
@@ -31,12 +31,12 @@ export function SuggestionsTab({ isOwner, onOpenProviders }) {
           {isOwner ? (
             <button onClick={onOpenProviders} className="font-medium text-brand hover:underline">Escolher os provedores</button>
           ) : (
-            'Só o owner liga os provedores.'
+            'Só o dono do acervo liga os provedores.'
           )}
         </p>
       )}
       {isLoading && <Loading />}
-      {isError && <LoadError onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a fila.</LoadError>}
+      {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a fila.</LoadError>}
       {!isLoading && !isError && works.length === 0 && <Empty>Nenhuma obra com sugestões esperando.</Empty>}
       <ul className="divide-y divide-border-hairline">
         {works.map((work) => (
