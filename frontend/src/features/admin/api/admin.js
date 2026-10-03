@@ -51,6 +51,16 @@ export function useOcr({ live = false } = {}) {
     refetchInterval: (query) => (live || query.state.data?.data?.some((item) => item.state === 'queued' || item.state === 'reading') ? 3000 : false),
   });
 }
+/** The dictionaries the owner may install and where each is. While one is being installed it asks again every two seconds, so
+ *  the download and the import move on their own. */
+export function useDictionaries() {
+  return useQuery({
+    queryKey: ['admin', 'dictionaries', null],
+    queryFn: async () => (await api.get('/admin/dictionaries')).data,
+    staleTime: 0,
+    refetchInterval: (query) => (query.state.data?.packages?.some((p) => p.state === 'installing') ? 2000 : false),
+  });
+}
 export const useAccounts = list('accounts', '/users');
 export const useLdap = list('ldap', '/admin/ldap');
 export const useEmbeddings = list('embeddings', '/admin/embeddings');
@@ -177,5 +187,9 @@ export const useSetOcr = () => useAdminAction(async (settings) => (await api.put
 export const useRetryOcr = () => useAdminAction(async (workId) => (await api.post(`/admin/works/${workId}/ocr/retry`)).data);
 /** Says the language a scanned file is read in was wrong: its pages are read again, from the first, in the one given. */
 export const useSetOcrLanguage = () => useAdminAction(async ({ fileId, language }) => (await api.post(`/admin/files/${fileId}/ocr/language`, { language })).data);
+/** Installs a dictionary (the server downloads it and imports it), cancels the installation, or removes it (owner). */
+export const useInstallDictionary = () => useAdminAction(async (id) => (await api.post(`/admin/dictionaries/${id}/install`)).data);
+export const useCancelDictionary = () => useAdminAction(async (id) => (await api.post(`/admin/dictionaries/${id}/cancel`)).data);
+export const useRemoveDictionary = () => useAdminAction((id) => api.delete(`/admin/dictionaries/${id}`));
 export const useSetEmbeddings = () => useAdminAction(async (settings) => (await api.put('/admin/embeddings', settings)).data);
 export const useCheckLdap = () => useMutation({ mutationFn: async () => (await api.post('/admin/ldap/check')).data });
