@@ -7,7 +7,7 @@ vi.mock('../../../lib/api', () => ({ api: { get: vi.fn() } }));
 
 import { api } from '../../../lib/api';
 import { DictionaryCard } from './DictionaryCard';
-import { getDictionaryTarget, setPreferenceOwner } from '../preferences';
+import { getDictionaryTarget, saveDictionaryTarget, setPreferenceOwner } from '../preferences';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -20,8 +20,20 @@ const source = { package: 'wikt-pt', name: 'Wikcionário em português', license
 const entry = (id, word, pos, data) => ({ id, package: 'wikt-pt', lang: 'pt', word, pos, data });
 const answer = (items, extra = {}) => ({ word: 'x', lang: 'pt', installed: true, items, sources: items.length ? [source] : [], ...extra });
 
-async function open({ word = 'correram', language = 'pt', data = answer([]) } = {}) {
-  api.get.mockResolvedValue({ data });
+const ALL = ['pt', 'en', 'es', 'fr', 'de', 'it', 'ja', 'zh', 'cs', 'nl', 'el', 'id', 'ko', 'ku', 'ms', 'pl', 'ru', 'th', 'tr', 'vi'];
+const installed = (words = ALL, definitions = ALL) => ({ words, definitions });
+const lookups = () => api.get.mock.calls.filter(([url]) => url === '/dictionary');
+// What the server says to each thing it is asked: the languages it has, and the answer to a lookup.
+const serve = (data, languages = installed()) => api.get.mockImplementation(async (url) => {
+  if (url === '/dictionary/languages') {
+    if (languages instanceof Error) throw languages;
+    return { data: languages };
+  }
+  return { data };
+});
+
+async function open({ word = 'correram', language = 'pt', data = answer([]), languages = installed() } = {}) {
+  serve(data, languages);
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => { root.render(<QueryClientProvider client={client}><DictionaryCard word={word} language={language} onClose={onClose} /></QueryClientProvider>); });
   await flush();
@@ -53,21 +65,21 @@ afterEach(() => {
 describe('DictionaryCard: asking', () => {
   it('asks the server for the word, in the language of the file, and says which word it is', async () => {
     await open({ word: 'correram', language: 'pt' });
-    expect(api.get).toHaveBeenCalledTimes(1);
+    expect(lookups()).toHaveLength(1);
     expect(api.get).toHaveBeenCalledWith('/dictionary', { params: { word: 'correram', lang: 'pt', prefer: 'pt' } });
     expect(card().getAttribute('aria-label')).toBe('Dicionário: correram');
     expect(card().textContent).toContain('correram');
     expect(select().value).toBe('pt');
   });
 
-  it('offers the languages of the catalog, and asks again when another is chosen', async () => {
+  it('offers the languages there are, and asks again when another is chosen', async () => {
     await open({ word: '走る', language: 'ja' });
     expect([...select().options].map((o) => o.value)).toEqual(['de', 'zh', 'ko', 'ku', 'es', 'fr', 'el', 'nl', 'id', 'en', 'it', 'ja', 'ms', 'pl', 'pt', 'ru', 'th', 'cs', 'tr', 'vi']);
     expect(select().value).toBe('ja');
     const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
     await act(async () => { set.call(select(), 'zh'); select().dispatchEvent(new Event('change', { bubbles: true })); });
     await flush();
-    expect(api.get).toHaveBeenLastCalledWith('/dictionary', { params: { word: '走る', lang: 'zh', prefer: 'pt' } });
+    expect(lookups().at(-1)[1]).toEqual({ params: { word: '走る', lang: 'zh', prefer: 'pt' } });
     expect(select().value).toBe('zh');
   });
 
@@ -79,7 +91,7 @@ describe('DictionaryCard: asking', () => {
     await act(async () => { root.render(<QueryClientProvider client={client}><DictionaryCard word="livro" language="pt" onClose={onClose} /></QueryClientProvider>); });
     await flush();
     expect(select().value).toBe('pt');
-    expect(api.get).toHaveBeenLastCalledWith('/dictionary', { params: { word: 'livro', lang: 'pt', prefer: 'pt' } });
+    expect(lookups().at(-1)[1]).toEqual({ params: { word: 'livro', lang: 'pt', prefer: 'pt' } });
   });
 
   it('shows a placeholder while it asks, and says it could not when it fails', async () => {
@@ -90,7 +102,9 @@ describe('DictionaryCard: asking', () => {
     act(() => root.unmount());
     root = createRoot(container);
     api.get.mockRejectedValue(new Error('x'));
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); // the first still waits for its answer
     await act(async () => { root.render(<QueryClientProvider client={client}><DictionaryCard word="y" language="pt" onClose={onClose} /></QueryClientProvider>); });
+    await flush();
     await flush();
     expect(container.querySelector('[role="alert"]').textContent).toBe('Não foi possível consultar o dicionário.');
   });
@@ -102,7 +116,7 @@ describe('DictionaryCard: asking', () => {
       await act(async () => { set.call(select(), lang); select().dispatchEvent(new Event('change', { bubbles: true })); });
       await flush();
     }
-    expect(api.get).toHaveBeenCalledTimes(2); // pt, en; and pt again is kept
+    expect(lookups()).toHaveLength(2); // pt, en; and pt again is kept
   });
 });
 
@@ -274,19 +288,19 @@ describe('DictionaryCard: the language of the definitions', () => {
     await open({ word: 'casa' });
     expect(targetSelect().value).toBe('pt');
     expect(card().textContent).toContain('Definições primeiro em');
-    expect(api.get.mock.calls[0][1].params.prefer).toBe('pt');
+    expect(lookups()[0][1].params.prefer).toBe('pt');
   });
 
   it('asks again with the language chosen, and remembers it for the next word and the next time', async () => {
     await open({ word: 'casa' });
     await choose(targetSelect(), 'fr');
-    expect(api.get).toHaveBeenLastCalledWith('/dictionary', { params: { word: 'casa', lang: 'pt', prefer: 'fr' } });
+    expect(lookups().at(-1)[1]).toEqual({ params: { word: 'casa', lang: 'pt', prefer: 'fr' } });
     expect(getDictionaryTarget()).toBe('fr');
     act(() => root.unmount());
     root = createRoot(container);
     await open({ word: 'livro' });
     expect(targetSelect().value).toBe('fr');
-    expect(api.get).toHaveBeenLastCalledWith('/dictionary', { params: { word: 'livro', lang: 'pt', prefer: 'fr' } });
+    expect(lookups().at(-1)[1]).toEqual({ params: { word: 'livro', lang: 'pt', prefer: 'fr' } });
   });
 
   it('keeps the language of the word as it was when the definitions are changed', async () => {
@@ -438,5 +452,154 @@ describe('DictionaryCard: the bridge through English', () => {
     await open({ word: '食べる', language: 'ja', data: bridged(bridge({ candidates: [] })) });
     expect(section().className).toContain('mt-3');
     expect(section().className).not.toContain('mb-3');
+  });
+});
+
+describe('DictionaryCard: only the languages the server has', () => {
+  const words = () => [...select().options].filter((o) => !o.hidden).map((o) => o.value);
+  const definitions = () => [...targetSelect().options].map((o) => o.value);
+  const set = (el, v) => choose(el, v);
+
+  it('asks which languages there are, each time it opens, and offers those for the word', async () => {
+    await open({ word: '走る', language: 'ja', languages: installed(['ja', 'pt', 'it'], ['pt', 'it']) });
+    expect(api.get.mock.calls.filter(([url]) => url === '/dictionary/languages')).toHaveLength(1);
+    expect(words()).toEqual(['it', 'ja', 'pt']); // by the name in Portuguese: italiano, japonês, português
+    expect(select().value).toBe('ja');
+  });
+
+  it('offers only the languages with a dictionary for the definitions, and none that has not one', async () => {
+    await open({ languages: installed(['pt', 'ja', 'ms'], ['pt', 'ja']) });
+    expect(definitions()).toEqual(['ja', 'pt']);
+    expect(definitions()).not.toContain('ms');
+  });
+
+  it('does not offer Malay, to look a word up in or to have it defined in, when it is not installed', async () => {
+    await open({ languages: installed(['pt', 'en'], ['pt', 'en']) });
+    expect(words()).not.toContain('ms');
+    expect(definitions()).not.toContain('ms');
+    expect([...select().options].some((o) => o.value === 'ms')).toBe(false);
+  });
+
+  it('does not ask for the word until it knows the languages, and then asks once', async () => {
+    let release;
+    api.get.mockImplementation((url) => (url === '/dictionary/languages'
+      ? new Promise((resolve) => { release = () => resolve({ data: installed() }); })
+      : Promise.resolve({ data: answer([]) })));
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><DictionaryCard word="casa" language="pt" onClose={onClose} /></QueryClientProvider>); });
+    expect(lookups()).toHaveLength(0);
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    await act(async () => { release(); });
+    await flush();
+    expect(lookups()).toHaveLength(1);
+  });
+
+  it('offers every language when it cannot tell which there are, and looks the word up all the same', async () => {
+    await open({ languages: new Error('down') });
+    expect(words()).toHaveLength(20);
+    expect(definitions()).toHaveLength(20);
+    expect(lookups()).toHaveLength(1);
+    expect(card().textContent).not.toContain('tem palavras de'); // it is not that there is no dictionary: it is not known
+    expect([...select().options].every((o) => !o.hidden)).toBe(true);
+  });
+
+  it('shows the language of the word as the one chosen when there is no dictionary in it, and does not offer it', async () => {
+    await open({ word: 'kata', language: 'ms', languages: installed(['pt', 'ja'], ['pt', 'ja']) });
+    expect(select().value).toBe('ms');
+    expect(words()).toEqual(['ja', 'pt']);
+    const hidden = [...select().options].find((o) => o.value === 'ms');
+    expect(hidden.hidden && hidden.disabled).toBe(true);
+    expect(hidden.textContent).toBe('Malaio');
+  });
+
+  it('says there is no dictionary of that language, and where to install one, and not that it did not find the word', async () => {
+    await open({ word: 'kata', language: 'ms', languages: installed(['pt', 'ja'], ['pt', 'ja']) });
+    expect(card().textContent).toContain('Nenhum dicionário instalado neste servidor tem palavras de Malaio');
+    expect(card().textContent).toContain('Administração → Dicionários');
+    expect(card().textContent).not.toContain('Não achei');
+  });
+
+  it('says nothing of the bridge through English when there is no dictionary of the language to bridge from', async () => {
+    const bridged = answer([], { bridge: { via: 'en', from: 'ms', to: 'pt', available: false, candidates: [{ english: 'x', words: ['y'] }] } });
+    await open({ word: 'kata', language: 'ms', data: bridged, languages: installed(['pt'], ['pt', 'ja']) });
+    expect(card().querySelector('section[aria-label="Via inglês"]')).toBeNull();
+    expect(card().textContent).toContain('tem palavras de Malaio');
+  });
+
+  it('shows the bridge when there is a dictionary of the language', async () => {
+    const bridged = answer([], { bridge: { via: 'en', from: 'ms', to: 'pt', available: false, candidates: [{ english: 'x', words: ['y'] }] } });
+    await open({ word: 'kata', language: 'ms', data: bridged, languages: installed(['pt', 'ms'], ['pt', 'ja']) });
+    expect(card().querySelector('section[aria-label="Via inglês"]')).not.toBeNull();
+  });
+
+  it('says it did not find the word, and not that there is no dictionary, when the language is one there is', async () => {
+    await open({ word: 'xyz', language: 'ja', languages: installed(['pt', 'ja'], ['pt', 'ja']) });
+    expect(card().textContent).toContain('Não achei “xyz” em Japonês');
+    expect(card().textContent).not.toContain('tem palavras de');
+  });
+
+  it('says only that no dictionary is installed when there is none, and not also that of the language', async () => {
+    await open({ data: answer([], { installed: false }), languages: installed([], []) });
+    expect(card().textContent).toContain('Nenhum dicionário está instalado neste servidor');
+    expect(card().textContent).not.toContain('tem palavras de');
+  });
+
+  it('has no choice of language for the definitions when there is one language to choose', async () => {
+    await open({ languages: installed(['pt', 'ja'], ['pt']) });
+    expect(targetSelect()).toBeNull();
+    expect(card().textContent).not.toContain('Definições primeiro em');
+  });
+
+  it('has it when there are two', async () => {
+    await open({ languages: installed(['pt', 'ja'], ['pt', 'ja']) });
+    expect(targetSelect()).not.toBeNull();
+    expect(card().textContent).toContain('Definições primeiro em');
+  });
+
+  it('asks for the definitions in the language of the word when the one remembered has no dictionary', async () => {
+    saveDictionaryTarget('fr'); // remembered, and not installed now
+    await open({ word: '走る', language: 'ja', languages: installed(['pt', 'ja'], ['pt', 'ja']) });
+    expect(lookups().at(-1)[1].params.prefer).toBe('ja');
+    expect(targetSelect().value).toBe('ja');
+    expect(getDictionaryTarget()).toBe('fr'); // what was chosen is not lost
+  });
+
+  it('asks for the definitions in the language of the word, and shows it, when the one remembered has no dictionary (and it is not the first of the list)', async () => {
+    saveDictionaryTarget('fr');
+    await open({ word: 'casa', language: 'pt', languages: installed(['pt', 'ja'], ['pt', 'ja']) });
+    expect(lookups().at(-1)[1].params.prefer).toBe('pt'); // the list is Japanese, Portuguese: the first is not the word's
+    expect(targetSelect().value).toBe('pt');
+    expect([...targetSelect().options].map((o) => o.value)).toEqual(['ja', 'pt']);
+  });
+
+  it('asks every time a card opens, so that a dictionary just installed is there', async () => {
+    const shared = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    serve(answer([]), installed(['pt'], ['pt']));
+    for (let i = 0; i < 2; i += 1) {
+      await act(async () => { root.render(<QueryClientProvider client={shared}><DictionaryCard word="casa" language="pt" onClose={onClose} /></QueryClientProvider>); });
+      await flush();
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+    expect(api.get.mock.calls.filter(([url]) => url === '/dictionary/languages')).toHaveLength(2);
+  });
+
+  it('asks for the definitions in the first language there is when neither the one remembered nor the word\'s has one', async () => {
+    saveDictionaryTarget('fr');
+    await open({ word: 'kata', language: 'ms', languages: installed(['pt', 'ms'], ['de', 'pt']) });
+    expect(lookups().at(-1)[1].params.prefer).toBe('de');
+  });
+
+  it('keeps asking for the language remembered when there is a dictionary in it', async () => {
+    saveDictionaryTarget('ja');
+    await open({ word: 'casa', language: 'pt', languages: installed(['pt', 'ja'], ['pt', 'ja']) });
+    expect(lookups().at(-1)[1].params.prefer).toBe('ja');
+  });
+
+  it('remembers a language chosen from those there are', async () => {
+    await open({ languages: installed(['pt', 'ja'], ['pt', 'ja']) });
+    await set(targetSelect(), 'ja');
+    expect(getDictionaryTarget()).toBe('ja');
+    expect(lookups().at(-1)[1].params.prefer).toBe('ja');
   });
 });

@@ -68,9 +68,9 @@ func rank(items []Item, prefer, lang string) {
 	edition := func(it Item) int {
 		p, _ := Find(it.Entry.Package)
 		switch {
-		case prefer != "" && p.Edition == prefer:
+		case prefer != "" && p.Language() == prefer:
 			return 0
-		case p.Edition == lang:
+		case p.Language() == lang:
 			return 1
 		}
 		return 2
@@ -322,7 +322,7 @@ func reaches(it Item, lang, prefer string) bool {
 	if it.Entry.Lang != lang {
 		return false
 	}
-	if p, ok := Find(it.Entry.Package); ok && p.Edition == prefer {
+	if p, ok := Find(it.Entry.Package); ok && p.Language() == prefer {
 		return true
 	}
 	var data struct {

@@ -89,6 +89,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	ocrAdmin := &OCRHandler{DB: db}
 	r.Get("/admin/ocr", ocrAdmin.List)
 	r.Get("/dictionary", dictionaryLookup.Lookup)
+	r.Get("/dictionary/languages", dictionaryLookup.Languages)
 	r.Get("/admin/dictionaries", dictionaryAdmin.List)
 	r.Post("/admin/dictionaries/{id}/install", dictionaryAdmin.Install)
 	r.Post("/admin/dictionaries/{id}/cancel", dictionaryAdmin.Cancel)

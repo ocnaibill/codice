@@ -68,6 +68,7 @@ const toasts = () => useToasts.getState().items;
 async function open(format, { saved = null, language = 'pt' } = {}) {
   api.get.mockImplementation(async (url) => {
     if (url === '/works/7') return { data: work(format, language) };
+    if (url === '/dictionary/languages') return { data: { words: ['pt', 'en', 'ja', 'ko'], definitions: ['pt', 'en'] } };
     if (url === '/dictionary') return { data: { word: 'x', lang: 'pt', installed: true, items: [], sources: [] } };
     if (url.startsWith('/progress/files/')) return { data: { revision: 1, position: '', locator: saved } };
     if (url === '/notes') return { data: { data: notes, total: notes.length } };

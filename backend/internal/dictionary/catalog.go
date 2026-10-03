@@ -61,6 +61,15 @@ type Package struct {
 	Installable bool `json:"installable"`
 }
 
+// Language is the language the package's definitions are in: its edition's, except for the "simple" edition, which is
+// English in a simpler form.
+func (p Package) Language() string {
+	if p.Edition == "simple" {
+		return "en"
+	}
+	return p.Edition
+}
+
 // Host is the only host a package is downloaded from.
 const Host = "kaikki.org"
 

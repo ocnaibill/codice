@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useDictionaryLookup } from '../api/useDictionaryLookup';
+import { useDictionaryLanguages } from '../api/useDictionaryLanguages';
 import { LOOKUP_LANGUAGES, groupTranslations, languageName, posLabel, senseFormOf, tagsLine, visibleSenses } from '../dictionaryLookup';
 import { getDictionaryTarget, saveDictionaryTarget } from '../preferences';
 
@@ -132,7 +133,20 @@ export function DictionaryCard({ word, language, onClose }) {
     setTarget(code);
     saveDictionaryTarget(code);
   };
-  const { data, isLoading, isError } = useDictionaryLookup({ word, lang, prefer: target });
+  // What the installed dictionaries can be asked in: only that is offered. Until it is known the lookup waits (it would be
+  // asked twice otherwise, once with the language remembered and once with the one that can be had); if it cannot be known,
+  // every language is offered, as before.
+  const installed = useDictionaryLanguages();
+  const known = installed.data ?? null;
+  const settled = !installed.isLoading;
+  const wordLanguages = known ? LOOKUP_LANGUAGES.filter(([c]) => known.words.includes(c)) : LOOKUP_LANGUAGES;
+  const definitionLanguages = known ? LOOKUP_LANGUAGES.filter(([c]) => known.definitions.includes(c)) : LOOKUP_LANGUAGES;
+  // The language the definitions come first in: the one remembered, when there is a dictionary in it; else the one of the
+  // word, or the first there is. The one remembered is not lost: it is there again when a dictionary in it is installed.
+  const definitionCodes = definitionLanguages.map(([c]) => c);
+  const wanted = !known || definitionCodes.includes(target) ? target : (definitionCodes.includes(lang) ? lang : (definitionCodes[0] ?? target));
+  const wordAvailable = !known || known.words.includes(lang);
+  const { data, isLoading, isError } = useDictionaryLookup({ word, lang, prefer: wanted, enabled: settled });
 
   useEffect(() => {
     const onKey = (event) => {
@@ -153,7 +167,8 @@ export function DictionaryCard({ word, language, onClose }) {
   }
   // What the bridge found is what the person is after when the dictionaries do not link the two languages, and the English
   // entries that come before it are only its first step: it is shown first, and the entries after.
-  const bridgeFirst = (data?.bridge?.candidates?.length ?? 0) > 0;
+  const bridge = wordAvailable ? data?.bridge : null; // with no dictionary of the language there is nothing to bridge from
+  const bridgeFirst = (bridge?.candidates?.length ?? 0) > 0;
   const showGroups = new Set(items.map((i) => i.entry.package)).size > 1;
   return (
     <aside
@@ -173,7 +188,9 @@ export function DictionaryCard({ word, language, onClose }) {
             aria-label="Idioma da palavra"
             className="min-h-11 rounded-lg border border-border-hairline bg-white px-2 text-[13px] text-ink"
           >
-            {LOOKUP_LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+            {wordLanguages.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+            {/* the language of the word when there is no dictionary in it: shown as the one chosen, and not offered */}
+            {!wordAvailable && <option value={lang} disabled hidden>{languageName(lang)}</option>}
           </select>
           <button onClick={onClose} aria-label="Fechar o dicionário" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-surface-alt text-lg text-ink-soft hover:bg-border-hairline hover:text-ink">
             ✕
@@ -181,39 +198,48 @@ export function DictionaryCard({ word, language, onClose }) {
         </div>
       </header>
 
-      <label className="flex shrink-0 items-center justify-between gap-3 border-b border-border-hairline px-4 py-1.5 text-[12px] text-ink-soft">
-        Definições primeiro em
-        <select
-          value={target}
-          onChange={(event) => chooseTarget(event.target.value)}
-          className="min-h-11 rounded-lg border border-border-hairline bg-white px-2 text-[13px] text-ink"
-        >
-          {LOOKUP_LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-        </select>
-      </label>
+      {/* with one language to choose there is nothing to choose */}
+      {(!known || definitionLanguages.length > 1) && (
+        <label className="flex shrink-0 items-center justify-between gap-3 border-b border-border-hairline px-4 py-1.5 text-[12px] text-ink-soft">
+          Definições primeiro em
+          <select
+            value={wanted}
+            onChange={(event) => chooseTarget(event.target.value)}
+            className="min-h-11 rounded-lg border border-border-hairline bg-white px-2 text-[13px] text-ink"
+          >
+            {definitionLanguages.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+          </select>
+        </label>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {isLoading && <Skeleton label="Procurando a palavra" className="h-24 w-full" />}
+        {(isLoading || !settled) && <Skeleton label="Procurando a palavra" className="h-24 w-full" />}
         {isError && <p role="alert" className="text-sm text-danger">Não foi possível consultar o dicionário.</p>}
         {data && !data.installed && (
           <p className="text-sm text-ink-soft">
             Nenhum dicionário está instalado neste servidor. O dono do acervo pode instalar um em Administração → Dicionários.
           </p>
         )}
-        {data?.installed && data.items.length === 0 && !(data.bridge?.candidates?.length > 0) && (
+        {data?.installed && !wordAvailable && (
+          <p className="text-sm text-ink-soft">
+            Nenhum dicionário instalado neste servidor tem palavras de {languageName(lang)}. O dono do acervo pode instalar um em
+            Administração → Dicionários.
+          </p>
+        )}
+        {data?.installed && wordAvailable && data.items.length === 0 && !bridgeFirst && (
           <p className="text-sm text-ink-soft">
             Não achei “{word}” em {languageName(lang)}. Se a palavra é de outro idioma, troque o idioma acima; se está flexionada ou com grafia
             diferente, tente selecionar só a palavra.
           </p>
         )}
-        {bridgeFirst && <Bridge bridge={data.bridge} word={word} first />}
+        {bridgeFirst && <Bridge bridge={bridge} word={word} first />}
         {groups.map((group) => (
           <section key={group.package}>
             {showGroups && <h2 className="mb-1 mt-3 font-mono text-[10px] uppercase tracking-widest text-ink-faint first:mt-0">{sourceName(group.package)}</h2>}
             {group.items.map((item) => <Entry key={`${item.kind}-${item.entry.id}`} item={item} prefer={target} />)}
           </section>
         ))}
-        {data?.bridge && !bridgeFirst && <Bridge bridge={data.bridge} word={word} />}
+        {bridge && !bridgeFirst && <Bridge bridge={bridge} word={word} />}
       </div>
 
       {data?.sources.length > 0 && (
