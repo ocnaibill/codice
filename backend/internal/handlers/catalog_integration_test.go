@@ -68,6 +68,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	byID := &FileByIDHandler{DB: db, StorageRoot: storageDir}
 	pages := &PageHandler{DB: db}
 	embeddingsAdmin := &EmbeddingsAdminHandler{DB: db}
+	dictionaryAdmin := &DictionaryAdminHandler{DB: db}
 
 	r := chi.NewRouter()
 	r.Use(identityFromHeaders)
@@ -86,6 +87,10 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/file/{id}", byID.ServeHTTP)
 	ocrAdmin := &OCRHandler{DB: db}
 	r.Get("/admin/ocr", ocrAdmin.List)
+	r.Get("/admin/dictionaries", dictionaryAdmin.List)
+	r.Post("/admin/dictionaries/{id}/install", dictionaryAdmin.Install)
+	r.Post("/admin/dictionaries/{id}/cancel", dictionaryAdmin.Cancel)
+	r.Delete("/admin/dictionaries/{id}", dictionaryAdmin.Remove)
 	r.Post("/admin/works/{id}/ocr/retry", ocrAdmin.Retry)
 	r.Post("/admin/files/{fileId}/ocr/language", ocrAdmin.SetLanguage)
 	ocrSettings := &OCRSettingsHandler{DB: db}
