@@ -5,6 +5,7 @@ import { getEpubSettings, saveEpubSettings } from '../../preferences';
 import { readingStyle } from '../../readingStyle';
 import { sanitizeSettings } from '../../epubThemes';
 import { scrollFraction, scrollerOf, useScrollPosition } from '../../scrollPosition';
+import { useSelectionWatcher } from '../../useSelectionWatcher';
 import ReadingSettingsPanel from './ReadingSettingsPanel';
 
 const iconProps = { viewBox: '0 0 24 24', width: 18, height: 18, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
@@ -21,7 +22,7 @@ const control =
  */
 export default function ReadingSurface({
   content, loading, error, onRetry, loadingLabel, errorTitle, emptyText,
-  immersive = false, onImmersiveChange, onProgress, initialProgress, children,
+  immersive = false, onImmersiveChange, onProgress, initialProgress, onSelection, children,
 }) {
   const [settings, setSettings] = useState(() => getEpubSettings());
   const [panel, setPanel] = useState(false);
@@ -32,6 +33,20 @@ export default function ReadingSurface({
   const fractionRef = useRef(0); // how far through the text the person is, to stay there when the text is laid out again
   const ready = !loading && !error;
   useScrollPosition({ ref: textRef, ready, length: content.length, onProgress, initialProgress });
+  // What is selected in the text is told to whoever offers what to do with it (the menu by the selection).
+  // It is tied to where it is in the text: the offset of the file, which for a plain text is exact (the page is the
+  // file), and for Markdown is the same fraction of the text (what is shown is not what is written).
+  useSelectionWatcher(
+    textRef,
+    (found) => {
+      if (!onSelection) return;
+      if (!found) return onSelection(null);
+      const { before, total, ...rest } = found;
+      const offset = total > 0 ? Math.round((before / total) * content.length) : 0;
+      onSelection({ ...rest, locator: { type: 'text', offset } });
+    },
+    ready && !!onSelection
+  );
 
   const style = readingStyle(settings);
   const change = (patch) => {

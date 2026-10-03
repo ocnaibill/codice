@@ -5,10 +5,20 @@ import { parseTags, placeLabel } from '../files';
 import { NoteFields, NoteItem } from './NoteItem';
 import { reason } from '../noteText';
 
-function NewNote({ workId, fileId, getLocator }) {
+// `selected` is a passage the person selected in the text and asked to write on: it comes in the quote field, tied to
+// the place of the selection when the viewer gave one (and, until saved, not to where the reader is now).
+function NewNote({ workId, fileId, getLocator, selected }) {
   const create = useCreateNote(workId);
-  const [draft, setDraft] = useState({ quote: '', body: '', tags: '' });
-  const locator = getLocator();
+  const [draft, setDraft] = useState({ quote: selected?.quote ?? '', body: '', tags: '' });
+  const [anchor, setAnchor] = useState(selected?.locator ?? null);
+  const taken = useRef(selected?.n);
+  useEffect(() => {
+    if (!selected || taken.current === selected.n) return;
+    taken.current = selected.n;
+    setDraft((d) => ({ ...d, quote: selected.quote }));
+    setAnchor(selected.locator ?? null);
+  }, [selected]);
+  const locator = anchor ?? getLocator();
   const empty = !draft.quote.trim() && !draft.body.trim();
 
   const place = { ...(fileId && locator ? { fileId, locator } : {}) };
@@ -22,7 +32,7 @@ function NewNote({ workId, fileId, getLocator }) {
         tags: parseTags(draft.tags),
         ...place,
       },
-      { onSuccess: () => setDraft({ quote: '', body: '', tags: '' }) }
+      { onSuccess: () => { setDraft({ quote: '', body: '', tags: '' }); setAnchor(null); } }
     );
 
   const bookmark = () => create.mutate({ kind: 'bookmark', ...place });
@@ -64,7 +74,7 @@ function NewNote({ workId, fileId, getLocator }) {
  * bookmarks, tied to the exact place in the file when there is one. Nothing here is shown to
  * anyone else. The text of a note is Markdown and is rendered without HTML.
  */
-export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose }) {
+export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose, draft }) {
   const { data, isLoading, isError } = useWorkNotes(workId);
   const notes = data?.data ?? [];
   const total = data?.total ?? notes.length;
@@ -131,7 +141,7 @@ export function NotesPanel({ workId, fileId, getLocator, onOpenAt, onClose }) {
       </header>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-5">
-        <NewNote workId={workId} fileId={fileId} getLocator={getLocator} />
+        <NewNote workId={workId} fileId={fileId} getLocator={getLocator} selected={draft} />
 
         <section aria-label="Anotações salvas">
           <div className="mb-3 flex items-center justify-between gap-2">

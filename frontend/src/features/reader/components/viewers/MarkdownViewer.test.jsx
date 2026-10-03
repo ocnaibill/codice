@@ -74,6 +74,34 @@ describe('the Markdown reader', () => {
     expect(q('img').getAttribute('src')).toBe('https://example.test/capa.png');
   });
 
+  it('is tied to a place in the text: the same fraction of the file as of what is shown', async () => {
+    const onSelection = vi.fn();
+    const doc = '# Início\n\nUm parágrafo de abertura.\n\n## Meio\n\nOutro parágrafo, mais ao meio.\n\n## Fim\n\nUltimo parágrafo.\n';
+    await open(doc, { onSelection });
+    const shown = q('[data-reading-text]');
+    const nodes = [...shown.querySelectorAll('p')].map((p) => p.firstChild);
+    const place = async (node, from, to) => {
+      const range = document.createRange();
+      range.setStart(node, from);
+      range.setEnd(node, to);
+      const s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(range);
+      await act(async () => { document.dispatchEvent(new Event('selectionchange')); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+      return onSelection.mock.calls.at(-1)[0];
+    };
+    Range.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1, height: 1, bottom: 1, right: 1 });
+    const first = await place(nodes[0], 0, 5);
+    const last = await place(nodes[2], 0, 6);
+    expect(first.locator.type).toBe('text');
+    expect(first.locator.offset).toBeGreaterThan(0);
+    expect(last.locator.offset).toBeGreaterThan(first.locator.offset);
+    expect(last.locator.offset).toBeLessThanOrEqual(doc.length);
+    delete Range.prototype.getBoundingClientRect;
+    window.getSelection().removeAllRanges();
+  });
+
   it('does not interpret raw HTML in the file', async () => {
     await open();
     expect(q('script')).toBeNull();
