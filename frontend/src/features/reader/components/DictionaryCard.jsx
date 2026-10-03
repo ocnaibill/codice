@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useDictionaryLookup } from '../api/useDictionaryLookup';
-import { LOOKUP_LANGUAGES, posLabel, senseFormOf, tagsLine, visibleSenses } from '../dictionaryLookup';
+import { LOOKUP_LANGUAGES, groupTranslations, languageName, posLabel, senseFormOf, tagsLine, visibleSenses } from '../dictionaryLookup';
+import { getDictionaryTarget, saveDictionaryTarget } from '../preferences';
 
 function Senses({ data }) {
   const [open, setOpen] = useState(false);
@@ -34,7 +35,24 @@ function Senses({ data }) {
   );
 }
 
-function Entry({ item }) {
+function Translations({ data, prefer }) {
+  const groups = groupTranslations(data?.translations, prefer);
+  if (groups.length === 0) return null;
+  return (
+    <p className="mt-2 text-[13px] leading-snug text-ink-soft">
+      <span className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">Tradução</span>
+      {groups.map((g) => (
+        <span key={g.lang} className="mt-0.5 block">
+          <span className="text-ink-faint">{g.name}: </span>
+          <span className="text-ink">{g.words.join(', ')}</span>
+          {g.more > 0 && <span className="text-ink-faint"> e mais {g.more}</span>}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+function Entry({ item, prefer }) {
   const { entry } = item;
   const data = typeof entry.data === 'string' ? JSON.parse(entry.data) : entry.data;
   return (
@@ -57,6 +75,7 @@ function Entry({ item }) {
         {data?.ipa && <span className="font-mono text-[11px] text-ink-faint">{data.ipa}</span>}
       </h3>
       <Senses data={data} />
+      <Translations data={data} prefer={prefer} />
     </article>
   );
 }
@@ -69,7 +88,12 @@ function Entry({ item }) {
 export function DictionaryCard({ word, language, onClose }) {
   const [lang, setLang] = useState(language);
   useEffect(() => setLang(language), [language, word]);
-  const { data, isLoading, isError } = useDictionaryLookup({ word, lang });
+  const [target, setTarget] = useState(getDictionaryTarget);
+  const chooseTarget = (code) => {
+    setTarget(code);
+    saveDictionaryTarget(code);
+  };
+  const { data, isLoading, isError } = useDictionaryLookup({ word, lang, prefer: target });
 
   useEffect(() => {
     const onKey = (event) => {
@@ -79,7 +103,16 @@ export function DictionaryCard({ word, language, onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const languageName = LOOKUP_LANGUAGES.find(([c]) => c === lang)?.[1] ?? lang;
+  // With the words of more than one package, each is said under the name of the package it comes from.
+  const items = data?.items ?? [];
+  const sourceName = (id) => data?.sources.find((s) => s.package === id)?.name ?? id;
+  const groups = [];
+  for (const item of items) {
+    const last = groups[groups.length - 1];
+    if (last && last.package === item.entry.package) last.items.push(item);
+    else groups.push({ package: item.entry.package, items: [item] });
+  }
+  const showGroups = new Set(items.map((i) => i.entry.package)).size > 1;
   return (
     <aside
       role="dialog"
@@ -106,6 +139,17 @@ export function DictionaryCard({ word, language, onClose }) {
         </div>
       </header>
 
+      <label className="flex shrink-0 items-center justify-between gap-3 border-b border-border-hairline px-4 py-1.5 text-[12px] text-ink-soft">
+        Definições primeiro em
+        <select
+          value={target}
+          onChange={(event) => chooseTarget(event.target.value)}
+          className="min-h-11 rounded-lg border border-border-hairline bg-white px-2 text-[13px] text-ink"
+        >
+          {LOOKUP_LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+        </select>
+      </label>
+
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {isLoading && <Skeleton label="Procurando a palavra" className="h-24 w-full" />}
         {isError && <p role="alert" className="text-sm text-danger">Não foi possível consultar o dicionário.</p>}
@@ -116,11 +160,16 @@ export function DictionaryCard({ word, language, onClose }) {
         )}
         {data?.installed && data.items.length === 0 && (
           <p className="text-sm text-ink-soft">
-            Não achei “{word}” em {languageName}. Se a palavra é de outro idioma, troque o idioma acima; se está flexionada ou com grafia
+            Não achei “{word}” em {languageName(lang)}. Se a palavra é de outro idioma, troque o idioma acima; se está flexionada ou com grafia
             diferente, tente selecionar só a palavra.
           </p>
         )}
-        {data?.items.map((item) => <Entry key={`${item.kind}-${item.entry.id}`} item={item} />)}
+        {groups.map((group) => (
+          <section key={group.package}>
+            {showGroups && <h2 className="mb-1 mt-3 font-mono text-[10px] uppercase tracking-widest text-ink-faint first:mt-0">{sourceName(group.package)}</h2>}
+            {group.items.map((item) => <Entry key={`${item.kind}-${item.entry.id}`} item={item} prefer={target} />)}
+          </section>
+        ))}
       </div>
 
       {data?.sources.length > 0 && (

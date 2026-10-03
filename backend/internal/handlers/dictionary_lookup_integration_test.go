@@ -27,6 +27,7 @@ type lookupItem struct {
 type lookupResult struct {
 	Word      string       `json:"word"`
 	Lang      string       `json:"lang"`
+	Prefer    string       `json:"prefer"`
 	Installed bool         `json:"installed"`
 	Items     []lookupItem `json:"items"`
 	Sources   []struct {
@@ -417,5 +418,127 @@ func TestDictionaryLookup_AnswersWithTheWordWithoutTheSpacesAroundIt(t *testing.
 	rec = s.do(ana, "GET", "/dictionary?lang=pt&word=...", "")
 	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "Nenhuma palavra para procurar") {
 		t.Fatalf("no letters: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Two dictionaries that both know a German word: the Portuguese Wiktionary (a gloss in Portuguese) and the German one.
+func twoDictionaries(t *testing.T, s *catalogStack) {
+	t.Helper()
+	s.exec(`INSERT INTO dictionary_packages (id, state, source_url) VALUES ('wikt-pt', 'ready', 'x'), ('wikt-de', 'ready', 'x'), ('wikt-it', 'ready', 'x')`)
+	s.exec(`INSERT INTO dictionary_entries (package_id, lang, word, norm, pos, data) VALUES
+		('wikt-pt', 'de', 'Haus', 'haus', 'noun', '{"senses":[{"glosses":["casa"]}]}'),
+		('wikt-de', 'de', 'Haus', 'haus', 'noun', '{"senses":[{"glosses":["Gebäude zum Wohnen"]}]}'),
+		('wikt-it', 'de', 'Haus', 'haus', 'noun', '{"senses":[{"glosses":["casa"]}]}'),
+		('wikt-de', 'de', 'Haus', 'haus', 'verb', '{"senses":[{"glosses":["x"]}]}')`)
+}
+
+func packagesOf(res lookupResult) string {
+	var out []string
+	for _, it := range res.Items {
+		out = append(out, it.Entry.Package+":"+it.Entry.Pos)
+	}
+	return strings.Join(out, " ")
+}
+
+func lookupPreferring(t *testing.T, s *catalogStack, lang, prefer, word string) lookupResult {
+	t.Helper()
+	rec := s.do(ana, "GET", "/dictionary?lang="+lang+"&prefer="+url.QueryEscape(prefer)+"&word="+url.QueryEscape(word), "")
+	if rec.Code != 200 {
+		t.Fatalf("lookup: %d %s", rec.Code, rec.Body.String())
+	}
+	var res lookupResult
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	return res
+}
+
+func TestDictionaryLookup_TheDefinitionsInTheLanguageThePersonWantsComeFirst(t *testing.T) {
+	s := newCatalogStack(t)
+	twoDictionaries(t, s)
+	// Reading German, wanting Portuguese: the Portuguese Wiktionary, then the German one (the language of the word), then the rest.
+	if got := packagesOf(lookupPreferring(t, s, "de", "pt", "Haus")); got != "wikt-pt:noun wikt-de:noun wikt-de:verb wikt-it:noun" {
+		t.Fatalf("prefer pt: %s", got)
+	}
+	// Wanting Italian: the Italian one, then the German.
+	if got := packagesOf(lookupPreferring(t, s, "de", "it", "Haus")); got != "wikt-it:noun wikt-de:noun wikt-de:verb wikt-pt:noun" {
+		t.Fatalf("prefer it: %s", got)
+	}
+	// Wanting the language of the word: its own Wiktionary first.
+	if got := packagesOf(lookupPreferring(t, s, "de", "de", "Haus")); got != "wikt-de:noun wikt-de:verb wikt-it:noun wikt-pt:noun" {
+		t.Fatalf("prefer de: %s", got)
+	}
+}
+
+func TestDictionaryLookup_WithNoPreferenceTheWiktionaryOfTheWordsOwnLanguageComesFirst(t *testing.T) {
+	s := newCatalogStack(t)
+	twoDictionaries(t, s)
+	if got := packagesOf(lookup(t, s, "de", "Haus")); got != "wikt-de:noun wikt-de:verb wikt-it:noun wikt-pt:noun" {
+		t.Fatalf("no preference: %s", got)
+	}
+	// A preference for a language with no dictionary installed changes nothing.
+	if got := packagesOf(lookupPreferring(t, s, "de", "ja", "Haus")); got != "wikt-de:noun wikt-de:verb wikt-it:noun wikt-pt:noun" {
+		t.Fatalf("prefer ja: %s", got)
+	}
+}
+
+func TestDictionaryLookup_RanksWithoutBreakingUpWhatBelongsTogether(t *testing.T) {
+	s := newCatalogStack(t)
+	stockedDictionary(t, s)
+	// One package: the order inside it is what it always was.
+	if got := kinds(lookupPreferring(t, s, "pt", "pt", "correram")); got != "entry:correram:verb lemma:correr:verb" {
+		t.Fatalf("items: %s", got)
+	}
+	if got := kinds(lookupPreferring(t, s, "pt", "en", "livro")); got != "entry:livro:noun entry:livro:verb lemma:livrar:verb" {
+		t.Fatalf("items: %s", got)
+	}
+}
+
+func TestDictionaryLookup_TakesThePreferredLanguageAsABaseCodeAndRefusesWhatIsNotOne(t *testing.T) {
+	s := newCatalogStack(t)
+	stockedDictionary(t, s)
+	if res := lookupPreferring(t, s, "pt", "PT-br", "correr"); res.Prefer != "pt" {
+		t.Fatalf("prefer: %q", res.Prefer)
+	}
+	if res := lookup(t, s, "pt", "correr"); res.Prefer != "" {
+		t.Fatalf("prefer when not asked: %q", res.Prefer)
+	}
+	for _, q := range []string{"prefer=x", "prefer=1t", "prefer=portuguese", "prefer=..%2F", "prefer=pt%27"} {
+		if rec := s.do(ana, "GET", "/dictionary?lang=pt&word=casa&"+q, ""); rec.Code != 400 {
+			t.Errorf("%s: %d", q, rec.Code)
+		}
+	}
+}
+
+func TestDictionaryLookup_WhatTwoPackagesOfTheSameRankFindDoesNotMix(t *testing.T) {
+	s := newCatalogStack(t)
+	s.exec(`INSERT INTO dictionary_packages (id, state, source_url) VALUES ('wikt-it', 'ready', 'x'), ('wikt-fr', 'ready', 'x')`)
+	s.exec(`INSERT INTO dictionary_entries (package_id, lang, word, norm, pos, data) VALUES
+		('wikt-it', 'de', 'Haus', 'haus', 'noun', '{"senses":[{"glosses":["casa"]}]}'),
+		('wikt-fr', 'de', 'Haus', 'haus', 'noun', '{"senses":[{"glosses":["maison"]}]}'),
+		('wikt-it', 'de', 'Haus', 'haus', 'verb', '{"senses":[{"glosses":["x"]}]}'),
+		('wikt-fr', 'de', 'Haus', 'haus', 'verb', '{"senses":[{"glosses":["y"]}]}')`)
+	if got := packagesOf(lookup(t, s, "de", "Haus")); got != "wikt-fr:noun wikt-fr:verb wikt-it:noun wikt-it:verb" {
+		t.Fatalf("items: %s", got)
+	}
+}
+
+func TestDictionaryLookup_TheEditionOfTheWordComesBeforeTheOthersWhateverTheirNames(t *testing.T) {
+	s := newCatalogStack(t)
+	s.exec(`INSERT INTO dictionary_packages (id, state, source_url) VALUES ('wikt-pt', 'ready', 'x'), ('wikt-de', 'ready', 'x')`)
+	s.exec(`INSERT INTO dictionary_entries (package_id, lang, word, norm, pos, data) VALUES
+		('wikt-de', 'pt', 'casa', 'casa', 'noun', '{"senses":[{"glosses":["Haus"]}]}'),
+		('wikt-pt', 'pt', 'casa', 'casa', 'noun', '{"senses":[{"glosses":["moradia"]}]}')`)
+	if got := packagesOf(lookup(t, s, "pt", "casa")); got != "wikt-pt:noun wikt-de:noun" {
+		t.Fatalf("the edition of the word's language is first: %s", got)
+	}
+}
+
+func TestDictionaryLookup_APackageThatIsNotInTheCatalogComesLastWithoutAPreference(t *testing.T) {
+	s := newCatalogStack(t)
+	s.exec(`INSERT INTO dictionary_packages (id, state, source_url) VALUES ('wikt-pt', 'ready', 'x'), ('antigo', 'ready', 'x')`)
+	s.exec(`INSERT INTO dictionary_entries (package_id, lang, word, norm, pos, data) VALUES
+		('antigo', 'pt', 'casa', 'casa', 'noun', '{"senses":[{"glosses":["a"]}]}'),
+		('wikt-pt', 'pt', 'casa', 'casa', 'noun', '{"senses":[{"glosses":["b"]}]}')`)
+	if got := packagesOf(lookup(t, s, "pt", "casa")); got != "wikt-pt:noun antigo:noun" {
+		t.Fatalf("items: %s", got)
 	}
 }

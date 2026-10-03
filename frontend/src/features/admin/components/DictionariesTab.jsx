@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatBytes } from '../format';
-import { coverageLabel, percent, progressLine, readyLine, sizeLine } from '../dictionaryText';
+import { coverageLabel, isBig, matchesSearch, orderPackages, percent, progressLine, readyLine, sizeLine } from '../dictionaryText';
 import { describeError, useCancelDictionary, useDictionaries, useInstallDictionary, useRemoveDictionary } from '../api/admin';
 import { Btn, ErrorNote, Loading, Section } from './ui';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -99,6 +99,11 @@ const QUESTIONS = {
           {pkg.license}) e importar no banco{pkg.storageBytes ? <>, onde passa a ocupar cerca de <strong>{formatBytes(pkg.storageBytes)}</strong></> : null}.
         </p>
         <p className="mt-2">Leva alguns minutos, em segundo plano, e você pode usar o Códice enquanto isso. Dá para cancelar a qualquer momento.</p>
+        {isBig(pkg) && (
+          <p className="mt-2 font-medium text-ink">
+            É um arquivo grande: pode levar bem mais tempo para baixar e para importar, e ocupar bastante espaço no banco.
+          </p>
+        )}
       </>
     ),
     choices: [{ label: 'Baixar e instalar', value: 'go', tone: 'primary' }],
@@ -132,6 +137,7 @@ export function DictionariesTab({ isOwner }) {
   const cancel = useCancelDictionary();
   const remove = useRemoveDictionary();
   const [question, setQuestion] = useState(null);
+  const [search, setSearch] = useState('');
 
   const run = { install, update: install, cancel, remove };
   const choose = async () => {
@@ -148,6 +154,7 @@ export function DictionariesTab({ isOwner }) {
   if (isLoading) return <Loading />;
   if (isError || !data) return <ErrorNote>Não foi possível carregar os dicionários.</ErrorNote>;
   const dialog = question && QUESTIONS[question.kind](question.pkg);
+  const shown = orderPackages(data.packages).filter((pkg) => matchesSearch(pkg, search));
   return (
     <>
       <Section
@@ -156,10 +163,28 @@ export function DictionariesTab({ isOwner }) {
       >
         <ThirdParty />
         {!isOwner && <p className="mt-3 text-[13px] text-ink-faint">Só o dono do acervo instala, atualiza e remove dicionários.</p>}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar um idioma (por exemplo, japonês)"
+            aria-label="Buscar um idioma"
+            className="min-h-11 w-full max-w-sm rounded-lg border border-border-hairline bg-white px-3 text-[14px] text-ink outline-none focus:border-brand"
+          />
+          <span className="text-[12px] text-ink-faint" aria-live="polite">
+            {search.trim() ? `${shown.length} de ${data.packages.length} dicionários` : `${data.packages.length} dicionários`}
+          </span>
+        </div>
         <ErrorNote>{failure && describeError(failure.error)}</ErrorNote>
       </Section>
+      {shown.length === 0 && (
+        <p className="mt-4 text-[13px] text-ink-soft">
+          Nenhum dicionário para “{search.trim()}”. Cada Wikcionário traz as definições no próprio idioma; os que o Códice sabe instalar estão na lista inteira (apague a busca).
+        </p>
+      )}
       <ul className="mt-4 flex flex-col gap-3">
-        {data.packages.map((pkg) => (
+        {shown.map((pkg) => (
           <Package key={pkg.id} pkg={pkg} isOwner={isOwner} ask={(p, kind) => setQuestion({ pkg: p, kind })} />
         ))}
       </ul>

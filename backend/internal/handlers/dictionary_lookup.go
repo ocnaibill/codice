@@ -22,15 +22,22 @@ const maxLookupWord = 80
 
 var langCode = regexp.MustCompile(`^[a-z]{2,3}$`)
 
+// baseLanguage is the language of a code that may name a region: pt-BR, pt_BR and PT are pt.
+func baseLanguage(code string) string {
+	code = strings.ToLower(strings.TrimSpace(code))
+	if i := strings.IndexAny(code, "-_"); i >= 0 {
+		code = code[:i]
+	}
+	return code
+}
+
 // Lookup answers GET /dictionary?lang=pt&word=correram. The language is the one the word is in, as a code (pt, pt-BR and
 // pt_BR are all pt).
 func (h *DictionaryLookupHandler) Lookup(w http.ResponseWriter, r *http.Request) {
 	word := strings.TrimSpace(r.URL.Query().Get("word"))
-	lang := strings.ToLower(r.URL.Query().Get("lang"))
-	if i := strings.IndexAny(lang, "-_"); i >= 0 {
-		lang = lang[:i]
-	}
-	if word == "" || !langCode.MatchString(lang) {
+	lang := baseLanguage(r.URL.Query().Get("lang"))
+	prefer := baseLanguage(r.URL.Query().Get("prefer"))
+	if word == "" || !langCode.MatchString(lang) || (prefer != "" && !langCode.MatchString(prefer)) {
 		http.Error(w, "Informe a palavra e o idioma.", http.StatusBadRequest)
 		return
 	}
@@ -38,7 +45,7 @@ func (h *DictionaryLookupHandler) Lookup(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "O trecho é longo demais para procurar no dicionário.", http.StatusBadRequest)
 		return
 	}
-	res, err := dictionary.Lookup(r.Context(), h.DB, lang, word)
+	res, err := dictionary.Lookup(r.Context(), h.DB, lang, prefer, word)
 	if errors.Is(err, dictionary.ErrNoWord) {
 		http.Error(w, "Nenhuma palavra para procurar.", http.StatusBadRequest)
 		return

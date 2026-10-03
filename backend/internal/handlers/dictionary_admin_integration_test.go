@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/ocnaibill/codice/backend/internal/dictionary"
 )
 
 type dictPackage struct {
@@ -40,7 +42,7 @@ func dictList(t *testing.T, s *catalogStack) map[string]dictPackage {
 func TestDictionaryAdmin_ListsTheCatalogWithNothingInstalled(t *testing.T) {
 	s := newCatalogStack(t)
 	list := dictList(t, s)
-	if len(list) != 6 {
+	if len(list) != 20 {
 		t.Fatalf("packages: %d", len(list))
 	}
 	for id, p := range list {
@@ -48,8 +50,8 @@ func TestDictionaryAdmin_ListsTheCatalogWithNothingInstalled(t *testing.T) {
 			t.Errorf("%s: %+v", id, p)
 		}
 	}
-	if !list["wikt-pt"].Installable || list["wikt-fr"].Installable {
-		t.Fatalf("installable: pt %v, fr %v", list["wikt-pt"].Installable, list["wikt-fr"].Installable)
+	if !list["wikt-pt"].Installable || !list["wikt-fr"].Installable || !list["wikt-vi"].Installable {
+		t.Fatalf("installable: pt %v, fr %v, vi %v", list["wikt-pt"].Installable, list["wikt-fr"].Installable, list["wikt-vi"].Installable)
 	}
 	// The address the worker downloads from is the server's business: it is not in what a browser is told.
 	if strings.Contains(s.do(admin, "GET", "/admin/dictionaries", "").Body.String(), "kaikki.org/dictionary/downloads") {
@@ -76,6 +78,10 @@ func TestDictionaryAdmin_InstallingQueuesAJobAndSaysWhereItIs(t *testing.T) {
 	}
 	if got := s.scalar(`SELECT (payload->>'package') || ' ' || (payload->>'edition') FROM jobs WHERE type = 'dictionary'`); got != "wikt-pt pt" {
 		t.Fatalf("the job's package: %s", got)
+	}
+	// The worker is told which words to keep: the package's, not what a request says.
+	if got := s.scalar(`SELECT array_to_string(ARRAY(SELECT jsonb_array_elements_text(payload->'headwords')), ',') FROM jobs WHERE type = 'dictionary'`); got != "pt,en,es,fr,de,it,ja,zh" {
+		t.Fatalf("the job's headwords: %s", got)
 	}
 	if got := s.scalar(`SELECT count(*) FROM dictionary_packages p JOIN jobs j ON j.id = p.job_id WHERE p.id = 'wikt-pt'`); got != "1" {
 		t.Fatal("the package does not know its job")
@@ -106,7 +112,10 @@ func TestDictionaryAdmin_RefusesWhatIsNotInTheCatalogOrCannotBeInstalledYet(t *t
 	if rec := s.do(admin, "POST", "/admin/dictionaries/wikt-xx/install", ""); rec.Code != 404 {
 		t.Fatalf("unknown: %d", rec.Code)
 	}
-	if rec := s.do(admin, "POST", "/admin/dictionaries/wikt-fr/install", ""); rec.Code != 409 {
+	// A package this server cannot import yet is listed and cannot be installed.
+	dictionary.Catalog = append(dictionary.Catalog, dictionary.Package{ID: "wikt-em-breve", Name: "Em breve", URL: "https://kaikki.org/x.gz"})
+	t.Cleanup(func() { dictionary.Catalog = dictionary.Catalog[:len(dictionary.Catalog)-1] })
+	if rec := s.do(admin, "POST", "/admin/dictionaries/wikt-em-breve/install", ""); rec.Code != 409 {
 		t.Fatalf("not installable: %d %s", rec.Code, rec.Body.String())
 	}
 	// An address is never taken from the request: whatever is sent is not read.

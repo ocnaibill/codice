@@ -187,6 +187,60 @@ class TestInstall:
         assert all(0 <= r[1] <= 1 for r in seen)
 
 
+def sample_bytes_of(name):
+    with open(os.path.join(HERE, 'fixtures', name), 'rb') as f:
+        return f.read()
+
+
+class TestWhichLanguagesAreKept:
+    def test_installs_the_words_of_the_languages_the_job_says_and_no_others(self, world):
+        world.package()
+        outcome = world.importer().run(world.job(headwords=['ja', 'zh']), nothing)
+        assert outcome['languages'] == ['ja', 'zh']
+        assert world.query("SELECT DISTINCT lang FROM dictionary_entries ORDER BY lang") == [('ja',), ('zh',)]
+        assert world.query("SELECT languages FROM dictionary_packages")[0][0] == ['ja', 'zh']
+
+    def test_a_package_of_another_edition_is_read_like_the_first(self, world):
+        world.package()
+        outcome = world.importer(serving(sample_bytes_of('dictionary-sample-it.jsonl.gz'))).run(world.job(headwords=['it'], edition='it'), nothing)
+        assert outcome['languages'] == ['it']
+        assert world.query("SELECT data->'senses'->0->'form_of'->0->>'word' FROM dictionary_entries WHERE lang = 'it' AND norm = 'corsero'") == [('correre',)]
+        assert world.query("SELECT count(*) FROM dictionary_entries WHERE lang = 'en'")[0][0] == 0
+        assert ('en',) in world.query("SELECT DISTINCT lang FROM dictionary_links")  # what the entries list as translations, turned around
+
+    def test_a_japanese_package_finds_the_kanji_that_is_a_form(self, world):
+        world.package()
+        world.importer(serving(sample_bytes_of('dictionary-sample-ja.jsonl.gz'))).run(world.job(headwords=['ja'], edition='ja'), nothing)
+        assert world.query("SELECT data->'senses'->0->'form_of'->0->>'word' FROM dictionary_entries WHERE lang = 'ja' AND norm = '走る'") == [('はしる',)]
+
+    def test_without_a_word_of_the_languages_it_was_told_to_keep_it_is_not_the_package_asked_for(self, world):
+        world.package()
+        with pytest.raises(ValueError, match='no entry'):
+            world.importer(serving(sample_bytes_of('dictionary-sample-it.jsonl.gz'))).run(world.job(headwords=['ja']), nothing)
+
+    def test_keeps_the_languages_of_the_library_when_the_job_does_not_say(self, world):
+        world.package()
+        outcome = world.importer().run(world.job(), nothing)
+        assert outcome['languages'] == ['de', 'en', 'es', 'fr', 'it', 'ja', 'pt', 'zh']
+
+    def test_uses_the_languages_the_importer_was_given_when_the_job_does_not_say(self, world):
+        world.package()
+        outcome = world.importer(headwords=['pt']).run(world.job(), nothing)
+        assert outcome['languages'] == ['pt']
+
+    def test_repeats_in_the_list_are_one_language(self, world):
+        world.package()
+        outcome = world.importer().run(world.job(headwords=['pt', 'pt', 'en']), nothing)
+        assert outcome['languages'] == ['en', 'pt']
+
+    def test_refuses_a_list_of_languages_that_is_not_one(self, world):
+        world.package()
+        for bad in ([], 'pt', {'pt': 1}, ('pt',), ['PT'], ['p'], ['portuguese'], ['pt', 5], [None], [['pt']], ['pt;DROP'], ['a' * 3 + 'b'], [f'a{c}' for c in 'abcdefghijklmnopqrstuvwxyz'][:21]):
+            with pytest.raises(ValueError, match='which languages to keep'):
+                world.importer().run(world.job(headwords=bad), nothing)
+        assert world.query('SELECT count(*) FROM dictionary_entries')[0][0] == 0
+
+
 class TestWhatIsNotLost:
     def test_the_old_dictionary_stays_when_the_new_one_fails(self, world):
         world.package('ready')

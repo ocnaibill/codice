@@ -10,6 +10,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 import unicodedata
@@ -27,8 +28,11 @@ from runner import Cancelled
 ALLOWED_HOSTS = {'kaikki.org'}
 USER_AGENT = 'Codice-dictionary-installer/1 (+https://github.com/ocnaibill/codice)'
 
-# The languages whose words are kept (the ones the library is read in); the rest of the file is let go.
+# The languages of the library: the words of these are kept from a package that does not say otherwise, and the translations
+# into them are kept from every package (the rest of the file is let go).
 LANGS = ('pt', 'en', 'es', 'fr', 'de', 'it', 'ja', 'zh')
+_CODE = re.compile(r'^[a-z]{2,3}$')
+MAX_HEADWORDS = 20
 
 MAX_SENSES = 40
 MAX_GLOSS = 600
@@ -85,12 +89,14 @@ def _keep_form(form) -> bool:
             and len(form.split()) <= 3)
 
 
-def trim_entry(raw, langs=LANGS):
-    """The entry as it is kept, or None if it is not for this dictionary: a language that is not kept, or no sense."""
+def trim_entry(raw, headwords=LANGS, translations_to=LANGS):
+    """The entry as it is kept, or None if it is not for this dictionary: a word of a language that is not kept, or no sense.
+    The translations kept are the ones into the languages of the library, and into the languages whose words are kept."""
+    targets = set(translations_to) | set(headwords)
     if not isinstance(raw, dict):
         return None
     lang, word = raw.get('lang_code'), raw.get('word')
-    if lang not in langs or not isinstance(word, str) or not word.strip():
+    if lang not in headwords or not isinstance(word, str) or not word.strip():
         return None
     senses = []
     for sense in raw.get('senses') or []:
@@ -143,7 +149,7 @@ def trim_entry(raw, langs=LANGS):
         data['forms'] = forms
     translations = []
     for t in raw.get('translations') or []:
-        if isinstance(t, dict) and t.get('lang_code') in langs and isinstance(t.get('word'), str) and t['word'].strip():
+        if isinstance(t, dict) and t.get('lang_code') in targets and isinstance(t.get('word'), str) and t['word'].strip():
             item = {'lang': t['lang_code'], 'word': t['word']}
             if isinstance(t.get('sense'), str) and t['sense'].strip():
                 item['sense'] = _clip(t['sense'], 120)
@@ -199,11 +205,11 @@ class DictionaryImporter:
 
     PROGRESS_EVERY = 25_000  # lines
 
-    def __init__(self, connect, workdir=None, opener=None, langs=LANGS):
+    def __init__(self, connect, workdir=None, opener=None, headwords=LANGS):
         self.connect = connect
         self.workdir = workdir
         self.opener = opener or urllib.request.urlopen
-        self.langs = langs
+        self.headwords = tuple(headwords)
 
     # What the owner is told, kept in the row of the package.
     def _say(self, conn, package_id, **fields):
@@ -233,6 +239,7 @@ class DictionaryImporter:
         if not package_id or not url:
             raise ValueError('The job names no package or address')
         _check_url(url)
+        headwords = self._headwords(payload)
         progress = self.connect()
         progress.autocommit = True
         directory = tempfile.mkdtemp(prefix='codice-dict-', dir=self.workdir)
@@ -244,7 +251,7 @@ class DictionaryImporter:
             path = os.path.join(directory, 'package.jsonl.gz')
             info = self._download(url, path, progress, package_id, checkpoint)
             checkpoint()
-            counts = self._import(package_id, path, info, progress, checkpoint)
+            counts = self._import(package_id, path, info, progress, checkpoint, headwords)
             return counts
         except Cancelled:
             try:
@@ -290,7 +297,16 @@ class DictionaryImporter:
         self._say(progress, package_id, bytes_done=done, progress=1)
         return {'sha256': sha.hexdigest(), 'source_date': source_date, 'bytes': done}
 
-    def _import(self, package_id, path, info, progress, checkpoint):
+    def _headwords(self, payload):
+        """The languages whose words are kept: the ones the job says (the catalog's), or the languages of the library."""
+        given = payload.get('headwords')
+        if given is None:
+            return self.headwords
+        if not isinstance(given, list) or not given or len(given) > MAX_HEADWORDS or not all(isinstance(c, str) and _CODE.match(c) for c in given):
+            raise ValueError(f'The job says which languages to keep in a way that is not one: {given!r}')
+        return tuple(dict.fromkeys(given))
+
+    def _import(self, package_id, path, info, progress, checkpoint, headwords):
         self._say(progress, package_id, stage='importing', progress=0)
         size = os.path.getsize(path) or 1
         conn = self.connect()
@@ -329,7 +345,7 @@ class DictionaryImporter:
                                 skipped += 1
                                 continue
                             try:
-                                entry = trim_entry(json.loads(line), self.langs)
+                                entry = trim_entry(json.loads(line), headwords)
                             except (json.JSONDecodeError, UnicodeDecodeError):
                                 skipped += 1
                                 continue

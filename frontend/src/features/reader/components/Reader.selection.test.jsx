@@ -270,7 +270,7 @@ describe('Reader: looking a word up in the dictionary', () => {
     await press('Dicionário', menu());
     await flush();
     expect(card().getAttribute('aria-label')).toBe('Dicionário: correram');
-    expect(dictionaryCalls().at(-1)[1]).toEqual({ params: { word: 'correram', lang: 'pt' } });
+    expect(dictionaryCalls().at(-1)[1]).toEqual({ params: { word: 'correram', lang: 'pt', prefer: 'pt' } });
     expect(menu()).toBeNull();
     expect(sent.selection.clear).toHaveBeenCalled();
     expect(api.post.mock.calls.filter(([url]) => url.includes('/notes'))).toEqual([]); // nothing is saved
@@ -282,12 +282,12 @@ describe('Reader: looking a word up in the dictionary', () => {
     await selectIt();
     await press('Dicionário', menu());
     await flush();
-    expect(dictionaryCalls().at(-1)[1]).toEqual({ params: { word: 'house', lang: 'en' } });
+    expect(dictionaryCalls().at(-1)[1]).toEqual({ params: { word: 'house', lang: 'en', prefer: 'pt' } });
   });
 
   it('starts in Portuguese for a file whose language is not one the dictionary has, or is not said', async () => {
     sent.selection.text = 'слово';
-    await open('txt', { language: 'ru' });
+    await open('txt', { language: 'sw' });
     await selectIt();
     await press('Dicionário', menu());
     await flush();

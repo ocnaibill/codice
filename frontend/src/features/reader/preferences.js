@@ -3,9 +3,11 @@
 // people can share a browser). Nothing else about how a book is shown is: a zoom should not follow the person to
 // another book.
 import { DEFAULT_SETTINGS, sanitizeSettings } from './epubThemes';
+import { LOOKUP_LANGUAGES } from './dictionaryLookup';
 
 const PREFIX = 'codice:comic-mode:';
 const EPUB_PREFIX = 'codice:epub-settings:';
+const DICTIONARY_PREFIX = 'codice:dictionary-target:';
 export const COMIC_MODES = ['ltr', 'rtl', 'webtoon', 'double'];
 
 let owner = null;
@@ -48,6 +50,26 @@ export function saveEpubSettings(settings) {
   if (!owner) return;
   try {
     localStorage.setItem(EPUB_PREFIX + owner, JSON.stringify(sanitizeSettings(settings)));
+  } catch {
+    // not being able to remember it is not a problem
+  }
+}
+
+/** The language this account wants definitions in, when the dictionary has them in more than one (#109): Portuguese until chosen. */
+export function getDictionaryTarget() {
+  if (!owner) return 'pt';
+  try {
+    const value = localStorage.getItem(DICTIONARY_PREFIX + owner);
+    return LOOKUP_LANGUAGES.some(([code]) => code === value) ? value : 'pt';
+  } catch {
+    return 'pt';
+  }
+}
+
+export function saveDictionaryTarget(code) {
+  if (!owner || !LOOKUP_LANGUAGES.some(([c]) => c === code)) return;
+  try {
+    localStorage.setItem(DICTIONARY_PREFIX + owner, code);
   } catch {
     // not being able to remember it is not a problem
   }
