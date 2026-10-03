@@ -27,9 +27,9 @@ O mantenedor pediu para **estudar trocar o que desenha o EPUB**. Este é o relat
 | Anotações | `annotations.highlight` (usamos) | `overlayer.js` | API de **decorações** |
 | Esforço de troca | Nenhum | **Médio**: CFI igual, API e eventos diferentes, sem pacote npm estável (o README sugere copiar o código) | **Grande**: locators, API, peso |
 
-## Um achado de segurança, fora do #106
+## Um achado de segurança, que já foi corrigido
 
-O leitor abre o livro com **`allowScriptedContent: true`** (código, `EpubViewer.jsx`), e o epub.js monta o iframe com **`sandbox="allow-same-origin allow-scripts"`**. Essa combinação **anula o sandbox**: um EPUB com `<script>` roda **na mesma origem do app** e pode ler o token da sessão (`localStorage`) ou chamar a API como a pessoa. A flag entrou na troca do `react-reader` pelo `epubjs` direto (commit `6a25bff`), **sem motivo documentado**. Abri uma tarefa à parte para reproduzir, testar com `false` num navegador real e, se algo quebrar, achar outro jeito (uma política de conteúdo, por exemplo). **Não foi mexido neste PR.** Isso pesa na decisão de motor: o epub.js não nos obriga a isso, foi uma escolha nossa.
+O leitor abria o livro com **`allowScriptedContent: true`** (código, `EpubViewer.jsx`), e o epub.js monta o iframe com **`sandbox="allow-same-origin allow-scripts"`**. Essa combinação **anulava o sandbox**: um EPUB com `<script>` rodava **na mesma origem do app** e podia ler o token da sessão (`localStorage`) ou chamar a API como a pessoa. Foi **reproduzido** com um EPUB sintético enviado por um administrador e aberto pelo dono, e **corrigido** com `allowScriptedContent: false` (a entrada "Segurança" do README descreve o ensaio e o que foi conferido no navegador). A flag entrou na troca do `react-reader` pelo `epubjs` (commit `6a25bff`), sem motivo documentado. Isso pesa na decisão de motor: o epub.js não nos obrigava a isso, foi uma escolha nossa, e um teste (`src/security.test.js`) agora impede que volte.
 
 ## Como decidir uma troca (quando chegar a hora)
 

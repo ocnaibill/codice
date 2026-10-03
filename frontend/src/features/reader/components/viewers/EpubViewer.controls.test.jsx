@@ -6,7 +6,7 @@ const getBook = vi.fn();
 vi.mock('../../../../lib/api', () => ({ api: { get: (...a) => getBook(...a) }, authenticatedUrl: (u) => u }));
 
 // epub.js is not what is under test: a book with a table of contents, and a page that records what it is asked.
-const state = { toc: [], locationsLength: 0, percent: 0.37, rendition: null, events: {}, hooks: [], displayed: [], current: null, generate: () => Promise.resolve() };
+const state = { toc: [], locationsLength: 0, percent: 0.37, rendition: null, events: {}, hooks: [], displayed: [], renderOptions: [], current: null, generate: () => Promise.resolve() };
 vi.mock('epubjs', () => ({
   default: () => {
     const rendition = {
@@ -30,7 +30,7 @@ vi.mock('epubjs', () => ({
         get: (target) => [{ href: 'Text/c1.xhtml' }, { href: 'Text/c2.xhtml' }].find((c) => c.href === target) ?? null,
       },
       locations: { length: () => state.locationsLength, generate: () => state.generate(), percentageFromCfi: () => state.percent },
-      renderTo: () => rendition,
+      renderTo: (element, options) => { state.renderOptions.push(options); return rendition; },
       destroy: () => {},
     };
   },
@@ -69,6 +69,7 @@ beforeEach(() => {
   state.events = {};
   state.hooks = [];
   state.displayed = [];
+  state.renderOptions = [];
   state.current = null;
   state.generate = () => Promise.resolve();
   getBook.mockReset();
@@ -916,5 +917,25 @@ describe('the EPUB reader: the highlights underlined on the page', () => {
     state.rendition.annotations = undefined;
     await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A), mark(B)]} />); });
     expect(container.querySelector('[data-epub-page]')).not.toBeNull();
+  });
+});
+
+describe('the EPUB reader: a book that carries scripts', () => {
+  it('is opened with no script allowed: the page of the book is on the origin of the app, and a script there could read the session', async () => {
+    await open();
+    expect(state.renderOptions).toHaveLength(1);
+    expect(state.renderOptions[0].allowScriptedContent).toBe(false);
+    expect(state.renderOptions[0].allowPopups).toBeUndefined(); // nor a window of its own: epub.js leaves it off
+  });
+
+  it('is opened the same way each time, after a failure and a new attempt', async () => {
+    getBook.mockRejectedValueOnce(new Error('falhou'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await open();
+    await click([...container.querySelectorAll('[role="alert"] button')].find((b) => b.textContent === 'Tentar de novo'));
+    await flush();
+    await flush();
+    expect(state.renderOptions.length).toBeGreaterThan(0);
+    for (const options of state.renderOptions) expect(options.allowScriptedContent).toBe(false);
   });
 });
