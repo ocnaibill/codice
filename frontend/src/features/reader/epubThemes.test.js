@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   READING_THEMES, READING_FONTS, READING_SPACING, DEFAULT_SETTINGS, SIZE_MIN, SIZE_MAX, SIZE_STEP,
-  sanitizeSettings, contrastRatio, epubRules, themeName, applyEpubSettings, fontFaceCss,
+  sanitizeSettings, contrastRatio, epubRules, SELECTION_ON_LIGHT, SELECTION_ON_DARK, themeName, applyEpubSettings, fontFaceCss,
 } from './epubThemes';
 
 describe('contrastRatio', () => {
@@ -85,6 +85,19 @@ describe('the rules of the page of a book', () => {
     expect(r[n].background).toBe('#18181b !important');
     expect(r[`${n}, ${n} *`].color).toBe('#e4e4e7 !important');
     expect(r[`${n} a, ${n} a *`].color).toBe('#93c5fd !important');
+  });
+
+  it('paint a selected text terracotta, lighter and stronger on the dark pages, and win over the book', () => {
+    for (const theme of ['branco', 'papel', 'sepia', 'cinza']) {
+      const n = `.${themeName({ ...DEFAULT_SETTINGS, theme })}`;
+      expect(rules({ theme })[`${n}::selection, ${n} *::selection`].background, theme).toBe(`${SELECTION_ON_LIGHT} !important`);
+    }
+    for (const theme of ['escuro', 'preto']) {
+      const n = `.${themeName({ ...DEFAULT_SETTINGS, theme })}`;
+      expect(rules({ theme })[`${n}::selection, ${n} *::selection`].background, theme).toBe(`${SELECTION_ON_DARK} !important`);
+    }
+    expect(SELECTION_ON_LIGHT).toBe('rgba(148, 69, 22, 0.3)');
+    expect(SELECTION_ON_DARK).toBe('rgba(179, 93, 44, 0.55)');
   });
 
   it('leave the font of the book alone with "Do livro", and set the chosen one otherwise, except for code', () => {
