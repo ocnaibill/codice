@@ -32,7 +32,7 @@ USER_AGENT = 'Codice-dictionary-installer/1 (+https://github.com/ocnaibill/codic
 # into them are kept from every package (the rest of the file is let go).
 LANGS = ('pt', 'en', 'es', 'fr', 'de', 'it', 'ja', 'zh')
 _CODE = re.compile(r'^[a-z]{2,3}$')
-MAX_HEADWORDS = 20
+MAX_HEADWORDS = 30
 
 MAX_SENSES = 40
 MAX_GLOSS = 600
@@ -40,7 +40,12 @@ MAX_EXAMPLES = 2
 MAX_EXAMPLE = 300
 MAX_FORMS = 80
 MAX_FORM = 40
-MAX_TRANSLATIONS = 40
+# What an entry shows of its translations (a few of each language, so that the card has the ones of the language the reader
+# wants) and what the links keep of them (the words that a translation is looked up by, which is what the bridge through
+# English walks: "run" lists dozens of words in each language).
+MAX_TRANSLATIONS = 100
+MAX_TRANSLATIONS_PER_LANG = 5
+MAX_LINKS_PER_LANG = 30
 MAX_LINE = 5_000_000  # a line longer than this is not an entry
 BATCH = 2000
 CHUNK = 1 << 20
@@ -147,15 +152,23 @@ def trim_entry(raw, headwords=LANGS, translations_to=LANGS):
             break
     if forms:
         data['forms'] = forms
-    translations = []
+    translations, links, per_lang, seen_links = [], [], {}, set()
     for t in raw.get('translations') or []:
         if isinstance(t, dict) and t.get('lang_code') in targets and isinstance(t.get('word'), str) and t['word'].strip():
             item = {'lang': t['lang_code'], 'word': t['word']}
             if isinstance(t.get('sense'), str) and t['sense'].strip():
                 item['sense'] = _clip(t['sense'], 120)
-            translations.append(item)
-            if len(translations) >= MAX_TRANSLATIONS:
-                break
+            key = (item['lang'], item['word'], item.get('sense', ''))
+            if key in seen_links:
+                continue
+            seen_links.add(key)
+            count = per_lang.get(item['lang'], 0)
+            if count >= MAX_LINKS_PER_LANG:
+                continue
+            per_lang[item['lang']] = count + 1
+            links.append(item)
+            if count < MAX_TRANSLATIONS_PER_LANG and len(translations) < MAX_TRANSLATIONS:
+                translations.append(item)
     if translations:
         data['translations'] = translations
     for sound in raw.get('sounds') or []:
@@ -164,7 +177,7 @@ def trim_entry(raw, headwords=LANGS, translations_to=LANGS):
             if isinstance(pron, str) and pron.strip():
                 data['ipa'] = _clip(pron, 80)
                 break
-    return {'lang': lang, 'word': word, 'pos': raw.get('pos') if isinstance(raw.get('pos'), str) else '', 'data': data}
+    return {'lang': lang, 'word': word, 'pos': raw.get('pos') if isinstance(raw.get('pos'), str) else '', 'data': data, 'links': links}
 
 
 def rows_of(package_id, entry):
@@ -180,7 +193,7 @@ def rows_of(package_id, entry):
         if form_norm and form_norm != norm:
             form_rows.append((package_id, lang, form_norm, form['form'], word, pos, form.get('tags', [])))
     link_rows = []
-    for t in data.get('translations', []):
+    for t in entry.get('links', data.get('translations', [])):
         link_norm = normalize(t['word'])
         if link_norm:
             link_rows.append((package_id, t['lang'], link_norm, t['word'], lang, word, pos, t.get('sense', '')))
@@ -240,6 +253,7 @@ class DictionaryImporter:
             raise ValueError('The job names no package or address')
         _check_url(url)
         headwords = self._headwords(payload)
+        translations = self._translations(payload)
         progress = self.connect()
         progress.autocommit = True
         directory = tempfile.mkdtemp(prefix='codice-dict-', dir=self.workdir)
@@ -251,7 +265,7 @@ class DictionaryImporter:
             path = os.path.join(directory, 'package.jsonl.gz')
             info = self._download(url, path, progress, package_id, checkpoint)
             checkpoint()
-            counts = self._import(package_id, path, info, progress, checkpoint, headwords)
+            counts = self._import(package_id, path, info, progress, checkpoint, headwords, translations)
             return counts
         except Cancelled:
             try:
@@ -299,14 +313,23 @@ class DictionaryImporter:
 
     def _headwords(self, payload):
         """The languages whose words are kept: the ones the job says (the catalog's), or the languages of the library."""
-        given = payload.get('headwords')
+        return self._languages(payload, 'headwords', self.headwords)
+
+    def _translations(self, payload):
+        """The languages whose translations are kept besides those of the words kept: the ones the job says (the English
+        package keeps them into every language of the catalog, which is what the bridge walks), or the library's."""
+        return self._languages(payload, 'translations', LANGS)
+
+    @staticmethod
+    def _languages(payload, key, default):
+        given = payload.get(key)
         if given is None:
-            return self.headwords
+            return tuple(default)
         if not isinstance(given, list) or not given or len(given) > MAX_HEADWORDS or not all(isinstance(c, str) and _CODE.match(c) for c in given):
             raise ValueError(f'The job says which languages to keep in a way that is not one: {given!r}')
         return tuple(dict.fromkeys(given))
 
-    def _import(self, package_id, path, info, progress, checkpoint, headwords):
+    def _import(self, package_id, path, info, progress, checkpoint, headwords, translations):
         self._say(progress, package_id, stage='importing', progress=0)
         size = os.path.getsize(path) or 1
         conn = self.connect()
@@ -345,7 +368,7 @@ class DictionaryImporter:
                                 skipped += 1
                                 continue
                             try:
-                                entry = trim_entry(json.loads(line), headwords)
+                                entry = trim_entry(json.loads(line), headwords, translations)
                             except (json.JSONDecodeError, UnicodeDecodeError):
                                 skipped += 1
                                 continue

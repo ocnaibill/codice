@@ -16,3 +16,11 @@ The same kind of sample from the Japanese and the Italian Wiktionaries (`ja-extr
 extraction of 28 September 2026): a few dozen real entries each, with a headword in the edition's own language (a kanji that
 is the written form of another word, a form of a verb, a lemma with translations), and a few words of other languages that
 the importer does not keep when the package keeps only the edition's language. Same license, same use: test data.
+
+# dictionary-sample-en.jsonl.gz
+
+A dozen real entries from the English Wiktionary by language of the words (`kaikki.org-dictionary-English.jsonl`, the
+file of English words, taken from its first 100 MB on 3 October 2026): English words with their translations into many
+languages (`book`, `barter`, `today`, `policy`, `increase`, `accurate`, `mobile`, `bomb`), inflected forms that point to their
+lemma (`pies`, `wares`, `free`) and words with no translation. They test the bridge through English: what the importer keeps
+as translations and as links. Same license (CC BY-SA 4.0 and GFDL), same use: test data.

@@ -7,6 +7,7 @@ package dictionary
 import (
 	"fmt"
 	"net/url"
+	"sort"
 )
 
 // Level says how well a package covers the words of a language (measured on the data, see
@@ -45,12 +46,16 @@ type Package struct {
 	// Headwords are the languages whose words the worker keeps from the package (the language of the edition, and for the
 	// Portuguese one the languages of the library): the rest of the file is let go, which keeps what it takes in the database
 	// to what is read.
-	Headwords  []string   `json:"headwords"`
-	Languages  []Language `json:"languages"`
-	License    string     `json:"license"`
-	LicenseURL string     `json:"licenseUrl"`
-	Source     string     `json:"source"`
-	SourceURL  string     `json:"sourceUrl"`
+	Headwords []string `json:"headwords"`
+	// Translations are the languages whose translations the worker keeps besides those of the words it keeps, when it is
+	// not the languages of the library: the English package keeps them into every language of the catalog, which is what
+	// the bridge through English walks.
+	Translations []string   `json:"translations,omitempty"`
+	Languages    []Language `json:"languages"`
+	License      string     `json:"license"`
+	LicenseURL   string     `json:"licenseUrl"`
+	Source       string     `json:"source"`
+	SourceURL    string     `json:"sourceUrl"`
 	// Installable is whether this version of the server can import the package. The others are listed so that the owner
 	// sees what is coming, and cannot be installed.
 	Installable bool `json:"installable"`
@@ -66,6 +71,10 @@ const (
 	sourceURL   = "https://kaikki.org/dictionary/rawdata.html"
 )
 
+// englishURL is the English Wiktionary by the language of the words, English: the English words, with their translations
+// into every language. It is 523 MB, where the whole of the English edition is 3 GB.
+const englishURL = "https://" + Host + "/dictionary/English/kaikki.org-dictionary-English.jsonl.gz"
+
 func edition(code string) string {
 	return fmt.Sprintf("https://%s/dictionary/downloads/%s/%s-extract.jsonl.gz", Host, code, code)
 }
@@ -80,8 +89,8 @@ type wiktionary struct {
 	bytes    int64  // compressed, as the server said
 }
 
-// editions are the Wiktionaries kaikki.org extracts (the English one is a package of its own, which is not here: it is
-// 80 times bigger and is the bridge, not a dictionary to read in). Sorted by the name of the language in Portuguese.
+// editions are the Wiktionaries kaikki.org extracts (the English one is a package of its own, english(): its file is of the
+// words of English only, and is the bridge as well as a dictionary). Sorted by the name of the language in Portuguese.
 var editions = []wiktionary{
 	{"de", "", "alemão", 308_579_949},
 	{"zh", "", "chinês", 233_265_421},
@@ -127,6 +136,32 @@ func ownEdition(w wiktionary) Package {
 	}
 }
 
+// languages are the languages of the catalog: the ones the dictionaries have words of.
+func languages() []string {
+	out := []string{"pt", "en"}
+	for _, w := range editions {
+		if w.headword != "" {
+			continue
+		}
+		out = append(out, w.code)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// english is the package that is both the dictionary of English and the bridge: an English word lists its translations
+// into every language, so a word of any language that is listed under an English word reaches the others through it.
+func english() Package {
+	return Package{
+		ID: "wikt-en", Name: "Wikcionário em inglês",
+		Description: "Definições em inglês, para quem lê em inglês. É também a ponte: liga as línguas pelo inglês, pelas traduções que as palavras inglesas listam. É grande: leva um tempo para baixar e importar.",
+		Edition:     "en", URL: englishURL, DownloadBytes: 523_338_320,
+		Headwords: []string{"en"}, Translations: languages(),
+		Languages: []Language{{"en", Complete}},
+		License:   licenseName, LicenseURL: licenseURL, Source: sourceName, SourceURL: sourceURL, Installable: true,
+	}
+}
+
 func buildCatalog() []Package {
 	out := []Package{{
 		ID: "wikt-pt", Name: "Wikcionário em português",
@@ -138,6 +173,9 @@ func buildCatalog() []Package {
 	}}
 	for _, w := range editions {
 		out = append(out, ownEdition(w))
+		if w.code == "id" { // by the name of the language: indonésio, inglês, inglês simples
+			out = append(out, english())
+		}
 	}
 	return out
 }
