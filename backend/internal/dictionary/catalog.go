@@ -38,12 +38,15 @@ type Package struct {
 	URL     string `json:"-"`
 	// DownloadBytes is what is downloaded (compressed), as the server said when this was written: an approximation, the
 	// real size is read when the download starts.
-	DownloadBytes int64      `json:"downloadBytes"`
-	Languages     []Language `json:"languages"`
-	License       string     `json:"license"`
-	LicenseURL    string     `json:"licenseUrl"`
-	Source        string     `json:"source"`
-	SourceURL     string     `json:"sourceUrl"`
+	DownloadBytes int64 `json:"downloadBytes"`
+	// StorageBytes is about what the package takes in the database once imported, when it has been measured (it is much
+	// more than the download); 0 where it was not.
+	StorageBytes int64      `json:"storageBytes,omitempty"`
+	Languages    []Language `json:"languages"`
+	License      string     `json:"license"`
+	LicenseURL   string     `json:"licenseUrl"`
+	Source       string     `json:"source"`
+	SourceURL    string     `json:"sourceUrl"`
 	// Installable is whether this version of the server can import the package. The others are listed so that the owner
 	// sees what is coming, and cannot be installed.
 	Installable bool `json:"installable"`
@@ -68,7 +71,7 @@ var Catalog = []Package{
 	{
 		ID: "wikt-pt", Name: "Wikcionário em português",
 		Description: "Definições em português e tradução para o português. É o dicionário da primeira versão: cobre o português por inteiro, com as formas flexionadas, e traz as demais línguas como tradução.",
-		Edition:     "pt", URL: edition("pt"), DownloadBytes: 37_158_613,
+		Edition:     "pt", URL: edition("pt"), DownloadBytes: 37_158_613, StorageBytes: 326_000_000,
 		Languages: []Language{{"pt", Complete}, {"en", Partial}, {"es", Weak}, {"fr", Weak}, {"de", Weak}, {"it", Weak}, {"ja", Weak}, {"zh", Weak}},
 		License:   licenseName, LicenseURL: licenseURL, Source: sourceName, SourceURL: sourceURL, Installable: true,
 	},

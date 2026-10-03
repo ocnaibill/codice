@@ -35,6 +35,23 @@ func TestCatalog_EveryPackageIsComplete(t *testing.T) {
 	}
 }
 
+func TestCatalog_OnlyWhatWasMeasuredSaysWhatItTakesInTheDatabase(t *testing.T) {
+	for _, p := range Catalog {
+		if p.StorageBytes < 0 {
+			t.Errorf("%s: %d", p.ID, p.StorageBytes)
+		}
+		if p.StorageBytes > 0 && p.StorageBytes < p.DownloadBytes {
+			t.Errorf("%s: it takes less in the database (%d) than it weighs compressed (%d)", p.ID, p.StorageBytes, p.DownloadBytes)
+		}
+	}
+	if pt, _ := Find("wikt-pt"); pt.StorageBytes != 326_000_000 {
+		t.Fatalf("the Portuguese edition was measured at 326 MB: %d", pt.StorageBytes)
+	}
+	if fr, _ := Find("wikt-fr"); fr.StorageBytes != 0 {
+		t.Fatalf("the French one was not measured: %d", fr.StorageBytes)
+	}
+}
+
 func TestCatalog_OnlyThePortugueseEditionCanBeInstalledForNow(t *testing.T) {
 	var installable []string
 	for _, p := range Catalog {

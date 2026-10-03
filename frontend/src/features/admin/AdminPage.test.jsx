@@ -30,6 +30,7 @@ beforeEach(() => {
     if (url === '/admin/ldap') return { data: { configured: false, host: '', baseDN: '', linkedAccounts: 0, policy: { allowCreate: false, revalidateHours: 24 } } };
     if (url === '/admin/ocr/settings') return { data: { enabled: false, language: 'por+eng', available: true, engine: 'tesseract', engineVersion: '5.5.0', languages: ['eng', 'por'], state: 'idle', error: '' } };
     if (url === '/admin/embeddings') return { data: { enabled: false, available: true, state: 'idle', model: 'sentence-transformers/LaBSE' } };
+    if (url === '/admin/dictionaries') return { data: { packages: [{ id: 'wikt-pt', name: 'Wikcionário em português', description: 'd', installable: true, downloadBytes: 37158613, state: 'available', progress: 0, languages: [{ code: 'pt', level: 'complete' }], license: 'CC', licenseUrl: 'https://x', source: 's', sourceUrl: 'https://y' }] } };
     throw new Error(`unexpected GET ${url}`);
   });
 });
@@ -147,5 +148,30 @@ describe('who sees the administration', () => {
 
     view = await mount(<Header canAdmin />);
     expect(view.buttonMatching(/Adicionar/)).toBeTruthy();
+  });
+});
+
+describe('AdminPage: the dictionaries (#109)', () => {
+  it('has the tab for the whole staff, and the owner can install from it', async () => {
+    view = await mount(<AdminPage isOwner />);
+    await view.click(view.button('Dicionários'));
+    expect(view.text()).toContain('Estes arquivos não são do Códice');
+    expect(view.text()).toContain('Wikcionário em português');
+    expect([...view.container.querySelectorAll('li[aria-label] button')].map((b) => b.textContent)).toEqual(['Instalar']);
+  });
+
+  it('shows an admin who is not the owner the same list, with nothing to press', async () => {
+    view = await mount(<AdminPage isOwner={false} />);
+    await view.click(view.button('Dicionários'));
+    expect(view.text()).toContain('Wikcionário em português');
+    expect(view.text()).toContain('Só o dono do acervo');
+    expect(view.container.querySelectorAll('li[aria-label] button').length).toBe(0);
+  });
+
+  it('puts the tab with the others that are for the staff, before the accounts', async () => {
+    view = await mount(<AdminPage isOwner />);
+    const labels = [...view.container.querySelectorAll('[role="tab"]')].map((t) => t.textContent);
+    expect(labels.indexOf('Dicionários')).toBe(labels.indexOf('OCR') + 1);
+    expect(labels.indexOf('Dicionários')).toBeLessThan(labels.indexOf('Contas'));
   });
 });

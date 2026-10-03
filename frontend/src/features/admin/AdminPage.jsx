@@ -9,6 +9,7 @@ import { EmbeddingsTab } from './components/EmbeddingsTab';
 import { SuggestionsTab } from './components/SuggestionsTab';
 import { ProvidersTab } from './components/ProvidersTab';
 import { OcrTab } from './components/OcrTab';
+import { DictionariesTab } from './components/DictionariesTab';
 import { useSuggestionQueue } from './api/admin';
 
 const TABS = [
@@ -19,6 +20,7 @@ const TABS = [
   ['providers', 'Provedores'],
   ['duplicates', 'Duplicatas'],
   ['ocr', 'OCR'],
+  ['dictionaries', 'Dicionários'],
   ['accounts', 'Contas'],
 ];
 
@@ -59,6 +61,7 @@ export function AdminPage({ isOwner, onClose }) {
         {tab === 'providers' && <ProvidersTab isOwner={isOwner} />}
         {tab === 'duplicates' && <DuplicatesTab />}
         {tab === 'ocr' && <OcrTab isOwner={isOwner} />}
+        {tab === 'dictionaries' && <DictionariesTab isOwner={isOwner} />}
         {tab === 'accounts' && <AccountsTab isOwner={isOwner} />}
         {tab === 'ldap' && isOwner && <LdapTab />}
         {tab === 'embeddings' && isOwner && <EmbeddingsTab />}
