@@ -52,6 +52,7 @@ func backupCmd(ctx context.Context, db *sql.DB, env Env, args []string, out io.W
 	fs := flags("backup", out)
 	dir := fs.String("dir", "", "directory for the package (named codice-backup-<time>.tar)")
 	outPath := fs.String("out", "", "file for the package, or - for standard output")
+	asPath := fs.String("as-path", "", "with --out -: where the package will be kept, outside this process, for the interface to show")
 	include := fs.Bool("include-files", false, "also put the managed files and covers in the package")
 	passFile := fs.String("passphrase-file", "", "file holding the passphrase that encrypts the package")
 	tmp := fs.String("tmp-dir", env.TmpDir, "where the dump waits while the package is assembled")
@@ -117,7 +118,11 @@ func backupCmd(ctx context.Context, db *sql.DB, env Env, args []string, out io.W
 			return err
 		}
 	}
-	if rerr := backup.Record(ctx, db, res); rerr != nil {
+	recorded := path
+	if recorded == "" {
+		recorded = *asPath
+	}
+	if rerr := backup.Record(ctx, db, res, recorded); rerr != nil {
 		fmt.Fprintf(msg, "Warning: the backup was made but could not be recorded: %v\n", rerr)
 	}
 
@@ -156,7 +161,7 @@ func openInput(path string, in io.Reader) (io.Reader, func(), error) {
 	return f, func() { f.Close() }, nil
 }
 
-func verifyCmd(ctx context.Context, env Env, args []string, in io.Reader, out io.Writer) error {
+func verifyCmd(ctx context.Context, db *sql.DB, env Env, args []string, in io.Reader, out io.Writer) error {
 	fs := flags("verify-backup", out)
 	deep := fs.Bool("deep", false, "also rehearse the restore in a temporary database")
 	passFile := fs.String("passphrase-file", "", "file holding the passphrase, if the package is encrypted")
@@ -209,6 +214,17 @@ func verifyCmd(ctx context.Context, env Env, args []string, in io.Reader, out io
 			res.Deep.Duration.Round(time.Millisecond), res.Deep.Restored.Users, res.Deep.Restored.Works, res.Deep.Restored.Notes)
 		fmt.Fprintf(out, "  Reading the package plus the database restore: about %s. The files are not part of this rehearsal: see \"ensaio de restauração\" in the README to time them.\n",
 			(res.Reading + res.Deep.Duration).Round(time.Millisecond))
+	}
+	// The interface shows which package was checked last. Best effort: a check on a machine with
+	// no database (the point of verifying elsewhere) has nowhere to write it, and says nothing.
+	if db != nil && files[0] != "-" {
+		pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		if db.PingContext(pingCtx) == nil {
+			if rerr := backup.RecordVerified(ctx, db, filepath.Base(files[0]), res.Deep != nil); rerr != nil {
+				fmt.Fprintf(out, "Warning: the check passed but could not be recorded: %v\n", rerr)
+			}
+		}
 	}
 	return nil
 }

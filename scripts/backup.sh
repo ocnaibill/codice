@@ -23,7 +23,7 @@ umask 077
 # mistaken for a good one (prune-backups ignores anything that is not a finished package).
 trap 'rm -f "$dest/$name.part"' EXIT
 "${compose[@]}" run --rm --no-deps -T -e CODICE_BACKUP_PASSPHRASE \
-  backend codice-admin backup --out - --include-files > "$dest/$name.part"
+  backend codice-admin backup --out - --include-files --as-path "$dest/$name" > "$dest/$name.part"
 mv "$dest/$name.part" "$dest/$name"
 echo "Package: $dest/$name"
 

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
   useRoots, useAddRoot, useRemoveRoot, useScanRoot, useCleanups, useRetryCleanups, useOrphans, useTrashOrphans,
-  useReorganizePreview, useReorganize, useBackup, describeError,
+  useReorganizePreview, useReorganize, describeError,
 } from '../api/admin';
-import { formatBytes, formatDate } from '../format';
+import { formatBytes } from '../format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ImportFolder } from './ImportFolder';
 import { ReferencedFiles } from './ReferencedFiles';
@@ -197,50 +197,12 @@ function Orphans() {
   );
 }
 
-const DAY = 24 * 60 * 60 * 1000;
-
-/**
- * When the last backup was made here. Backups are made and restored with the
- * codice-admin command on the server, so this only tells whether one exists and
- * whether it is recent: the goal is a daily backup, so anything older than two days
- * is called out.
- */
-function Backup() {
-  const { data, isLoading, isError, error, refetch, isRefetching } = useBackup();
-  const last = data?.lastBackup;
-  const stale = last && Date.now() - new Date(last.at).getTime() > 2 * DAY;
-  return (
-    <Section
-      title="Backup"
-      hint="O Códice não agenda backups: você agenda o comando no servidor. O pacote leva o banco e a lista de arquivos com seus hashes (e os arquivos, com --include-files). Sessões, tokens e convites nunca entram."
-    >
-      {isLoading && <Loading />}
-      {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar o estado do backup.</LoadError>}
-      {!isLoading && !isError && !last && (
-        <p role="alert" className="text-[13px] text-danger">Nenhum backup registrado nesta instância.</p>
-      )}
-      {last && (
-        <p className={`text-[13px] ${stale ? 'text-danger' : 'text-ink'}`} role={stale ? 'alert' : undefined}>
-          Último backup: {formatDate(last.at)} ({formatBytes(last.bytes)}
-          {last.includesFiles ? `, com ${last.files} arquivo(s)` : ', só banco e lista de arquivos'}
-          {last.encrypted ? ', criptografado' : ', sem criptografia'}).
-          {stale && ' Faz mais de dois dias: a meta é um por dia.'}
-        </p>
-      )}
-      <p className="mt-3 text-[12px] text-ink-faint">
-        No servidor: <code>codice-admin backup --dir /backups --include-files</code>. Depois, <code>codice-admin verify-backup --deep</code> ensaia a restauração.
-      </p>
-    </Section>
-  );
-}
-
 export function StorageTab({ isOwner }) {
   return (
     <div className="flex flex-col gap-5">
       <ImportFolder />
       <Roots isOwner={isOwner} />
       <ReferencedFiles />
-      <Backup />
       <Reorganize />
       <Cleanups />
       <Orphans />

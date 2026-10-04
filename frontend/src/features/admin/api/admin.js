@@ -25,6 +25,16 @@ export const useJobs = list('jobs', '/admin/jobs', ({ state } = {}) => (state ? 
 export const useRoots = list('roots', '/admin/storage/roots');
 export const useCleanups = list('cleanups', '/admin/storage/cleanups');
 export const useBackup = list('backup', '/admin/backup');
+/** The public health of the API by component (RF-021). The answer is the same JSON when something is down (HTTP 503), so a
+ *  down database is shown, not treated as a failure to load. It asks again every half minute while the tab is open. */
+export function useHealth() {
+  return useQuery({
+    queryKey: ['admin', 'health'],
+    queryFn: async () => (await api.get('/healthz', { validateStatus: () => true })).data,
+    staleTime: 0,
+    refetchInterval: 30000,
+  });
+}
 export const useOrphans = list('orphans', '/admin/storage/orphans');
 export const useTrash = list('trash', '/admin/trash');
 export const useDuplicates = list('duplicates', '/admin/duplicates');

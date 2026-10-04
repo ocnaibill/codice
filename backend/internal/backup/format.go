@@ -119,4 +119,17 @@ type LastBackup struct {
 	Files         int       `json:"files"`
 	IncludesFiles bool      `json:"includesFiles"`
 	Encrypted     bool      `json:"encrypted"`
+	// Name and Path say where the package is, when the command knew: a package sent to standard
+	// output has no address of its own, unless the operator said it with --as-path. Path is the
+	// owner's to see; the interface sends only the Name to the administrators.
+	Name string `json:"name,omitempty"`
+	Path string `json:"path,omitempty"`
+}
+
+// Verified is the last time a package was checked with verify-backup (UI-19): which one, when, and
+// whether it was only read end to end or also rehearsed as a restore (--deep).
+type Verified struct {
+	Name string    `json:"name"`
+	At   time.Time `json:"at"`
+	Deep bool      `json:"deep"`
 }

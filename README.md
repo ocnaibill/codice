@@ -59,7 +59,7 @@ scripts/backup.sh /mnt/backups/codice
 
 O backup roda **como o usuário do contêiner (10001)**, que é dono da biblioteca: os arquivos são gravados com permissão `600` e só ele os lê. Por isso não rode o backup com `--user "$(id -u)"` (o comando recusa, dizendo que não consegue ler um arquivo, em vez de fazer um pacote sem a biblioteca). O pacote segue para um arquivo seu pela saída padrão (`codice-admin backup --out -`), e as mensagens vão para a saída de erro. Sem `--include-files`, o pacote leva só o banco e a lista de arquivos: use isso se você já copia a biblioteca com outra ferramenta (snapshots, restic, Borg); nesse caso chame `codice-admin backup` você mesmo.
 
-**Agendar.** O padrão é um por dia: em *Administração → Armazenamento* aparece a data do último backup, e ela fica vermelha depois de dois dias. Por exemplo, no `cron` (`crontab -e`), todo dia às 3h:
+**Agendar.** O padrão é um por dia: em *Administração → Sistema* aparecem a data do último backup, o nome do pacote (o dono vê o caminho), se ele já foi **verificado** (`verify-backup`, e se foi só lido ou também ensaiado), se está **no mesmo disco do acervo** e o espaço livre; o aviso fica vermelho depois de um dia e meio. A página só **mostra**: fazer e restaurar o backup continuam sendo comandos no servidor. O `scripts/backup.sh` já registra o caminho do pacote (`--as-path`); se você chamar `codice-admin backup --out -` à mão, acrescente `--as-path CAMINHO` para o painel saber onde ele está. Por exemplo, no `cron` (`crontab -e`), todo dia às 3h:
 
 ```
 0 3 * * * CODICE_BACKUP_PASSPHRASE="$(cat /etc/codice-frase)" /caminho/do/codice/scripts/backup.sh /mnt/backups/codice
