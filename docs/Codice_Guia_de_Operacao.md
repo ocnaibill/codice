@@ -100,7 +100,11 @@ dc logs --since 1h frontend         # os acessos (nginx)
 
 Ao subir, a API registra se o LDAP está ligado, em quantos proxies confia e o endereço público dos links: é o primeiro lugar para conferir uma configuração.
 
-## 9. Quando algo dá errado
+## 9. Os números da sua instância
+
+`scripts/relatorio-rodada.sh` lê o servidor e escreve um relatório em Markdown: serviços (com reinícios e falta de memória), o acervo por formato e tamanho, a fila (tempo por tipo de trabalho e **por que os trabalhos falharam**), texto e OCR, tamanho do banco e da biblioteca, memória e CPU dos contêineres, contas e entradas. **Só lê**: a sessão do banco é aberta como somente leitura. Por padrão traz só contagens e motivos, sem o título de nenhuma obra nem o nome de arquivo, então dá para compartilhar; com `--com-nomes` lista também o que falhou, com nomes, para uso seu. É o que alimenta o relatório de uma rodada de testes reais (modelo em [`Codice_Rodada_de_Testes_MODELO.md`](Codice_Rodada_de_Testes_MODELO.md)), e serve também para olhar a saúde da instância de vez em quando.
+
+## 10. Quando algo dá errado
 
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|
@@ -115,7 +119,7 @@ Ao subir, a API registra se o LDAP está ligado, em quantos proxies confia e o e
 | Não consigo entrar como dono | senha ou segundo fator perdidos | seção 5 (`recover-owner`) |
 | Conflito de rede ao subir | a sub-rede padrão já existe | seção 6 |
 
-## 10. O que este guia ainda não cobre
+## 11. O que este guia ainda não cobre
 
 Dito com franqueza, para ninguém achar que existe:
 
