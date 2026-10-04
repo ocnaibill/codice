@@ -19,6 +19,8 @@ const TYPE_LABEL = {
   scan: 'Varredura de pasta',
   transfer: 'Mover para o acervo',
   dedupe: 'Busca de duplicatas',
+  backup: 'Backup',
+  verify_backup: 'Verificação de backup',
   extract_text: 'Leitura do texto para busca',
   ocr: 'Leitura de páginas escaneadas (OCR)',
 };

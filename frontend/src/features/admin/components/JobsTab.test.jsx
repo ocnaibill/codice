@@ -35,6 +35,13 @@ describe('JobsTab', () => {
     expect(view.text()).not.toContain('Leitura do arquivo');
   });
 
+  it('names the owner\'s backup jobs in Portuguese', async () => {
+    await open([job({ id: 4, type: 'backup', workTitle: null, state: 'running' }), job({ id: 5, type: 'verify_backup', workTitle: null, state: 'pending' })]);
+    expect(view.text()).toContain('Backup');
+    expect(view.text()).toContain('Verificação de backup');
+    expect(view.text()).not.toContain('verify_backup');
+  });
+
   it('retries a failed job', async () => {
     await open([job({ id: 7 })]);
     await view.click(view.button('Tentar de novo'));

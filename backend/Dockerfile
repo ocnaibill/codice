@@ -16,7 +16,7 @@ FROM alpine:3.21
 # libarchive-tools: bsdtar, which opens the CBR (RAR) archives of comics; free, and what the worker uses too.
 RUN apk add --no-cache ca-certificates tzdata postgresql15-client libarchive-tools \
  && addgroup -S -g 10001 codice && adduser -S -u 10001 -G codice codice \
- && mkdir -p /app/storage && chown codice:codice /app/storage
+ && mkdir -p /app/storage /backups && chown codice:codice /app/storage /backups
 COPY --from=build /out/ /usr/local/bin/
 USER codice
 WORKDIR /app

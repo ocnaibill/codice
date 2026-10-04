@@ -17,3 +17,15 @@ export function formatDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('pt-BR');
 }
+
+/** How long ago, in Portuguese: 90 s -> "há 1 minuto", 3 h -> "há 3 horas", 50 h -> "há 2 dias". `ms` is the age. */
+export function formatAge(ms) {
+  const seconds = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  if (seconds < 60) return 'agora há pouco';
+  const unit = (n, one, many) => `há ${n} ${n === 1 ? one : many}`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return unit(minutes, 'minuto', 'minutos');
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return unit(hours, 'hora', 'horas');
+  return unit(Math.floor(hours / 24), 'dia', 'dias');
+}

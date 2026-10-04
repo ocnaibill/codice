@@ -12,6 +12,7 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
+	"github.com/ocnaibill/codice/backend/internal/backup"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/ocnaibill/codice/backend/internal/ldapauth"
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
@@ -35,6 +36,8 @@ type routerDeps struct {
 	PublicURL string
 	// Version and SourceURL are what the "Sobre" screen shows (see internal/version).
 	Version, SourceURL string
+	// BackupPanel is what the owner's backup buttons run; the zero value is "not set up".
+	BackupPanel backup.Panel
 	// Directory is the LDAP directory, nil when it is not configured.
 	Directory     ldapauth.Directory
 	DirectoryHost string
@@ -53,7 +56,7 @@ func newRouter(d routerDeps) http.Handler {
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
 	healthHandler := &handlers.HealthHandler{DB: db, Redis: d.RedisClient}
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions, Directory: d.Directory}
-	backupAdmin := &handlers.BackupAdminHandler{DB: db}
+	backupAdmin := &handlers.BackupAdminHandler{DB: db, StoragePath: d.StoragePath, Panel: d.BackupPanel}
 	ldapAdmin := &handlers.LDAPAdminHandler{DB: db, Directory: d.Directory, Host: d.DirectoryHost, BaseDN: d.DirectoryBase}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
 	invitesHandler := &handlers.InvitationsHandler{DB: db, Sessions: d.Sessions}
@@ -213,6 +216,10 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Get("/admin/trash/policy/preview", trashHandler.PreviewPolicy)
 	r.With(owner).Post("/admin/trash/policy/apply", trashHandler.ApplyPolicy)
 	r.With(staff).Get("/admin/backup", backupAdmin.Get)
+	// The owner makes and checks a package from the panel (DEC-123): the password is asked again, so the
+	// attempts have the limit of the sign-in. Restoring and downloading stay with codice-admin.
+	r.With(owner, authRateLimit).Post("/admin/backup/run", backupAdmin.Run)
+	r.With(owner, authRateLimit).Post("/admin/backup/verify", backupAdmin.Verify)
 	r.With(staff).Get("/admin/storage/orphans", trashHandler.Orphans)
 	r.With(staff).Post("/admin/storage/orphans/trash", trashHandler.TrashOrphans)
 

@@ -78,6 +78,12 @@ services:
       # source of the version they use over the network: whoever runs a modified copy points this at their own.
       # Empty: the upstream repository.
       CODICE_SOURCE_URL: ${CODICE_SOURCE_URL:-}
+      # The owner's backup buttons (Administração → Sistema). They need BOTH: the folder the packages go to
+      # (/backups is a volume of this stack) and a file with the passphrase that encrypts them, which is kept
+      # outside this server too (for example ./ldap/backup-passphrase, seen here as /app/ldap/backup-passphrase).
+      # Without the file the buttons stay off; the codice-admin command works either way.
+      CODICE_BACKUP_DIR: ${CODICE_BACKUP_DIR:-/backups}
+      CODICE_BACKUP_PASSPHRASE_FILE: ${CODICE_BACKUP_PASSPHRASE_FILE:-}
       PORT: "8080"
       # LDAP sign-in (optional). Leave LDAP_URL empty to keep it off; see the README.
       # The service account's password is read from a file, never from the environment.
@@ -96,6 +102,10 @@ services:
       # The library. A named volume keeps the right owner (the container runs as uid 10001).
       # To keep files on a host folder instead, use a bind mount owned by uid 10001.
       - codice_storage:/app/storage
+      # Where the packages made from the panel go. A named volume keeps the right owner; to keep them on another
+      # disk, set CODICE_BACKUP_HOST_DIR to a folder owned by uid 10001. On the same disk as the library a package
+      # protects against mistakes, not against the disk failing: the panel says so.
+      - ${CODICE_BACKUP_HOST_DIR:-codice_backups}:/backups
       # Secrets and the CA certificate for LDAP live in ./ldap (not in git).
       - ./ldap:/app/ldap:ro
     depends_on:
@@ -258,4 +268,5 @@ networks:
 volumes:
   codice_pgdata:
   codice_storage:
+  codice_backups:
   codice_model_cache:

@@ -23,7 +23,8 @@ beforeEach(() => {
     if (url === '/admin/storage/roots') return { data: { roots: [], managed: '/data' } };
     if (url === '/admin/storage/cleanups' || url === '/admin/storage/orphans') return { data: { data: [] } };
     if (url === '/admin/storage/referenced') return { data: { data: [], total: 0, summary: { ok: 0, missing: 0, conflict: 0 } } };
-    if (url === '/admin/backup') return { data: { lastBackup: null } };
+    if (url === '/admin/backup') return { data: { lastBackup: null, queue: { pending: 0, running: 0, failedRecent: 0, oldestWaiting: null }, storage: null } };
+    if (url === '/healthz') return { data: { status: 'ok', components: { database: 'ok', redis: 'ok' } } };
     if (url === '/admin/metadata-providers') return { data: { data: providerList } };
     if (url === '/admin/suggestions') return { data: { data: [], total: queueTotal } };
     if (url === '/admin/duplicates' || url === '/admin/ocr' || url === '/users') return { data: { data: [] } };
@@ -69,6 +70,30 @@ describe('AdminPage: the external providers (#68)', () => {
   });
 });
 
+describe('AdminPage: the owner\'s backup buttons', () => {
+  const withPanel = () => {
+    const base = api.get.getMockImplementation();
+    api.get.mockImplementation(async (url) => {
+      if (url === '/admin/backup') {
+        return { data: { lastBackup: null, queue: { pending: 0, running: 0, failedRecent: 0, oldestWaiting: null }, storage: null, panel: { enabled: true, dir: '/backups', packages: [], job: null } } };
+      }
+      return base(url);
+    });
+  };
+
+  it('are the owner\'s: the Sistema tab has them for the owner and not for an administrator', async () => {
+    withPanel();
+    view = await mount(<AdminPage isOwner />);
+    await view.click(view.button('Sistema'));
+    expect(view.button('Fazer um backup agora')).toBeTruthy();
+    view.unmount();
+    view = await mount(<AdminPage isOwner={false} />);
+    await view.click(view.button('Sistema'));
+    expect(view.text()).toContain('Pacotes na pasta de backups');
+    expect(view.button('Fazer um backup agora')).toBeUndefined();
+  });
+});
+
 describe('AdminPage', () => {
   it('opens on the jobs and switches between the areas', async () => {
     view = await mount(<AdminPage isOwner />);
@@ -77,6 +102,10 @@ describe('AdminPage', () => {
     await view.click(view.button('Armazenamento'));
     expect(view.text()).toContain('Importar uma pasta');
     expect(view.text()).toContain('Reorganizar o acervo');
+
+    await view.click(view.button('Sistema'));
+    expect(view.text()).toContain('Saúde');
+    expect(view.text()).toContain('Nenhum backup registrado');
 
     await view.click(view.button('Lixeira'));
     expect(view.text()).toContain('A lixeira está vazia');

@@ -20,6 +20,7 @@ import { DictionariesTab } from './DictionariesTab';
 import { OcrTab } from './OcrTab';
 import { EmbeddingsTab } from './EmbeddingsTab';
 import { StorageTab } from './StorageTab';
+import { SystemTab } from './SystemTab';
 
 let view;
 let failing;
@@ -52,7 +53,7 @@ const CASES = [
   ['os dicionários', () => <DictionariesTab isOwner />, 'Não foi possível carregar os dicionários.', { packages: [] }],
   ['as pastas autorizadas', () => <StorageTab isOwner />, 'Não foi possível carregar as pastas autorizadas.', { roots: [], data: [] }],
   ['os arquivos órfãos', () => <StorageTab isOwner />, 'Não foi possível carregar os arquivos órfãos.', { roots: [], data: [] }],
-  ['o estado do backup', () => <StorageTab isOwner />, 'Não foi possível carregar o estado do backup.', { roots: [], data: [] }],
+  ['o estado do sistema', () => <SystemTab />, 'Não foi possível carregar o estado do sistema.', { lastBackup: null, queue: { pending: 0, running: 0, failedRecent: 0, oldestWaiting: null }, storage: null, components: { database: 'ok', redis: 'ok' } }],
   ['a lista do OCR', () => <OcrTab isOwner />, 'Não foi possível carregar a lista.', { enabled: true, available: true, language: 'por', data: [] }],
   ['a configuração do OCR', () => <OcrTab isOwner />, 'Não foi possível carregar a configuração do OCR.', { enabled: true, available: true, language: 'por', data: [] }],
   ['a configuração da IA local', () => <EmbeddingsTab isOwner />, 'Não foi possível carregar a configuração.', { enabled: false, model: 'labse', available: true, models: [] }],
@@ -85,7 +86,12 @@ describe('the admin tabs that cannot load what they show', () => {
     const text = document.body.textContent;
     expect(text).not.toContain('Nenhuma pasta autorizada.');
     expect(text).not.toContain('Nenhum arquivo órfão.');
-    expect(text).not.toContain('Nenhum backup registrado');
+  });
+
+  it('does not say there is no backup when it could not tell', async () => {
+    serve({ lastBackup: null, queue: {}, storage: null });
+    view = await mount(<SystemTab />);
+    expect(document.body.textContent).not.toContain('Nenhum backup registrado');
   });
 });
 

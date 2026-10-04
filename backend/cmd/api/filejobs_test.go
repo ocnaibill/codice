@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ocnaibill/codice/backend/internal/backup"
 	"github.com/ocnaibill/codice/backend/internal/database"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
 	"github.com/ocnaibill/codice/backend/internal/storage"
@@ -43,7 +44,7 @@ func TestFileJobs_ScanThenTransferThroughTheQueue(t *testing.T) {
 	managed, _ := filepath.EvalSymlinks(t.TempDir())
 	lib, _ := filepath.EvalSymlinks(t.TempDir())
 	mover := &storage.Mover{DB: db, Root: managed}
-	handlers := fileJobHandlers(db, mover)
+	handlers := fileJobHandlers(db, mover, backup.Panel{})
 	types := []string{}
 	for k := range handlers {
 		types = append(types, k)
@@ -116,4 +117,56 @@ func TestFileJobs_ScanThenTransferThroughTheQueue(t *testing.T) {
 		t.Errorf("transferring twice = %q", got)
 	}
 	_ = strings.TrimSpace
+}
+
+// The owner's two backup buttons run as jobs of the API process (DEC-123). What the server's own set-up
+// makes impossible fails for good at the first attempt: trying again cannot fix a missing passphrase.
+func TestBackupJobs_FailForGoodWhenTheServerIsNotSetUpForThem(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	panelOff := backup.Panel{DB: db}
+	panelNoPass := backup.Panel{DB: db, Dir: dir, PassphraseFile: filepath.Join(t.TempDir(), "nao-existe")}
+	ctx := context.Background()
+
+	run := func(panel backup.Panel, jobType, payload string) string {
+		t.Helper()
+		db.Exec(`DELETE FROM jobs`)
+		handlers := fileJobHandlers(db, &storage.Mover{DB: db, Root: t.TempDir()}, panel)
+		for _, typ := range []string{"backup", "verify_backup"} {
+			if handlers[typ] == nil {
+				t.Fatalf("no handler for %s", typ)
+			}
+		}
+		// Three attempts allowed: a permanent error must not use them up.
+		if _, err := db.Exec(`INSERT INTO jobs (type, payload, max_attempts) VALUES ($1, $2::jsonb, 3)`, jobType, payload); err != nil {
+			t.Fatal(err)
+		}
+		runner := &jobs.Runner{DB: db, Owner: "api-test", Types: []string{jobType}, MaxRunning: 1, LeaseSeconds: 60, Handlers: handlers, Heartbeat: 20 * time.Millisecond}
+		if took, err := runner.RunOnce(ctx); err != nil || !took {
+			t.Fatalf("RunOnce: %v %v", took, err)
+		}
+		return scalar(t, db, `SELECT state || '/' || COALESCE(error_kind, '') || '/' || attempts || '/' || COALESCE(last_error, '') FROM jobs`)
+	}
+
+	cases := []struct {
+		name    string
+		panel   backup.Panel
+		typ     string
+		payload string
+		want    string
+	}{
+		{"backup, panel off", panelOff, "backup", `{}`, "failed/permanent/1/" + backup.ErrPanelOff.Error()},
+		{"backup, no passphrase", panelNoPass, "backup", `{}`, "failed/permanent/1/" + backup.ErrNoPassphrase.Error()},
+		{"verify, panel off", panelOff, "verify_backup", `{"name":"codice-backup-20261001-030000.tar.age"}`, "failed/permanent/1/" + backup.ErrPanelOff.Error()},
+		{"verify, no package named", panelNoPass, "verify_backup", `{}`, "failed/permanent/1/the job has no package"},
+		{"verify, a package that is not there", backup.Panel{DB: db, Dir: dir, PassphraseFile: "x"}, "verify_backup", `{"name":"codice-backup-20261001-030000.tar"}`, "failed/permanent/1/" + backup.ErrNotAPackage.Error()},
+	}
+	for _, c := range cases {
+		if got := run(c.panel, c.typ, c.payload); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
 }

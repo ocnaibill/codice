@@ -97,7 +97,7 @@ func RunEnv(ctx context.Context, db *sql.DB, env Env, args []string, in io.Reade
 	case "backup":
 		return backupCmd(ctx, db, env, args[1:], out)
 	case "verify-backup":
-		return verifyCmd(ctx, env, args[1:], in, out)
+		return verifyCmd(ctx, db, env, args[1:], in, out)
 	case "restore":
 		return restoreCmd(ctx, env, args[1:], in, out)
 	case "prune-backups":

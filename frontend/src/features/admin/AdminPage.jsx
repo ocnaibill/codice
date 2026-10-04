@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { JobsTab } from './components/JobsTab';
 import { StorageTab } from './components/StorageTab';
+import { SystemTab } from './components/SystemTab';
 import { TrashTab } from './components/TrashTab';
 import { DuplicatesTab } from './components/DuplicatesTab';
 import { AccountsTab } from './components/AccountsTab';
@@ -15,6 +16,7 @@ import { useSuggestionQueue } from './api/admin';
 const TABS = [
   ['jobs', 'Trabalhos'],
   ['storage', 'Armazenamento'],
+  ['system', 'Sistema'],
   ['trash', 'Lixeira'],
   ['suggestions', 'Sugestões'],
   ['providers', 'Provedores'],
@@ -56,6 +58,7 @@ export function AdminPage({ isOwner, onClose }) {
       <div className="mt-5">
         {tab === 'jobs' && <JobsTab />}
         {tab === 'storage' && <StorageTab isOwner={isOwner} />}
+        {tab === 'system' && <SystemTab isOwner={isOwner} />}
         {tab === 'trash' && <TrashTab isOwner={isOwner} />}
         {tab === 'suggestions' && <SuggestionsTab isOwner={isOwner} onOpenProviders={() => setTab('providers')} />}
         {tab === 'providers' && <ProvidersTab isOwner={isOwner} />}

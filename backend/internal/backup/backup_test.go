@@ -953,15 +953,50 @@ func TestRecord_KeepsTheLatestBackupForTheInterface(t *testing.T) {
 		t.Fatalf("before any backup: %v %v", l, err)
 	}
 	_, res := s.backup(true, "")
-	if err := Record(ctx, s.db, res); err != nil {
+	if err := Record(ctx, s.db, res, "/mnt/backups/codice/codice-backup-20261004-030000.tar"); err != nil {
 		t.Fatal(err)
 	}
 	l, err := Last(ctx, s.db)
 	if err != nil || l == nil || !l.IncludesFiles || l.Files != 2 || l.Bytes != res.Bytes || l.Encrypted {
 		t.Errorf("last = %+v %v", l, err)
 	}
+	if l.Path != "/mnt/backups/codice/codice-backup-20261004-030000.tar" || l.Name != "codice-backup-20261004-030000.tar" {
+		t.Errorf("where the package is: name %q, path %q", l.Name, l.Path)
+	}
 	if scalar(t, s.db, `SELECT count(*) FROM audit_log WHERE action = 'backup.create'`) != "1" {
 		t.Error("the backup was not audited")
+	}
+}
+
+func TestRecord_ASreamedPackageHasNoNameOrPath(t *testing.T) {
+	s := newSource(t)
+	_, res := s.backup(false, "")
+	if err := Record(ctx, s.db, res, ""); err != nil {
+		t.Fatal(err)
+	}
+	l, _ := Last(ctx, s.db)
+	if l == nil || l.Name != "" || l.Path != "" {
+		t.Errorf("last = %+v: a package with no address must not invent one", l)
+	}
+}
+
+func TestRecordVerified_KeepsWhichPackageWasCheckedAndHow(t *testing.T) {
+	s := newSource(t)
+	if v, err := LastVerified(ctx, s.db); err != nil || v != nil {
+		t.Fatalf("before any check: %v %v", v, err)
+	}
+	if err := RecordVerified(ctx, s.db, "a.tar", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordVerified(ctx, s.db, "b.tar", true); err != nil {
+		t.Fatal(err)
+	}
+	v, err := LastVerified(ctx, s.db)
+	if err != nil || v == nil || v.Name != "b.tar" || !v.Deep || time.Since(v.At) > time.Minute {
+		t.Errorf("verified = %+v %v", v, err)
+	}
+	if scalar(t, s.db, `SELECT count(*) FROM audit_log WHERE action = 'backup.verify'`) != "2" {
+		t.Error("the checks were not audited")
 	}
 }
 

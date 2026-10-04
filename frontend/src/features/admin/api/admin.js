@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { messageOf } from '../../../lib/serverMessage';
 import { api } from '../../../lib/api';
+import { POLL_MS } from '../systemLimits';
 
 /** Turns an error from the API into a sentence a person can act on. */
 export function describeError(error) {
@@ -24,7 +25,40 @@ const list = (key, url, params) =>
 export const useJobs = list('jobs', '/admin/jobs', ({ state } = {}) => (state ? { state } : undefined));
 export const useRoots = list('roots', '/admin/storage/roots');
 export const useCleanups = list('cleanups', '/admin/storage/cleanups');
-export const useBackup = list('backup', '/admin/backup');
+/** What the "Sistema" tab shows: the last backup, the queue, the space and the owner's two backup buttons. While a job of
+ *  those buttons is live it asks again every few seconds, so the screen follows it to the end. */
+export function useBackup() {
+  return useQuery({
+    queryKey: ['admin', 'backup', null],
+    queryFn: async () => (await api.get('/admin/backup')).data,
+    staleTime: 0,
+    refetchInterval: (query) => {
+      const state = query.state.data?.panel?.job?.state;
+      return state === 'pending' || state === 'running' ? POLL_MS : false;
+    },
+  });
+}
+
+// The owner makes a package, or checks one of the folder, from the panel (DEC-123). The password is asked again each time.
+function usePanelAction(path) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body) => (await api.post(path, body)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'backup'] }),
+  });
+}
+export const useRunBackup = () => usePanelAction('/admin/backup/run');
+export const useVerifyBackup = () => usePanelAction('/admin/backup/verify');
+/** The public health of the API by component (RF-021). The answer is the same JSON when something is down (HTTP 503), so a
+ *  down database is shown, not treated as a failure to load. It asks again every half minute while the tab is open. */
+export function useHealth() {
+  return useQuery({
+    queryKey: ['admin', 'health'],
+    queryFn: async () => (await api.get('/healthz', { validateStatus: () => true })).data,
+    staleTime: 0,
+    refetchInterval: 30000,
+  });
+}
 export const useOrphans = list('orphans', '/admin/storage/orphans');
 export const useTrash = list('trash', '/admin/trash');
 export const useDuplicates = list('duplicates', '/admin/duplicates');

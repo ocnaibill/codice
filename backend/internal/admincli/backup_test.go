@@ -106,8 +106,48 @@ func TestBackup_WritesANamedPrivatePackageAndRecordsIt(t *testing.T) {
 			t.Errorf("the summary does not say %q:\n%s", want, out)
 		}
 	}
-	if l, _ := backup.Last(context.Background(), s.db); l == nil || !l.IncludesFiles {
-		t.Errorf("last backup = %+v", l)
+	l, _ := backup.Last(context.Background(), s.db)
+	if l == nil || !l.IncludesFiles {
+		t.Fatalf("last backup = %+v", l)
+	}
+	if l.Path != filepath.Join(dir, files[0].Name()) || l.Name != files[0].Name() {
+		t.Errorf("where the package is: name %q, path %q", l.Name, l.Path)
+	}
+}
+
+func TestBackup_RecordsWhereAPackageWentOnlyWhenItKnowsOrIsToldSo(t *testing.T) {
+	s := newSite(t)
+	last := func() *backup.LastBackup {
+		l, err := backup.Last(context.Background(), s.db)
+		if err != nil || l == nil {
+			t.Fatalf("last = %v %v", l, err)
+		}
+		return l
+	}
+
+	// To standard output the process cannot know where the package ends up.
+	if _, _, err := s.run("", "backup", "--out", "-"); err != nil {
+		t.Fatal(err)
+	}
+	if l := last(); l.Path != "" || l.Name != "" {
+		t.Errorf("a streamed package got an address nobody gave it: %+v", l)
+	}
+
+	// The operator says where it will be kept, outside this process.
+	if _, _, err := s.run("", "backup", "--out", "-", "--as-path", "/mnt/backups/codice/codice-backup-X.tar.age"); err != nil {
+		t.Fatal(err)
+	}
+	if l := last(); l.Path != "/mnt/backups/codice/codice-backup-X.tar.age" || l.Name != "codice-backup-X.tar.age" {
+		t.Errorf("--as-path: %+v", l)
+	}
+
+	// A file the process wrote has a path of its own, which --as-path does not replace.
+	target := filepath.Join(t.TempDir(), "meu.tar")
+	if _, _, err := s.run("", "backup", "--out", target, "--as-path", "/elsewhere/meu.tar"); err != nil {
+		t.Fatal(err)
+	}
+	if l := last(); l.Path != target {
+		t.Errorf("a file written here is where it is: %+v", l)
 	}
 }
 
@@ -337,4 +377,65 @@ func TestBackupCommands_NeedTheInstallationDetails(t *testing.T) {
 			t.Errorf("%v ran without DATABASE_URL", args)
 		}
 	}
+}
+
+func TestVerifyBackup_RecordsWhichPackageWasCheckedAndHow(t *testing.T) {
+	s := newSite(t)
+	dir := t.TempDir()
+	s.run("", "backup", "--dir", dir)
+	files, _ := os.ReadDir(dir)
+	pkg := filepath.Join(dir, files[0].Name())
+	verified := func() *backup.Verified {
+		v, err := backup.LastVerified(context.Background(), s.db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	if verified() != nil {
+		t.Fatal("nothing was checked yet")
+	}
+
+	if _, _, err := s.run("", "verify-backup", pkg); err != nil {
+		t.Fatal(err)
+	}
+	if v := verified(); v == nil || v.Name != files[0].Name() || v.Deep {
+		t.Errorf("after reading the package: %+v", v)
+	}
+	if _, _, err := s.run("", "verify-backup", "--deep", pkg); err != nil {
+		t.Fatal(err)
+	}
+	if v := verified(); v == nil || v.Name != files[0].Name() || !v.Deep {
+		t.Errorf("after the rehearsal: %+v", v)
+	}
+
+	// A package that does not pass is not recorded as checked.
+	raw, _ := os.ReadFile(pkg)
+	raw[len(raw)/2] ^= 0xff
+	bad := filepath.Join(dir, "danificado.tar")
+	os.WriteFile(bad, raw, 0o600)
+	if _, _, err := s.run("", "verify-backup", bad); err == nil {
+		t.Fatal("a damaged package passed")
+	}
+	if v := verified(); v.Name != files[0].Name() {
+		t.Errorf("a failed check was recorded: %+v", v)
+	}
+
+	// From standard input there is no name to record.
+	s.db.Exec(`DELETE FROM settings WHERE key = 'last_backup_verified'`)
+	if _, _, err := s.run(string(rawOf(t, pkg)), "verify-backup", "-"); err != nil {
+		t.Fatal(err)
+	}
+	if verified() != nil {
+		t.Errorf("a package from standard input has no name to record: %+v", verified())
+	}
+}
+
+func rawOf(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
