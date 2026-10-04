@@ -46,6 +46,20 @@ describe('account menu', () => {
     expect(apps).toHaveBeenCalledTimes(1);
   });
 
+  it('opens the about screen from the menu', async () => {
+    const about = vi.fn();
+    view = await mount(<Header onOpenAbout={about} />);
+    await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));
+    await view.click(view.button('Sobre'));
+    expect(about).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no about item when nothing handles it', async () => {
+    view = await mount(<Header />);
+    await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));
+    expect(view.button('Sobre')).toBeUndefined();
+  });
+
   it('has no apps item when nothing handles it', async () => {
     view = await mount(<Header />);
     await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));

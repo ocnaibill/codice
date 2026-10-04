@@ -18,6 +18,7 @@ import (
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"github.com/ocnaibill/codice/backend/internal/storage"
+	"github.com/ocnaibill/codice/backend/internal/version"
 )
 
 func main() {
@@ -101,6 +102,11 @@ func main() {
 		log.Printf("Public address for OPDS links: %s", publicURL)
 	}
 
+	sourceURL, err := version.SourceURL(os.Getenv("CODICE_SOURCE_URL"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	sessionStore := &sessions.Store{DB: db}
 	authenticator := appMiddleware.Authenticator{
 		Sessions: sessionStore.CheckSession,
@@ -174,6 +180,8 @@ func main() {
 
 		TrustedProxies: trustedProxies,
 		PublicURL:      publicURL,
+		Version:        version.Version,
+		SourceURL:      sourceURL,
 		Directory:      directory,
 		DirectoryHost:  directoryHost,
 		DirectoryBase:  directoryBase,

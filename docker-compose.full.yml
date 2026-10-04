@@ -50,6 +50,9 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        # The commit this image is built from, shown on the "Sobre" screen (git rev-parse --short HEAD).
+        CODICE_VERSION: ${CODICE_VERSION:-dev}
     environment:
       APP_ENV: ${APP_ENV:-production}
       DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
@@ -71,6 +74,10 @@ services:
       # of the OPDS catalog: an app follows them as written, so they must say https:// when the site is
       # reached over HTTPS behind a proxy or a tunnel. Empty: built from each request.
       CODICE_PUBLIC_URL: ${CODICE_PUBLIC_URL:-}
+      # Where the source of THIS copy is, for the "Sobre" screen. The AGPL gives every user the right to the
+      # source of the version they use over the network: whoever runs a modified copy points this at their own.
+      # Empty: the upstream repository.
+      CODICE_SOURCE_URL: ${CODICE_SOURCE_URL:-}
       PORT: "8080"
       # LDAP sign-in (optional). Leave LDAP_URL empty to keep it off; see the README.
       # The service account's password is read from a file, never from the environment.

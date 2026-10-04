@@ -4,7 +4,9 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/codice-api ./cmd/api \
+# CODICE_VERSION: the commit this image is built from, shown on the "Sobre" screen.
+ARG CODICE_VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/ocnaibill/codice/backend/internal/version.Version=${CODICE_VERSION}" -o /out/codice-api ./cmd/api \
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/codice-admin ./cmd/codice-admin
 
 FROM alpine:3.21

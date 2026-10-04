@@ -19,6 +19,7 @@ import { ReadingPreferencesSync } from './features/reader/ReadingPreferencesSync
 import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
 import { PreferencesModal } from './components/layout/PreferencesModal';
 import { AppsModal } from './components/layout/AppsModal';
+import { AboutModal } from './components/layout/AboutModal';
 import { ResetPassword } from './features/auth/components/ResetPassword';
 import { AcceptInvite } from './features/auth/components/AcceptInvite';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
@@ -41,6 +42,7 @@ function App() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [appsOpen, setAppsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   // A link like /?invite=<secret> opens the sign-up page for that invitation.
   const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset'));
@@ -280,6 +282,7 @@ function App() {
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
       {preferencesOpen && <PreferencesModal onClose={() => setPreferencesOpen(false)} />}
       {appsOpen && <AppsModal onClose={() => setAppsOpen(false)} />}
+      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
       <WorkSheet />
       {metadataWorkId && <EditBookModal key={`${metadataWorkId}-${metadataTab}`} workId={metadataWorkId} tab={metadataTab} onClose={closeMetadata} />}
       {activeBookId ? (
@@ -293,6 +296,7 @@ function App() {
           onChangePassword={() => setChangingPassword(true)}
           onOpenPreferences={() => setPreferencesOpen(true)}
           onOpenApps={() => setAppsOpen(true)}
+          onOpenAbout={() => setAboutOpen(true)}
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >
