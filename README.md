@@ -30,6 +30,8 @@ Códice is built with a focus on performance, resilience, and low resource consu
 
 ## 🐳 Instalação com Docker Compose
 
+> Para manter uma instância no ar (rotina, atualização, backup, recuperação, problemas comuns), veja o [guia de operação](docs/Codice_Guia_de_Operacao.md).
+
 O `docker-compose.full.yml` sobe a pilha inteira em contêineres: PostgreSQL, Redis, a API, o worker e o site (nginx). Precisa de Docker com o plugin Compose v2.
 
 ```bash
