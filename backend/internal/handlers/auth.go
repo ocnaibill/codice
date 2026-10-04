@@ -65,7 +65,7 @@ const invalidLoginMessage = "Invalid username or password"
 
 // newSessionToken records a session and returns its bearer token.
 func (h *AuthHandler) newSessionToken(r *http.Request, userID string) (string, error) {
-	sid, expires, err := h.Sessions.CreateSession(r.Context(), userID, r.UserAgent())
+	sid, expires, err := h.Sessions.CreateSession(r.Context(), userID, r.UserAgent(), middleware.RequestClientIP(r))
 	if err != nil {
 		return "", err
 	}

@@ -30,7 +30,7 @@ const (
 type InvitationsHandler struct {
 	DB       *sql.DB
 	Sessions interface {
-		CreateSession(ctx context.Context, userID, userAgent string) (string, time.Time, error)
+		CreateSession(ctx context.Context, userID, userAgent, ip string) (string, time.Time, error)
 	}
 }
 
@@ -355,7 +355,7 @@ func (h *InvitationsHandler) Redeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sid, expires, err := h.Sessions.CreateSession(r.Context(), userID, r.UserAgent())
+	sid, expires, err := h.Sessions.CreateSession(r.Context(), userID, r.UserAgent(), middleware.RequestClientIP(r))
 	if err != nil {
 		http.Error(w, "Error generating authentication token", http.StatusInternalServerError)
 		return

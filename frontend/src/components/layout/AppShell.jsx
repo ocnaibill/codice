@@ -14,6 +14,7 @@ export function AppShell({
   onOpenPreferences,
   onOpenApps,
   onOpenAbout,
+  onOpenSessions,
   canAdmin,
   onOpenAdmin,
   children,
@@ -71,6 +72,7 @@ export function AppShell({
           onOpenPreferences={onOpenPreferences}
           onOpenApps={onOpenApps}
           onOpenAbout={onOpenAbout}
+          onOpenSessions={onOpenSessions}
           canAdmin={canAdmin}
           onOpenAdmin={onOpenAdmin}
           onGoHome={goHome}

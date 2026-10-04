@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -50,6 +51,9 @@ func newAuthStack(t *testing.T) *authStack {
 	})
 
 	r := chi.NewRouter()
+	// The test client is 192.0.2.1: a proxy that is believed, as nginx is in the stack.
+	r.Use(middleware.WithClientIP([]netip.Prefix{netip.MustParsePrefix("192.0.2.1/32")}))
+	sess := &SessionsHandler{DB: db, Sessions: st}
 	r.Post("/auth/login", s.authH.Login)
 	r.With(a.Middleware).Get("/auth/me", s.authH.Me)
 	r.With(a.Middleware).Post("/auth/logout", s.authH.Logout)
@@ -83,6 +87,12 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Post("/users/{id}/unblock", s.users.Unblock)
 	r.With(a.Middleware).Delete("/users/{id}", s.users.Delete)
 	r.With(a.Middleware).Post("/auth/password", s.authH.ChangePassword)
+	r.With(a.Middleware).Get("/auth/sessions", sess.List)
+	r.With(a.Middleware).Post("/auth/sessions/revoke-others", sess.RevokeOthers)
+	r.With(a.Middleware).Delete("/auth/sessions/{id}", sess.Revoke)
+	r.With(a.Middleware).Get("/users/{id}/sessions", sess.ListFor)
+	r.With(a.Middleware).Delete("/users/{id}/sessions", sess.RevokeAllFor)
+	r.With(a.Middleware).Delete("/users/{id}/sessions/{sid}", sess.RevokeFor)
 	r.With(a.Middleware).Get("/probe", probe)
 	r.With(a.AssetsWithBasic).Get("/files/probe", probe)
 	s.router = r

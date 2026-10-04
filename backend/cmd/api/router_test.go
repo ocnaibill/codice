@@ -72,6 +72,9 @@ type route struct{ method, path string }
 
 // Routes the specification reserves to owner and admin (DEC-003, RF-007).
 var staffRoutes = []route{
+	{"GET", "/users/" + someUUID + "/sessions"},
+	{"DELETE", "/users/" + someUUID + "/sessions"},
+	{"DELETE", "/users/" + someUUID + "/sessions/" + someUUID},
 	{"GET", "/admin/backup"},
 	{"GET", "/password-resets"},
 	{"POST", "/password-resets/" + someUUID + "/approve"},
@@ -430,6 +433,16 @@ func TestBackupPanelRoutes_AreTheOwnersAlone(t *testing.T) {
 		// The owner gets past the middleware; the test router has no panel set up, so the handler says so.
 		if rec := do(h, rt.method, rt.path, tokenFor(t, "owner"), `{"password":"x"}`); rec.Code != http.StatusConflict {
 			t.Errorf("%s %s as owner: %d, want 409 (panel not set up)", rt.method, rt.path, rec.Code)
+		}
+	}
+}
+
+// "Sessões e dispositivos" is for whoever is signed in, whatever the role, and for no one who is not.
+func TestSessionsRoutes_NeedASessionButNoRole(t *testing.T) {
+	h := testRouter(t)
+	for _, rt := range []route{{"GET", "/auth/sessions"}, {"DELETE", "/auth/sessions/" + someUUID}, {"POST", "/auth/sessions/revoke-others"}} {
+		if rec := do(h, rt.method, rt.path, "", ""); rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s without a session: %d, want 401", rt.method, rt.path, rec.Code)
 		}
 	}
 }

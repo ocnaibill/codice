@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/http"
@@ -80,6 +81,29 @@ func ClientIP(r *http.Request, trusted []netip.Prefix) string {
 		}
 	}
 	return remote.String()
+}
+
+type clientIPKey struct{}
+
+// WithClientIP works out who is really calling once (ClientIP, with the trusted proxies) and keeps the
+// answer in the request, so every handler that records an address (the session, the login events) reads
+// the same one and none of them has to know about proxies.
+func WithClientIP(trusted []netip.Prefix) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), clientIPKey{}, ClientIP(r, trusted))
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// RequestClientIP is the address WithClientIP found. Without that middleware (a test, a command) it is the
+// address of the connection, which trusts no header.
+func RequestClientIP(r *http.Request) string {
+	if ip, ok := r.Context().Value(clientIPKey{}).(string); ok && ip != "" {
+		return ip
+	}
+	return ClientIP(r, nil)
 }
 
 // RateLimitKey is the key for per-client rate limits: the client address, with IPv6

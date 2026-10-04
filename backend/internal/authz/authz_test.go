@@ -40,6 +40,15 @@ func TestCanManageAccount(t *testing.T) {
 		{"admin cannot approve a reset for the owner", RoleAdmin, RoleOwner, ActionReset, false},
 		{"reader approves nothing", RoleReader, RoleReader, ActionReset, false},
 
+		// Ending the sessions of an account follows the reach of blocking it (DEC-060), and cuts no role.
+		{"owner ends an admin's sessions", RoleOwner, RoleAdmin, ActionEndSessions, true},
+		{"owner ends a reader's sessions", RoleOwner, RoleReader, ActionEndSessions, true},
+		{"nobody ends the owner's sessions", RoleOwner, RoleOwner, ActionEndSessions, false},
+		{"admin ends a reader's sessions", RoleAdmin, RoleReader, ActionEndSessions, true},
+		{"admin cannot end an admin's sessions", RoleAdmin, RoleAdmin, ActionEndSessions, false},
+		{"admin cannot end the owner's sessions", RoleAdmin, RoleOwner, ActionEndSessions, false},
+		{"reader ends nobody's sessions", RoleReader, RoleReader, ActionEndSessions, false},
+
 		// Readers manage nobody.
 		{"reader cannot block reader", RoleReader, RoleReader, ActionBlock, false},
 		{"reader cannot promote", RoleReader, RoleReader, ActionPromote, false},

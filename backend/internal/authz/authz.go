@@ -18,6 +18,8 @@ const (
 	ActionBlock   Action = "block"
 	ActionRemove  Action = "remove"
 	ActionReset   Action = "reset" // approve a password reset
+	// ActionEndSessions ends the sessions of an account without blocking it (DEC-060 says who may cut access).
+	ActionEndSessions Action = "end_sessions"
 )
 
 // IsStaff reports whether the role may run catalog administration
@@ -38,7 +40,7 @@ func IsAssignableRole(role string) bool {
 // actions are denied.
 func CanManageAccount(actor, target string, action Action) bool {
 	switch action {
-	case ActionPromote, ActionDemote, ActionBlock, ActionRemove, ActionReset:
+	case ActionPromote, ActionDemote, ActionBlock, ActionRemove, ActionReset, ActionEndSessions:
 	default:
 		return false
 	}
@@ -53,7 +55,7 @@ func CanManageAccount(actor, target string, action Action) bool {
 	case RoleAdmin:
 		// Admins may block or remove readers, but never change roles and
 		// never act on other admins (closes "invite as reader, then promote").
-		return target == RoleReader && (action == ActionBlock || action == ActionRemove || action == ActionReset)
+		return target == RoleReader && (action == ActionBlock || action == ActionRemove || action == ActionReset || action == ActionEndSessions)
 	default:
 		return false
 	}
