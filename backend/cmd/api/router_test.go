@@ -445,7 +445,7 @@ func TestBackupPanelRoutes_AreTheOwnersAlone(t *testing.T) {
 // "Sessões e dispositivos" is for whoever is signed in, whatever the role, and for no one who is not.
 func TestSessionsRoutes_NeedASessionButNoRole(t *testing.T) {
 	h := testRouter(t)
-	for _, rt := range []route{{"GET", "/auth/sessions"}, {"GET", "/auth/logins"}, {"DELETE", "/auth/sessions/" + someUUID}, {"POST", "/auth/sessions/revoke-others"}} {
+	for _, rt := range []route{{"GET", "/auth/sessions"}, {"GET", "/auth/logins"}, {"GET", "/auth/export"}, {"POST", "/auth/export"}, {"GET", "/auth/export/" + someUUID + "/download"}, {"DELETE", "/auth/export/" + someUUID}, {"DELETE", "/auth/sessions/" + someUUID}, {"POST", "/auth/sessions/revoke-others"}} {
 		if rec := do(h, rt.method, rt.path, "", ""); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without a session: %d, want 401", rt.method, rt.path, rec.Code)
 		}

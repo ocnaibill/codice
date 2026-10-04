@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { LoadError } from '../ui/LoadError';
 import { NAME_ORDERS, usePreferences, useSetNameOrder } from '../../features/auth/api/usePreferences';
+import { MyData } from '../../features/auth/components/MyData';
 
 /**
  * How this account wants the names of authors shown, and how the library is sorted by author. It only
@@ -26,7 +27,7 @@ export function PreferencesModal({ onClose }) {
       className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-4"
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >
-      <div role="dialog" aria-modal="true" aria-label="Preferências" className="w-full max-w-md animate-pop-in rounded-xl bg-white p-6 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Preferências" className="max-h-[92vh] w-full max-w-md animate-pop-in overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">Preferências</h2>
         <fieldset className="mt-4" disabled={isLoading || save.isPending}>
           <legend className="text-[13px] font-medium text-ink">Como mostrar o nome dos autores</legend>
@@ -53,6 +54,7 @@ export function PreferencesModal({ onClose }) {
           </div>
         </fieldset>
         {save.isError && <p role="alert" className="mt-3 text-[13px] text-danger">Não foi possível salvar.</p>}
+        <MyData />
         <div className="mt-5 flex justify-end">
           <button onClick={onClose} className="rounded-lg bg-surface-alt px-4 py-2 text-[13px] text-ink hover:brightness-95">Fechar</button>
         </div>

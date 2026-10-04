@@ -171,7 +171,13 @@ func main() {
 	} else if warning != "" {
 		log.Print(warning)
 	}
-	handlers := fileJobHandlers(db, mover, backupPanel)
+	exportDir := os.Getenv("CODICE_EXPORT_DIR")
+	if exportDir == "" {
+		exportDir = filepath.Join(os.TempDir(), "codice-exports")
+	}
+	dataExport := &handlers.DataExportHandler{DB: db, Dir: exportDir}
+	startExportPurge(context.Background(), dataExport)
+	handlers := fileJobHandlers(db, mover, backupPanel, dataExport)
 	types := make([]string, 0, len(handlers))
 	for t := range handlers {
 		types = append(types, t)
@@ -195,6 +201,7 @@ func main() {
 		TrustedProxies: trustedProxies,
 		PublicURL:      publicURL,
 		Logins:         loginRecord,
+		DataExport:     dataExport,
 		BackupPanel:    backupPanel,
 		Version:        version.Version,
 		SourceURL:      sourceURL,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatAge } from './format';
+import { formatAge, formatLeft } from './format';
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -28,5 +28,19 @@ describe('formatAge', () => {
     expect(formatAge(48 * HOUR)).toBe('há 2 dias');
     expect(formatAge(50 * HOUR)).toBe('há 2 dias');
     expect(formatAge(10 * 24 * HOUR)).toBe('há 10 dias');
+  });
+});
+
+describe('formatLeft', () => {
+  it('says under an hour, then hours, then days', () => {
+    expect(formatLeft(0)).toBe('menos de 1 hora');
+    expect(formatLeft(-5)).toBe('menos de 1 hora');
+    expect(formatLeft(undefined)).toBe('menos de 1 hora');
+    expect(formatLeft(59 * MIN)).toBe('menos de 1 hora');
+    expect(formatLeft(HOUR)).toBe('1 hora');
+    expect(formatLeft(5 * HOUR + 40 * MIN)).toBe('5 horas');
+    expect(formatLeft(23 * HOUR + 59 * MIN)).toBe('23 horas');
+    expect(formatLeft(24 * HOUR)).toBe('1 dia');
+    expect(formatLeft(49 * HOUR)).toBe('2 dias');
   });
 });

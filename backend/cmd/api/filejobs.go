@@ -20,8 +20,18 @@ import (
 
 // fileJobHandlers are the jobs that touch the file system, run inside the API
 // process through the same queue as every other job.
-func fileJobHandlers(db *sql.DB, mover *storage.Mover, panel backup.Panel) map[string]jobs.Handler {
+func fileJobHandlers(db *sql.DB, mover *storage.Mover, panel backup.Panel, exports *handlers.DataExportHandler) map[string]jobs.Handler {
 	return map[string]jobs.Handler{
+		// A person's own data in one ZIP ("Exportar meus dados").
+		handlers.JobExportData: func(ctx context.Context, j jobs.Claimed) error {
+			var payload struct {
+				ExportID string `json:"export_id"`
+			}
+			if err := json.Unmarshal(j.Payload, &payload); err != nil || payload.ExportID == "" {
+				return jobs.Permanent(errors.New("the job has no export"))
+			}
+			return exports.Prepare(ctx, payload.ExportID)
+		},
 		// Put a freshly analysed file at its layout path.
 		"organize": func(ctx context.Context, j jobs.Claimed) error {
 			if j.WorkID == nil {
@@ -171,6 +181,27 @@ func startLoginPurge(ctx context.Context, rec *logins.Recorder) {
 				log.Printf("logins: could not tidy the record: %v", err)
 			} else if n > 0 {
 				log.Printf("logins: %d old row(s) removed from the record of sign-ins", n)
+			}
+			wait = time.Hour
+		}
+	}()
+}
+
+// startExportPurge takes away the files of "Exportar meus dados" that are past their day, a few minutes after the start and then
+// every hour.
+func startExportPurge(ctx context.Context, exports *handlers.DataExportHandler) {
+	go func() {
+		wait := 3 * time.Minute
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(wait):
+			}
+			if n, err := exports.Purge(ctx); err != nil {
+				log.Printf("exports: could not tidy the files: %v", err)
+			} else if n > 0 {
+				log.Printf("exports: %d expired export(s) removed", n)
 			}
 			wait = time.Hour
 		}

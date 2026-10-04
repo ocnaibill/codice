@@ -14,6 +14,7 @@ const radio = (label) => [...document.body.querySelectorAll('label')].find((l) =
 async function open(prefs = { choice: '', library: 'given_first', effective: 'given_first' }, onClose = vi.fn()) {
   api.get.mockImplementation(async (url) => {
     if (url === '/auth/preferences') return { data: prefs };
+    if (url === '/auth/export') return { data: { export: null } };
     throw new Error(`unexpected GET ${url}`);
   });
   api.put.mockResolvedValue({ data: prefs });
@@ -24,6 +25,14 @@ afterEach(() => view.unmount());
 beforeEach(() => vi.clearAllMocks());
 
 describe('PreferencesModal', () => {
+  it('has the section of the person\'s own data, below the preferences', async () => {
+    await open();
+    const text = view.dialog().textContent;
+    expect(text).toContain('Meus dados');
+    expect(text.indexOf('Como mostrar o nome dos autores')).toBeLessThan(text.indexOf('Meus dados'));
+    expect(view.button('Preparar o meu arquivo')).toBeTruthy();
+  });
+
   it('offers both orders with an example and the library default, and says what the default is today', async () => {
     await open({ choice: '', library: 'family_first', effective: 'family_first' });
     const text = view.dialog().textContent;
