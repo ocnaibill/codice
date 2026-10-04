@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ocnaibill/codice/backend/internal/logins"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"golang.org/x/crypto/bcrypt"
@@ -29,6 +30,7 @@ type authStack struct {
 	resets    *PasswordResetsHandler
 	owner     *OwnershipHandler
 	ldapAdmin *LDAPAdminHandler
+	logins    *logins.Recorder
 }
 
 func newAuthStack(t *testing.T) *authStack {
@@ -36,11 +38,13 @@ func newAuthStack(t *testing.T) *authStack {
 	t.Setenv("JWT_SECRET", "test_secret_key_for_testing_12345678")
 	db := migratedDB(t)
 	st := &sessions.Store{DB: db}
-	a := middleware.Authenticator{Sessions: st.CheckSession, Basic: st.VerifyAppToken}
-	s := &authStack{db: db, store: st, authH: &AuthHandler{DB: db, Sessions: st}}
+	rec := &logins.Recorder{DB: db}
+	a := middleware.Authenticator{Sessions: st.CheckSession, Basic: st.VerifyAppToken, OnBasicFailure: BasicFailureRecorder(db, rec)}
+	s := &authStack{db: db, store: st, logins: rec, authH: &AuthHandler{DB: db, Sessions: st, Logins: rec}}
 	tokens := &AppTokensHandler{Sessions: st}
 	s.users = &UsersHandler{DB: db}
-	s.invites = &InvitationsHandler{DB: db, Sessions: st}
+	s.invites = &InvitationsHandler{DB: db, Sessions: st, Logins: rec}
+	loginsAdmin := &LoginsAdminHandler{DB: db, Logins: rec}
 	s.resets = &PasswordResetsHandler{DB: db}
 	s.owner = &OwnershipHandler{DB: db}
 	s.ldapAdmin = &LDAPAdminHandler{DB: db}
@@ -55,6 +59,7 @@ func newAuthStack(t *testing.T) *authStack {
 	r.Use(middleware.WithClientIP([]netip.Prefix{netip.MustParsePrefix("192.0.2.1/32")}))
 	sess := &SessionsHandler{DB: db, Sessions: st}
 	r.Post("/auth/login", s.authH.Login)
+	r.Post("/auth/setup", s.authH.SetupMasterAdmin)
 	r.With(a.Middleware).Get("/auth/me", s.authH.Me)
 	r.With(a.Middleware).Post("/auth/logout", s.authH.Logout)
 	r.With(a.Middleware).Post("/auth/resource-token", s.authH.ResourceToken)
@@ -87,6 +92,9 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Post("/users/{id}/unblock", s.users.Unblock)
 	r.With(a.Middleware).Delete("/users/{id}", s.users.Delete)
 	r.With(a.Middleware).Post("/auth/password", s.authH.ChangePassword)
+	r.With(a.Middleware).Get("/admin/logins", loginsAdmin.List)
+	r.With(a.Middleware).Put("/admin/logins/settings", loginsAdmin.SetRetention)
+	r.With(a.Middleware).Get("/auth/logins", loginsAdmin.Own)
 	r.With(a.Middleware).Get("/auth/sessions", sess.List)
 	r.With(a.Middleware).Post("/auth/sessions/revoke-others", sess.RevokeOthers)
 	r.With(a.Middleware).Delete("/auth/sessions/{id}", sess.Revoke)

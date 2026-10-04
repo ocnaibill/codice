@@ -14,6 +14,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/audit"
 	"github.com/ocnaibill/codice/backend/internal/authz"
+	"github.com/ocnaibill/codice/backend/internal/logins"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/secrets"
 	"golang.org/x/crypto/bcrypt"
@@ -28,7 +29,9 @@ const (
 // handed over outside the system (DEC-059): the secret is shown once, when the
 // invitation is created, and never stored or logged.
 type InvitationsHandler struct {
-	DB       *sql.DB
+	DB *sql.DB
+	// Logins is the record of sign-ins; nil records nothing.
+	Logins   *logins.Recorder
 	Sessions interface {
 		CreateSession(ctx context.Context, userID, userAgent, ip string) (string, time.Time, error)
 	}
@@ -365,6 +368,9 @@ func (h *InvitationsHandler) Redeem(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error generating authentication token", http.StatusInternalServerError)
 		return
 	}
+	h.Logins.Record(r.Context(), logins.Event{
+		Result: logins.Success, Method: logins.Invite, UserID: userID, IP: middleware.RequestClientIP(r), UserAgent: r.UserAgent(),
+	})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(AuthResponse{Token: token})

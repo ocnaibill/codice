@@ -5,6 +5,7 @@ import { SystemTab } from './components/SystemTab';
 import { TrashTab } from './components/TrashTab';
 import { DuplicatesTab } from './components/DuplicatesTab';
 import { AccountsTab } from './components/AccountsTab';
+import { LoginsTab } from './components/LoginsTab';
 import { LdapTab } from './components/LdapTab';
 import { EmbeddingsTab } from './components/EmbeddingsTab';
 import { SuggestionsTab } from './components/SuggestionsTab';
@@ -24,6 +25,7 @@ const TABS = [
   ['ocr', 'OCR'],
   ['dictionaries', 'Dicionários'],
   ['accounts', 'Contas'],
+  ['logins', 'Entradas'],
 ];
 
 /** The administration area. Owner and admin see it; some actions are the owner's alone. */
@@ -59,6 +61,7 @@ export function AdminPage({ isOwner, onClose }) {
         {tab === 'jobs' && <JobsTab />}
         {tab === 'storage' && <StorageTab isOwner={isOwner} />}
         {tab === 'system' && <SystemTab isOwner={isOwner} />}
+        {tab === 'logins' && <LoginsTab isOwner={isOwner} />}
         {tab === 'trash' && <TrashTab isOwner={isOwner} />}
         {tab === 'suggestions' && <SuggestionsTab isOwner={isOwner} onOpenProviders={() => setTab('providers')} />}
         {tab === 'providers' && <ProvidersTab isOwner={isOwner} />}

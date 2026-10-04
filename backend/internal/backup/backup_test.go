@@ -68,6 +68,7 @@ func newSource(t *testing.T) *source {
 	// Credentials that must never travel in a package.
 	s.exec(`INSERT INTO sessions (user_id, expires_at) VALUES ($1, now() + interval '1 day')`, ownerID)
 	s.exec(`INSERT INTO app_tokens (user_id, name, token_hash) VALUES ($1, 'kobo', repeat('a', 64))`, readerID)
+	s.exec(`INSERT INTO login_events (result, method, user_id, ip) VALUES ('success', 'local', $1, '203.0.113.7')`, ownerID)
 	s.exec(`INSERT INTO invitations (token_hash, role, expires_at) VALUES (repeat('b', 64), 'reader', now() + interval '1 day')`)
 	return s
 }
@@ -485,6 +486,11 @@ func TestCreate_PackageHoldsWhatItPromisesAndNoCredentials(t *testing.T) {
 		if n := scalar(t, db, `SELECT count(*) FROM `+table); n != "0" {
 			t.Errorf("%s came back with %s rows", table, n)
 		}
+	}
+	// The record of sign-ins is a log of addresses kept for a time the owner sets: a package that outlived it would
+	// break that promise, so it is never in one (named here, not only through the list above).
+	if n := scalar(t, db, `SELECT count(*) FROM login_events`); n != "0" {
+		t.Errorf("login_events came back with %s rows", n)
 	}
 	if scalar(t, db, `SELECT count(*) FROM users`) != "2" {
 		t.Error("the accounts did not come back")

@@ -19,7 +19,7 @@ const PHONE = { id: 's2', userAgent: IPHONE, ip: '198.51.100.20', createdAt: ago
 const OLD = { id: 's3', userAgent: 'curl/8.4.0', ip: null, createdAt: ago(200 * HOUR), lastSeenAt: null, current: false };
 const KOREADER = { id: 't1', name: 'KOReader', createdAt: '2026-09-01T10:00:00Z', lastUsedAt: '2026-09-20T18:30:00Z' };
 
-async function open({ sessions = [HERE, PHONE], apps = [], onOpenApps, sessionsError } = {}) {
+async function open({ sessions = [HERE, PHONE], apps = [], onOpenApps, sessionsError, door = [], doorError } = {}) {
   let live = sessions;
   let tokens = apps;
   api.get.mockImplementation(async (url) => {
@@ -28,6 +28,10 @@ async function open({ sessions = [HERE, PHONE], apps = [], onOpenApps, sessionsE
       return { data: live };
     }
     if (url === '/auth/app-tokens') return { data: tokens };
+    if (url === '/auth/logins') {
+      if (doorError) throw doorError;
+      return { data: door };
+    }
     throw new Error(`unexpected GET ${url}`);
   });
   api.delete.mockImplementation(async (url) => {
@@ -131,6 +135,43 @@ describe('SessionsModal', () => {
     await open({ sessionsError: Object.assign(new Error('403'), { response: { status: 403 } }) });
     expect(text()).toContain('Você não tem permissão para ver isto');
     expect(view.button('Tentar de novo')).toBeUndefined();
+  });
+
+  describe('the door of the account', () => {
+    const entry = (extra) => ({ id: 1, at: ago(2 * HOUR), lastAt: ago(2 * HOUR), count: 1, result: 'success', method: 'local', ip: '203.0.113.7', userAgent: FIREFOX, ...extra });
+
+    it('shows the sign-ins and the failed attempts, with the way, the address and the device', async () => {
+      await open({ door: [
+        entry({ id: 3, result: 'bad_password', count: 4, at: ago(5 * HOUR), lastAt: ago(1 * HOUR), ip: '198.51.100.9', userAgent: undefined }),
+        entry({ id: 2 }),
+      ] });
+      const text = view.dialog().textContent;
+      expect(text).toContain('Entradas recentes na sua conta');
+      expect(text).toContain('Senha errada');
+      expect(text).toContain('4 vezes, de ');
+      expect(text).toContain('endereço 198.51.100.9');
+      expect(text).toContain('Entrou');
+      expect(text).toContain('por senha da conta · endereço 203.0.113.7 · Firefox em Linux');
+      expect(text).toContain('troque a senha e encerre as sessões');
+    });
+
+    it('says there is none yet', async () => {
+      await open({ door: [] });
+      expect(view.dialog().textContent).toContain('Nenhuma entrada registrada ainda.');
+    });
+
+    it('shows at most the eight latest', async () => {
+      const many = Array.from({ length: 12 }, (_, i) => entry({ id: 100 - i, ip: `203.0.113.${i + 1}` }));
+      await open({ door: many });
+      expect(view.dialog().textContent).toContain('203.0.113.8');
+      expect(view.dialog().textContent).not.toContain('203.0.113.9');
+    });
+
+    it('says it could not load, and keeps the sessions', async () => {
+      await open({ doorError: new Error('down') });
+      expect(view.dialog().textContent).toContain('Não foi possível carregar as entradas.');
+      expect(view.dialog().textContent).toContain('Firefox em Linux');
+    });
   });
 
   describe('the apps', () => {

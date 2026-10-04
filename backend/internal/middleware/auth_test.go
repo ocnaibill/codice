@@ -342,3 +342,38 @@ func TestGetJWTSecret_RefusesTheAbsentAndThePublicPlaceholder(t *testing.T) {
 		t.Error("a real secret was refused")
 	}
 }
+
+// A refused app (Basic) attempt is reported to the record of sign-ins with the name that was given, and only a
+// refused ATTEMPT is: a client that sends nothing is asking what to give, and one that succeeds is not a failure.
+func TestWithBasic_ReportsRefusedAttemptsWithTheNameGiven(t *testing.T) {
+	a := newAuth(t, liveSessions{})
+	var told []string
+	a.OnBasicFailure = func(r *http.Request, username string) { told = append(told, username) }
+
+	for _, mw := range []func(http.Handler) http.Handler{a.WithBasic, a.AssetsWithBasic} {
+		told = nil
+		run(mw, "GET", "/opds/v1.2/catalog", basicHeader("ana", "cdc_valid"))                                 // good
+		run(mw, "GET", "/opds/v1.2/catalog", basicHeader("ana", "cdc_other"))                                 // wrong secret
+		run(mw, "GET", "/opds/v1.2/catalog", basicHeader("fantasma", "cdc_x"))                                // wrong name
+		run(mw, "GET", "/opds/v1.2/catalog", "Basic !!!")                                                     // junk
+		run(mw, "GET", "/opds/v1.2/catalog", "Basic "+base64.StdEncoding.EncodeToString([]byte("so-o-nome"))) // no colon
+		run(mw, "GET", "/opds/v1.2/catalog", "")                                                              // asking what to give
+		run(mw, "GET", "/opds/v1.2/catalog", "Digest abc")                                                    // another scheme: not a Basic attempt
+		want := []string{"ana", "fantasma", "", "so-o-nome"}
+		if len(told) != len(want) {
+			t.Fatalf("told = %q, want %q", told, want)
+		}
+		for i := range want {
+			if told[i] != want[i] {
+				t.Errorf("told[%d] = %q, want %q", i, told[i], want[i])
+			}
+		}
+	}
+}
+
+func TestWithBasic_NoHookIsFine(t *testing.T) {
+	a := newAuth(t, liveSessions{})
+	if code, _, _ := run(a.WithBasic, "GET", "/x", basicHeader("ana", "errado")); code != 401 {
+		t.Errorf("code = %d", code)
+	}
+}

@@ -15,6 +15,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/backup"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/ocnaibill/codice/backend/internal/ldapauth"
+	"github.com/ocnaibill/codice/backend/internal/logins"
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"github.com/ocnaibill/codice/backend/internal/storage"
@@ -36,6 +37,8 @@ type routerDeps struct {
 	PublicURL string
 	// Version and SourceURL are what the "Sobre" screen shows (see internal/version).
 	Version, SourceURL string
+	// Logins is the record of sign-ins; nil records nothing.
+	Logins *logins.Recorder
 	// BackupPanel is what the owner's backup buttons run; the zero value is "not set up".
 	BackupPanel backup.Panel
 	// Directory is the LDAP directory, nil when it is not configured.
@@ -56,11 +59,12 @@ func newRouter(d routerDeps) http.Handler {
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
 	healthHandler := &handlers.HealthHandler{DB: db, Redis: d.RedisClient}
 	sessionsHandler := &handlers.SessionsHandler{DB: db, Sessions: d.Sessions}
-	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions, Directory: d.Directory}
+	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions, Directory: d.Directory, Logins: d.Logins}
+	loginsAdmin := &handlers.LoginsAdminHandler{DB: db, Logins: d.Logins}
 	backupAdmin := &handlers.BackupAdminHandler{DB: db, StoragePath: d.StoragePath, Panel: d.BackupPanel}
 	ldapAdmin := &handlers.LDAPAdminHandler{DB: db, Directory: d.Directory, Host: d.DirectoryHost, BaseDN: d.DirectoryBase}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
-	invitesHandler := &handlers.InvitationsHandler{DB: db, Sessions: d.Sessions}
+	invitesHandler := &handlers.InvitationsHandler{DB: db, Sessions: d.Sessions, Logins: d.Logins}
 	resetsHandler := &handlers.PasswordResetsHandler{DB: db, Disconnect: d.WS.DisconnectUser}
 	ownershipHandler := &handlers.OwnershipHandler{DB: db}
 	usersHandler := &handlers.UsersHandler{DB: db, Disconnect: d.WS.DisconnectUser}
@@ -109,7 +113,7 @@ func newRouter(d routerDeps) http.Handler {
 	})
 
 	// Rate limiting for auth endpoints (SEC-09): 10 requests per minute per IP
-	authRateLimit := authRateLimiter(d.TrustedProxies)
+	authRateLimit := authRateLimiter(d.TrustedProxies, d.Logins)
 
 	// Public Auth & Setup Endpoints
 	// Public, and answers only ok/down per component: for containers and load balancers.
@@ -170,6 +174,7 @@ func newRouter(d routerDeps) http.Handler {
 
 	// Session, resource tokens and app tokens
 	r.With(auth).Get("/about", (&handlers.AboutHandler{Version: d.Version, SourceURL: d.SourceURL}).Get)
+	r.With(auth).Get("/auth/logins", loginsAdmin.Own)
 	r.With(auth).Get("/auth/sessions", sessionsHandler.List)
 	r.With(auth).Post("/auth/sessions/revoke-others", sessionsHandler.RevokeOthers)
 	r.With(auth).Delete("/auth/sessions/{id}", sessionsHandler.Revoke)
@@ -222,6 +227,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Put("/admin/trash/policy", trashHandler.SetPolicy)
 	r.With(owner).Get("/admin/trash/policy/preview", trashHandler.PreviewPolicy)
 	r.With(owner).Post("/admin/trash/policy/apply", trashHandler.ApplyPolicy)
+	r.With(staff).Get("/admin/logins", loginsAdmin.List)
+	r.With(owner).Put("/admin/logins/settings", loginsAdmin.SetRetention)
 	r.With(staff).Get("/admin/backup", backupAdmin.Get)
 	// The owner makes and checks a package from the panel (DEC-123): the password is asked again, so the
 	// attempts have the limit of the sign-in. Restoring and downloading stay with codice-admin.
@@ -383,6 +390,12 @@ func statusRateLimiter(trusted []netip.Prefix) func(http.Handler) http.Handler {
 	return httprate.LimitBy(StatusRequestsPerMinute, 1*time.Minute, appMiddleware.RateLimitKey(trusted))
 }
 
-func authRateLimiter(trusted []netip.Prefix) func(http.Handler) http.Handler {
-	return httprate.LimitBy(10, 1*time.Minute, appMiddleware.RateLimitKey(trusted))
+func authRateLimiter(trusted []netip.Prefix, rec *logins.Recorder) func(http.Handler) http.Handler {
+	return httprate.LimitBy(10, 1*time.Minute, appMiddleware.RateLimitKey(trusted),
+		// A refused request still goes into the record of sign-ins (DEC-121): someone being stopped is exactly what the
+		// owner wants to see. Same answer as before.
+		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
+			rec.Record(r.Context(), logins.Event{Result: logins.RateLimited, Method: logins.Local, IP: appMiddleware.RequestClientIP(r), UserAgent: r.UserAgent()})
+			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+		}))
 }

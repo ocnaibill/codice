@@ -16,6 +16,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
 	"github.com/ocnaibill/codice/backend/internal/ldapauth"
+	"github.com/ocnaibill/codice/backend/internal/logins"
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"github.com/ocnaibill/codice/backend/internal/storage"
@@ -109,10 +110,13 @@ func main() {
 	}
 
 	sessionStore := &sessions.Store{DB: db}
+	loginRecord := &logins.Recorder{DB: db}
 	authenticator := appMiddleware.Authenticator{
-		Sessions: sessionStore.CheckSession,
-		Basic:    sessionStore.VerifyAppToken,
+		Sessions:       sessionStore.CheckSession,
+		Basic:          sessionStore.VerifyAppToken,
+		OnBasicFailure: handlers.BasicFailureRecorder(db, loginRecord),
 	}
+	startLoginPurge(context.Background(), loginRecord)
 
 	wsHandler := &handlers.WsHandler{RedisClient: redisClient, Auth: authenticator}
 
@@ -190,6 +194,7 @@ func main() {
 
 		TrustedProxies: trustedProxies,
 		PublicURL:      publicURL,
+		Logins:         loginRecord,
 		BackupPanel:    backupPanel,
 		Version:        version.Version,
 		SourceURL:      sourceURL,

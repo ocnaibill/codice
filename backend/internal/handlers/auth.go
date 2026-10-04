@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/authz"
 	"github.com/ocnaibill/codice/backend/internal/identity"
 	"github.com/ocnaibill/codice/backend/internal/ldapauth"
+	"github.com/ocnaibill/codice/backend/internal/logins"
 	"log"
 	"net/http"
 	"os"
@@ -26,6 +28,82 @@ type AuthHandler struct {
 	// Directory is the LDAP directory, or nil when LDAP is not configured. It never
 	// takes part for the owner, whose sign-in is always local (DEC-073).
 	Directory ldapauth.Directory
+	// Logins is the record of sign-ins (DEC-121); nil records nothing.
+	Logins *logins.Recorder
+}
+
+// loginTrace is what the sign-in learns about the attempt while it runs, so that the way it ends can be told
+// apart for the record (a wrong password, a blocked account, a name with no account) without the many exits of the
+// handler each having to say it. It lives in the request.
+type loginTrace struct {
+	method  string
+	userID  string
+	blocked bool
+	unknown bool
+	typed   string
+}
+
+type loginTraceKey struct{}
+
+func traceOf(r *http.Request) *loginTrace {
+	if t, ok := r.Context().Value(loginTraceKey{}).(*loginTrace); ok {
+		return t
+	}
+	return &loginTrace{method: logins.Local} // not traced (a test calling a part): the writes go nowhere
+}
+
+// statusWriter notes the status the handler answered with.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	if w.status == 0 {
+		w.status = code
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+// traced runs a sign-in handler and records how it ended when it did not open a session (finishLogin records
+// those): a refusal, an unreachable directory, a request to link. A request that was malformed or a failure of the
+// server itself is not an attempt at the door, and is not recorded.
+func (h *AuthHandler) traced(method string, handle func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		trace := &loginTrace{method: method}
+		r = r.WithContext(context.WithValue(r.Context(), loginTraceKey{}, trace))
+		sw := &statusWriter{ResponseWriter: w}
+		handle(sw, r)
+		result := ""
+		switch sw.status {
+		case http.StatusUnauthorized:
+			switch {
+			case trace.blocked:
+				result = logins.Blocked
+			case trace.unknown:
+				result = logins.UnknownUser
+			default:
+				result = logins.BadPassword
+			}
+		case http.StatusServiceUnavailable:
+			result = logins.DirectoryUnavailable
+		case http.StatusAccepted:
+			result = logins.LinkOffered
+		}
+		if result != "" {
+			h.Logins.Record(r.Context(), logins.Event{
+				Result: result, Method: trace.method, UserID: trace.userID, Typed: trace.typed,
+				IP: middleware.RequestClientIP(r), UserAgent: r.UserAgent(),
+			})
+		}
+	}
 }
 
 type AuthRequest struct {
@@ -133,6 +211,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 // and the owner never leaves local sign-in. Every credential failure has the same
 // public answer; an unreachable directory is the one distinct, operational answer.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	h.traced(logins.Local, h.login)(w, r)
+}
+
+func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 	var req AuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
@@ -152,6 +234,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error querying database", http.StatusInternalServerError)
 		return
 	}
+	trace := traceOf(r)
+	trace.userID, trace.blocked = id, blockedAt.Valid
 
 	// An account tied to the directory checks its password there, never locally.
 	if role != authz.RoleOwner {
@@ -159,6 +243,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error querying database", http.StatusInternalServerError)
 			return
 		} else if linked {
+			trace.method = logins.LDAP
 			h.loginLinked(w, r, id, subject, blockedAt.Valid, req.Password)
 			return
 		}
@@ -178,6 +263,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// joined (DEC-075). The directory is asked about the name first, without any password.
 	if h.Directory != nil && role != authz.RoleOwner && !blockedAt.Valid && passwordHash != "" {
 		if h.offerLink(w, r, id, req) {
+			traceOf(r).method = logins.LDAP
 			return
 		}
 	}
@@ -191,6 +277,10 @@ func (h *AuthHandler) finishLogin(w http.ResponseWriter, r *http.Request, userID
 		http.Error(w, "Error generating authentication token", http.StatusInternalServerError)
 		return
 	}
+	h.Logins.Record(r.Context(), logins.Event{
+		Result: logins.Success, Method: traceOf(r).method, UserID: userID,
+		IP: middleware.RequestClientIP(r), UserAgent: r.UserAgent(),
+	})
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(AuthResponse{Token: tokenString})
 }
@@ -270,6 +360,8 @@ func (h *AuthHandler) sendTicket(w http.ResponseWriter, r *http.Request, userID,
 // the owner allowed creating accounts at first sign-in (DEC-051); otherwise it is
 // an ordinary failed login.
 func (h *AuthHandler) loginUnknown(w http.ResponseWriter, r *http.Request, req AuthRequest) {
+	trace := traceOf(r)
+	trace.unknown, trace.typed = true, req.Username
 	deny := func() {
 		burnPasswordCheck(req.Password)
 		http.Error(w, invalidLoginMessage, http.StatusUnauthorized)
@@ -282,6 +374,7 @@ func (h *AuthHandler) loginUnknown(w http.ResponseWriter, r *http.Request, req A
 		deny()
 		return
 	}
+	trace.method = logins.LDAP // the directory is asked about the name
 	entry, err := h.Directory.Lookup(r.Context(), req.Username)
 	switch {
 	case errors.Is(err, ldapauth.ErrNotFound):
@@ -351,6 +444,10 @@ type linkRequest struct {
 // proven the directory password (that is what the ticket says) and now proves the
 // local one. Any failure gets the same answer as a wrong password at login.
 func (h *AuthHandler) Link(w http.ResponseWriter, r *http.Request) {
+	h.traced(logins.LDAP, h.link)(w, r)
+}
+
+func (h *AuthHandler) link(w http.ResponseWriter, r *http.Request) {
 	var req linkRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
@@ -565,6 +662,9 @@ func (h *AuthHandler) SetupMasterAdmin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error generating authentication token", http.StatusInternalServerError)
 		return
 	}
+	h.Logins.Record(r.Context(), logins.Event{
+		Result: logins.Success, Method: logins.Setup, UserID: id, IP: middleware.RequestClientIP(r), UserAgent: r.UserAgent(),
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

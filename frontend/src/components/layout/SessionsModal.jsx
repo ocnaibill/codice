@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSessions, useRevokeOtherSessions, useRevokeSession } from '../../features/auth/api/useSessions';
+import { useOwnLogins, useSessions, useRevokeOtherSessions, useRevokeSession } from '../../features/auth/api/useSessions';
 import { useAppTokens, useRevokeAppToken } from '../../features/auth/api/useAppTokens';
 import { ConfirmDialog } from '../../features/admin/components/ConfirmDialog';
 import { formatDate } from '../../features/admin/format';
@@ -7,6 +7,38 @@ import { LoadError } from '../ui/LoadError';
 import { serverMessage } from '../../lib/serverMessage';
 import { isTopmostDialog } from '../../lib/topDialog';
 import { sessionLines } from './sessionText';
+import { loginDetail, loginWhen, RESULTS } from '../../features/admin/loginText';
+
+const TONE = { ok: 'text-success', bad: 'text-danger', warn: 'text-warning', neutral: 'text-ink-soft' };
+
+/** What happened at the door of this account (DEC-121): the way a person notices that someone has been trying. */
+function Door() {
+  const { data, isLoading, isError, error, refetch, isFetching } = useOwnLogins();
+  return (
+    <>
+      <h3 className="mt-6 text-[13px] font-medium text-ink">Entradas recentes na sua conta</h3>
+      <p className="mt-1 text-[12px] text-ink-faint">As entradas e também as tentativas que falharam. Se houver uma que não foi sua, troque a senha e encerre as sessões que não reconhece.</p>
+      {isLoading && <p className="py-2 text-[13px] text-ink-faint">Carregando…</p>}
+      {isError && <LoadError className="mt-2" error={error} onRetry={refetch} retrying={isFetching}>Não foi possível carregar as entradas.</LoadError>}
+      {data && data.length === 0 && <p className="py-2 text-[13px] text-ink-faint">Nenhuma entrada registrada ainda.</p>}
+      <ul className="divide-y divide-border-hairline">
+        {(data || []).slice(0, 8).map((entry) => {
+          const result = RESULTS[entry.result] ?? { label: entry.result, tone: 'neutral' };
+          const when = loginWhen(entry);
+          return (
+            <li key={entry.id} className="py-2">
+              <p className="text-[13px]">
+                <span className={`font-medium ${TONE[result.tone]}`}>{result.label}</span>
+                <span className="ml-2 text-[12px] text-ink-faint" title={when.title}>{when.text}</span>
+              </p>
+              <p className="text-[12px] text-ink-soft">{loginDetail(entry)}</p>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
 
 function Line({ session, onEnd }) {
   const lines = sessionLines(session);
@@ -121,6 +153,8 @@ export function SessionsModal({ onClose, onOpenApps }) {
             <button onClick={onOpenApps} className="rounded bg-surface-alt px-3 py-1.5 text-[12px] text-ink hover:brightness-95">Conectar um aplicativo</button>
           </div>
         )}
+
+        <Door />
 
         <div className="mt-5 flex justify-end">
           <button onClick={onClose} className="rounded-lg bg-surface-alt px-4 py-2 text-[13px] text-ink hover:brightness-95">Fechar</button>

@@ -24,6 +24,7 @@ beforeEach(() => {
     if (url === '/admin/storage/cleanups' || url === '/admin/storage/orphans') return { data: { data: [] } };
     if (url === '/admin/storage/referenced') return { data: { data: [], total: 0, summary: { ok: 0, missing: 0, conflict: 0 } } };
     if (url === '/admin/backup') return { data: { lastBackup: null, queue: { pending: 0, running: 0, failedRecent: 0, oldestWaiting: null }, storage: null } };
+    if (url === '/admin/logins') return { data: { entries: [], more: false, retentionDays: 90, sameAddress: { warn: false, address: '' } } };
     if (url === '/healthz') return { data: { status: 'ok', components: { database: 'ok', redis: 'ok' } } };
     if (url === '/admin/metadata-providers') return { data: { data: providerList } };
     if (url === '/admin/suggestions') return { data: { data: [], total: queueTotal } };
@@ -91,6 +92,19 @@ describe('AdminPage: the owner\'s backup buttons', () => {
     await view.click(view.button('Sistema'));
     expect(view.text()).toContain('Pacotes na pasta de backups');
     expect(view.button('Fazer um backup agora')).toBeUndefined();
+  });
+});
+
+describe('AdminPage: the record of sign-ins', () => {
+  it('has the tab for the owner and the administrator', async () => {
+    view = await mount(<AdminPage isOwner />);
+    await view.click(view.button('Entradas'));
+    expect(view.text()).toContain('Quem entrou, quem tentou e não conseguiu');
+    view.unmount();
+    view = await mount(<AdminPage isOwner={false} />);
+    await view.click(view.button('Entradas'));
+    expect(view.text()).toContain('guardado por 90 dias');
+    expect(view.button('Mudar')).toBeUndefined();
   });
 });
 
