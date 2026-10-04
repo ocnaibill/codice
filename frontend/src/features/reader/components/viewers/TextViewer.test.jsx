@@ -247,6 +247,17 @@ describe('the text reader: the look of the text', () => {
     expect(panel()).toBeNull();
   });
 
+  it('takes the focus into its panel, and Escape closes it and gives the focus back to its button', async () => {
+    await open();
+    const opener = button('Aparência do texto');
+    opener.focus();
+    await click(opener);
+    expect(panel().contains(document.activeElement)).toBe(true);
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(panel()).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('calls what the file has "Padrão", and not "Do livro"', async () => {
     await open();
     await click(button('Aparência do texto'));

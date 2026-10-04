@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useDialog } from '../../../../lib/useDialog';
 import ePub from 'epubjs';
 import { api } from '../../../../lib/api';
 import { Skeleton } from '../../../../components/ui/Skeleton';
@@ -41,7 +42,10 @@ const control =
  * on the left or right of the page turns it, a tap in the middle hides or shows the controls, and a swipe turns it too;
  * on a keyboard the arrows, Page Up and Page Down do.
  */
-export default function EpubViewer({ fileUrl, onProgress, initialProgress, locator, onPlaceFailed, immersive = false, onImmersiveChange, onSelection, marks }) {
+export default function EpubViewer({ fileUrl, title, onProgress, initialProgress, locator, onPlaceFailed, immersive = false, onImmersiveChange, onSelection, marks }) {
+  // The page of the book is a frame of its own, and a screen reader says only "frame" of a frame without a name.
+  const titleRef = useRef(title);
+  titleRef.current = title;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0); // opening the book again
@@ -147,6 +151,7 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
           contents.addStylesheetCss(fontFaceCss(), 'codice-fonts');
           const doc = contents.document;
           const frame = doc.defaultView?.frameElement;
+          if (frame && !frame.getAttribute('title')) frame.setAttribute('title', titleRef.current ? `Texto de “${titleRef.current}”` : 'Texto do livro');
           const point = (e) => {
             const at = frame ? frame.getBoundingClientRect() : { left: 0, top: 0 };
             return toScreen({ frameLeft: at.left, frameTop: at.top, clientX: e.clientX, clientY: e.clientY });
@@ -531,6 +536,9 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
   const theme = READING_THEMES.find((t) => t.id === settings.theme);
   const shownPercent = percent == null ? '–' : `${Math.round(percent * 100)}%`;
   const entries = flattenToc(toc);
+  // The contents open like the appearance panel: the focus goes in, Escape closes it and the focus goes back to its button.
+  const tocRef = useRef(null);
+  useDialog(tocRef, { active: panel === 'toc' && entries.length > 0, onEscape: () => setPanel(null), trap: false });
 
   return (
     <div
@@ -579,11 +587,12 @@ export default function EpubViewer({ fileUrl, onProgress, initialProgress, locat
         >
           {panel === 'settings' && (
             <div className="absolute bottom-full left-1/2 mb-2 max-h-[calc(100dvh-9rem)] w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 animate-rise-in overflow-y-auto rounded-xl border border-border-hairline bg-white p-4 shadow-xl">
-              <ReadingSettingsPanel settings={settings} onChange={change} />
+              <ReadingSettingsPanel settings={settings} onChange={change} onClose={() => setPanel(null)} />
             </div>
           )}
           {panel === 'toc' && entries.length > 0 && (
             <nav
+              ref={tocRef}
               aria-label="Sumário do livro"
               className="absolute bottom-full left-1/2 mb-2 max-h-[55vh] w-[min(26rem,calc(100vw-1.5rem))] -translate-x-1/2 animate-rise-in overflow-y-auto rounded-xl border border-border-hairline bg-white p-1.5 shadow-xl"
             >

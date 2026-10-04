@@ -90,6 +90,16 @@ describe('Reader shell', () => {
     expect(header.textContent).not.toContain('Sincronizado');
   });
 
+  it('is a page: the title of the book is its heading, and the reading is its main landmark', async () => {
+    await open();
+    expect(container.querySelector('h1').textContent).toBe('Duna');
+    const mains = container.querySelectorAll('main');
+    expect(mains).toHaveLength(1);
+    expect(mains[0].getAttribute('aria-label')).toBe('Leitura');
+    expect(mains[0].textContent).toContain('reach the end'); // the viewer is inside it
+    expect(container.querySelector('header').closest('main')).toBeNull(); // and the bar of the book is outside of it
+  });
+
   it('keeps favorite and back actions connected to the existing behavior', async () => {
     await open();
     await act(async () => { container.querySelector('[aria-label="Adicionar aos favoritos"]').click(); });

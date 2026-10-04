@@ -6,13 +6,15 @@ import { describe, it, expect } from 'vitest';
 // theme lets a text sit on, where the keyboard is, and the system's request for less motion. (What is on a screen is checked by
 // the tests of that screen.)
 const css = readFileSync(join('src', 'index.css'), 'utf8');
+const shellCss = readFileSync(join('src', 'components', 'layout', 'library-shell.css'), 'utf8');
 const html = readFileSync('index.html', 'utf8');
 
-const token = (name) => {
-  const m = css.match(new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{6})`));
-  if (!m) throw new Error(`no token --color-${name}`);
-  return m[1];
-};
+// The app has two palettes: the one of the theme (index.css), and the warmer one that the shell of the library puts over
+// it (library-shell.css, `.library-shell { --color-...: ... }`): it overrides some of the tokens, and the rest it inherits.
+const tokensOf = (source) => Object.fromEntries([...source.matchAll(/--(color-[a-z-]+|library-paper):\s*(#[0-9a-fA-F]{6})/g)].map((m) => [m[1], m[2]]));
+const THEME = tokensOf(css);
+const SHELL_BLOCK = shellCss.match(/\.library-shell\s*\{([^}]*)\}/)?.[1] ?? '';
+const SHELL = { ...THEME, ...tokensOf(SHELL_BLOCK) };
 const WHITE = '#ffffff';
 
 const luminance = (hex) => {
@@ -24,7 +26,13 @@ const contrast = (a, b) => {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 };
-const colorOf = (name) => (name === 'white' ? WHITE : token(name));
+const colorOf = (palette, name) => {
+  if (name === 'white') return WHITE;
+  const value = palette[`color-${name}`] ?? palette[name];
+  if (!value) throw new Error(`no token ${name}`);
+  return value;
+};
+const token = (name) => colorOf(THEME, name);
 
 describe('the page', () => {
   it('says its language and has a name, not the defaults of the template', () => {
@@ -43,13 +51,24 @@ describe('the contrast of the colors of the theme (WCAG 2.2 AA)', () => {
     // the labels of the buttons
     ['white', 'brand'], ['white', 'brand-light'], ['white', 'success'], ['white', 'danger'],
   ];
-  it.each(TEXT_ON)('%s text on %s is at least 4.5:1', (ink, bg) => {
-    expect(contrast(colorOf(ink), colorOf(bg)), `${ink} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+  const SHELL_EXTRA = [['ink-faint', 'library-paper'], ['ink-soft', 'library-paper'], ['ink', 'library-paper'], ['brand', 'library-paper']];
+
+  for (const [name, palette, pairs] of [['theme', THEME, TEXT_ON], ['library shell', SHELL, [...TEXT_ON, ...SHELL_EXTRA]]]) {
+    it.each(pairs)(`${name}: %s text on %s is at least 4.5:1`, (ink, bg) => {
+      expect(contrast(colorOf(palette, ink), colorOf(palette, bg)), `${ink} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
+  it('reads the palette of the shell from the stylesheet (it overrides the faint ink and the surfaces)', () => {
+    expect(SHELL['color-ink-faint']).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(SHELL['color-surface-alt']).not.toBe(THEME['color-surface-alt']);
   });
 
-  it('keeps the faint ink lighter than the soft ink (the hierarchy of the texts survives the contrast)', () => {
-    expect(luminance(token('ink-faint'))).toBeGreaterThan(luminance(token('ink-soft')));
-    expect(luminance(token('ink-soft'))).toBeGreaterThan(luminance(token('ink')));
+  it('keeps the faint ink lighter than the soft ink in both palettes (the hierarchy of the texts survives the contrast)', () => {
+    for (const palette of [THEME, SHELL]) {
+      expect(luminance(colorOf(palette, 'ink-faint'))).toBeGreaterThan(luminance(colorOf(palette, 'ink-soft')));
+      expect(luminance(colorOf(palette, 'ink-soft'))).toBeGreaterThan(luminance(colorOf(palette, 'ink')));
+    }
   });
 });
 

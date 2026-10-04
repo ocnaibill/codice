@@ -9,9 +9,9 @@ vi.mock('../../../lib/api', () => ({
 }));
 // What the Reader hands the EPUB viewer is what is checked here.
 vi.mock('./viewers/EpubViewer', () => ({
-  default: function EpubStub({ immersive, onImmersiveChange }) {
+  default: function EpubStub({ immersive, onImmersiveChange, title }) {
     return (
-      <div data-testid="epub" data-immersive={String(immersive)}>
+      <div data-testid="epub" data-immersive={String(immersive)} data-title={title}>
         <button onClick={() => onImmersiveChange(!immersive)}>toggle</button>
       </div>
     );
@@ -53,6 +53,14 @@ afterEach(() => {
 });
 
 describe('Reader: the EPUB viewer', () => {
+  it('hands the viewer the title of the book, to name the frame of the page for a screen reader', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><Reader /></QueryClientProvider>); });
+    await flush();
+    await flush();
+    expect(container.querySelector('[data-testid="epub"]').dataset.title).toBe('Duna');
+  });
+
   it('is told whether the reader is immersive, and can ask for it to change', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     await act(async () => { root.render(<QueryClientProvider client={client}><Reader /></QueryClientProvider>); });

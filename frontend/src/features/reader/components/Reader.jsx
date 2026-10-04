@@ -228,7 +228,7 @@ export function Reader() {
       case 'pdf':
         return <PdfViewer fileUrl={fileUrl} onSelection={setSelection} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'epub':
-        return <EpubViewer fileUrl={fileUrl} onSelection={setSelection} marks={marks} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
+        return <EpubViewer fileUrl={fileUrl} title={book.title} onSelection={setSelection} marks={marks} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'cbz':
       case 'cbr':
         return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} declaredMode={file.declaredMode} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
@@ -287,7 +287,7 @@ export function Reader() {
             <p className="truncate font-mono text-[10px] uppercase tracking-widest text-ink-faint">
               {book.author} · {format.toUpperCase()}{file.edition?.language ? ` · ${languageName(file.edition.language)}` : ''}
             </p>
-            <h2 className="truncate font-display text-xl leading-tight text-ink sm:text-2xl">{book.title}</h2>
+            <h1 className="truncate font-display text-xl leading-tight text-ink sm:text-2xl">{book.title}</h1>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -395,14 +395,14 @@ export function Reader() {
       {lookup && <DictionaryCard word={lookup.word} language={lookup.language} onClose={() => setLookup(null)} />}
 
       {/* Dynamic Reader Router Viewport */}
-      <div className="min-h-0 flex-1 overflow-y-auto bg-[#eae5dc]">
+      <main aria-label="Leitura" className="min-h-0 flex-1 overflow-y-auto bg-[#eae5dc]">
         <Suspense fallback={<div className="flex justify-center p-10 text-sm text-ink-soft animate-pulse">Preparando o leitor…</div>}>
           {/* It starts again with each file and each place asked for, so that a book that broke does not leave the next one broken */}
           <ErrorBoundary key={`${file.id}-${seek?.n ?? 0}-${fromStart}`} where="o leitor" onBack={closeBook}>
             {renderViewer()}
           </ErrorBoundary>
         </Suspense>
-      </div>
+      </main>
     </div>
   );
 }

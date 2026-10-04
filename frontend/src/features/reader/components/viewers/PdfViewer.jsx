@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useDialog } from '../../../../lib/useDialog';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { authenticatedUrl } from '../../../../lib/api';
 import { Skeleton } from '../../../../components/ui/Skeleton';
@@ -53,6 +54,8 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlac
     !!onSelection
   );
   const outlineOpenerRef = useRef(null);
+  // The contents: the focus goes in, Escape closes them and the focus goes back to the button that opened them.
+  useDialog(outlineRef, { active: showOutline && outline.length > 0, onEscape: () => setShowOutline(false), trap: false });
 
   // How wide the page may be: what the screen gives, up to a comfortable measure, and it follows the screen
   // (a phone turned on its side, a window made larger).

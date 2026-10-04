@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { useDialog } from '../../../../lib/useDialog';
 import { READING_THEMES, READING_FONTS, READING_MARGINS, READING_SPACING, SIZE_MIN, SIZE_MAX, SIZE_STEP } from '../../epubThemes';
 
 const stepButton =
@@ -21,7 +22,10 @@ const FONT_STYLE = {
  * How the text looks, for the EPUB and the text readers alike: the size, the color of the page, the font, the space
  * between lines, the margins and whether the lines are justified. Every change is made at once. `bookLabel` is the name of "what the file has" (the book's own).
  */
-export default function ReadingSettingsPanel({ settings, onChange, bookLabel = 'Do livro' }) {
+export default function ReadingSettingsPanel({ settings, onChange, onClose, bookLabel = 'Do livro' }) {
+  // Opened from a button of the controls: the focus goes in, Escape closes it and the focus goes back to that button. Tab is free.
+  const ref = useRef(null);
+  useDialog(ref, { onEscape: onClose, trap: false });
   const { theme, font, size, spacing, margins, justify } = settings;
   const choice = (selected) =>
     `flex min-h-11 flex-1 items-center justify-center rounded-lg border px-3 text-sm transition-[background-color,border-color] duration-150 ${
@@ -29,7 +33,7 @@ export default function ReadingSettingsPanel({ settings, onChange, bookLabel = '
     }`;
 
   return (
-    <div role="dialog" aria-label="Aparência do texto" className="flex flex-col gap-4">
+    <div ref={ref} role="dialog" aria-label="Aparência do texto" className="flex flex-col gap-4">
       <Group label="Tamanho">
         <div className="flex items-center justify-between gap-3">
           <button onClick={() => onChange({ size: size - SIZE_STEP })} disabled={size <= SIZE_MIN} aria-label="Diminuir a letra" className={stepButton}>

@@ -82,7 +82,7 @@ export function GreetingStats({ userName, stats, isLoading, error, onRetry }) {
               <LibraryIcon name={metric.icon} />
               <dt>{metric.label}</dt>
               <dd>{metric.value}</dd>
-              <p>{metric.detail}</p>
+              <dd className="library-stat-detail">{metric.detail}</dd>
             </div>
           ))}
         </dl>

@@ -15,6 +15,13 @@ export function focusablesIn(element) {
   });
 }
 
+// The one on top answers the keys. A dialog is on top when it is the last of the dialogs; a popover that is not a dialog (the
+// menu or the contents of the reader) is on top while no modal dialog is open over it.
+const onTop = (element) =>
+  element.getAttribute('role') === 'dialog'
+    ? isTopmostDialog(element)
+    : !document.querySelector('[role="dialog"][aria-modal="true"]');
+
 /**
  * What a dialog owes the keyboard and the screen reader (the part that a role and aria-modal do not do by themselves):
  *  - focus goes in when it opens (to the field or button that asked for it, else the first thing that can be reached, else
@@ -24,7 +31,8 @@ export function focusablesIn(element) {
  *  - Escape closes only the one on top, with the answer the dialog gives (`onEscape`);
  *  - when it closes, focus goes back to what opened it, unless the app already put it somewhere else on purpose.
  *
- * `ref` is the element with role="dialog". `initialFocus` is a ref to the element that should take the focus first. `active`
+ * `ref` is the element with role="dialog" (or a popover: a menu, the contents of a book). `initialFocus` is a ref to the element
+ * that should take the focus first, or a function that finds it inside the dialog. `active`
  * is for a component that is always mounted and only shows the dialog while something is open (default: true, the dialog
  * is there as long as the component is). `trap: false` is for a dialog that is not modal (a card beside the page, not over
  * it): the focus goes in and comes back, Escape closes it, but Tab is free to leave.
@@ -44,11 +52,12 @@ export function useDialog(ref, { onEscape, initialFocus, active = true, trap = t
     if (!active || !dialog) return undefined;
     if (!dialog.hasAttribute('tabindex')) dialog.setAttribute('tabindex', '-1');
     if (!dialog.contains(document.activeElement)) {
-      (initialFocus?.current ?? focusablesIn(dialog)[0] ?? dialog).focus();
+      const wanted = typeof initialFocus === 'function' ? initialFocus(dialog) : initialFocus?.current;
+      (wanted ?? focusablesIn(dialog)[0] ?? dialog).focus();
     }
 
     const onKey = (event) => {
-      if (!isTopmostDialog(dialog)) return;
+      if (!onTop(dialog)) return;
       if (event.key === 'Escape') {
         if (escape.current && !event.defaultPrevented) escape.current(event);
         return;
