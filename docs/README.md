@@ -11,6 +11,7 @@ Idioma: português brasileiro. Estes documentos foram elaborados em 18 e 19 de s
 | [Codice_Plano_Implementacao_v0.1.md](Codice_Plano_Implementacao_v0.1.md) | Plano em fases (0 a 6), com tarefas, testes e dependências. |
 | [Codice_Validacao_Base_2026-09-19.md](Codice_Validacao_Base_2026-09-19.md) | Validação posterior ao merge do PR #6: testes executados, ensaio com navegador, correções e pendências. |
 | [Codice_Passada_Seguranca_2026-10-04.md](Codice_Passada_Seguranca_2026-10-04.md) | Passada de segurança antes do alpha/beta: dependências, varredura (`npm audit`, `govulncheck`, `pip-audit`), leitura do código, 5 achados corrigidos e as decisões que ficam com o mantenedor (CSP, token). |
+| [Codice_Proposta_Telas_Conta_Admin_2026-10-04.md](Codice_Proposta_Telas_Conta_Admin_2026-10-04.md) | **Proposta, não decisão:** as telas de conta e administração que faltam (Sobre, sessões e dispositivos, registro de entradas, backup e saúde, exportar meus dados, ingestão e revisão, uso e orçamento dos provedores), com ordem sugerida e as decisões que cabem ao mantenedor. |
 
 Os arquivos `codice_analysis_and_plan.md` e `codice_remaining_tasks.md`, na raiz do repositório, são planos anteriores (sprints de extratores e metadados). Não conhecem as decisões de governança da especificação atual.
 
