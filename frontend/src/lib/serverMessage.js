@@ -22,6 +22,7 @@ const EXACT = {
   'The password is not correct': 'A senha não está correta.',
   // The owner's backup buttons (DEC-123)
   'The password is required': 'Digite a sua senha.',
+  'Session not found': 'Essa sessão não existe mais: talvez já tenha sido encerrada.',
   'Backups from the panel are not set up': 'O backup pelo painel ainda não foi configurado no servidor.',
   'backups from the panel are not set up: CODICE_BACKUP_DIR and CODICE_BACKUP_PASSPHRASE_FILE are needed': 'Para fazer backups pelo painel, o servidor precisa de CODICE_BACKUP_DIR (a pasta) e CODICE_BACKUP_PASSPHRASE_FILE (o arquivo com a frase de segurança).',
   'That is not a package in the backup folder': 'Esse pacote não está na pasta de backups.',

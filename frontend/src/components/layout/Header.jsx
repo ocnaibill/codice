@@ -10,6 +10,7 @@ export function Header({
   onOpenPreferences,
   onOpenApps,
   onOpenAbout,
+  onOpenSessions,
   canAdmin = false,
   onOpenAdmin,
   onGoHome,
@@ -159,6 +160,17 @@ export function Header({
                   }}
                 >
                   Aplicativos
+                </button>
+              )}
+              {onOpenSessions && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenSessions();
+                  }}
+                >
+                  Sessões e dispositivos
                 </button>
               )}
               {onOpenAbout && (

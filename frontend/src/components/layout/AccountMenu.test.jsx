@@ -54,6 +54,20 @@ describe('account menu', () => {
     expect(about).toHaveBeenCalledTimes(1);
   });
 
+  it('opens the sessions and devices from the menu', async () => {
+    const sessions = vi.fn();
+    view = await mount(<Header onOpenSessions={sessions} />);
+    await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));
+    await view.click(view.button('Sessões e dispositivos'));
+    expect(sessions).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no sessions item when nothing handles it', async () => {
+    view = await mount(<Header />);
+    await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));
+    expect(view.button('Sessões e dispositivos')).toBeUndefined();
+  });
+
   it('has no about item when nothing handles it', async () => {
     view = await mount(<Header />);
     await view.click(view.container.querySelector('button[aria-haspopup="menu"]'));

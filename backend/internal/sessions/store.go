@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ocnaibill/codice/backend/internal/middleware"
@@ -43,17 +44,51 @@ var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 
 type Store struct {
 	DB *sql.DB
+
+	touched touchedSessions
 }
 
-// CreateSession records a new login for the user.
-func (s *Store) CreateSession(ctx context.Context, userID, userAgent string) (id string, expires time.Time, err error) {
+// SeenEvery is how often the "last used" of a session is written at most. A session is checked on every
+// request, and a write for each of them would cost the database more than the information is worth.
+const SeenEvery = time.Minute
+
+// touchedSessions remembers when each session's last use was written, so most requests write nothing.
+type touchedSessions struct {
+	mu   sync.Mutex
+	last map[string]time.Time
+}
+
+// due says whether the last use of the session should be written now, and notes that it is.
+func (t *touchedSessions) due(id string, now time.Time) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if at, ok := t.last[id]; ok && now.Sub(at) < SeenEvery {
+		return false
+	}
+	// Only live sessions are in here; the table is thrown away when it grows, which only costs one more write each.
+	if t.last == nil || len(t.last) >= 10000 {
+		t.last = make(map[string]time.Time)
+	}
+	t.last[id] = now
+	return true
+}
+
+// MaxIP is the longest address kept (an IPv6 address written out is 45 characters).
+const MaxIP = 45
+
+// CreateSession records a new login for the user, with the device it came from and the address it came
+// from (what the server believes it to be: see middleware.RequestClientIP).
+func (s *Store) CreateSession(ctx context.Context, userID, userAgent, ip string) (id string, expires time.Time, err error) {
 	if len(userAgent) > 255 {
 		userAgent = userAgent[:255]
 	}
+	if len(ip) > MaxIP {
+		ip = ""
+	}
 	expires = time.Now().Add(TTL())
 	err = s.DB.QueryRowContext(ctx,
-		`INSERT INTO sessions (user_id, expires_at, user_agent) VALUES ($1, $2, $3) RETURNING id`,
-		userID, expires, userAgent).Scan(&id)
+		`INSERT INTO sessions (user_id, expires_at, user_agent, ip, last_seen_at) VALUES ($1, $2, $3, NULLIF($4, ''), now()) RETURNING id`,
+		userID, expires, userAgent, ip).Scan(&id)
 	return id, expires, err
 }
 
@@ -73,7 +108,88 @@ func (s *Store) CheckSession(ctx context.Context, sessionID string) (userID, rol
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", middleware.ErrInvalidSession
 	}
+	if err == nil && s.touched.due(sessionID, time.Now()) {
+		// Best effort: a request is never refused because the note of its last use could not be written.
+		s.DB.ExecContext(ctx, `UPDATE sessions SET last_seen_at = now() WHERE id = $1`, sessionID)
+	}
 	return userID, role, err
+}
+
+// Session is one live login, as its owner sees it.
+type Session struct {
+	ID         string     `json:"id"`
+	UserAgent  string     `json:"userAgent"`
+	IP         string     `json:"ip,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	LastSeenAt *time.Time `json:"lastSeenAt"`
+	ExpiresAt  time.Time  `json:"expiresAt"`
+}
+
+// ListLive returns the sessions of an account that are still good (not ended, not expired), the most
+// recently used first.
+func (s *Store) ListLive(ctx context.Context, userID string) ([]Session, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT id, COALESCE(user_agent, ''), COALESCE(ip, ''), created_at, last_seen_at, expires_at
+		FROM sessions
+		WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+		ORDER BY COALESCE(last_seen_at, created_at) DESC, created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Session{}
+	for rows.Next() {
+		var x Session
+		var seen sql.NullTime
+		if err := rows.Scan(&x.ID, &x.UserAgent, &x.IP, &x.CreatedAt, &seen, &x.ExpiresAt); err != nil {
+			return nil, err
+		}
+		if seen.Valid {
+			x.LastSeenAt = &seen.Time
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
+// RevokeOwned ends one session of an account. It says whether there was such a live session: an id that
+// is another account's, or already ended, is "no".
+func (s *Store) RevokeOwned(ctx context.Context, userID, sessionID string) (bool, error) {
+	if !uuidPattern.MatchString(sessionID) {
+		return false, nil
+	}
+	res, err := s.DB.ExecContext(ctx,
+		`UPDATE sessions SET revoked_at = now() WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()`,
+		sessionID, userID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// RevokeAllSessions ends every live session of an account (its app tokens are not touched), and says how many.
+func (s *Store) RevokeAllSessions(ctx context.Context, userID string) (int, error) {
+	res, err := s.DB.ExecContext(ctx,
+		`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()`, userID)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}
+
+// RevokeOthers ends every live session of an account but the one it is called from, and says how many.
+func (s *Store) RevokeOthers(ctx context.Context, userID, keepSessionID string) (int, error) {
+	res, err := s.DB.ExecContext(ctx, `
+		UPDATE sessions SET revoked_at = now()
+		WHERE user_id = $1 AND id <> $2::uuid AND revoked_at IS NULL AND expires_at > now()`,
+		userID, keepSessionID)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
 }
 
 // RevokeSession ends one session (logout).

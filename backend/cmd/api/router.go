@@ -55,6 +55,7 @@ func newRouter(d routerDeps) http.Handler {
 	libHandler := &handlers.LibraryHandler{DB: db, Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	uploadHandler := &handlers.UploadHandler{DB: db, RedisClient: d.RedisClient}
 	healthHandler := &handlers.HealthHandler{DB: db, Redis: d.RedisClient}
+	sessionsHandler := &handlers.SessionsHandler{DB: db, Sessions: d.Sessions}
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions, Directory: d.Directory}
 	backupAdmin := &handlers.BackupAdminHandler{DB: db, StoragePath: d.StoragePath, Panel: d.BackupPanel}
 	ldapAdmin := &handlers.LDAPAdminHandler{DB: db, Directory: d.Directory, Host: d.DirectoryHost, BaseDN: d.DirectoryBase}
@@ -86,6 +87,7 @@ func newRouter(d routerDeps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
+	r.Use(appMiddleware.WithClientIP(d.TrustedProxies))
 	r.Use(appMiddleware.LimitBody(appMiddleware.MaxJSONBody))
 
 	// PERF-03: Gzip compression middleware
@@ -166,6 +168,9 @@ func newRouter(d routerDeps) http.Handler {
 
 	// Session, resource tokens and app tokens
 	r.With(auth).Get("/about", (&handlers.AboutHandler{Version: d.Version, SourceURL: d.SourceURL}).Get)
+	r.With(auth).Get("/auth/sessions", sessionsHandler.List)
+	r.With(auth).Post("/auth/sessions/revoke-others", sessionsHandler.RevokeOthers)
+	r.With(auth).Delete("/auth/sessions/{id}", sessionsHandler.Revoke)
 	r.With(auth).Get("/auth/me", authHandler.Me)
 	r.With(auth, authRateLimit).Post("/auth/password", authHandler.ChangePassword)
 	r.With(auth).Post("/auth/notices/{id}/ack", handlers.AckNotice(db))
@@ -247,6 +252,9 @@ func newRouter(d routerDeps) http.Handler {
 	// Accounts: owner and admins list and block (the policy decides who may act on
 	// whom); only the owner changes roles.
 	r.With(staff).Get("/users", usersHandler.List)
+	r.With(staff).Get("/users/{id}/sessions", sessionsHandler.ListFor)
+	r.With(staff).Delete("/users/{id}/sessions", sessionsHandler.RevokeAllFor)
+	r.With(staff).Delete("/users/{id}/sessions/{sid}", sessionsHandler.RevokeFor)
 	r.With(staff).Post("/users/{id}/block", usersHandler.Block)
 	r.With(staff).Post("/users/{id}/unblock", usersHandler.Unblock)
 	r.With(staff).Delete("/users/{id}", usersHandler.Delete)

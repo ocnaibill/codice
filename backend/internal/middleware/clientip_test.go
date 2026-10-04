@@ -100,3 +100,35 @@ func TestRateLimitKey_GroupsIPv6ByPrefixAndFollowsTheTrustedHeader(t *testing.T)
 		t.Error("two clients behind one proxy shared a rate-limit key")
 	}
 }
+
+func TestWithClientIP_KeepsTheAddressForTheHandlers(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("172.30.77.10/32"), netip.MustParsePrefix("192.168.1.30/32")}
+	var seen string
+	h := WithClientIP(trusted)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { seen = RequestClientIP(r) }))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "172.30.77.10:5000"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7, 192.168.1.30")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if seen != "203.0.113.7" {
+		t.Errorf("behind a trusted proxy: %q, want the client's address", seen)
+	}
+
+	// A header written by someone who is not a trusted proxy is not believed.
+	req = httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "198.51.100.9:5000"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if seen != "198.51.100.9" {
+		t.Errorf("from a stranger: %q, want the address of the connection", seen)
+	}
+}
+
+func TestRequestClientIP_WithoutTheMiddlewareTrustsNoHeader(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "198.51.100.9:5000"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7")
+	if got := RequestClientIP(req); got != "198.51.100.9" {
+		t.Errorf("got %q", got)
+	}
+}

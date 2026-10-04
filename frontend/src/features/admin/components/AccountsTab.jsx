@@ -3,6 +3,7 @@ import { useAccounts, useBlockAccount, useUnblockAccount, useDeleteAccount, desc
 import { formatDate } from '../format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
+import { UserSessionsModal } from './UserSessionsModal';
 import { LoadError } from '../../../components/ui/LoadError';
 import { Invitations } from './Invitations';
 import { PasswordResets } from './PasswordResets';
@@ -22,6 +23,7 @@ export function AccountsTab({ isOwner }) {
   const remove = useDeleteAccount();
   const [blocking, setBlocking] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [sessionsOf, setSessionsOf] = useState(null);
   const accounts = data?.data || [];
 
   return (
@@ -53,6 +55,7 @@ export function AccountsTab({ isOwner }) {
               </p>
             </div>
             <div className="flex gap-2">
+              {account.canBlock && <Btn onClick={() => setSessionsOf(account)} aria-label={`Sessões de ${account.username}`}>Sessões</Btn>}
               {account.canBlock && (
                 account.blockedAt ? (
                   <Btn onClick={() => unblock.mutate(account.id)} disabled={unblock.isPending}>Desbloquear</Btn>
@@ -82,6 +85,8 @@ export function AccountsTab({ isOwner }) {
           onCancel={() => setDeleting(null)}
         />
       )}
+
+      {sessionsOf && <UserSessionsModal account={sessionsOf} onClose={() => setSessionsOf(null)} />}
 
       {blocking && (
         <ConfirmDialog
