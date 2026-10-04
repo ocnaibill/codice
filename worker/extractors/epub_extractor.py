@@ -7,7 +7,8 @@ the cover image from the manifest.
 import os
 import zipfile
 from typing import Optional
-from .base import BaseExtractor, ExtractedMetadata
+from textindex import Limits
+from .base import BaseExtractor, ExtractedMetadata, read_member
 
 
 class EpubExtractor(BaseExtractor):
@@ -27,8 +28,8 @@ class EpubExtractor(BaseExtractor):
                     # Fallback: try to find container.xml via XML parser
                     try:
                         from lxml import etree
-                        container_data = zf.read('META-INF/container.xml')
-                        container_root = etree.fromstring(container_data, parser=etree.XMLParser(recover=True))
+                        container_data = read_member(zf, 'META-INF/container.xml', Limits.MAX_METADATA_BYTES)
+                        container_root = etree.fromstring(container_data, parser=etree.XMLParser(recover=True, resolve_entities=False, no_network=True))
                         ns = {'c': 'urn:oasis:names:tc:opendocument:xmlns:container'}
                         rootfile = container_root.find('.//c:rootfile', ns)
                         if rootfile is not None:
@@ -68,8 +69,8 @@ class EpubExtractor(BaseExtractor):
                 'opf': 'http://www.idpf.org/2007/opf',
             }
 
-            opf_data = zf.read(opf_path)
-            root = etree.fromstring(opf_data, parser=etree.XMLParser(recover=True, encoding='utf-8'))
+            opf_data = read_member(zf, opf_path)
+            root = etree.fromstring(opf_data, parser=etree.XMLParser(recover=True, resolve_entities=False, no_network=True, encoding='utf-8'))
 
             # Dublin Core metadata
             for elem in root.iter():
@@ -140,7 +141,7 @@ class EpubExtractor(BaseExtractor):
                     if (item_id == cover_id or item_id == 'cover-image') and href:
                         full_path = os.path.join(opf_dir, href).replace('\\', '/')
                         try:
-                            image_data = zf.read(full_path)
+                            image_data = read_member(zf, full_path)
                             meta.cover_path = self._save_cover(image_data, file_path, covers_dir)
                         except KeyError:
                             pass
@@ -151,7 +152,7 @@ class EpubExtractor(BaseExtractor):
                 basename = os.path.basename(name).lower()
                 if 'cover' in basename and any(basename.endswith(ext) for ext in ['.jpg', '.jpeg', '.png']):
                     try:
-                        image_data = zf.read(name)
+                        image_data = read_member(zf, name)
                         meta.cover_path = self._save_cover(image_data, file_path, covers_dir)
                         break
                     except KeyError:

@@ -4,7 +4,8 @@ Inspired by Komga's rarfile-based extraction for CBR files.
 """
 import os
 from typing import Optional
-from .base import BaseExtractor, ExtractedMetadata
+from textindex import Limits
+from .base import BaseExtractor, ExtractedMetadata, read_member
 from .comic_layout import HEADER_BYTES, declared_mode, image_size, sample
 
 
@@ -22,7 +23,7 @@ class CbrExtractor(BaseExtractor):
                 for name in rf.namelist():
                     if name.lower() == 'comicinfo.xml':
                         try:
-                            data = rf.read(name)
+                            data = read_member(rf, name, Limits.MAX_METADATA_BYTES)
                             self._parse_comicinfo_xml(data, meta)
                         except Exception as e:
                             print(f"   ⚠️ ComicInfo.xml parse error: {e}")
@@ -51,7 +52,7 @@ class CbrExtractor(BaseExtractor):
                 # 3. Extract cover from first image
                 if images and not meta.cover_path:
                     try:
-                        img_data = rf.read(images[0])
+                        img_data = read_member(rf, images[0])
                         meta.cover_path = self._save_cover(img_data, file_path, covers_dir)
                     except Exception as e:
                         print(f"   ⚠️ Cover extraction error: {e}")

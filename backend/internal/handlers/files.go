@@ -143,8 +143,14 @@ func (h *FilesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.CacheHeader != "" {
 		w.Header().Set("Cache-Control", h.CacheHeader)
 	}
+	// What is served here was written by someone else (an uploaded book, a cover taken from
+	// a file or from a provider): it is never allowed to be taken for another type, and an
+	// SVG opened on its own, which is a document that can carry scripts, runs in a sandbox
+	// with nothing allowed. As an <img> it is drawn as always.
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if strings.HasSuffix(strings.ToLower(rel), ".svg") {
 		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 	}
 	// ServeContent gives Range requests, which readers and audio players use.
 	http.ServeContent(w, r, path.Base(rel), info.ModTime().Truncate(time.Second), f)

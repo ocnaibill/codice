@@ -86,6 +86,20 @@ func TestFiles_AreServedOnlyWhenTheCatalogOwnsThem(t *testing.T) {
 	if rec := get(ana, "/covers/placeholder.svg"); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/svg+xml" {
 		t.Errorf("placeholder: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
+	// What is served was written by someone else: never taken for another type, and an SVG
+	// opened on its own may not run anything.
+	os.WriteFile(filepath.Join(s.storage, "covers", "drawing.svg"), []byte("<svg onload=\"alert(1)\"/>"), 0o644)
+	for _, path := range []string{"/files/1_duna.epub", "/covers/duna.jpg", "/covers/drawing.svg"} {
+		if rec := get(ana, path); rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("%s: X-Content-Type-Options = %q, want nosniff", path, rec.Header().Get("X-Content-Type-Options"))
+		}
+	}
+	if csp := get(ana, "/covers/drawing.svg").Header().Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "sandbox") {
+		t.Errorf("svg cover: Content-Security-Policy = %q, want a sandbox that allows nothing", csp)
+	}
+	if csp := get(ana, "/covers/duna.jpg").Header().Get("Content-Security-Policy"); csp != "" {
+		t.Errorf("a JPEG cover needs no policy, got %q", csp)
+	}
 	s.do(admin, "DELETE", fmt.Sprintf("/works/%d", duna), "")
 	if rec := get(ana, "/covers/duna.jpg"); rec.Code != 404 {
 		t.Errorf("cover of a retired work for a reader: %d, want 404", rec.Code)
