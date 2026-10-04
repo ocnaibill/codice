@@ -67,6 +67,10 @@ services:
       # its connections arrive from the gateway (the .1 address of CODICE_SUBNET): add that
       # address here, knowing it means "believe what the host's proxy says".
       CODICE_TRUSTED_PROXIES: ${CODICE_TRUSTED_PROXIES:-${CODICE_FRONTEND_IP:-172.30.77.10}}
+      # The address people type to reach the app from outside (https://livros.example.com), for the links
+      # of the OPDS catalog: an app follows them as written, so they must say https:// when the site is
+      # reached over HTTPS behind a proxy or a tunnel. Empty: built from each request.
+      CODICE_PUBLIC_URL: ${CODICE_PUBLIC_URL:-}
       PORT: "8080"
       # LDAP sign-in (optional). Leave LDAP_URL empty to keep it off; see the README.
       # The service account's password is read from a file, never from the environment.

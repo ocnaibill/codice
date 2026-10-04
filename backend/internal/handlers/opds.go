@@ -6,6 +6,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/people"
 	"html"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -16,6 +17,12 @@ import (
 type OPDSHandler struct {
 	DB   *sql.DB
 	Auth appMiddleware.Authenticator
+	// PublicURL is the address people reach the app at from outside (CODICE_PUBLIC_URL,
+	// already checked by middleware.ParsePublicURL). When set, every link of the catalog
+	// uses it as it is. When empty, the links are built from the request.
+	PublicURL string
+	// TrustedProxies are the proxies whose X-Forwarded-Proto is believed (see RequestScheme).
+	TrustedProxies []netip.Prefix
 }
 
 // OpdsAuth authenticates OPDS clients with an app token (HTTP Basic, the token
@@ -25,12 +32,16 @@ func (h *OPDSHandler) OpdsAuth(next http.Handler) http.Handler {
 	return h.Auth.WithBasic(next)
 }
 
+// baseURL is what every link of the catalog starts with. A client follows these links as
+// written, and it is not a browser: nothing upgrades an http:// link to https:// for it, so
+// behind a proxy that ends the TLS a link that says http:// sends the token of the app,
+// and the book, in the clear (#80). The configured public address wins; without one, the
+// scheme the proxy reports (when the proxy is a trusted one) and the host of the request.
 func (h *OPDSHandler) baseURL(r *http.Request) string {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
+	if h.PublicURL != "" {
+		return h.PublicURL
 	}
-	return fmt.Sprintf("%s://%s", scheme, r.Host)
+	return fmt.Sprintf("%s://%s", appMiddleware.RequestScheme(r, h.TrustedProxies), r.Host)
 }
 
 func (h *OPDSHandler) RootCatalog(w http.ResponseWriter, r *http.Request) {

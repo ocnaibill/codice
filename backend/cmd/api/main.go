@@ -92,6 +92,15 @@ func main() {
 		log.Printf("Trusting X-Forwarded-For from %d proxy range(s)", len(trustedProxies))
 	}
 
+	// The address people reach the app at, for the links of the OPDS catalog (#80).
+	publicURL, err := appMiddleware.ParsePublicURL(os.Getenv("CODICE_PUBLIC_URL"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if publicURL != "" {
+		log.Printf("Public address for OPDS links: %s", publicURL)
+	}
+
 	sessionStore := &sessions.Store{DB: db}
 	authenticator := appMiddleware.Authenticator{
 		Sessions: sessionStore.CheckSession,
@@ -164,6 +173,7 @@ func main() {
 		Mover:       mover,
 
 		TrustedProxies: trustedProxies,
+		PublicURL:      publicURL,
 		Directory:      directory,
 		DirectoryHost:  directoryHost,
 		DirectoryBase:  directoryBase,
