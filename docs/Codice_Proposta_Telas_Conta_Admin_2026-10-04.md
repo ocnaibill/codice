@@ -1,6 +1,18 @@
 # Proposta: telas de conta e administração que faltam (4 de outubro de 2026)
 
-**Status: proposta para o mantenedor ajustar. Nada daqui foi implementado nem é decisão aprovada.** Cada tela vira um PR pequeno depois do seu ajuste, e o que mudar de regra vira DEC só depois de confirmado.
+**Status: proposta; o mantenedor respondeu às decisões em 04/10/2026 (seção "Respostas") e nada daqui foi implementado.** Cada tela vira um PR pequeno, e o que mudar de regra vira DEC só depois de confirmado.
+
+## Respostas do mantenedor (04/10/2026)
+
+| Decisão | Resposta |
+| --- | --- |
+| Contato do dono na tela **Sobre** | **Não mostrar** (DEC-120) |
+| **IP na sessão** | **Guardar** (DEC-121) |
+| **Registro de entradas**: tabela própria e retenção | **Tabela própria, 90 dias, ajustável pelo dono** (DEC-121) |
+| **Painel de backup**: nome ou caminho do pacote | **Mostrar o caminho** (a quem: ver a pergunta abaixo) |
+| **Ingestão e revisão** | **Deixar para depois**, como issue (#141) (DEC-122) |
+| **Orçamento dos provedores** | **Fora do beta; contador de chamadas antes do dinheiro** (DEC-122) |
+| Dono com **leitura e escrita** na página de backup | **Em discussão** (a recomendação está em 3.4) |
 
 ## 1. Onde estamos
 
@@ -37,7 +49,7 @@ As telas 1, 4 e 7 não mexem em autenticação. As telas 2 e 3 mexem na tabela d
 - **Conteúdo:** nome e **versão** (o commit da imagem, injetado na construção; o `/healthz` público **não** informa versões, de propósito), **licença AGPLv3** com link para o texto, **link do código-fonte** (a AGPL exige oferecê-lo a quem usa o serviço pela rede; vale o repositório público), lista de **licenças de terceiros** (OpenDyslexic, OFL 1.1; Newsreader e Plus Jakarta Sans, OFL; epub.js, BSD; Wiktionary via kaikki.org, CC BY-SA, que **exige atribuição** nos verbetes do dicionário), e o endereço de quem administra, se o dono quiser mostrar.
 - **API:** `GET /about` (versão e data da imagem, injetadas na construção). Sem dados da instância.
 - **Estados:** carregamento e erro; não tem vazio nem permissão (qualquer pessoa autenticada vê).
-- **Decisão sua:** mostrar o endereço de contato do dono na tela? Proposta: sim, opcional, preenchido na administração.
+- **Decidido:** **sem** endereço de contato do dono na tela (DEC-120).
 
 ### 3.2 Sessões e dispositivos (UI-15, UI-21)
 
@@ -46,14 +58,14 @@ As telas 1, 4 e 7 não mexem em autenticação. As telas 2 e 3 mexem na tabela d
 - **Regras:** encerrar vale na hora (DEC-070); encerrar a sessão atual equivale a sair; bloquear a conta já encerra tudo (DEC-060); **o dono e os administradores podem encerrar as sessões de uma conta, mas não ver o IP de outra pessoa além do que o registro de entradas (3.3) já mostra**.
 - **API nova:** `GET /auth/sessions`, `DELETE /auth/sessions/{id}`, `POST /auth/sessions/revoke-others`; para a equipe, `GET /users/{id}/sessions` e `DELETE /users/{id}/sessions/{sid}`. **Migração:** `sessions.ip` e `sessions.last_seen_at` (hoje só há `user_agent`). O último uso é gravado **no máximo uma vez por minuto** por sessão, para não escrever no banco a cada requisição.
 - **Estados:** vazio não ocorre (há sempre a atual); erro de carga; permissão insuficiente quando um leitor tenta ver outra conta; "sessão já encerrada" ao tentar de novo.
-- **Decisão sua:** (a) guardar o IP na sessão. Recomendo que sim, pelo valor de segurança, com a **retenção** do 3.3. (b) O tempo de vida da sessão é hoje de 7 dias e se ajusta no servidor (`JWT_EXPIRATION_HOURS`); quer que o dono o ajuste pela interface? Proposta: depois do beta.
+- **Decidido:** (a) **guardar o IP** na sessão (DEC-121), com a retenção do 3.3. (b) O tempo de vida da sessão é hoje de 7 dias e se ajusta no servidor (`JWT_EXPIRATION_HOURS`); quer que o dono o ajuste pela interface? Proposta: depois do beta.
 
 ### 3.3 Registro de entradas (issue #137)
 
 - **Onde:** nova aba **Entradas** em Administração (equipe vê; cada pessoa vê só as suas na tela 3.2).
 - **Conteúdo, filtros e cuidados:** como descrito na issue: horário, conta, resultado (entrou, senha errada, usuário desconhecido, bloqueada, diretório indisponível, limite de tentativas), meio (local ou LDAP), IP e plataforma; filtro por resultado, conta e período. **O nome digitado em "usuário desconhecido" é truncado e descartado se parecer uma senha**; falhas repetidas do mesmo IP e conta se **agrupam** numa janela; há **teto de linhas** e **retenção** (proposta: 90 dias, ajustável pelo dono).
 - **Aviso de configuração:** se **todas** as entradas recentes têm o mesmo IP, a tela diz que `CODICE_TRUSTED_PROXIES` provavelmente falta (o limite de login fica coletivo).
-- **Decisões suas:** estender o log de auditoria ou criar a tabela própria `login_events` (**recomendo a tabela própria**: retenção diferente e volume maior); retenção padrão; se o leitor comum vê as próprias entradas (recomendo que sim).
+- **Decidido:** **tabela própria** `login_events`, retenção de **90 dias** ajustável pelo dono (DEC-121); o leitor comum vê as próprias entradas na tela 3.2.
 
 ### 3.4 Backup e saúde (UI-19)
 
@@ -65,7 +77,15 @@ As telas 1, 4 e 7 não mexem em autenticação. As telas 2 e 3 mexem na tabela d
   - **Saúde:** o `/healthz` por componente (banco, Redis, worker, OCR, embeddings), com a hora da última resposta do worker.
   - **Como restaurar:** o comando exato do `codice-admin`, com botão de copiar, e um link para o guia.
 - **API:** `GET /admin/backup` já existe (só `lastBackup`); acrescentar tamanho, verificação e o destino por mesmo-disco. Espaço e saúde saem do que o servidor já mede.
-- **Decisão sua:** o painel diz **onde** o pacote está (o caminho) ou só o nome? Recomendo só o nome, porque um caminho do servidor não ajuda um administrador sem acesso ao servidor e revela estrutura interna.
+- **Decidido:** o painel **mostra o caminho** do pacote. Fica a pergunta de **para quem**: recomendo o **caminho completo só para o dono** e o **nome do pacote para os administradores** (que podem não ter acesso ao servidor).
+
+- **Escrita pelo dono (pergunta do mantenedor, 04/10/2026; recomendação, ainda não decidida).** Mudaria a decisão de que nada HTTP inicia backup ou restauração, então só vale com uma DEC nova. Por ação:
+  - **Gerar backup agora: sim, só o dono.** Roda como **job** (a infraestrutura já existe), um de cada vez, **sempre criptografado** com a frase que já está no servidor (a frase **nunca** passa pelo navegador), grava só na **pasta de backups configurada** (nunca num caminho vindo do pedido), pede a **senha do dono de novo** e entra no log de auditoria. Custo: a imagem da API precisa do `pg_dump` da versão certa (o `codice-admin` já roda nela) e a pasta precisa ser gravável.
+  - **Verificar um pacote: sim, só o dono.** É o `verify-backup --deep`, que restaura num banco temporário e **não toca nos dados**; também como job.
+  - **Baixar o pacote pelo navegador: não por padrão.** É o banco inteiro; um token do dono roubado levaria tudo, e são centenas de MB. Se um dia for útil, só com senha de novo e link de vida curta.
+  - **Restaurar pela interface: não.** Troca o banco debaixo da API que está respondendo, invalida as sessões (a do dono inclusive) e, se falhar no meio, **não há tela para consertar**. Fica no `codice-admin`, com o comando copiável.
+  - **Agendar e definir retenção pela interface: depois.** Hoje o agendamento é do sistema (um timer, no alpha); trazê-lo para dentro do app exige um agendador próprio.
+- Resumo: **o dono lê e gera/verifica; restaurar e baixar continuam fora do HTTP.** Não considero problemático desde que seja só do dono, com senha de novo e auditoria.
 
 ### 3.5 Exportar meus dados (UI-22)
 
@@ -80,23 +100,23 @@ As telas 1, 4 e 7 não mexem em autenticação. As telas 2 e 3 mexem na tabela d
 
 - **Estado atual:** a entrada de arquivos já tem **Duplicatas**, **Sugestões** (metadados e idioma) e **Trabalhos**; o que **falta** é um lugar onde ver **o que foi recusado ou ficou pela metade** e por quê (arquivo corrompido, formato aceito mas ilegível, extração "não suportada").
 - **Dado real do alpha:** 6 de 28 arquivos ficaram como "extração não suportada" (a causa não foi verificada; o acervo tem 5 CBR e 1 CBZ, formatos de imagem, o que pode explicar) e nenhum job falhou. Por isso **recomendo adiar esta tela até haver dados do teste de fogo (#89)** e **não inventar uma "quarentena"** que a especificação não define. Alternativa barata, já agora: um **filtro "com problema"** na aba Trabalhos (falhos e recusados, com o motivo em português).
-- **Decisão sua:** adiar (recomendado) ou fazer o filtro simples já?
+- **Decidido:** **adiar**, como a issue #141 (DEC-122).
 
 ### 3.7 Uso e orçamento dos provedores (UI-23, RF-046)
 
 - **Regra já confirmada (RF-046):** só o dono; leitor e administrador **não** acessam valores financeiros nem pela interface, nem pela API; há limite global mensal e limites por área; **estimativas aparecem rotuladas**; ao atingir o limite, **novas chamadas externas são bloqueadas**.
 - **Realidade hoje:** os provedores externos vêm **desligados**, e o único com chave no alpha é o ComicVine (gratuito, com limite de chamadas, não de dinheiro). O modelo financeiro ainda **não está desenhado** (preço por chamada, moeda, o que é "apurado" e o que é "estimado").
 - **Recomendação:** **fora do beta.** Antes de qualquer tela, um PR de modelo: tabela de **chamadas** por provedor e mês (o que se pode medir **sem** inventar preço), contador visível ao dono e **bloqueio por número de chamadas**. A parte monetária só entra quando houver um provedor pago de verdade.
-- **Decisão sua:** concorda em começar pelo **contador de chamadas e o limite por número**, deixando o dinheiro para depois?
+- **Decidido:** **fora do beta**, contador de chamadas antes do dinheiro, na issue #142 (DEC-122).
 
 ## 4. Todas as telas: estados
 
 Seguem o padrão da #77 (`Notice`, `LoadError`, `PermissionNote`): carregamento, vazio, erro com tentativa de novo, **sem permissão** e **parcial**, todos em português. As mensagens do servidor passam por `serverMessage.js` e o teste de conferência com o código do servidor continua valendo.
 
-## 5. O que preciso de você
+## 5. O que falta
 
-1. A **ordem** da seção 2 serve? (a minha sugestão é 1 → 4 → 2 → 3 → 5, deixando 6 e 7 para depois do beta.)
-2. As **decisões** marcadas em 3.1 (contato do dono), 3.2 (IP na sessão), 3.3 (tabela própria e retenção), 3.4 (nome do pacote, não o caminho), 3.6 (adiar) e 3.7 (contador antes do dinheiro).
+1. **A ordem** da seção 2 serve? (a minha sugestão é 1 → 4 → 2 → 3 → 5, deixando 6 e 7 para depois do beta; 6 e 7 já estão decididas como fora do beta.)
+2. **Backup com escrita pelo dono** (3.4): a recomendação está na seção 3.4 e aguarda a sua resposta.
 3. **Algo que falta** na lista (por exemplo, uma tela de **excluir minha conta** ou de **papéis e permissões**).
 
-Depois do seu ajuste, cada tela vira um PR com testes, mutação e e2e no navegador, na ordem combinada, e as decisões confirmadas entram na especificação como DEC.
+Depois do seu ajuste, cada tela vira um PR com testes, mutação e e2e no navegador, na ordem combinada.
