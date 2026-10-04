@@ -83,7 +83,7 @@ O essencial (o detalhe, as opções e as medidas de tempo estão no README, seç
 | O que | Onde | Como cresce | O que fazer |
 |---|---|---|---|
 | A biblioteca e as capas | volume `codice_storage` | com cada envio | olhe o espaço livre em *Sistema*; a *Lixeira* guarda antes de apagar |
-| O banco | volume `codice_pgdata` | notas, destaques, texto para a busca | cresce devagar perto da biblioteca |
+| O banco | volume `codice_pgdata` | notas, destaques e, principalmente, **o texto para a busca** | o índice de busca pode pesar **várias vezes o texto** dos livros (6,5 vezes na medição com texto sintético): reserve espaço; o backup não o leva e ele é refeito depois de restaurar |
 | Pacotes de backup | volume `codice_backups` ou `CODICE_BACKUP_HOST_DIR` | um por dia, até a retenção | de preferência em **outro disco** |
 | Modelos locais (opcional) | volume `codice_model_cache` | só se o dono ligar a IA local | baixa só o modelo escolhido |
 | Registro de entradas | tabela `login_events` | uma linha por tentativa | teto de linhas e prazo ajustável pelo dono (7 a 3650 dias) |
@@ -122,5 +122,5 @@ Dito com franqueza, para ninguém achar que existe:
 - **Não há tela de auditoria** (só a consulta no banco, acima), nem agendamento de backup pela interface.
 - **Não há monitoramento embutido**: use `GET /healthz` com um monitor seu.
 - **O tempo de restauração com o acervo real do mantenedor ainda não foi medido** (as medidas do README são sintéticas); faça o ensaio da seção 1 com o **seu** acervo.
-- **Não há guia de capacidade** (quantas obras e quantas pessoas cabem em que máquina): a medição de escala está no plano do beta e ainda não foi feita.
+- **Não há guia de capacidade fechado** (quantas obras e quantas pessoas cabem em que máquina). Há uma primeira medição com 10.000 obras em [`Codice_Teste_de_Escala_2026-10-04.md`](Codice_Teste_de_Escala_2026-10-04.md): a lista, a busca e o OPDS respondem em menos de 0,6 s, e trazer o acervo leva ~3 obras por segundo; **o índice de busca ocupa muito mais disco que o texto** (6,5 vezes, com texto sintético: o número real depende dos seus livros), então **reserve espaço no banco** (`codice_pgdata`) para isso.
 - **Atualizar sem parada** e **alta disponibilidade** não existem: é uma instância, em uma máquina.

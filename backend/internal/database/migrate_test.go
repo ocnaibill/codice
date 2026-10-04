@@ -343,3 +343,40 @@ func TestMigrate_LanguageSuggestionsOfProvidersAreRejectedAndTheDetectedOnesAreN
 		t.Errorf("rolling the migration back: %v", err)
 	}
 }
+
+// "The editions of a work" is asked for every card of the catalog and for every file imported; without an index on
+// editions.work_id each of those reads the whole table (found with 10 000 works: 4.2 s for the last page of the library).
+func TestMigrate_EditionsAreIndexedByWork(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	hasIndex := func() bool {
+		var ok bool
+		err := db.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1 FROM pg_index i
+				JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
+				WHERE i.indrelid = 'editions'::regclass AND a.attname = 'work_id' AND i.indpred IS NULL)`).Scan(&ok)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if !hasIndex() {
+		t.Fatal("no general index on editions(work_id)")
+	}
+	// It rolls back and applies again like the others.
+	if err := database.RollbackTo(db, 49); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	if hasIndex() {
+		t.Error("the index stayed after rolling the migration back")
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("reapply: %v", err)
+	}
+	if !hasIndex() {
+		t.Error("the index did not come back when the migration was applied again")
+	}
+}
