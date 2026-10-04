@@ -97,6 +97,11 @@ function App() {
         }
       } catch (err) {
         console.error('Error checking setup status:', err);
+        // The question "has the server been set up?" failing (the limit on those calls, a moment without network) says
+        // nothing about the session: the person stays where they were, and the first thing that needs the server asks
+        // again and sends them to the login if the session really is gone.
+        const hasResetLink = new URLSearchParams(window.location.search).has('reset');
+        if (localStorage.getItem('codice_token') && !hasResetLink) setIsAuthenticated(true);
       } finally {
         setCheckingStatus(false);
       }

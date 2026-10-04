@@ -88,6 +88,36 @@ describe('App startup', () => {
     expect(localStorage.getItem('codice_token')).toBe('current-session');
   });
 
+  it('keeps the session when the question "is it set up?" fails (the limit on it, a moment without network)', async () => {
+    localStorage.setItem('codice_token', 'current-session');
+    api.get.mockRejectedValue(Object.assign(new Error('429'), { response: { status: 429 } }));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    view = await mount(<App />);
+
+    expect(view.text()).toContain('Acervo');
+    expect(view.text()).not.toContain('Login');
+    expect(localStorage.getItem('codice_token')).toBe('current-session');
+  });
+
+  it('shows the login when the question fails and there is no session to keep', async () => {
+    api.get.mockRejectedValue(Object.assign(new Error('429'), { response: { status: 429 } }));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    view = await mount(<App />);
+    expect(view.text()).toContain('Login');
+    expect(view.text()).not.toContain('Acervo');
+  });
+
+  it('still opens a reset link when the question fails and a session is stored', async () => {
+    window.history.replaceState(null, '', '/?reset=example');
+    localStorage.setItem('codice_token', 'old-session');
+    api.get.mockRejectedValue(Object.assign(new Error('429'), { response: { status: 429 } }));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    view = await mount(<App />);
+    expect(view.text()).toContain('Ir para o login');
+    expect(view.text()).not.toContain('Acervo');
+  });
+
   it('opens the metadata of a work over everything when asked to, and closes it through the store', async () => {
     localStorage.setItem('codice_token', 'current-session');
     store.metadataWorkId = 7;
