@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { isTopmostDialog } from '../../../lib/topDialog';
+import { useRef, useState } from 'react';
+import { useDialog } from '../../../lib/useDialog';
 
 /**
  * Asks the owner for the password of the account again, before something that a session alone must not do
@@ -10,11 +10,7 @@ export function AskPassword({ title, message, confirmLabel, busy = false, error 
   const [password, setPassword] = useState('');
   const dialogRef = useRef(null);
 
-  useEffect(() => {
-    const onKey = (event) => event.key === 'Escape' && isTopmostDialog(dialogRef.current) && onCancel();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
+  useDialog(dialogRef, { onEscape: onCancel });
 
   return (
     <div

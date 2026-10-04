@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useRef } from 'react';
+import { useDialog } from '../../lib/useDialog';
 import { LoadError } from '../ui/LoadError';
 import { NAME_ORDERS, usePreferences, useSetNameOrder } from '../../features/auth/api/usePreferences';
 import { MyData } from '../../features/auth/components/MyData';
@@ -11,11 +12,8 @@ export function PreferencesModal({ onClose }) {
   const { data: prefs, isLoading, isError, error, refetch, isRefetching } = usePreferences();
   const save = useSetNameOrder();
 
-  useEffect(() => {
-    const onKey = (event) => event.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const dialogRef = useRef(null);
+  useDialog(dialogRef, { onEscape: onClose });
 
   const options = [
     ...Object.entries(NAME_ORDERS).map(([value, { label, example }]) => ({ value, label, hint: example })),
@@ -27,7 +25,7 @@ export function PreferencesModal({ onClose }) {
       className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-4"
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >
-      <div role="dialog" aria-modal="true" aria-label="Preferências" className="max-h-[92vh] w-full max-w-md animate-pop-in overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Preferências" className="max-h-[92vh] w-full max-w-md animate-pop-in overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">Preferências</h2>
         <fieldset className="mt-4" disabled={isLoading || save.isPending}>
           <legend className="text-[13px] font-medium text-ink">Como mostrar o nome dos autores</legend>

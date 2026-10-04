@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useDialog } from '../../../lib/useDialog';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useDictionaryLookup } from '../api/useDictionaryLookup';
 import { useDictionaryLanguages } from '../api/useDictionaryLanguages';
@@ -148,13 +149,9 @@ export function DictionaryCard({ word, language, onClose }) {
   const wordAvailable = !known || known.words.includes(lang);
   const { data, isLoading, isError } = useDictionaryLookup({ word, lang, prefer: wanted, enabled: settled });
 
-  useEffect(() => {
-    const onKey = (event) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // A card beside the page, not over it: the focus goes to it and comes back, Escape closes it, and Tab is free to leave.
+  const cardRef = useRef(null);
+  useDialog(cardRef, { onEscape: onClose, trap: false });
 
   // With the words of more than one package, each is said under the name of the package it comes from.
   const items = data?.items ?? [];
@@ -172,6 +169,7 @@ export function DictionaryCard({ word, language, onClose }) {
   const showGroups = new Set(items.map((i) => i.entry.package)).size > 1;
   return (
     <aside
+      ref={cardRef}
       role="dialog"
       aria-label={`Dicionário: ${word}`}
       className="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-h-[70dvh] w-full max-w-lg animate-rise-in flex-col rounded-t-2xl border border-border-hairline bg-white shadow-2xl sm:bottom-4 sm:right-4 sm:left-auto sm:mx-0 sm:rounded-2xl"

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { LoadError } from '../../../components/ui/LoadError';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
@@ -9,7 +9,7 @@ import { useCandidates } from '../../reader/api/useCandidates';
 import { reasonOf } from '../../reader/api/useVersions';
 import { WorkSuggestions } from '../../reader/components/WorkSuggestions';
 import { ConfirmDialog } from '../../admin/components/ConfirmDialog';
-import { isTopmostDialog } from '../../../lib/topDialog';
+import { useDialog } from '../../../lib/useDialog';
 
 const LOCKS = [
   ['title', 'Título'], ['author', 'Autor'], ['series', 'Série'], ['cover', 'Capa'], ['isbn', 'ISBN'],
@@ -197,14 +197,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
   const { data: candidates } = useCandidates(workId);
   const pending = candidates?.length ?? 0;
 
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape' && isTopmostDialog(dialogRef.current)) onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  useDialog(dialogRef, { onEscape: onClose, initialFocus: closeRef });
 
   const tabs = [['suggestions', pending > 0 ? `Sugestões (${pending})` : 'Sugestões'], ['edit', 'Editar']];
 

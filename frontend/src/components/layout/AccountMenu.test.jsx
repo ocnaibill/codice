@@ -1,3 +1,4 @@
+import React, { act, useState } from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../lib/api', () => ({
@@ -130,5 +131,31 @@ describe('ChangePasswordModal', () => {
     await fill(['errada-000', 'nova-senha-1', 'nova-senha-1']);
     await submit();
     expect(document.querySelector('[role="alert"]').textContent).toBe('A senha atual não está correta.');
+  });
+});
+
+describe('account menu, and the dialogs it opens', () => {
+  it('gives the focus back to the avatar when a dialog chosen from the menu closes (the item that opened it is gone)', async () => {
+    function Host() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <Header onChangePassword={() => setOpen(true)} />
+          {open && <ChangePasswordModal onClose={() => setOpen(false)} />}
+        </div>
+      );
+    }
+    view = await mount(<Host />);
+    const avatar = view.container.querySelector('button[aria-haspopup="menu"]');
+    avatar.focus();
+    await view.click(avatar);
+    await view.click(view.button('Alterar senha'));
+    expect(view.dialog().getAttribute('aria-label')).toBe('Alterar senha');
+    expect(view.dialog().contains(document.activeElement)).toBe(true);
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    expect(view.dialog()).toBeNull();
+    expect(document.activeElement).toBe(avatar);
   });
 });

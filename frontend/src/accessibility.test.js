@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
@@ -81,5 +81,35 @@ describe('motion', () => {
     expect(block).toMatch(/animation-duration:\s*0\.01ms\s*!important/);
     expect(block).toMatch(/transition-duration:\s*0\.01ms\s*!important/);
     expect(block).toMatch(/scroll-behavior:\s*auto\s*!important/);
+  });
+});
+
+describe('the dialogs', () => {
+  const walk = (dir) => readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? walk(path) : [path];
+  });
+  const sources = walk('src').filter((f) => /\.jsx$/.test(f) && !/\.test\.jsx$/.test(f) && !/testUtils\.jsx$/.test(f));
+
+  // What a dialog owes the keyboard (focus in, Tab inside, Escape on the top one, focus back) is done by one hook, and a dialog
+  // that does it by hand is a dialog that forgets one of the four.
+  it('use the hook of the dialogs when they are modal', () => {
+    const modal = sources.filter((f) => /aria-modal="true"/.test(readFileSync(f, 'utf8')));
+    expect(modal.length).toBeGreaterThanOrEqual(15);
+    const without = modal.filter((f) => !/\buseDialog\(/.test(readFileSync(f, 'utf8')));
+    expect(without).toEqual([]);
+  });
+
+  it('and the ones that are not modal either use it or are the settings panel of the reader, which the reader manages with its own Escape and immersive mode', () => {
+    const popovers = ['ReadingSettingsPanel.jsx']; // an open panel of the reader: closed by the reader (Escape, immersive mode)
+    const plain = sources.filter((f) => /role="dialog"/.test(readFileSync(f, 'utf8')) && !/aria-modal="true"/.test(readFileSync(f, 'utf8')));
+    const without = plain.filter((f) => !/\buseDialog\(/.test(readFileSync(f, 'utf8')) && !popovers.some((p) => f.endsWith(p)));
+    expect(without).toEqual([]);
+  });
+
+  it('never close on Escape by their own listener (the one on top is the only one that answers)', () => {
+    const own = sources.filter((f) => /role="dialog"/.test(readFileSync(f, 'utf8')))
+      .filter((f) => /key === 'Escape'/.test(readFileSync(f, 'utf8')) && !/WorkSheet\.jsx$/.test(f));
+    expect(own).toEqual([]);
   });
 });

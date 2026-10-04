@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useOwnLogins, useSessions, useRevokeOtherSessions, useRevokeSession } from '../../features/auth/api/useSessions';
 import { useAppTokens, useRevokeAppToken } from '../../features/auth/api/useAppTokens';
 import { ConfirmDialog } from '../../features/admin/components/ConfirmDialog';
 import { formatDate } from '../../features/admin/format';
 import { LoadError } from '../ui/LoadError';
 import { serverMessage } from '../../lib/serverMessage';
-import { isTopmostDialog } from '../../lib/topDialog';
+import { useDialog } from '../../lib/useDialog';
 import { sessionLines } from './sessionText';
 import { loginDetail, loginWhen, RESULTS } from '../../features/admin/loginText';
 
@@ -81,11 +81,7 @@ export function SessionsModal({ onClose, onOpenApps }) {
   const [ending, setEnding] = useState(null); // a session, or 'others'
   const [removing, setRemoving] = useState(null);
 
-  useEffect(() => {
-    const onKey = (event) => event.key === 'Escape' && isTopmostDialog(dialogRef.current) && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useDialog(dialogRef, { onEscape: onClose });
 
   const sessions = data ?? [];
   const others = sessions.filter((s) => !s.current);

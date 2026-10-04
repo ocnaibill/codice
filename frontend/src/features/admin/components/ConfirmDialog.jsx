@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useDialog } from '../../../lib/useDialog';
 
 const TONES = {
   neutral: 'bg-surface-alt text-ink hover:brightness-95',
@@ -17,20 +18,15 @@ export function ConfirmDialog({ title, message, choices, onChoose, onCancel, can
   const [typed, setTyped] = useState('');
   const locked = requireText !== undefined && typed !== requireText;
 
-  useEffect(() => {
-    const onKey = (event) => {
-      if (event.key === 'Escape') onCancel();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
+  const dialogRef = useRef(null);
+  useDialog(dialogRef, { onEscape: onCancel });
 
   return (
     <div
       className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-4"
       onClick={(event) => event.target === event.currentTarget && onCancel()}
     >
-      <div role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md animate-pop-in rounded-xl bg-white p-6 shadow-2xl">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-md animate-pop-in rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">{title}</h2>
         <div className="mt-3 text-[14px] leading-relaxed text-ink-soft">{message}</div>
         {requireText !== undefined && (

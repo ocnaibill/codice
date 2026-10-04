@@ -8,7 +8,7 @@ import { reasonOf, useSplitEdition } from '../api/useVersions';
 import { isStaff, useMe } from '../../auth/api/useMe';
 import { JoinVersionsDialog } from './JoinVersionsDialog';
 import { useCandidates } from '../api/useCandidates';
-import { isTopmostDialog } from '../../../lib/topDialog';
+import { useDialog } from '../../../lib/useDialog';
 import { completionText, formatSize, languageName, whereYouAre } from '../files';
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { sheetNote } from '../../../lib/ocr';
@@ -219,22 +219,14 @@ export function WorkSheet() {
     setNotice(null);
   }, [workId]);
 
-  React.useEffect(() => {
-    if (!workId) return undefined;
-    const previousFocus = document.activeElement;
-    closeButtonRef.current?.focus();
-    const onKeyDown = (event) => {
-      if (event.key !== 'Escape' || !isTopmostDialog(dialogRef.current)) return;
-      // An open menu takes the Escape for itself, whichever of the two listeners runs first.
-      if (dialogRef.current.querySelector('[role="menu"]')) return;
-      closeSheet();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      previousFocus?.focus?.();
-    };
-  }, [workId, closeSheet]);
+  // An open menu takes the Escape for itself, whichever of the two listeners runs first.
+  useDialog(dialogRef, {
+    active: !!workId,
+    initialFocus: closeButtonRef,
+    onEscape: () => {
+      if (!dialogRef.current?.querySelector('[role="menu"]')) closeSheet();
+    },
+  });
 
   if (!workId) return null;
 

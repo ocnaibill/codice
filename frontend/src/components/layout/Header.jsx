@@ -21,6 +21,13 @@ export function Header({
   const account = useRef(null);
   const accountButton = useRef(null);
   const openUploadModal = useGlobalStore((state) => state.openUploadModal);
+  // Choosing from the menu closes it, and the item that was chosen goes away with it: the focus goes to the button of the
+  // account first, so that what the item opens (a dialog) gives the focus back to something that is still there.
+  const pick = (action) => () => {
+    setMenuOpen(false);
+    accountButton.current?.focus();
+    action?.();
+  };
   useEffect(() => {
     if (menuOpen) account.current?.querySelector('[role="menuitem"]')?.focus();
     const onKey = (event) => {
@@ -132,10 +139,7 @@ export function Header({
               {canAdmin && (
                 <button
                   role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onOpenAdmin?.();
-                  }}
+                  onClick={pick(onOpenAdmin)}
                 >
                   Administração
                 </button>
@@ -143,10 +147,7 @@ export function Header({
               {onOpenPreferences && (
                 <button
                   role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onOpenPreferences();
-                  }}
+                  onClick={pick(onOpenPreferences)}
                 >
                   Preferências
                 </button>
@@ -154,10 +155,7 @@ export function Header({
               {onOpenApps && (
                 <button
                   role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onOpenApps();
-                  }}
+                  onClick={pick(onOpenApps)}
                 >
                   Aplicativos
                 </button>
@@ -165,10 +163,7 @@ export function Header({
               {onOpenSessions && (
                 <button
                   role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onOpenSessions();
-                  }}
+                  onClick={pick(onOpenSessions)}
                 >
                   Sessões e dispositivos
                 </button>
@@ -176,10 +171,7 @@ export function Header({
               {onOpenAbout && (
                 <button
                   role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onOpenAbout();
-                  }}
+                  onClick={pick(onOpenAbout)}
                 >
                   Sobre
                 </button>
@@ -187,20 +179,14 @@ export function Header({
               {onChangePassword && (
                 <button
                   role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onChangePassword();
-                  }}
+                  onClick={pick(onChangePassword)}
                 >
                   Alterar senha
                 </button>
               )}
               <button
                 role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onLogout?.();
-                }}
+                onClick={pick(onLogout)}
               >
                 Sair
               </button>

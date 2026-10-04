@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRevokeAllUserSessions, useRevokeUserSession, useUserSessions } from '../../auth/api/useSessions';
 import { sessionLines } from '../../../components/layout/sessionText';
 import { LoadError } from '../../../components/ui/LoadError';
 import { serverMessage } from '../../../lib/serverMessage';
-import { isTopmostDialog } from '../../../lib/topDialog';
+import { useDialog } from '../../../lib/useDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 
 /**
@@ -18,11 +18,7 @@ export function UserSessionsModal({ account, onClose }) {
   const endAll = useRevokeAllUserSessions(account.id);
   const [ending, setEnding] = useState(null); // a session, or 'all'
 
-  useEffect(() => {
-    const onKey = (event) => event.key === 'Escape' && isTopmostDialog(dialogRef.current) && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useDialog(dialogRef, { onEscape: onClose });
 
   const failure = end.isError
     ? serverMessage(end.error, 'Não foi possível encerrar a sessão.')

@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useDialog } from '../../../lib/useDialog';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { toast } from '../../../components/ui/toast';
 import { formatBytes } from '../../admin/format';
@@ -56,16 +57,9 @@ export function UploadModal() {
     closeModal();
   };
 
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    panel.current?.focus();
-    const onKey = (event) => {
-      if (event.key === 'Escape') close();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-    // close reads the state of the moment: it is made again with each render, so the listener follows it.
-  });
+  // close reads the state of the moment: it is made again with each render, and the hook keeps the latest one.
+  // The focus starts on the panel itself, as before: the name of the dialog is read, and the first Tab reaches the first control.
+  useDialog(panel, { active: isOpen, onEscape: close, initialFocus: panel });
 
   if (!isOpen) return null;
 
