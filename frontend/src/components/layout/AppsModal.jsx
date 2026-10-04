@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMe } from '../../features/auth/api/useMe';
 import {
   catalogAddress,
@@ -9,7 +9,7 @@ import {
 } from '../../features/auth/api/useAppTokens';
 import { ConfirmDialog } from '../../features/admin/components/ConfirmDialog';
 import { formatDate } from '../../features/admin/format';
-import { isTopmostDialog } from '../../lib/topDialog';
+import { useDialog } from '../../lib/useDialog';
 
 // Names to start from, so the usual case is one click; the person can write any other.
 const SUGGESTIONS = ['KOReader', 'Moon+ Reader', 'Librera', 'Meu leitor'];
@@ -141,11 +141,7 @@ export function AppsModal({ onClose }) {
   const [created, setCreated] = useState(null);
   const [removing, setRemoving] = useState(null);
 
-  useEffect(() => {
-    const onKey = (event) => event.key === 'Escape' && isTopmostDialog(dialogRef.current) && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useDialog(dialogRef, { onEscape: onClose });
 
   const submit = (name) => create.mutate(name, { onSuccess: (data) => setCreated(data) });
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { fetchFile, saveBlob } from '../../../lib/download';
-import { isTopmostDialog } from '../../../lib/topDialog';
+import { useDialog } from '../../../lib/useDialog';
 import { filterParams } from '../api/useNotesList';
 import { describeFilters, EXPORT_CAP } from '../exportText';
 
@@ -39,13 +39,7 @@ export function ExportNotes({ filters, total, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  useEffect(() => {
-    const onKey = (event) => {
-      if (event.key === 'Escape' && isTopmostDialog(dialogRef.current)) onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useDialog(dialogRef, { onEscape: onClose });
 
   const capped = total > EXPORT_CAP;
   const ready = state.status === 'ready';

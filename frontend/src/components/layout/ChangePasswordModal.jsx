@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api } from '../../lib/api';
+import { useDialog } from '../../lib/useDialog';
 import { serverMessage } from '../../lib/serverMessage';
 
 const MIN_PASSWORD = 8;
@@ -12,6 +13,8 @@ export function ChangePasswordModal({ onClose }) {
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
+  const dialogRef = useRef(null);
+  useDialog(dialogRef, { onEscape: onClose });
 
   const submit = async (event) => {
     event.preventDefault();
@@ -41,7 +44,7 @@ export function ChangePasswordModal({ onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-4"
       onClick={(event) => event.target === event.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label="Alterar senha" className="w-full max-w-sm animate-pop-in rounded-xl bg-white p-6 shadow-2xl">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Alterar senha" className="w-full max-w-sm animate-pop-in rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">Alterar senha</h2>
         {done ? (
           <>

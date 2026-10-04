@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useDialog } from '../../../lib/useDialog';
 import { candidateLabel, whereYouAre } from '../files';
 
 /**
@@ -11,17 +12,13 @@ export function EquivalentPositionPrompt({ from, sourceExcerpt, status, candidat
   const [chosen, setChosen] = useState(0);
   const ambiguous = status === 'ambiguous';
 
-  // Escape is declining: the file opens where its own saved position is.
-  useEffect(() => {
-    const onKey = (event) => {
-      if (event.key === 'Escape') onDecline();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onDecline]);
+  // Escape is declining: the file opens where its own saved position is. The focus starts there too.
+  const dialogRef = useRef(null);
+  const declineRef = useRef(null);
+  useDialog(dialogRef, { onEscape: onDecline, initialFocus: declineRef });
 
   return (
-    <div className="fixed inset-0 z-[70] flex animate-fade-in items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Continuar de onde parou?">
+    <div ref={dialogRef} className="fixed inset-0 z-[70] flex animate-fade-in items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Continuar de onde parou?">
       <div className="max-h-[90dvh] w-full max-w-md animate-pop-in overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">Continuar de onde parou na outra versão?</h2>
         <p className="mt-2 text-sm text-ink-soft">{whereYouAre(from)}</p>
@@ -59,6 +56,7 @@ export function EquivalentPositionPrompt({ from, sourceExcerpt, status, candidat
             Continuar daqui
           </button>
           <button
+            ref={declineRef}
             onClick={onDecline}
             disabled={busy}
             className="min-h-11 rounded-lg bg-surface-alt px-4 text-sm font-medium text-ink transition-[filter] hover:brightness-95 disabled:opacity-40"

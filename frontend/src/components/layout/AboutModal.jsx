@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { useAbout } from '../../features/about/useAbout';
 import { THIRD_PARTY } from '../../features/about/thirdParty';
 import { LoadError } from '../ui/LoadError';
-import { isTopmostDialog } from '../../lib/topDialog';
+import { useDialog } from '../../lib/useDialog';
 
 function ExternalLink({ href, children }) {
   return (
@@ -25,11 +25,7 @@ export function AboutModal({ onClose }) {
   const dialogRef = useRef(null);
   const { data, isLoading, isError, error, refetch, isFetching } = useAbout();
 
-  useEffect(() => {
-    const onKey = (event) => event.key === 'Escape' && isTopmostDialog(dialogRef.current) && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useDialog(dialogRef, { onEscape: onClose });
 
   const source = safe(data?.sourceUrl);
   const licenseLink = safe(data?.licenseUrl);

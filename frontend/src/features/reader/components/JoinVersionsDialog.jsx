@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDialog } from '../../../lib/useDialog';
 import { LoadError } from '../../../components/ui/LoadError';
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { reasonOf, useJoinWork, useNotTheSame, useWorkSearch } from '../api/useVersions';
@@ -16,23 +17,15 @@ export function JoinVersionsDialog({ work, onClose, onJoined }) {
   const [chosen, setChosen] = React.useState(null);
   const [message, setMessage] = React.useState('');
   const inputRef = React.useRef(null);
+  const dialogRef = React.useRef(null);
   const search = useWorkSearch(term);
   const join = useJoinWork();
   const notSame = useNotTheSame();
   const busy = join.isPending || notSame.isPending;
   const results = (search.data?.data ?? []).filter((w) => w.id !== work.id);
 
-  React.useEffect(() => {
-    inputRef.current?.focus();
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        event.stopImmediatePropagation(); // the sheet under it must not close too
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [onClose]);
+  // Escape closes only this one: the sheet under it is not the top dialog, so it does not answer.
+  useDialog(dialogRef, { onEscape: onClose, initialFocus: inputRef });
 
   const confirmJoin = () =>
     join.mutate(
@@ -55,7 +48,7 @@ export function JoinVersionsDialog({ work, onClose, onJoined }) {
     );
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Juntar com outra obra">
+    <div ref={dialogRef} className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Juntar com outra obra">
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-[#faf8f4] shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-border-hairline px-5 py-4">
           <div className="min-w-0">
