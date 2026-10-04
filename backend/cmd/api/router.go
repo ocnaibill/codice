@@ -31,6 +31,8 @@ type routerDeps struct {
 	// TrustedProxies are the reverse proxies whose X-Forwarded-For is believed when
 	// telling clients apart for rate limits (CODICE_TRUSTED_PROXIES).
 	TrustedProxies []netip.Prefix
+	// PublicURL is CODICE_PUBLIC_URL, already checked, or empty.
+	PublicURL string
 	// Directory is the LDAP directory, nil when it is not configured.
 	Directory     ldapauth.Directory
 	DirectoryHost string
@@ -302,7 +304,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(assets).Get("/works/{id}/audio", mediaHandler.ServeAudio)
 
 	// OPDS 1.2 Catalog (Basic Auth for mobile apps like KOReader, Moon+ Reader)
-	opdsHandler := &handlers.OPDSHandler{DB: db, Auth: d.Auth}
+	opdsHandler := &handlers.OPDSHandler{DB: db, Auth: d.Auth, PublicURL: d.PublicURL, TrustedProxies: d.TrustedProxies}
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/catalog", opdsHandler.RootCatalog)
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/recent", opdsHandler.RecentFeed)
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/search", opdsHandler.SearchFeed)
