@@ -1,0 +1,126 @@
+# Tests of the three stacks on every pull request and on main.
+# The database tests need a PostgreSQL whose name ends in _test (they drop and recreate the schema).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The same major version the stack runs on (docker-compose.yml): the backup tests refuse a pg_dump
+  # newer than the server.
+  PG_MAJOR: "15"
+  TEST_DATABASE_URL: postgres://codice:codice@localhost:5432/codice_test?sslmode=disable
+
+jobs:
+  backend:
+    name: Backend (Go)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: codice
+          POSTGRES_PASSWORD: codice
+          POSTGRES_DB: codice_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U codice -d codice_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: PostgreSQL client tools (the backup tests run pg_dump and pg_restore)
+        working-directory: .
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+          # On PATH, ahead of the runner's own (newer) client: the tests look for pg_dump there.
+          echo "/usr/lib/postgresql/${PG_MAJOR}/bin" >> "$GITHUB_PATH"
+      - run: go vet ./...
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go test ./... -count=1 -timeout 30m
+
+  worker:
+    name: Worker (Python)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: codice
+          POSTGRES_PASSWORD: codice
+          POSTGRES_DB: codice_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U codice -d codice_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: worker/requirements.txt
+      - name: OCR engine (the OCR tests run it when it is installed)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-osd tesseract-ocr-por tesseract-ocr-eng
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest tests/ -q --tb=short
+
+  frontend:
+    name: Frontend (React)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx oxlint src
+      - run: npm test
+      - run: npm run build
+
+  govulncheck:
+    name: Known vulnerabilities (Go)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...
