@@ -244,7 +244,7 @@ function Backup({ last, panel, isOwner }) {
   return (
     <Section
       title="Backup"
-      hint="O Códice não agenda backups: você agenda o comando no servidor. O pacote leva o banco e a lista de arquivos com seus hashes (e os arquivos, com --include-files). Sessões, tokens e convites nunca entram."
+      hint="O Códice não agenda backups: você agenda o comando no servidor. O pacote leva o banco e a lista de arquivos com seus hashes (e os arquivos, com --include-files). Sessões, tokens, convites e o registro de entradas nunca entram."
     >
       {!last && (
         <Notice tone="danger" title="Nenhum backup registrado nesta instância">

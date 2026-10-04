@@ -71,6 +71,9 @@ type SessionChecker func(ctx context.Context, sessionID string) (userID, role st
 type Authenticator struct {
 	Sessions SessionChecker // required; without it every token is refused
 	Basic    BasicVerifier  // optional; used by WithBasic and AssetsWithBasic
+	// OnBasicFailure, when set, is told of every Basic attempt that was refused, with the name that was given (the
+	// record of sign-ins keeps it, DEC-121). It must not slow the answer down or fail it.
+	OnBasicFailure func(r *http.Request, username string)
 }
 
 // Middleware accepts only "Authorization: Bearer <session token>".
@@ -120,6 +123,9 @@ func (a Authenticator) build(allowBasic, allowResource bool) func(http.Handler) 
 				}
 				id, role, err := verifyBasic(r.Context(), header, a.Basic)
 				if errors.Is(err, ErrInvalidCredentials) {
+					if a.OnBasicFailure != nil {
+						a.OnBasicFailure(r, basicUsername(header))
+					}
 					deny(w, true, "Access denied: Invalid credentials")
 					return
 				}
@@ -235,6 +241,16 @@ func verifyBasic(ctx context.Context, authHeader string, verify BasicVerifier) (
 		return "", "", ErrInvalidCredentials
 	}
 	return verify(ctx, user, pass)
+}
+
+// basicUsername is the name in a Basic header, or "" when the header does not carry one.
+func basicUsername(authHeader string) string {
+	payload, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(authHeader, "Basic "))
+	if err != nil {
+		return ""
+	}
+	user, _, _ := strings.Cut(string(payload), ":")
+	return user
 }
 
 func withIdentity(r *http.Request, id, role, sessionID string) *http.Request {
