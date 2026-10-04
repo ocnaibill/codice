@@ -46,7 +46,7 @@ export function JobsTab() {
             }`}
           >
             {label}
-            {value && counts[value] > 0 && <span className="ml-1 opacity-80">({counts[value]})</span>}
+            {value && counts[value] > 0 && <span className="ml-1">({counts[value]})</span>}
           </button>
         ))}
       </div>

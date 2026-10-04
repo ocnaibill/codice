@@ -394,3 +394,33 @@ describe('useDialog: the opener is the one of the moment it opened', () => {
     expect(document.activeElement).toBe($('opener'));
   });
 });
+
+describe('useDialog: a popover that is not a dialog (a menu, the contents of a book)', () => {
+  function Menu({ onEscape }) {
+    const ref = useRef(null);
+    useDialog(ref, { onEscape, trap: false, initialFocus: (menu) => menu.querySelector('[aria-checked="true"]') });
+    return (
+      <div ref={ref} role="menu">
+        <button role="menuitemradio" aria-checked="false" id="m-a">A</button>
+        <button role="menuitemradio" aria-checked="true" id="m-b">B</button>
+      </div>
+    );
+  }
+
+  it('finds the element to focus first with a function, and answers Escape when no modal dialog is open', async () => {
+    const onEscape = vi.fn();
+    await render(<Menu onEscape={onEscape} />);
+    expect(document.activeElement).toBe($('m-b'));
+    await press('Escape');
+    expect(onEscape).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the Escape to a modal dialog that is open over it', async () => {
+    const onEscape = vi.fn();
+    const over = vi.fn();
+    await render(<div><Menu onEscape={onEscape} /><Dialog label="over" onEscape={over} /></div>);
+    await press('Escape');
+    expect(over).toHaveBeenCalledTimes(1);
+    expect(onEscape).not.toHaveBeenCalled();
+  });
+});

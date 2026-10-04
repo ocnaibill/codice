@@ -100,6 +100,7 @@ export function ToastRegion() {
   const items = useToasts((state) => state.items);
   return (
     <div
+      role="region"
       aria-label="Avisos"
       className="pointer-events-none fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-[70] flex flex-col items-center gap-2 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-96 sm:items-stretch lg:bottom-6"
     >

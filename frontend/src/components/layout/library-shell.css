@@ -7,7 +7,7 @@
   --color-surface-alt: #ede5d8;
   --color-ink: #201c18;
   --color-ink-soft: #5d4b41;
-  --color-ink-faint: #78685c;
+  --color-ink-faint: #6f5f54;
   --color-success: #366555;
   --color-border-hairline: #dfd2be;
   --library-paper: #fcf9f2;
@@ -344,8 +344,9 @@
   margin: 9px 0 5px;
   overflow-wrap: anywhere;
 }
-.library-stat p {
+.library-stat .library-stat-detail {
   font: 10px/1.6 var(--font-mono);
+  margin: 0;
   color: var(--color-ink-soft);
 }
 .library-section-heading {
@@ -744,7 +745,7 @@
   .library-stat dt {
     font-size: 8px;
   }
-  .library-stat p {
+  .library-stat .library-stat-detail {
     font-size: 9px;
   }
   .library-section-heading {

@@ -172,6 +172,17 @@ describe('the EPUB reader: the look of the text', () => {
     expect(panel()).toBeNull();
   });
 
+  it('takes the focus into its panel, and Escape closes it and gives the focus back to its button', async () => {
+    await open();
+    const opener = button('Aparência do texto');
+    opener.focus();
+    await click(opener);
+    expect(panel().contains(document.activeElement)).toBe(true);
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(panel()).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('starts with the page the person chose last, as it was saved', async () => {
     localStorage.setItem(settingsKey, JSON.stringify({ theme: 'sepia', font: 'serifada', size: 120, spacing: 'media' }));
     await open();
@@ -495,6 +506,19 @@ describe('the EPUB reader: the table of contents', () => {
     expect(container.querySelector('nav[aria-label="Sumário do livro"]')).toBeNull();
   });
 
+  it('takes the focus into the contents, and Escape closes them and gives the focus back to their button', async () => {
+    state.toc = toc;
+    await open();
+    const opener = button('Sumário do livro');
+    opener.focus();
+    await click(opener);
+    const nav = container.querySelector('nav[aria-label="Sumário do livro"]');
+    expect(nav.contains(document.activeElement)).toBe(true);
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(container.querySelector('nav[aria-label="Sumário do livro"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('goes by the address given when the book has no such chapter by that name', async () => {
     state.toc = toc;
     await open();
@@ -549,6 +573,27 @@ describe('the EPUB reader: the keyboard', () => {
     await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} immersive={false} onImmersiveChange={onImmersiveChange} />); });
     await keyup('Escape');
     expect(onImmersiveChange).not.toHaveBeenCalled();
+  });
+
+  it('names the frame of the book for a screen reader, with the title when it is known', async () => {
+    await open({ title: 'Duna' });
+    const first = document.createElement('iframe');
+    container.appendChild(first);
+    state.hooks[0]({ document: first.contentDocument, addStylesheetCss: vi.fn() });
+    expect(first.getAttribute('title')).toBe('Texto de “Duna”');
+    const second = document.createElement('iframe');
+    second.setAttribute('title', 'já tem nome');
+    container.appendChild(second);
+    state.hooks[0]({ document: second.contentDocument, addStylesheetCss: vi.fn() });
+    expect(second.getAttribute('title')).toBe('já tem nome'); // a name that is already there is not taken
+  });
+
+  it('names the frame of the book even when its title is not known', async () => {
+    await open();
+    const frame = document.createElement('iframe');
+    container.appendChild(frame);
+    state.hooks[0]({ document: frame.contentDocument, addStylesheetCss: vi.fn() });
+    expect(frame.getAttribute('title')).toBe('Texto do livro');
   });
 
   it('is heard from inside the page of the book too, which is an iframe of its own, with the same rules', async () => {

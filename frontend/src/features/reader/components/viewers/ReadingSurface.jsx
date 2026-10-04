@@ -188,7 +188,7 @@ export default function ReadingSurface({
           >
             {panel && (
               <div className="absolute bottom-full left-1/2 mb-2 max-h-[calc(100dvh-9rem)] w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 animate-rise-in overflow-y-auto rounded-xl border border-border-hairline bg-white p-4 shadow-xl">
-                <ReadingSettingsPanel settings={settings} onChange={change} bookLabel="Padrão" />
+                <ReadingSettingsPanel settings={settings} onChange={change} onClose={() => setPanel(false)} bookLabel="Padrão" />
               </div>
             )}
             <button onClick={() => scrollScreen(-1)} aria-label="Rolar para cima" className={control}>

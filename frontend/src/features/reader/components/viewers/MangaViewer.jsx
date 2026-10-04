@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useDialog } from '../../../../lib/useDialog';
 import { authenticatedUrl } from '../../../../lib/api';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { completionFor } from '../../progressRules';
@@ -67,6 +68,8 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
   const rootRef = useRef(null);
   const modesRef = useRef(null);
   const modesOpenerRef = useRef(null);
+  // The menu of modes: the focus goes to the one that is on, Escape closes it and the focus goes back to its button.
+  useDialog(modesRef, { active: showModes, onEscape: () => setShowModes(false), trap: false, initialFocus: (menu) => menu.querySelector('[aria-checked="true"]') });
   const gesture = useRef(null);
   // Read when the page list arrives, not reasons to ask for it again.
   const placeRef = useRef({ initialProgress, onPlaceFailed });

@@ -221,6 +221,29 @@ describe('the comic reader: the controls', () => {
     expect(shown()).toEqual(['Página 5', 'Página 6']);
   });
 
+  it('the list of modes takes the focus on the mode in use, and Escape gives it back to its button', async () => {
+    await open({ mode: 'rtl' });
+    const opener = container.querySelector('button[aria-haspopup="menu"]');
+    opener.focus();
+    await click(opener);
+    expect(document.activeElement.getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement.textContent).toContain('Direita para a esquerda');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(container.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('the list of modes does not hold the Tab: it is a menu beside the page, not a dialog over it', async () => {
+    await open({ mode: 'rtl' });
+    const opener = container.querySelector('button[aria-haspopup="menu"]');
+    await click(opener);
+    const items = [...container.querySelectorAll('[role="menuitemradio"]')];
+    items.at(-1).focus();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    document.activeElement.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(false);
+  });
+
   it('the list of modes closes by Escape and by a press outside it, but not by a press inside it', async () => {
     await open();
     const opener = () => container.querySelector('button[aria-haspopup="menu"]');
