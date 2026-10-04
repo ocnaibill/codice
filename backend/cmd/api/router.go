@@ -33,6 +33,8 @@ type routerDeps struct {
 	TrustedProxies []netip.Prefix
 	// PublicURL is CODICE_PUBLIC_URL, already checked, or empty.
 	PublicURL string
+	// Version and SourceURL are what the "Sobre" screen shows (see internal/version).
+	Version, SourceURL string
 	// Directory is the LDAP directory, nil when it is not configured.
 	Directory     ldapauth.Directory
 	DirectoryHost string
@@ -160,6 +162,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/works/bulk-import", uploadHandler.HandleBulkImport)
 
 	// Session, resource tokens and app tokens
+	r.With(auth).Get("/about", (&handlers.AboutHandler{Version: d.Version, SourceURL: d.SourceURL}).Get)
 	r.With(auth).Get("/auth/me", authHandler.Me)
 	r.With(auth, authRateLimit).Post("/auth/password", authHandler.ChangePassword)
 	r.With(auth).Post("/auth/notices/{id}/ack", handlers.AckNotice(db))

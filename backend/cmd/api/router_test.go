@@ -395,3 +395,17 @@ func TestRouter_RefusesAnOversizedBodyBeforeTheHandlerReadsIt(t *testing.T) {
 		t.Fatalf("status = %d, want 400 for a body over %d bytes", rec.Code, middleware.MaxJSONBody)
 	}
 }
+
+// The "Sobre" screen is for whoever is signed in, whatever the role.
+func TestRouter_AboutNeedsASessionButNoRole(t *testing.T) {
+	r := testRouter(t)
+	if rec := do(r, "GET", "/about", "", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("without a session: %d, want 401", rec.Code)
+	}
+	for _, role := range []string{"reader", "admin", "owner"} {
+		rec := do(r, "GET", "/about", tokenFor(t, role), "")
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: %d, want 200", role, rec.Code)
+		}
+	}
+}
