@@ -10,8 +10,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ocnaibill/codice/backend/internal/database"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
+	"github.com/ocnaibill/codice/backend/internal/logins"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/testdb"
 )
 
 const testSecret = "test_secret_key_for_testing_12345678"
@@ -72,6 +75,7 @@ type route struct{ method, path string }
 
 // Routes the specification reserves to owner and admin (DEC-003, RF-007).
 var staffRoutes = []route{
+	{"GET", "/admin/logins"},
 	{"GET", "/users/" + someUUID + "/sessions"},
 	{"DELETE", "/users/" + someUUID + "/sessions"},
 	{"DELETE", "/users/" + someUUID + "/sessions/" + someUUID},
@@ -130,6 +134,7 @@ var staffRoutes = []route{
 
 // Routes reserved to the owner alone (DEC-056).
 var ownerRoutes = []route{
+	{"PUT", "/admin/logins/settings"},
 	{"PUT", "/admin/ldap/policy"},
 	{"POST", "/ownership/transfer"},
 	{"PUT", "/admin/trash/policy"},
@@ -352,7 +357,7 @@ func limited(h http.Handler, remote, xff string) int {
 }
 
 func TestAuthRateLimit_ForgedHeadersCannotDodgeItWithoutATrustedProxy(t *testing.T) {
-	h := authRateLimiter(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
+	h := authRateLimiter(nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
 	for i := 0; i < 10; i++ {
 		if code := limited(h, "203.0.113.9:1000", "1.1.1."+string(rune('0'+i))); code != 200 {
 			t.Fatalf("request %d: %d", i, code)
@@ -368,7 +373,7 @@ func TestAuthRateLimit_BehindATrustedProxyClientsDoNotShareABudget(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := authRateLimiter(trusted)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
+	h := authRateLimiter(trusted, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
 	proxy := "172.18.0.5:4000"
 	for i := 0; i < 10; i++ {
 		limited(h, proxy, "198.51.100.1")
@@ -440,9 +445,54 @@ func TestBackupPanelRoutes_AreTheOwnersAlone(t *testing.T) {
 // "Sessões e dispositivos" is for whoever is signed in, whatever the role, and for no one who is not.
 func TestSessionsRoutes_NeedASessionButNoRole(t *testing.T) {
 	h := testRouter(t)
-	for _, rt := range []route{{"GET", "/auth/sessions"}, {"DELETE", "/auth/sessions/" + someUUID}, {"POST", "/auth/sessions/revoke-others"}} {
+	for _, rt := range []route{{"GET", "/auth/sessions"}, {"GET", "/auth/logins"}, {"DELETE", "/auth/sessions/" + someUUID}, {"POST", "/auth/sessions/revoke-others"}} {
 		if rec := do(h, rt.method, rt.path, "", ""); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without a session: %d, want 401", rt.method, rt.path, rec.Code)
+		}
+	}
+}
+
+// Someone who is stopped by the limit on sign-ins goes into the record of sign-ins (DEC-121): it is exactly what the
+// owner wants to see. The answer is the same as before, and a run of refusals is one row with a count.
+func TestAuthRateLimiter_RecordsWhoWasStopped(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	rec := &logins.Recorder{DB: db}
+	h := authRateLimiter(nil, rec)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	codes := map[int]int{}
+	var last *httptest.ResponseRecorder
+	for i := 0; i < 13; i++ {
+		req := httptest.NewRequest("POST", "/auth/login", nil)
+		req.RemoteAddr = "203.0.113.7:4000"
+		req.Header.Set("User-Agent", "curl/8")
+		last = httptest.NewRecorder()
+		h.ServeHTTP(last, req)
+		codes[last.Code]++
+	}
+	if codes[200] != 10 || codes[http.StatusTooManyRequests] != 3 {
+		t.Fatalf("answers = %v, want 10 allowed and 3 stopped", codes)
+	}
+	if body := strings.TrimSpace(last.Body.String()); body != "Too Many Requests" {
+		t.Errorf("the answer changed: %q", body)
+	}
+	var result, method, ip string
+	var count, rows int
+	db.QueryRow(`SELECT count(*) FROM login_events`).Scan(&rows)
+	db.QueryRow(`SELECT result, method, ip, count FROM login_events`).Scan(&result, &method, &ip, &count)
+	if rows != 1 || result != "rate_limited" || method != "local" || ip != "203.0.113.7" || count != 3 {
+		t.Errorf("record: %d rows, %s/%s %s x%d; want one row rate_limited/local 203.0.113.7 x3", rows, result, method, ip, count)
+	}
+	// A nil recorder (a router with none) still limits.
+	h2 := authRateLimiter(nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	for i := 0; i < 11; i++ {
+		req := httptest.NewRequest("POST", "/auth/login", nil)
+		req.RemoteAddr = "198.51.100.1:4000"
+		out := httptest.NewRecorder()
+		h2.ServeHTTP(out, req)
+		if i == 10 && out.Code != http.StatusTooManyRequests {
+			t.Errorf("without a recorder the 11th: %d", out.Code)
 		}
 	}
 }

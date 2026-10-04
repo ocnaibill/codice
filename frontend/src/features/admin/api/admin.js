@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { messageOf } from '../../../lib/serverMessage';
 import { api } from '../../../lib/api';
 import { POLL_MS } from '../systemLimits';
@@ -229,3 +229,32 @@ export const useCancelDictionary = () => useAdminAction(async (id) => (await api
 export const useRemoveDictionary = () => useAdminAction((id) => api.delete(`/admin/dictionaries/${id}`));
 export const useSetEmbeddings = () => useAdminAction(async (settings) => (await api.put('/admin/embeddings', settings)).data);
 export const useCheckLdap = () => useMutation({ mutationFn: async () => (await api.post('/admin/ldap/check')).data });
+
+/** The record of sign-ins (DEC-121), a page at a time, newest first. `filters` is { result, username, from }; each page
+ *  carries the entries, whether there is more, how long the record is kept and whether every entry comes from one
+ *  address of the private network (a proxy hiding the clients). */
+export function useLoginEvents(filters = {}) {
+  return useInfiniteQuery({
+    queryKey: ['admin', 'logins', filters.result ?? '', filters.username ?? '', filters.from ?? ''],
+    queryFn: async ({ pageParam }) => {
+      const params = { limit: 30 };
+      if (filters.result) params.result = filters.result;
+      if (filters.username) params.username = filters.username;
+      if (filters.from) params.from = filters.from;
+      if (pageParam) params.before = pageParam;
+      return (await api.get('/admin/logins', { params })).data;
+    },
+    initialPageParam: 0,
+    getNextPageParam: (last) => (last.more && last.entries.length ? last.entries[last.entries.length - 1].id : undefined),
+    staleTime: 0,
+  });
+}
+
+/** The owner sets how many days the record is kept. */
+export function useSetLoginRetention() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (retentionDays) => (await api.put('/admin/logins/settings', { retentionDays })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'logins'] }),
+  });
+}

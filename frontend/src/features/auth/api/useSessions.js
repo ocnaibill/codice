@@ -57,3 +57,13 @@ export function useRevokeAllUserSessions(userId) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user-sessions', userId] }),
   });
 }
+
+/** What happened at the door of this account (DEC-121): the sign-ins and the attempts that failed, the latest first. */
+export function useOwnLogins() {
+  return useQuery({
+    queryKey: ['own-logins'],
+    queryFn: async () => (await api.get('/auth/logins')).data,
+    gcTime: 0,
+    staleTime: 0,
+  });
+}

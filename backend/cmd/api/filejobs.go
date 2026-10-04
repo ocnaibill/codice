@@ -13,6 +13,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/dupes"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
+	"github.com/ocnaibill/codice/backend/internal/logins"
 	"github.com/ocnaibill/codice/backend/internal/people"
 	"github.com/ocnaibill/codice/backend/internal/storage"
 )
@@ -152,6 +153,26 @@ func startFileJobs(ctx context.Context, runner *jobs.Runner, mover *storage.Move
 				return
 			case <-time.After(time.Hour):
 			}
+		}
+	}()
+}
+
+// startLoginPurge keeps the record of sign-ins to its retention and its size: once a few minutes after the start and then every hour.
+func startLoginPurge(ctx context.Context, rec *logins.Recorder) {
+	go func() {
+		wait := 2 * time.Minute
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(wait):
+			}
+			if n, err := rec.Purge(ctx); err != nil {
+				log.Printf("logins: could not tidy the record: %v", err)
+			} else if n > 0 {
+				log.Printf("logins: %d old row(s) removed from the record of sign-ins", n)
+			}
+			wait = time.Hour
 		}
 	}()
 }
