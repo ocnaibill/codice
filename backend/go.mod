@@ -1,6 +1,6 @@
 module github.com/ocnaibill/codice/backend
 
-go 1.26.5
+go 1.26.6
 
 require (
 	filippo.io/age v1.3.2
@@ -16,7 +16,7 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/redis/go-redis/v9 v9.21.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/text v0.42.0
 )
 
