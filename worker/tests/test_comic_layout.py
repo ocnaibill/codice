@@ -202,6 +202,10 @@ class FakeRar:
     def namelist(self):
         return list(self.files)
 
+    def getinfo(self, name):
+        from types import SimpleNamespace
+        return SimpleNamespace(file_size=len(self.files[name]))
+
     def read(self, name):
         return self.files[name]
 

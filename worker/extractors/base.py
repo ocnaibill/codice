@@ -2,6 +2,20 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, List
 
+from textindex import Limits
+
+
+def read_member(archive, name: str, limit: Optional[int] = None) -> bytes:
+    """Read one member of a zip or rar whose declared size is within the limit (the size of a
+    chapter by default). The size is checked before anything is read: an archive that says a
+    member is gigabytes long, and compresses to a few KB, must fail instead of filling the
+    memory of the worker (RNF-007)."""
+    if limit is None:
+        limit = Limits.MAX_ENTRY_BYTES
+    if archive.getinfo(name).file_size > limit:
+        raise ValueError(f'{name} is larger than {limit} bytes')
+    return archive.read(name)
+
 
 @dataclass
 class ExtractedMetadata:

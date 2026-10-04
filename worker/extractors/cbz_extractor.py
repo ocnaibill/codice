@@ -6,7 +6,8 @@ reads the XML metadata embedded in CBZ/CBR archives.
 import os
 import zipfile
 import xml.etree.ElementTree as ET
-from .base import BaseExtractor, ExtractedMetadata
+from textindex import Limits
+from .base import BaseExtractor, ExtractedMetadata, read_member
 from .comic_layout import HEADER_BYTES, declared_mode, image_size, sample
 
 
@@ -28,7 +29,7 @@ class CbzExtractor(BaseExtractor):
                     for name in zf.namelist():
                         if name.lower() == 'comicinfo.xml':
                             try:
-                                data = zf.read(name)
+                                data = read_member(zf, name, Limits.MAX_METADATA_BYTES)
                                 self._parse_comicinfo(data, meta)
                             except Exception as e:
                                 print(f"   ⚠️ ComicInfo.xml parse error: {e}")
@@ -62,7 +63,7 @@ class CbzExtractor(BaseExtractor):
                 if images and not meta.cover_path:
                     first_image = images[0]
                     try:
-                        img_data = zf.read(first_image)
+                        img_data = read_member(zf, first_image)
                         meta.cover_path = self._save_cover(img_data, file_path, covers_dir)
                     except Exception as e:
                         print(f"   ⚠️ Cover extraction error: {e}")
