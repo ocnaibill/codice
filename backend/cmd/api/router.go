@@ -119,7 +119,9 @@ func newRouter(d routerDeps) http.Handler {
 	// Public, and answers only ok/down per component: for containers and load balancers.
 	r.Get("/healthz", healthHandler.Get)
 
-	r.With(authRateLimit).Get("/auth/setup-status", authHandler.GetSetupStatus)
+	// A question the app asks at every load, and that tells nothing a person could use to guess a password: it has a limit of
+	// its own, so that reloading the page never uses up the attempts of the sign-in.
+	r.With(statusRateLimiter(d.TrustedProxies)).Get("/auth/setup-status", authHandler.GetSetupStatus)
 	r.With(authRateLimit).Post("/auth/setup", authHandler.SetupMasterAdmin)
 	r.With(authRateLimit).Post("/auth/register", authHandler.Register)
 	r.With(authRateLimit).Post("/auth/login", authHandler.Login)
@@ -378,6 +380,16 @@ func newRouter(d routerDeps) http.Handler {
 // (SEC-09): 10 requests per minute per client. "Client" is the connection's address
 // unless the connection comes from a trusted proxy, in which case it is the address
 // that proxy reports (see middleware.ClientIP).
+// StatusRequestsPerMinute is how many times a client may ask whether the server has been set up: the app asks at every
+// load (more than once), so it is far above the attempts of a sign-in, and far below what would let it be used to load the
+// server.
+const StatusRequestsPerMinute = 120
+
+// statusRateLimiter limits GET /auth/setup-status apart from the sign-in, per client like it.
+func statusRateLimiter(trusted []netip.Prefix) func(http.Handler) http.Handler {
+	return httprate.LimitBy(StatusRequestsPerMinute, 1*time.Minute, appMiddleware.RateLimitKey(trusted))
+}
+
 func authRateLimiter(trusted []netip.Prefix, rec *logins.Recorder) func(http.Handler) http.Handler {
 	return httprate.LimitBy(10, 1*time.Minute, appMiddleware.RateLimitKey(trusted),
 		// A refused request still goes into the record of sign-ins (DEC-121): someone being stopped is exactly what the

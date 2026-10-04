@@ -452,6 +452,76 @@ func TestSessionsRoutes_NeedASessionButNoRole(t *testing.T) {
 	}
 }
 
+// The app asks "has the server been set up?" at every load, and a sign-in has ten tries a minute: reloading the page must not
+// use up the tries, and the page must not be refused after a few reloads (the app showed the login screen over a good session).
+func TestSetupStatusRateLimit_HasABudgetOfItsOwn(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	h := statusRateLimiter(nil)(ok)
+	codes := map[int]int{}
+	for i := 0; i < StatusRequestsPerMinute+5; i++ {
+		req := httptest.NewRequest("GET", "/auth/setup-status", nil)
+		req.RemoteAddr = "203.0.113.7:4000"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		codes[rec.Code]++
+	}
+	if codes[200] != StatusRequestsPerMinute || codes[http.StatusTooManyRequests] != 5 {
+		t.Errorf("answers = %v, want %d allowed and 5 stopped", codes, StatusRequestsPerMinute)
+	}
+	if StatusRequestsPerMinute <= 10 {
+		t.Errorf("the limit (%d) must be well above the ten tries of a sign-in", StatusRequestsPerMinute)
+	}
+}
+
+func TestSetupStatusRateLimit_IsPerClientBehindATrustedProxy(t *testing.T) {
+	trusted, _ := middleware.ParseTrustedProxies("172.16.0.0/12")
+	h := statusRateLimiter(trusted)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
+	call := func(client string) int {
+		req := httptest.NewRequest("GET", "/auth/setup-status", nil)
+		req.RemoteAddr = "172.18.0.10:5000"
+		req.Header.Set("X-Forwarded-For", client)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for i := 0; i < StatusRequestsPerMinute; i++ {
+		call("203.0.113.7")
+	}
+	if code := call("203.0.113.7"); code != http.StatusTooManyRequests {
+		t.Errorf("the client over its budget: %d, want 429", code)
+	}
+	if code := call("203.0.113.8"); code != http.StatusOK {
+		t.Errorf("another client behind the same proxy: %d, want 200", code)
+	}
+}
+
+func TestRouter_SetupStatusDoesNotSpendTheTriesOfASignIn(t *testing.T) {
+	h := testRouter(t)
+	from := "203.0.113.50:4000"
+	do := func(method, path, body string) int {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.RemoteAddr = from
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	// Thirty loads of the page (the test router has no database, so the answer itself is an error, but never a refusal by the limit).
+	for i := 0; i < 30; i++ {
+		if code := do("GET", "/auth/setup-status", ""); code == http.StatusTooManyRequests {
+			t.Fatalf("load %d was refused by the limit", i+1)
+		}
+	}
+	// And the sign-in still has its ten tries (a body that is not JSON answers 400 before any database), then the eleventh is refused.
+	for i := 0; i < 10; i++ {
+		if code := do("POST", "/auth/login", "x"); code != http.StatusBadRequest {
+			t.Fatalf("sign-in try %d: %d, want 400 (not refused)", i+1, code)
+		}
+	}
+	if code := do("POST", "/auth/login", "x"); code != http.StatusTooManyRequests {
+		t.Errorf("the eleventh sign-in try: %d, want 429", code)
+	}
+}
+
 // Someone who is stopped by the limit on sign-ins goes into the record of sign-ins (DEC-121): it is exactly what the
 // owner wants to see. The answer is the same as before, and a run of refusals is one row with a count.
 func TestAuthRateLimiter_RecordsWhoWasStopped(t *testing.T) {
