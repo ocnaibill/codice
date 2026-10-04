@@ -1,6 +1,6 @@
 # Proposta: telas de conta e administração que faltam (4 de outubro de 2026)
 
-**Status: proposta; o mantenedor respondeu às decisões em 04/10/2026 (seção "Respostas") e nada daqui foi implementado.** Cada tela vira um PR pequeno, e o que mudar de regra vira DEC só depois de confirmado.
+**Status: proposta **confirmada pelo mantenedor em 04/10/2026** (seção "Respostas"); nada daqui foi implementado.** Cada tela vira um PR pequeno, e o que mudar de regra vira DEC só depois de confirmado.
 
 ## Respostas do mantenedor (04/10/2026)
 
@@ -12,7 +12,8 @@
 | **Painel de backup**: nome ou caminho do pacote | **Mostrar o caminho** (a quem: ver a pergunta abaixo) |
 | **Ingestão e revisão** | **Deixar para depois**, como issue (#141) (DEC-122) |
 | **Orçamento dos provedores** | **Fora do beta; contador de chamadas antes do dinheiro** (DEC-122) |
-| Dono com **leitura e escrita** na página de backup | **Em discussão** (a recomendação está em 3.4) |
+| Dono com **leitura e escrita** na página de backup | **Gera e verifica; restaurar e baixar ficam fora do HTTP; caminho completo só ao dono** (DEC-123) |
+| **Ordem das telas** | **1 → 4 → 2 → 3 → 5** (Sobre, Backup e saúde, Sessões, Entradas, Exportar), 6 e 7 depois do beta (DEC-123) |
 
 ## 1. Onde estamos
 
@@ -79,7 +80,7 @@ As telas 1, 4 e 7 não mexem em autenticação. As telas 2 e 3 mexem na tabela d
 - **API:** `GET /admin/backup` já existe (só `lastBackup`); acrescentar tamanho, verificação e o destino por mesmo-disco. Espaço e saúde saem do que o servidor já mede.
 - **Decidido:** o painel **mostra o caminho** do pacote. Fica a pergunta de **para quem**: recomendo o **caminho completo só para o dono** e o **nome do pacote para os administradores** (que podem não ter acesso ao servidor).
 
-- **Escrita pelo dono (pergunta do mantenedor, 04/10/2026; recomendação, ainda não decidida).** Mudaria a decisão de que nada HTTP inicia backup ou restauração, então só vale com uma DEC nova. Por ação:
+- **Escrita pelo dono (pergunta do mantenedor, 04/10/2026; **confirmada como DEC-123**).** Muda a decisão anterior de que nada HTTP inicia backup ou restauração. Por ação:
   - **Gerar backup agora: sim, só o dono.** Roda como **job** (a infraestrutura já existe), um de cada vez, **sempre criptografado** com a frase que já está no servidor (a frase **nunca** passa pelo navegador), grava só na **pasta de backups configurada** (nunca num caminho vindo do pedido), pede a **senha do dono de novo** e entra no log de auditoria. Custo: a imagem da API precisa do `pg_dump` da versão certa (o `codice-admin` já roda nela) e a pasta precisa ser gravável.
   - **Verificar um pacote: sim, só o dono.** É o `verify-backup --deep`, que restaura num banco temporário e **não toca nos dados**; também como job.
   - **Baixar o pacote pelo navegador: não por padrão.** É o banco inteiro; um token do dono roubado levaria tudo, e são centenas de MB. Se um dia for útil, só com senha de novo e link de vida curta.
@@ -113,10 +114,6 @@ As telas 1, 4 e 7 não mexem em autenticação. As telas 2 e 3 mexem na tabela d
 
 Seguem o padrão da #77 (`Notice`, `LoadError`, `PermissionNote`): carregamento, vazio, erro com tentativa de novo, **sem permissão** e **parcial**, todos em português. As mensagens do servidor passam por `serverMessage.js` e o teste de conferência com o código do servidor continua valendo.
 
-## 5. O que falta
+## 5. Próximo passo
 
-1. **A ordem** da seção 2 serve? (a minha sugestão é 1 → 4 → 2 → 3 → 5, deixando 6 e 7 para depois do beta; 6 e 7 já estão decididas como fora do beta.)
-2. **Backup com escrita pelo dono** (3.4): a recomendação está na seção 3.4 e aguarda a sua resposta.
-3. **Algo que falta** na lista (por exemplo, uma tela de **excluir minha conta** ou de **papéis e permissões**).
-
-Depois do seu ajuste, cada tela vira um PR com testes, mutação e e2e no navegador, na ordem combinada.
+Cada tela vira um PR com testes, mutação e e2e no navegador, na ordem da DEC-123: **Sobre** primeiro. Se faltar alguma tela na lista (por exemplo, **excluir minha conta** ou **papéis e permissões**), entra como proposta nova.
