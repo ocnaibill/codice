@@ -20,6 +20,13 @@ const EXACT = {
   'This account has no local password': 'Esta conta não tem senha local: ela entra pelo servidor de login.',
   'The current password is not correct': 'A senha atual não está correta.',
   'The password is not correct': 'A senha não está correta.',
+  // The owner's backup buttons (DEC-123)
+  'The password is required': 'Digite a sua senha.',
+  'Backups from the panel are not set up': 'O backup pelo painel ainda não foi configurado no servidor.',
+  'backups from the panel are not set up: CODICE_BACKUP_DIR and CODICE_BACKUP_PASSPHRASE_FILE are needed': 'Para fazer backups pelo painel, o servidor precisa de CODICE_BACKUP_DIR (a pasta) e CODICE_BACKUP_PASSPHRASE_FILE (o arquivo com a frase de segurança).',
+  'That is not a package in the backup folder': 'Esse pacote não está na pasta de backups.',
+  'that is not a package in the backup folder': 'Esse pacote não está na pasta de backups.',
+  'the passphrase file is missing, unreadable or shorter than 8 characters': 'O arquivo com a frase de segurança não existe, não pode ser lido ou tem menos de 8 caracteres.',
   'This invitation is for another email address': 'Este convite é para outro endereço de e-mail.',
   'The invitation is no longer pending': 'Este convite não está mais pendente.',
   'Invitation not found': 'Convite não encontrado.',

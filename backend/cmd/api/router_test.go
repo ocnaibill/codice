@@ -409,3 +409,27 @@ func TestRouter_AboutNeedsASessionButNoRole(t *testing.T) {
 		}
 	}
 }
+
+// The owner's backup buttons (DEC-123): the owner alone, with a session, and never without the password.
+var panelOwnerRoutes = []route{
+	{"POST", "/admin/backup/run"},
+	{"POST", "/admin/backup/verify"},
+}
+
+func TestBackupPanelRoutes_AreTheOwnersAlone(t *testing.T) {
+	h := testRouter(t)
+	for _, rt := range panelOwnerRoutes {
+		if rec := do(h, rt.method, rt.path, "", `{"password":"x"}`); rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s without a session: %d, want 401", rt.method, rt.path, rec.Code)
+		}
+		for _, role := range []string{"reader", "admin"} {
+			if rec := do(h, rt.method, rt.path, tokenFor(t, role), `{"password":"x"}`); rec.Code != http.StatusForbidden {
+				t.Errorf("%s %s as %s: %d, want 403", rt.method, rt.path, role, rec.Code)
+			}
+		}
+		// The owner gets past the middleware; the test router has no panel set up, so the handler says so.
+		if rec := do(h, rt.method, rt.path, tokenFor(t, "owner"), `{"password":"x"}`); rec.Code != http.StatusConflict {
+			t.Errorf("%s %s as owner: %d, want 409 (panel not set up)", rt.method, rt.path, rec.Code)
+		}
+	}
+}

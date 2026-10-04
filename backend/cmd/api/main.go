@@ -10,6 +10,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq" // Underscore initializes the driver anonymously
+	"github.com/ocnaibill/codice/backend/internal/backup"
 	"github.com/ocnaibill/codice/backend/internal/config"
 	"github.com/ocnaibill/codice/backend/internal/database"
 	"github.com/ocnaibill/codice/backend/internal/handlers"
@@ -157,7 +158,16 @@ func main() {
 	// File jobs (organizing, and later scanning and transferring) run in this
 	// process; the Python worker only takes ingestion.
 	mover := &storage.Mover{DB: db, Root: storagePath}
-	handlers := fileJobHandlers(db, mover)
+	backupPanel := backup.Panel{
+		DB: db, DatabaseURL: os.Getenv("DATABASE_URL"), StorageRoot: storagePath,
+		Dir: os.Getenv("CODICE_BACKUP_DIR"), PassphraseFile: os.Getenv("CODICE_BACKUP_PASSPHRASE_FILE"),
+	}
+	if warning, err := backupPanel.Validate(); err != nil {
+		log.Fatal(err)
+	} else if warning != "" {
+		log.Print(warning)
+	}
+	handlers := fileJobHandlers(db, mover, backupPanel)
 	types := make([]string, 0, len(handlers))
 	for t := range handlers {
 		types = append(types, t)
@@ -180,6 +190,7 @@ func main() {
 
 		TrustedProxies: trustedProxies,
 		PublicURL:      publicURL,
+		BackupPanel:    backupPanel,
 		Version:        version.Version,
 		SourceURL:      sourceURL,
 		Directory:      directory,

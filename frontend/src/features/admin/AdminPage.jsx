@@ -58,7 +58,7 @@ export function AdminPage({ isOwner, onClose }) {
       <div className="mt-5">
         {tab === 'jobs' && <JobsTab />}
         {tab === 'storage' && <StorageTab isOwner={isOwner} />}
-        {tab === 'system' && <SystemTab />}
+        {tab === 'system' && <SystemTab isOwner={isOwner} />}
         {tab === 'trash' && <TrashTab isOwner={isOwner} />}
         {tab === 'suggestions' && <SuggestionsTab isOwner={isOwner} onOpenProviders={() => setTab('providers')} />}
         {tab === 'providers' && <ProvidersTab isOwner={isOwner} />}

@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { useBackup, useHealth } from '../api/admin';
+import { describeError, useBackup, useHealth, useRunBackup, useVerifyBackup } from '../api/admin';
+import { messageOf } from '../../../lib/serverMessage';
 import { formatAge, formatBytes, formatDate } from '../format';
 import { LOW_SPACE, STALE_AFTER, STUCK_AFTER } from '../systemLimits';
 import { LoadError } from '../../../components/ui/LoadError';
 import { Notice } from '../../../components/ui/Notice';
-import { Loading, Section } from './ui';
+import { AskPassword } from './AskPassword';
+import { Btn, Loading, Section } from './ui';
 
 const COMPONENTS = {
   database: { label: 'Banco de dados', ok: 'funcionando', down: 'fora do ar: nada funciona sem ele' },
@@ -118,7 +120,125 @@ function CopyCommand({ label, command }) {
 const CREATE = 'CODICE_BACKUP_PASSPHRASE="sua frase" scripts/backup.sh /mnt/backups/codice';
 const RESTORE = 'docker compose -f docker-compose.full.yml run --rm --no-deps -T -e CODICE_BACKUP_PASSPHRASE backend codice-admin restore --in - < CAMINHO-DO-PACOTE';
 
-function Backup({ last }) {
+const DAY = 24 * 60 * 60 * 1000;
+const LIVE = ['pending', 'running'];
+
+/** What the last job of the two buttons says, while it runs and for a day after it ended; nothing when it is old news. */
+function jobSentence(job, now = Date.now()) {
+  if (!job) return null;
+  const checking = job.type === 'verify_backup';
+  if (LIVE.includes(job.state)) {
+    return { tone: 'info', text: checking ? `Verificando ${job.name}: lendo o pacote e ensaiando a restauração…` : 'Fazendo o backup…' };
+  }
+  const endedAgo = job.finishedAt ? now - new Date(job.finishedAt).getTime() : 0;
+  if (job.state !== 'failed' && endedAgo > DAY) return null;
+  const when = job.finishedAt ? ` ${formatAge(endedAgo)}` : '';
+  if (job.state === 'succeeded') {
+    return { tone: 'success', text: checking ? `A verificação de ${job.name} terminou${when}: o ensaio de restauração passou.` : `O backup feito por aqui terminou${when}.` };
+  }
+  if (job.state === 'cancelled') return { tone: 'info', text: `${checking ? 'A verificação' : 'O backup'} foi cancelado.` };
+  // What the server has a sentence for is said in Portuguese; what it does not (the text of pg_restore, say) is the
+  // owner's to read as it came, set apart as a technical detail, so that it is never taken for the screen's own words.
+  const known = messageOf(job.error);
+  const detail = job.error && known === job.error ? job.error : '';
+  return {
+    tone: 'danger',
+    text: `${checking ? `A verificação de ${job.name}` : 'O backup'} falhou${when}.${known && !detail ? ` ${known}` : ''}`,
+    detail,
+  };
+}
+
+function OwnerPanel({ panel, isOwner }) {
+  const run = useRunBackup();
+  const verify = useVerifyBackup();
+  const [asking, setAsking] = useState(null); // { kind: 'run' } or { kind: 'verify', name }
+  const [noted, setNoted] = useState('');
+  const job = panel.job;
+  const busy = job && LIVE.includes(job.state);
+  const sentence = jobSentence(job);
+  const action = asking?.kind === 'verify' ? verify : run;
+
+  const close = () => { setAsking(null); run.reset(); verify.reset(); };
+  const confirm = (password) => {
+    const body = asking.kind === 'verify' ? { password, name: asking.name } : { password };
+    action.mutate(body, {
+      onSuccess: () => { setNoted(''); close(); },
+      onError: (error) => {
+        // Another job is already running: nothing to retry, the screen follows it.
+        if (error?.response?.status === 409 && error.response.data?.job_id) {
+          setNoted('Já há um trabalho de backup em andamento: acompanhe-o abaixo.');
+          close();
+        }
+      },
+    });
+  };
+  const failure = action.isError && !(action.error?.response?.status === 409 && action.error.response.data?.job_id)
+    ? (messageOf(action.error?.response?.data) || describeError(action.error))
+    : '';
+
+  if (!panel.enabled) {
+    return isOwner ? (
+      <Notice tone="info" className="mt-5" title="Fazer e verificar backups por aqui">
+        O servidor ainda não está preparado. Defina <code>CODICE_BACKUP_DIR</code> (a pasta dos pacotes, que o contêiner da API precisa poder escrever)
+        e <code>CODICE_BACKUP_PASSPHRASE_FILE</code> (um arquivo com a frase de segurança, de pelo menos 8 caracteres, guardado fora do servidor também) e
+        reinicie a API. O guia está no README do projeto.
+      </Notice>
+    ) : null;
+  }
+  const packages = panel.packages.slice(0, 8);
+  return (
+    <div className="mt-5 flex flex-col gap-3 border-t border-border-hairline pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-[13px] font-medium text-ink">Pacotes na pasta de backups</h3>
+        {isOwner && (
+          <Btn tone="primary" disabled={busy} onClick={() => setAsking({ kind: 'run' })}>Fazer um backup agora</Btn>
+        )}
+      </div>
+      {isOwner && panel.dir && <p className="text-[12px] text-ink-faint">Pasta: <span className="break-all font-mono text-ink-soft">{panel.dir}</span></p>}
+      {noted && <p role="status" className="text-[13px] text-ink-soft">{noted}</p>}
+      {sentence && (
+        <Notice tone={sentence.tone}>
+          {sentence.text}
+          {sentence.detail && <p className="mt-1 text-[12px] text-ink-soft">Detalhe técnico: <code className="break-all">{sentence.detail}</code></p>}
+        </Notice>
+      )}
+      {packages.length === 0 ? (
+        <p className="text-[13px] text-ink-faint">Nenhum pacote nesta pasta ainda.</p>
+      ) : (
+        <ul className="divide-y divide-border-hairline">
+          {packages.map((p) => (
+            <li key={p.name} className="flex flex-wrap items-center justify-between gap-2 py-2 text-[13px]">
+              <div className="min-w-0">
+                <p className="break-all font-mono text-ink">{p.name}</p>
+                <p className="text-[12px] text-ink-faint">{formatDate(p.at)} · {formatBytes(p.bytes)}{p.encrypted ? ' · criptografado' : ''}</p>
+              </div>
+              {isOwner && (
+                <Btn disabled={busy} onClick={() => setAsking({ kind: 'verify', name: p.name })} aria-label={`Verificar ${p.name}`}>Verificar</Btn>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {asking && (
+        <AskPassword
+          title={asking.kind === 'verify' ? 'Verificar este pacote?' : 'Fazer um backup agora?'}
+          message={asking.kind === 'verify' ? (
+            <p>O pacote <strong className="break-all">{asking.name}</strong> será lido inteiro e a restauração será ensaiada num banco temporário, que é apagado em seguida. Nada do acervo muda. Pode levar alguns minutos.</p>
+          ) : (
+            <p>O servidor vai gravar, na pasta de backups, um pacote <strong>criptografado</strong> com o banco, a lista de arquivos e os próprios arquivos. Outros trabalhos esperam até ele terminar.</p>
+          )}
+          confirmLabel={asking.kind === 'verify' ? 'Verificar' : 'Fazer o backup'}
+          busy={action.isPending}
+          error={failure}
+          onConfirm={confirm}
+          onCancel={close}
+        />
+      )}
+    </div>
+  );
+}
+
+function Backup({ last, panel, isOwner }) {
   const age = last ? Date.now() - new Date(last.at).getTime() : 0;
   const stale = last && age > STALE_AFTER;
   return (
@@ -179,12 +299,13 @@ function Backup({ last }) {
           Restaurar troca o banco que está no ar, por isso é feito no servidor e não por esta página. O guia completo, com o ensaio, está no README do projeto.
         </p>
       </div>
+      {panel && <OwnerPanel panel={panel} isOwner={isOwner} />}
     </Section>
   );
 }
 
 /** "Sistema" (UI-19, DEC-123): how the server is, how much room is left, how the queue of jobs is doing and the state of the backups. */
-export function SystemTab() {
+export function SystemTab({ isOwner = false }) {
   const { data, isLoading, isError, error, refetch, isRefetching } = useBackup();
   return (
     <div className="flex flex-col gap-5">
@@ -199,7 +320,7 @@ export function SystemTab() {
           </div>
         )}
       </Section>
-      {data && <Backup last={data.lastBackup} />}
+      {data && <Backup last={data.lastBackup} panel={data.panel} isOwner={isOwner} />}
     </div>
   );
 }

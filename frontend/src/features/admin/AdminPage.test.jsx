@@ -70,6 +70,30 @@ describe('AdminPage: the external providers (#68)', () => {
   });
 });
 
+describe('AdminPage: the owner\'s backup buttons', () => {
+  const withPanel = () => {
+    const base = api.get.getMockImplementation();
+    api.get.mockImplementation(async (url) => {
+      if (url === '/admin/backup') {
+        return { data: { lastBackup: null, queue: { pending: 0, running: 0, failedRecent: 0, oldestWaiting: null }, storage: null, panel: { enabled: true, dir: '/backups', packages: [], job: null } } };
+      }
+      return base(url);
+    });
+  };
+
+  it('are the owner\'s: the Sistema tab has them for the owner and not for an administrator', async () => {
+    withPanel();
+    view = await mount(<AdminPage isOwner />);
+    await view.click(view.button('Sistema'));
+    expect(view.button('Fazer um backup agora')).toBeTruthy();
+    view.unmount();
+    view = await mount(<AdminPage isOwner={false} />);
+    await view.click(view.button('Sistema'));
+    expect(view.text()).toContain('Pacotes na pasta de backups');
+    expect(view.button('Fazer um backup agora')).toBeUndefined();
+  });
+});
+
 describe('AdminPage', () => {
   it('opens on the jobs and switches between the areas', async () => {
     view = await mount(<AdminPage isOwner />);

@@ -6,3 +6,5 @@ export const STALE_AFTER = 36 * HOUR;
 export const STUCK_AFTER = 15 * 60 * 1000;
 // Below this share of free space the storage is called out.
 export const LOW_SPACE = 0.15;
+// How often the Sistema tab asks again while the owner's backup job is running.
+export const POLL_MS = 3000;

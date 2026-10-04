@@ -72,13 +72,19 @@ func backupCmd(ctx context.Context, db *sql.DB, env Env, args []string, out io.W
 
 	stream := *outPath == "-"
 	msg := out
-	var sink io.Writer = out
-	var path, partial string
+	opts := backup.CreateOptions{
+		DB: db, DatabaseURL: env.DatabaseURL, StorageRoot: env.StorageRoot,
+		IncludeFiles: *include, Passphrase: pass, TmpDir: *tmp,
+	}
+	var path string
+	var res backup.Result
 	if stream {
 		msg = env.Stderr
 		if msg == nil {
 			msg = io.Discard
 		}
+		opts.Out = out
+		res, err = backup.Create(ctx, opts)
 	} else {
 		if *dir != "" {
 			if err := os.MkdirAll(*dir, 0o700); err != nil {
@@ -88,35 +94,10 @@ func backupCmd(ctx context.Context, db *sql.DB, env Env, args []string, out io.W
 		} else {
 			path = *outPath
 		}
-		if _, err := os.Stat(path); err == nil {
-			return fmt.Errorf("%s already exists; it is not overwritten", path)
-		}
-		// Written aside and renamed at the end: a backup that fails leaves no half file that
-		// could be mistaken for a good one.
-		partial = path + ".partial"
-		f, err := os.OpenFile(partial, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		defer os.Remove(partial)
-		sink = f
+		res, err = backup.CreateFile(ctx, opts, path)
 	}
-
-	res, err := backup.Create(ctx, backup.CreateOptions{
-		DB: db, DatabaseURL: env.DatabaseURL, StorageRoot: env.StorageRoot, Out: sink,
-		IncludeFiles: *include, Passphrase: pass, TmpDir: *tmp,
-	})
 	if err != nil {
 		return err
-	}
-	if !stream {
-		if err := sink.(*os.File).Sync(); err != nil {
-			return err
-		}
-		if err := os.Rename(partial, path); err != nil {
-			return err
-		}
 	}
 	recorded := path
 	if recorded == "" {

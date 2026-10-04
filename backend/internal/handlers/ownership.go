@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -24,8 +25,14 @@ type OwnershipHandler struct {
 // passwordMatches checks the caller's own password, for the actions that must not
 // run on a session alone.
 func (h *OwnershipHandler) passwordMatches(r *http.Request, userID, password string) (bool, error) {
+	return ownPasswordMatches(r.Context(), h.DB, userID, password)
+}
+
+// ownPasswordMatches is the check itself. An account with no local password never matches, and
+// still costs the time of a comparison, so the answer does not say which it was.
+func ownPasswordMatches(ctx context.Context, db *sql.DB, userID, password string) (bool, error) {
 	var hash string
-	if err := h.DB.QueryRowContext(r.Context(), `SELECT COALESCE(password_hash, '') FROM users WHERE id = $1`, userID).Scan(&hash); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(password_hash, '') FROM users WHERE id = $1`, userID).Scan(&hash); err != nil {
 		return false, err
 	}
 	if hash == "" {

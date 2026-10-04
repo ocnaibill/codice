@@ -9,7 +9,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/ocnaibill/codice/backend/internal/backup"
 	"github.com/ocnaibill/codice/backend/internal/dupes"
+	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
 	"github.com/ocnaibill/codice/backend/internal/people"
 	"github.com/ocnaibill/codice/backend/internal/storage"
@@ -17,7 +19,7 @@ import (
 
 // fileJobHandlers are the jobs that touch the file system, run inside the API
 // process through the same queue as every other job.
-func fileJobHandlers(db *sql.DB, mover *storage.Mover) map[string]jobs.Handler {
+func fileJobHandlers(db *sql.DB, mover *storage.Mover, panel backup.Panel) map[string]jobs.Handler {
 	return map[string]jobs.Handler{
 		// Put a freshly analysed file at its layout path.
 		"organize": func(ctx context.Context, j jobs.Claimed) error {
@@ -64,6 +66,29 @@ func fileJobHandlers(db *sql.DB, mover *storage.Mover) map[string]jobs.Handler {
 			log.Printf("transfer of file %d: %+v", payload.FileID, *res)
 			return nil
 		},
+		// The owner's two backup buttons (DEC-123). A job that cannot work because of how the server is set
+		// up (no passphrase, a package that is not there) is not tried again.
+		handlers.JobBackup: func(ctx context.Context, j jobs.Claimed) error {
+			path, res, err := panel.Make(ctx)
+			if err != nil {
+				return backupJobError(err)
+			}
+			log.Printf("backup from the panel: %s (%d bytes)", path, res.Bytes)
+			return nil
+		},
+		handlers.JobVerifyBackup: func(ctx context.Context, j jobs.Claimed) error {
+			var payload struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(j.Payload, &payload); err != nil || payload.Name == "" {
+				return jobs.Permanent(errors.New("the job has no package"))
+			}
+			if _, err := panel.Check(ctx, payload.Name); err != nil {
+				return backupJobError(err)
+			}
+			log.Printf("check of %s from the panel: restore rehearsed", payload.Name)
+			return nil
+		},
 		// Catalogue an authorised directory without touching its files.
 		"scan": func(ctx context.Context, j jobs.Claimed) error {
 			var payload struct {
@@ -94,6 +119,14 @@ func fileJobHandlers(db *sql.DB, mover *storage.Mover) map[string]jobs.Handler {
 			return nil
 		},
 	}
+}
+
+// backupJobError marks as permanent what trying again cannot fix.
+func backupJobError(err error) error {
+	if errors.Is(err, backup.ErrPanelOff) || errors.Is(err, backup.ErrNoPassphrase) || errors.Is(err, backup.ErrNotAPackage) {
+		return jobs.Permanent(err)
+	}
+	return err
 }
 
 // startFileJobs settles moves interrupted by a previous crash, then runs the file
