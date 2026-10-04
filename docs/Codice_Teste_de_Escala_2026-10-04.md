@@ -71,9 +71,25 @@ Na segunda etapa as 9.000 obras novas **já existiam como linhas do banco desde 
 
 `editions` só tinha a chave primária e um índice "a edição primária de cada obra". Toda consulta "as edições desta obra" lia **a tabela inteira**: o cartão da lista (para cada obra), a ficha, e a carga do detector de duplicatas. O custo crescia com o **quadrado** do acervo: a última página da lista foi de 99 ms (1.000 obras) para **4.152 ms** (10.000), 42 vezes mais para 10 vezes mais obras. Carregar as obras para a checagem de duplicatas levava **5,8 s a cada arquivo importado** com 10.000 obras (0,14 s com o índice). Com vinte pessoas na lista ao mesmo tempo, **1 requisição por segundo e 37 s de espera**; com o índice, 9 por segundo.
 
-### 2. A lista por deslocamento (`OFFSET`) ainda custa por página: **proposta, não feita**
+### 2. A lista por deslocamento (`OFFSET`) ainda custava por página: **corrigido no PR seguinte**
 
-Mesmo com o índice, a página do meio e a última levam ~500 ms com 10.000 obras (e a primeira, 59 ms). O plano de execução mostra o motivo: para a página 100 (`OFFSET 4950`) o banco monta o cartão completo das **5.000** obras anteriores (ligações, contagens, *tags*) e só então descarta 4.950. **0,09 ms por obra pulada**, linear no deslocamento. Na tela real isso quase não aparece (a lista é paginada e quase ninguém vai à página 500), mas aparece sob uso simultâneo (9 req/s com p95 de 4 s para 20 pessoas). **Proposta:** escolher primeiro só os 50 identificadores da página (sem as contagens do cartão) e montar o cartão só para eles; e não fazer as ligações na contagem do total quando nenhum filtro as usa. Mexe na consulta principal da biblioteca: PR próprio, com os testes de ordem e filtros que já existem.
+Mesmo com o índice, a página do meio e a última levavam ~500 ms com 10.000 obras (e a primeira, 59 ms). O plano de execução mostrou o motivo: para a página 100 (`OFFSET 4950`) o banco montava o cartão completo das **5.000** obras anteriores (ligações, contagens, *tags*) e só então descartava 4.950. **0,09 ms por obra pulada**, linear no deslocamento. Na tela real isso quase não aparecia, mas aparecia sob uso simultâneo (9 req/s com p95 de 4 s para 20 pessoas).
+
+**Correção:** a página agora é escolhida antes dos cartões, no `FROM` mais barato que os filtros permitem (só `works` na visão padrão, na busca por título e na ordem por título), e só as obras da página recebem o cartão. Medido no mesmo acervo de 10.000 obras (semeado direto no banco, `main` contra o ramo, p50 em ms):
+
+| Consulta (12 por página) | antes | depois |
+|---|---:|---:|
+| primeira, meio e última página (padrão) | 41 / 117 / 469 | **4 / 4 / 4** |
+| página 800 | 472 | 4 |
+| página 800, ordem por título | 567 | 12 |
+| página 800, ordem por autor | 591 | 113 |
+| página 500, só livros digitais | 170 | 75 |
+| página 200, busca por "caminho" | 102 | 17 |
+| página 300, busca e ordem por título | 513 | 27 |
+| primeira página, só livros digitais | 39 | 41 |
+| 20 de uma vez na lista | 20 req/s, p95 2.754 | **683 req/s, p95 53** |
+
+O que ainda precisa dos joins (filtro por formato, favoritos, em leitura, ordem por autor) continua pagando por eles, mas só até a página pedida. O total (`COUNT`) também deixou de montar os joins quando nenhum filtro os usa.
 
 ### 3. A busca por palavra comum custa ~450 ms com 10.000 obras: **proposta, não feita**
 
@@ -93,7 +109,7 @@ A ficha (3 a 5 ms), as capas (1 ms; ~950 req/s), as telas de administração (�
 
 ## O que fica para o mantenedor decidir
 
-1. **Fazer os PRs 2, 3 e 4 agora ou depois do beta?** Recomendação: **o 2 (lista) antes do beta**, porque é a tela mais usada e o ganho é grande e seguro; **o 3 e o 4 depois**, só se os testes de fogo mostrarem acervo grande de verdade. Para a faixa de poucos milhares de obras, nada disso pesa.
+1. **Fazer os PRs 3 e 4 agora ou depois do beta?** O 2 (lista) já foi feito, a pedido do mantenedor. Recomendação: **depois do beta**, só se os testes de fogo mostrarem acervo grande de verdade. Para a faixa de poucos milhares de obras, nada disso pesa.
 2. **A paginação do OPDS** (achado 5): é lacuna de funcionalidade, não de escala.
 3. **O espaço do índice de busca** (achado de espaço): medir com a biblioteca real nos testes de fogo (#89) antes de dizer ao dono quanto disco reservar.
 
