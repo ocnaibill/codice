@@ -15,7 +15,8 @@
   --color-surface-alt: #ededf1;
   --color-ink: #1a1c1f;
   --color-ink-soft: #55433b;
-  --color-ink-faint: #887369;
+  /* Darkened from #887369 (4.0:1 on the page, 3.8:1 on the alternate surface) to pass 4.5:1 on every surface and notice it sits on. */
+  --color-ink-faint: #725f55;
   --color-ink-warm: #70573b;
   --color-success: #3a6758;
   --color-border-hairline: #d7d7d8;
@@ -70,6 +71,20 @@ body {
   background-color: var(--color-surface);
   color: var(--color-ink);
   font-family: var(--font-body);
+}
+
+/* Where the keyboard is, always visible. Many fields turn the browser's outline off (outline-none) to draw their own border, and
+   some draw nothing: this rule is outside the utility layer, so it wins over them, and a field that draws its own keeps it as well.
+   Only for the keyboard (:focus-visible): a click on a button does not leave a ring behind. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* A placeholder is text: the browser's default (half-transparent) is about 2.5:1; this is the faint ink, 4.5:1 or more. */
+::placeholder {
+  color: var(--color-ink-faint);
+  opacity: 1;
 }
 
 /* A selected text is painted with the color of the app, terracotta, and not with the blue of every page of the web: in the
