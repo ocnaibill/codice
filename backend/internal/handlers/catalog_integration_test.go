@@ -878,3 +878,106 @@ func TestOPDSFeedsListWorksWithTheirAuthors(t *testing.T) {
 		t.Errorf("literal percent search matched unrelated works: %s", rec.Body.String())
 	}
 }
+
+// The page of the catalog is chosen apart from the cards, on the cheapest FROM the filters allow. Walking the pages must
+// give the same works, in the same order, as the whole list, whatever the filter and the order, and the total must not
+// depend on which way the page was chosen. A work with more than one edition must still count and appear once.
+func TestCatalog_PagesAddUpToTheWholeListForEveryFilterAndOrder(t *testing.T) {
+	s := newCatalogStack(t)
+	type spec struct{ title, author, file, format string }
+	specs := []spec{
+		{"Beta", "Zeta Autor", "b.epub", "epub"}, {"alfa", "Maria Souza", "a.epub", "epub"}, {"Delta", "Ana Lima", "d.cbz", "cbz"},
+		{"Épsilon", "Maria Souza", "e.pdf", "pdf"}, {"Gama", "Bruno Reis", "g.m4b", "m4b"}, {"Ômega", "Ana Lima", "o.epub", "epub"},
+		{"Zebra", "Carlos Dias", "z.cbz", "cbz"}, {"Capa", "Zeta Autor", "c.epub", "epub"}, {"Íris", "Bruno Reis", "i.epub", "epub"},
+	}
+	var works []int
+	for _, sp := range specs {
+		works = append(works, s.addWork(sp.title, sp.author, sp.file, sp.format))
+	}
+	// Two works with a second edition and file: a join that multiplied rows would repeat them.
+	for _, w := range []int{works[0], works[3]} {
+		s.addFile(s.addEdition(w, "en"), "epub", fmt.Sprintf("extra-%d.epub", w), "managed")
+	}
+	s.exec(`INSERT INTO favorites (user_id, work_id) VALUES ($1, $2), ($1, $3), ($1, $4)`, idAna, works[1], works[2], works[6])
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete) VALUES ($1, $2, 'p', 10), ($1, $3, 'p', 20)`,
+		idAna, s.primaryFile(works[0]), s.primaryFile(works[5]))
+	rec := s.do(admin, "DELETE", fmt.Sprintf("/works/%d", works[7]), "")
+	if rec.Code != 200 {
+		t.Fatalf("retire: %d %s", rec.Code, rec.Body.String())
+	}
+
+	queries := []string{
+		"", "?sort=title", "?sort=author", "?search=a", "?search=maria", "?search=a&sort=title",
+		"?formatGroup=ebooks", "?formatGroup=comics", "?favorite=true", "?favorite=true&sort=author", "?inProgress=true",
+		"?formatGroup=ebooks&sort=title", "?search=zeta&sort=author",
+	}
+	for _, q := range queries {
+		whole := s.list(ana, joinQuery(q, "limit=100"))
+		if whole.Total != len(whole.Data) {
+			t.Errorf("%q: total %d but %d works in the whole list", q, whole.Total, len(whole.Data))
+		}
+		for _, size := range []int{1, 2, 4} {
+			var walked []int
+			for page := 1; page <= len(whole.Data)/size+2; page++ {
+				l := s.list(ana, joinQuery(q, fmt.Sprintf("limit=%d&page=%d", size, page)))
+				if l.Total != whole.Total {
+					t.Errorf("%q limit=%d page=%d: total %d, want %d", q, size, page, l.Total, whole.Total)
+				}
+				walked = append(walked, ids(l.Data)...)
+			}
+			if fmt.Sprint(walked) != fmt.Sprint(ids(whole.Data)) {
+				t.Errorf("%q limit=%d: pages give %v, the whole list %v", q, size, walked, ids(whole.Data))
+			}
+		}
+		seen := map[int]bool{}
+		for _, id := range ids(whole.Data) {
+			if seen[id] {
+				t.Errorf("%q: work %d appears twice", q, id)
+			}
+			seen[id] = true
+			if id == works[7] {
+				t.Errorf("%q: the retired work is listed to a reader", q)
+			}
+		}
+	}
+	// The default order is the newest first, and a page past the end is empty with the right total.
+	if got := ids(s.list(ana, "?limit=3&page=1").Data); fmt.Sprint(got) != fmt.Sprint([]int{works[8], works[6], works[5]}) {
+		t.Errorf("default order, page 1 = %v", got)
+	}
+	if l := s.list(ana, "?limit=3&page=9"); len(l.Data) != 0 || l.Total != 8 {
+		t.Errorf("a page past the end: %d works, total %d (want 0 and 8)", len(l.Data), l.Total)
+	}
+	// Staff can list the retired ones, on their own.
+	if got := ids(s.list(admin, "?retired=true").Data); fmt.Sprint(got) != fmt.Sprint([]int{works[7]}) {
+		t.Errorf("retired=true = %v, want only the retired work", got)
+	}
+}
+
+func joinQuery(q, extra string) string {
+	if q == "" {
+		return "?" + extra
+	}
+	return q + "&" + extra
+}
+
+func TestCatalogNeedsJoins_OnlyFiltersAndOrdersThatReadTheCardNeedThem(t *testing.T) {
+	cases := []struct {
+		sort                 string
+		inProgress, favorite bool
+		formatGroup          string
+		want                 bool
+	}{
+		{"", false, false, "", false},
+		{"title", false, false, "", false},
+		{"whatever", false, false, "", false},
+		{"author", false, false, "", true},
+		{"", true, false, "", true},
+		{"", false, true, "", true},
+		{"", false, false, "ebooks", true},
+	}
+	for _, c := range cases {
+		if got := catalogNeedsJoins(c.sort, c.inProgress, c.favorite, c.formatGroup); got != c.want {
+			t.Errorf("catalogNeedsJoins(%q, %v, %v, %q) = %v, want %v", c.sort, c.inProgress, c.favorite, c.formatGroup, got, c.want)
+		}
+	}
+}

@@ -107,6 +107,14 @@ func fileHref(fileID sql.NullInt64, mode, rel string) string {
 	return filesURL(rel)
 }
 
+// catalogNeedsJoins says whether choosing the page of the catalog needs more than the table of works: a filter on the
+// primary file's format, on the caller's progress or favorites, or an order by author reads the joins of the card. Without
+// any of them (the library's default view, the search by title, the ordering by title) the page is chosen on `works` alone.
+// Every join of the card yields one row per work, so leaving them out changes neither the count nor the order.
+func catalogNeedsJoins(sort string, inProgress, favorite bool, formatGroup string) bool {
+	return inProgress || favorite || formatGroup != "" || sort == "author"
+}
+
 // catalogOrderBy is how the catalog is sorted: the newest first (what it always was), by title, or by author in
 // the order the caller prefers (#64), so that a person who reads "Herbert, Frank" finds it among the Hs. Names
 // are compared without accents or case, works with no author come last, and every sort ends in the same way so

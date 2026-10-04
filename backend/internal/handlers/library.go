@@ -326,36 +326,79 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	case "audio":
 		whereClauses = append(whereClauses, "LOWER(wp.file_format) IN "+audioFormats)
 	}
+	// The page is chosen before the cards are built: counting and ordering run on the cheapest FROM the filters allow
+	// (often only `works`), and only the works of the page get their card (author, progress, counts, tags). Building
+	// the card first made every request pay for all the works before the offset: with 10 000 works the last page
+	// took half a second (docs/Codice_Teste_de_Escala_2026-10-04.md).
+	sortKey := r.URL.Query().Get("sort")
+	pageFrom := " FROM works w"
+	if catalogNeedsJoins(sortKey, inProgressOnly, favoriteOnly, formatGroup) {
+		pageFrom = catalogFrom + cardJoins
+	} else {
+		// $1 is the caller's id; without the joins nothing else would mention it, and the server refuses a
+		// parameter whose type it cannot tell.
+		whereClauses = append(whereClauses, "$1::text IS NOT NULL")
+	}
 	whereSQL := " WHERE " + strings.Join(whereClauses, " AND ")
 
 	var totalCount int
-	if err := h.DB.QueryRow("SELECT COUNT(*) "+catalogFrom+cardJoins+whereSQL, args...).Scan(&totalCount); err != nil {
+	if err := h.DB.QueryRow("SELECT COUNT(*)"+pageFrom+whereSQL, args...).Scan(&totalCount); err != nil {
 		log.Println("Error counting works:", err)
 		http.Error(w, "Error counting works", http.StatusInternalServerError)
 		return
 	}
 
 	order := people.OrderFor(r.Context(), h.DB, userID).Effective
-	query := "SELECT " + cardColumnsFor(order) + catalogFrom + cardJoins + whereSQL +
-		fmt.Sprintf(" ORDER BY %s LIMIT $%d OFFSET $%d", catalogOrderBy(r.URL.Query().Get("sort"), order), argIdx, argIdx+1)
-	args = append(args, limit, offset)
-
-	rows, err := h.DB.Query(query, args...)
+	pageArgs := append(append([]interface{}{}, args...), limit, offset)
+	idRows, err := h.DB.Query("SELECT w.id"+pageFrom+whereSQL+
+		fmt.Sprintf(" ORDER BY %s LIMIT $%d OFFSET $%d", catalogOrderBy(sortKey, order), argIdx, argIdx+1), pageArgs...)
 	if err != nil {
-		log.Println("Error fetching works:", err)
+		log.Println("Error choosing the page of works:", err)
 		http.Error(w, "Error fetching works", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	var pageIDs []int
+	for idRows.Next() {
+		var id int
+		if err := idRows.Scan(&id); err != nil {
+			idRows.Close()
+			log.Println("Error scanning the page of works:", err)
+			http.Error(w, "Error fetching works", http.StatusInternalServerError)
+			return
+		}
+		pageIDs = append(pageIDs, id)
+	}
+	idRows.Close()
+	if err := idRows.Err(); err != nil {
+		log.Println("Error choosing the page of works:", err)
+		http.Error(w, "Error fetching works", http.StatusInternalServerError)
+		return
+	}
 
 	works := []Work{}
-	for rows.Next() {
-		work, err := scanWork(rows)
+	if len(pageIDs) > 0 {
+		rows, err := h.DB.Query("SELECT "+cardColumnsFor(order)+catalogFrom+cardJoins+" WHERE w.id = ANY($2)", userID, pq.Array(pageIDs))
 		if err != nil {
-			log.Println("Error scanning work:", err)
-			continue
+			log.Println("Error fetching works:", err)
+			http.Error(w, "Error fetching works", http.StatusInternalServerError)
+			return
 		}
-		works = append(works, work)
+		defer rows.Close()
+		byID := make(map[int]Work, len(pageIDs))
+		for rows.Next() {
+			work, err := scanWork(rows)
+			if err != nil {
+				log.Println("Error scanning work:", err)
+				continue
+			}
+			byID[work.ID] = work
+		}
+		// The order is the one the page was chosen in, not whatever the second query happens to return.
+		for _, id := range pageIDs {
+			if work, ok := byID[id]; ok {
+				works = append(works, work)
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
