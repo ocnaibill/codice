@@ -79,6 +79,7 @@ func newRouter(d routerDeps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
+	r.Use(appMiddleware.LimitBody(appMiddleware.MaxJSONBody))
 
 	// PERF-03: Gzip compression middleware
 	r.Use(chiMiddleware.Compress(5, "text/html", "text/css", "text/javascript", "application/json", "application/javascript", "image/svg+xml"))

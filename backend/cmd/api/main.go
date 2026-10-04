@@ -175,5 +175,14 @@ func main() {
 		port = "8080"
 	}
 	log.Printf("🚀 Go server running on port %s", port)
-	http.ListenAndServe(":"+port, r)
+	// No ReadTimeout or WriteTimeout: uploads, downloads and the websocket are long on
+	// purpose. The header timeout is what stops a client that opens connections and
+	// dribbles a request line, one byte at a time, to hold them open.
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
+	log.Fatalf("HTTP server stopped: %v", srv.ListenAndServe())
 }

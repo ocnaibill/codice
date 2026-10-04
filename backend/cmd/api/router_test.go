@@ -381,3 +381,17 @@ func TestAuthRateLimit_BehindATrustedProxyClientsDoNotShareABudget(t *testing.T)
 		t.Errorf("forged left entry: %d, want 429", code)
 	}
 }
+
+// A client that is not signed in must not be able to make the server read an unbounded body:
+// login decodes JSON before it looks at anything else.
+func TestRouter_RefusesAnOversizedBodyBeforeTheHandlerReadsIt(t *testing.T) {
+	r := testRouter(t)
+	huge := `{"username":"ana","password":"` + strings.Repeat("x", middleware.MaxJSONBody+1) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(huge))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for a body over %d bytes", rec.Code, middleware.MaxJSONBody)
+	}
+}
