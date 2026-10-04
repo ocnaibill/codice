@@ -52,8 +52,8 @@ jobs:
           sudo apt-get install -y -qq postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
-          echo "PG_DUMP=/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump" >> "$GITHUB_ENV"
-          echo "PG_RESTORE=/usr/lib/postgresql/${PG_MAJOR}/bin/pg_restore" >> "$GITHUB_ENV"
+          # On PATH, ahead of the runner's own (newer) client: the tests look for pg_dump there.
+          echo "/usr/lib/postgresql/${PG_MAJOR}/bin" >> "$GITHUB_PATH"
       - run: go vet ./...
       - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - run: go test ./... -count=1 -timeout 30m
