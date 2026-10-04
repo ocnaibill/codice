@@ -22,6 +22,10 @@ const EXACT = {
   'The password is not correct': 'A senha não está correta.',
   // The owner's backup buttons (DEC-123)
   'The password is required': 'Digite a sua senha.',
+  // "Meus dados"
+  'Export not found': 'Esse arquivo não existe mais.',
+  'The export is not ready': 'O arquivo ainda não está pronto, ou já expirou.',
+  'Too many exports: try again in a while': 'Você já pediu o arquivo 3 vezes na última hora. Tente de novo mais tarde.',
   'Session not found': 'Essa sessão não existe mais: talvez já tenha sido encerrada.',
   'Backups from the panel are not set up': 'O backup pelo painel ainda não foi configurado no servidor.',
   'backups from the panel are not set up: CODICE_BACKUP_DIR and CODICE_BACKUP_PASSPHRASE_FILE are needed': 'Para fazer backups pelo painel, o servidor precisa de CODICE_BACKUP_DIR (a pasta) e CODICE_BACKUP_PASSPHRASE_FILE (o arquivo com a frase de segurança).',

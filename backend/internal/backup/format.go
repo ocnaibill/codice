@@ -31,8 +31,9 @@ const (
 // credentialTables hold sessions, tokens and single-use links, and the record of sign-ins. Their data is left out
 // of every package: a backup travels and lingers, and a restored instance must not
 // revive a session, an app token or a link that was revoked after the backup. The record of sign-ins is a log of
-// addresses kept for a time the owner sets; a package that outlived it would break that promise.
-var credentialTables = []string{"sessions", "app_tokens", "invitations", "password_resets", "link_tickets", "login_events"}
+// addresses kept for a time the owner sets; a package that outlived it would break that promise. The requests for a person's own
+// data point at files that are a day old at most: restored, they would point at nothing.
+var credentialTables = []string{"sessions", "app_tokens", "invitations", "password_resets", "link_tickets", "login_events", "data_exports"}
 
 // derivedTables hold what is made from the files: the text extracted for search, and the fingerprint of it that
 // finds the same text in another file (#38). Their data is left

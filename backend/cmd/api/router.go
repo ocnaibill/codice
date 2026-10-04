@@ -39,6 +39,8 @@ type routerDeps struct {
 	Version, SourceURL string
 	// Logins is the record of sign-ins; nil records nothing.
 	Logins *logins.Recorder
+	// DataExport is "Exportar meus dados".
+	DataExport *handlers.DataExportHandler
 	// BackupPanel is what the owner's backup buttons run; the zero value is "not set up".
 	BackupPanel backup.Panel
 	// Directory is the LDAP directory, nil when it is not configured.
@@ -61,6 +63,7 @@ func newRouter(d routerDeps) http.Handler {
 	sessionsHandler := &handlers.SessionsHandler{DB: db, Sessions: d.Sessions}
 	authHandler := &handlers.AuthHandler{DB: db, Sessions: d.Sessions, Directory: d.Directory, Logins: d.Logins}
 	loginsAdmin := &handlers.LoginsAdminHandler{DB: db, Logins: d.Logins}
+	dataExport := d.DataExport
 	backupAdmin := &handlers.BackupAdminHandler{DB: db, StoragePath: d.StoragePath, Panel: d.BackupPanel}
 	ldapAdmin := &handlers.LDAPAdminHandler{DB: db, Directory: d.Directory, Host: d.DirectoryHost, BaseDN: d.DirectoryBase}
 	appTokensHandler := &handlers.AppTokensHandler{Sessions: d.Sessions}
@@ -175,6 +178,10 @@ func newRouter(d routerDeps) http.Handler {
 	// Session, resource tokens and app tokens
 	r.With(auth).Get("/about", (&handlers.AboutHandler{Version: d.Version, SourceURL: d.SourceURL}).Get)
 	r.With(auth).Get("/auth/logins", loginsAdmin.Own)
+	r.With(auth).Get("/auth/export", dataExport.Latest)
+	r.With(auth).Post("/auth/export", dataExport.Request)
+	r.With(auth).Get("/auth/export/{id}/download", dataExport.Download)
+	r.With(auth).Delete("/auth/export/{id}", dataExport.Delete)
 	r.With(auth).Get("/auth/sessions", sessionsHandler.List)
 	r.With(auth).Post("/auth/sessions/revoke-others", sessionsHandler.RevokeOthers)
 	r.With(auth).Delete("/auth/sessions/{id}", sessionsHandler.Revoke)

@@ -31,6 +31,7 @@ type authStack struct {
 	owner     *OwnershipHandler
 	ldapAdmin *LDAPAdminHandler
 	logins    *logins.Recorder
+	exports   *DataExportHandler
 }
 
 func newAuthStack(t *testing.T) *authStack {
@@ -58,6 +59,7 @@ func newAuthStack(t *testing.T) *authStack {
 	// The test client is 192.0.2.1: a proxy that is believed, as nginx is in the stack.
 	r.Use(middleware.WithClientIP([]netip.Prefix{netip.MustParsePrefix("192.0.2.1/32")}))
 	sess := &SessionsHandler{DB: db, Sessions: st}
+	s.exports = &DataExportHandler{DB: db, Dir: t.TempDir()}
 	r.Post("/auth/login", s.authH.Login)
 	r.Post("/auth/setup", s.authH.SetupMasterAdmin)
 	r.With(a.Middleware).Get("/auth/me", s.authH.Me)
@@ -95,6 +97,10 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Get("/admin/logins", loginsAdmin.List)
 	r.With(a.Middleware).Put("/admin/logins/settings", loginsAdmin.SetRetention)
 	r.With(a.Middleware).Get("/auth/logins", loginsAdmin.Own)
+	r.With(a.Middleware).Get("/auth/export", s.exports.Latest)
+	r.With(a.Middleware).Post("/auth/export", s.exports.Request)
+	r.With(a.Middleware).Get("/auth/export/{id}/download", s.exports.Download)
+	r.With(a.Middleware).Delete("/auth/export/{id}", s.exports.Delete)
 	r.With(a.Middleware).Get("/auth/sessions", sess.List)
 	r.With(a.Middleware).Post("/auth/sessions/revoke-others", sess.RevokeOthers)
 	r.With(a.Middleware).Delete("/auth/sessions/{id}", sess.Revoke)

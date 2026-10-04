@@ -11,6 +11,7 @@ import (
 
 	"github.com/ocnaibill/codice/backend/internal/backup"
 	"github.com/ocnaibill/codice/backend/internal/database"
+	"github.com/ocnaibill/codice/backend/internal/handlers"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
 	"github.com/ocnaibill/codice/backend/internal/storage"
 	"github.com/ocnaibill/codice/backend/internal/testdb"
@@ -44,7 +45,7 @@ func TestFileJobs_ScanThenTransferThroughTheQueue(t *testing.T) {
 	managed, _ := filepath.EvalSymlinks(t.TempDir())
 	lib, _ := filepath.EvalSymlinks(t.TempDir())
 	mover := &storage.Mover{DB: db, Root: managed}
-	handlers := fileJobHandlers(db, mover, backup.Panel{})
+	handlers := fileJobHandlers(db, mover, backup.Panel{}, &handlers.DataExportHandler{})
 	types := []string{}
 	for k := range handlers {
 		types = append(types, k)
@@ -134,7 +135,7 @@ func TestBackupJobs_FailForGoodWhenTheServerIsNotSetUpForThem(t *testing.T) {
 	run := func(panel backup.Panel, jobType, payload string) string {
 		t.Helper()
 		db.Exec(`DELETE FROM jobs`)
-		handlers := fileJobHandlers(db, &storage.Mover{DB: db, Root: t.TempDir()}, panel)
+		handlers := fileJobHandlers(db, &storage.Mover{DB: db, Root: t.TempDir()}, panel, &handlers.DataExportHandler{})
 		for _, typ := range []string{"backup", "verify_backup"} {
 			if handlers[typ] == nil {
 				t.Fatalf("no handler for %s", typ)
@@ -167,6 +168,47 @@ func TestBackupJobs_FailForGoodWhenTheServerIsNotSetUpForThem(t *testing.T) {
 	for _, c := range cases {
 		if got := run(c.panel, c.typ, c.payload); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// "Exportar meus dados" runs as a job of the API process: the request becomes a file, and a request that is gone fails for good.
+func TestExportJob_MakesTheFileThroughTheQueue(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	exports := &handlers.DataExportHandler{DB: db, Dir: filepath.Join(t.TempDir(), "exports")}
+	runner := &jobs.Runner{DB: db, Owner: "api-test", Types: []string{handlers.JobExportData}, MaxRunning: 1, LeaseSeconds: 60,
+		Handlers: fileJobHandlers(db, &storage.Mover{DB: db, Root: t.TempDir()}, backup.Panel{}, exports), Heartbeat: 20 * time.Millisecond}
+
+	var user, id string
+	db.QueryRow(`INSERT INTO users (username, email, role) VALUES ('ana', 'a@x', 'reader') RETURNING id`).Scan(&user)
+	db.QueryRow(`INSERT INTO data_exports (user_id) VALUES ($1) RETURNING id`, user).Scan(&id)
+	db.Exec(`INSERT INTO jobs (type, payload, max_attempts) VALUES ('export_data', jsonb_build_object('export_id', $1::text), 3)`, id)
+	if took, err := runner.RunOnce(context.Background()); err != nil || !took {
+		t.Fatalf("RunOnce: %v %v", took, err)
+	}
+	if got := scalar(t, db, `SELECT state FROM data_exports WHERE id = $1`, id); got != "ready" {
+		t.Fatalf("export = %s", got)
+	}
+	if info, err := os.Stat(filepath.Join(exports.Dir, id+".zip")); err != nil || info.Size() == 0 {
+		t.Errorf("the file: %v %v", info, err)
+	}
+	if got := scalar(t, db, `SELECT state FROM jobs WHERE type = 'export_data'`); got != "succeeded" {
+		t.Errorf("job = %s", got)
+	}
+
+	// A request that is gone, or a job with no request, fails once and for good.
+	for name, payload := range map[string]string{
+		"a request that is gone": `{"export_id": "00000000-0000-0000-0000-000000000000"}`,
+		"no request named":       `{}`,
+	} {
+		db.Exec(`DELETE FROM jobs`)
+		db.Exec(`INSERT INTO jobs (type, payload, max_attempts) VALUES ('export_data', $1::jsonb, 3)`, payload)
+		runner.RunOnce(context.Background())
+		if got := scalar(t, db, `SELECT state || '/' || error_kind || '/' || attempts FROM jobs`); got != "failed/permanent/1" {
+			t.Errorf("%s: %s", name, got)
 		}
 	}
 }

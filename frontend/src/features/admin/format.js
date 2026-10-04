@@ -29,3 +29,13 @@ export function formatAge(ms) {
   if (hours < 48) return unit(hours, 'hora', 'horas');
   return unit(Math.floor(hours / 24), 'dia', 'dias');
 }
+
+/** How much of a time that is still ahead is left, in Portuguese: 20 min -> "menos de 1 hora", 5 h 40 min -> "5 horas", 25 h -> "1 dia". */
+export function formatLeft(ms) {
+  const minutes = Math.floor((Number(ms) || 0) / 60000);
+  if (minutes < 60) return 'menos de 1 hora';
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours === 1 ? '1 hora' : `${hours} horas`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? '1 dia' : `${days} dias`;
+}
