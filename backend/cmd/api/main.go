@@ -188,8 +188,17 @@ func main() {
 
 	startIdentitySweep(context.Background(), db, directory)
 
+	catalogLimit, err := appMiddleware.ParseCatalogConcurrency(os.Getenv("CODICE_CATALOG_CONCURRENCY"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if catalogLimit > 0 {
+		log.Printf("Heavy reads of the catalog: at most %d at once", catalogLimit)
+	}
+
 	// 4. Configure Router
 	r := newRouter(routerDeps{
+		CatalogGate: appMiddleware.Gate(catalogLimit, 8*catalogLimit, 8*time.Second),
 		DB:          db,
 		RedisClient: redisClient,
 		Sessions:    sessionStore,
