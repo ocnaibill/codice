@@ -3,6 +3,7 @@ package dupes_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 
 	"github.com/ocnaibill/codice/backend/internal/database"
@@ -159,7 +160,7 @@ func TestDismiss_IsRememberedAndNewWorksAreComparedOnTheirOwn(t *testing.T) {
 	var id int64
 	e.db.QueryRow(`SELECT id FROM duplicate_candidates`).Scan(&id)
 
-	pending, _ := dupes.ListPending(ctx, e.db)
+	pending := mustList(t, e)
 	if len(pending) != 1 || pending[0].A.Title != "Duna" || pending[0].B.Formats[0] != "pdf" || pending[0].Reason != "title_author" {
 		t.Fatalf("pending = %+v", pending)
 	}
@@ -264,7 +265,7 @@ func TestLink_RefusesWhenAWorkWasRetiredMeanwhile(t *testing.T) {
 	if e.scalar(`SELECT count(*) FROM works`) != "2" {
 		t.Error("a refused link changed something")
 	}
-	if pending, _ := dupes.ListPending(ctx, e.db); len(pending) != 0 {
+	if pending := mustList(t, e); len(pending) != 0 {
 		t.Errorf("a pair with a retired work is still listed: %+v", pending)
 	}
 }
@@ -279,5 +280,83 @@ func TestDetect_TheSameAuthorWrittenAnotherWayIsTheSameAuthor(t *testing.T) {
 	}
 	if got := e.pairs(); got != itoa(a)+"-"+itoa(b)+":title_author:pending" {
 		t.Errorf("pairs = %q (another Herbert, %d, must not be proposed)", got, c)
+	}
+}
+
+func TestListPending_PagesThroughThePairsInOrder(t *testing.T) {
+	e := newEnv(t)
+	var ids []int64
+	for i := 0; i < 7; i++ {
+		title := fmt.Sprintf("Livro %d", i)
+		e.exec(`INSERT INTO duplicate_candidates (work_a, work_b, reason) VALUES ($1, $2, 'title_author')`,
+			e.work(title, "Autora", "", "epub", fmt.Sprintf("a%d.epub", i)), e.work(title, "Autora", "", "pdf", fmt.Sprintf("b%d.pdf", i)))
+		var id int64
+		e.db.QueryRow(`SELECT max(id) FROM duplicate_candidates`).Scan(&id)
+		ids = append(ids, id)
+	}
+	// A pair with a retired work is not counted nor listed.
+	gone := e.work("Fora", "Autora", "", "epub", "gone.epub")
+	e.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, gone)
+	e.exec(`INSERT INTO duplicate_candidates (work_a, work_b, reason) VALUES ($1, $2, 'title_author')`, gone, e.work("Fora", "Autora", "", "pdf", "gone.pdf"))
+
+	var seen []int64
+	var after int64
+	for turn := 1; ; turn++ {
+		page, err := dupes.ListPending(ctx, e.db, after, 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Total != 7 {
+			t.Fatalf("total = %d, want 7 on every page", page.Total)
+		}
+		wantMore := turn < 3
+		if page.More != wantMore {
+			t.Fatalf("page %d: more = %v, want %v", turn, page.More, wantMore)
+		}
+		for _, c := range page.Data {
+			seen = append(seen, c.ID)
+			if c.A.Author != "Autora" || len(c.A.Formats) != 1 || c.A.Formats[0] != "epub" || len(c.B.Formats) != 1 || c.B.Formats[0] != "pdf" {
+				t.Errorf("summary lost on the way: %+v", c)
+			}
+		}
+		if !page.More {
+			break
+		}
+		after = page.Data[len(page.Data)-1].ID
+	}
+	if fmt.Sprint(seen) != fmt.Sprint(ids) {
+		t.Errorf("pages gave %v, want every pair once, in order: %v", seen, ids)
+	}
+}
+
+func TestListPending_ALastPageOfExactlyTheLimitHasNoMore(t *testing.T) {
+	e := newEnv(t)
+	for i := 0; i < 2; i++ {
+		e.exec(`INSERT INTO duplicate_candidates (work_a, work_b, reason) VALUES ($1, $2, 'title_author')`,
+			e.work(fmt.Sprintf("T%d", i), "A", "", "epub", fmt.Sprintf("a%d.epub", i)), e.work(fmt.Sprintf("T%d", i), "A", "", "pdf", fmt.Sprintf("b%d.pdf", i)))
+	}
+	page, err := dupes.ListPending(ctx, e.db, 0, 2)
+	if err != nil || len(page.Data) != 2 || page.More || page.Total != 2 {
+		t.Fatalf("%v %+v", err, page)
+	}
+}
+
+func TestListPending_DescribesAWorkWithSeveralFormatsAndNoFile(t *testing.T) {
+	e := newEnv(t)
+	a := e.work("Duna", "Frank Herbert", "9788576573135", "epub", "a.epub")
+	b := e.work("Duna", "Frank Herbert", "", "pdf", "b.pdf")
+	var edition int
+	e.db.QueryRow(`SELECT id FROM editions WHERE work_id = $1`, a).Scan(&edition)
+	e.exec(`INSERT INTO files (edition_id, format) VALUES ($1, 'mobi'), ($1, NULL)`, edition) // a file whose format is not known is not a format
+	e.exec(`INSERT INTO duplicate_candidates (work_a, work_b, reason) VALUES ($1, $2, 'title_author')`, a, b)
+	page, err := dupes.ListPending(ctx, e.db, 0, 10)
+	if err != nil || len(page.Data) != 1 {
+		t.Fatalf("%v %+v", err, page)
+	}
+	if got := page.Data[0].A; got.ISBN != "9788576573135" || fmt.Sprint(got.Formats) != "[epub mobi]" {
+		t.Errorf("a = %+v", got)
+	}
+	if got := page.Data[0].B; got.ISBN != "" || fmt.Sprint(got.Formats) != "[pdf]" {
+		t.Errorf("b = %+v", got)
 	}
 }

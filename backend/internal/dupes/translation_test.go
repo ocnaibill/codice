@@ -279,9 +279,9 @@ func TestListPending_SaysWhatTheReadingFound(t *testing.T) {
 	e.publishScenes(bf, "en", scenes("l", "another", 150))
 	dupes.Detect(ctx, e.db, a)
 	dupes.DetectAll(ctx, e.db)
-	list, err := dupes.ListPending(ctx, e.db)
-	if err != nil || len(list) != 1 || list[0].Reason != "translation" {
-		t.Fatalf("%v %+v", err, list)
+	list := mustList(t, e)
+	if len(list) != 1 || list[0].Reason != "translation" {
+		t.Fatalf("%+v", list)
 	}
 	var ev struct{ Translation struct{ Hits, Samples int } }
 	if json.Unmarshal(list[0].Evidence, &ev) != nil || ev.Translation.Hits < 40 {

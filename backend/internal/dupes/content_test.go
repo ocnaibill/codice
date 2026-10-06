@@ -414,9 +414,9 @@ func TestListPending_SaysWhatTheFilesShare(t *testing.T) {
 	e.publish(af, text, nil)
 	e.publish(bf, text, nil)
 	dupes.DetectAll(ctx, e.db)
-	list, err := dupes.ListPending(ctx, e.db)
-	if err != nil || len(list) != 1 || list[0].Reason != "content" {
-		t.Fatalf("%v %+v", err, list)
+	list := mustList(t, e)
+	if len(list) != 1 || list[0].Reason != "content" {
+		t.Fatalf("%+v", list)
 	}
 	var ev struct{ Content struct{ OfA, OfB float64 } }
 	if json.Unmarshal(list[0].Evidence, &ev) != nil || ev.Content.OfA != 1 || ev.Content.OfB != 1 {
@@ -434,9 +434,9 @@ func TestListPending_SaysWhatTheFilesShare(t *testing.T) {
 }
 
 func mustList(t *testing.T, e *env) []dupes.Candidate {
-	list, err := dupes.ListPending(ctx, e.db)
+	page, err := dupes.ListPending(ctx, e.db, 0, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return list
+	return page.Data
 }

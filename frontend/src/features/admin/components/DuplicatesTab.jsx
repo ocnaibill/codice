@@ -20,12 +20,13 @@ function Side({ work }) {
 }
 
 function Duplicates() {
-  const { data, isLoading, isError, error, refetch, isRefetching } = useDuplicates();
+  const { data, isLoading, isError, error, refetch, isRefetching, hasNextPage, fetchNextPage, isFetchingNextPage } = useDuplicates();
   const scan = useScanDuplicates();
   const dismiss = useDismissDuplicate();
   const link = useLinkDuplicate();
   const [linking, setLinking] = useState(null); // { candidate, keep }
-  const pairs = data?.data || [];
+  const pairs = data?.pages.flatMap((page) => page.data) || [];
+  const total = data?.pages[0]?.total ?? pairs.length;
 
   return (
     <Section
@@ -55,6 +56,14 @@ function Duplicates() {
           </li>
         ))}
       </ul>
+      {pairs.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <p role="status" className="text-[13px] text-ink-soft">
+            {hasNextPage ? `Mostrando ${pairs.length} de ${total} sugestões.` : `${total === 1 ? '1 sugestão' : `${total} sugestões`}.`}
+          </p>
+          {hasNextPage && <Btn onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>Mostrar mais</Btn>}
+        </div>
+      )}
       <ErrorNote>{dismiss.isError ? describeError(dismiss.error) : link.isError ? describeError(link.error) : scan.isError && describeError(scan.error)}</ErrorNote>
 
       {linking && (

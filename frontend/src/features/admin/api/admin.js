@@ -61,7 +61,17 @@ export function useHealth() {
 }
 export const useOrphans = list('orphans', '/admin/storage/orphans');
 export const useTrash = list('trash', '/admin/trash');
-export const useDuplicates = list('duplicates', '/admin/duplicates');
+/** The pairs waiting for a decision, a page at a time (an instance with thousands of works has over a thousand of them). Each
+ *  page carries the pairs, how many wait in all (`total`) and whether there are more (`more`). */
+export function useDuplicates() {
+  return useInfiniteQuery({
+    queryKey: ['admin', 'duplicates', null],
+    queryFn: async ({ pageParam }) => (await api.get('/admin/duplicates', { params: pageParam ? { after: pageParam } : undefined })).data,
+    initialPageParam: 0,
+    getNextPageParam: (last) => (last.more && last.data.length ? last.data[last.data.length - 1].id : undefined),
+    staleTime: 0,
+  });
+}
 export const useSuggestionQueue = list('suggestion-queue', '/admin/suggestions');
 export const useMetadataProviders = list('metadata-providers', '/admin/metadata-providers');
 export const usePeopleMerges = list('people-merges', '/admin/people/merges');
