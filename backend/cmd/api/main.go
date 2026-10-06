@@ -18,6 +18,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/ldapauth"
 	"github.com/ocnaibill/codice/backend/internal/logins"
 	appMiddleware "github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/performance"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"github.com/ocnaibill/codice/backend/internal/storage"
 	"github.com/ocnaibill/codice/backend/internal/version"
@@ -177,13 +178,18 @@ func main() {
 	}
 	dataExport := &handlers.DataExportHandler{DB: db, Dir: exportDir}
 	startExportPurge(context.Background(), dataExport)
-	handlers := fileJobHandlers(db, mover, backupPanel, dataExport)
-	types := make([]string, 0, len(handlers))
-	for t := range handlers {
-		types = append(types, t)
+	fileHandlers := fileJobHandlers(db, mover, backupPanel, dataExport)
+	// The comparison of possible duplicates is the heavy one, and it only reads and proposes: it has a runner of its own, with
+	// the number the owner chose (see below), so that it neither makes the backup and the organizing wait nor is held to
+	// one at a time. Everything else that touches the files stays one at a time, as it always was.
+	types := make([]string, 0, len(fileHandlers))
+	for t := range fileHandlers {
+		if t != jobDedupe {
+			types = append(types, t)
+		}
 	}
 	startFileJobs(context.Background(), &jobs.Runner{
-		DB: db, Owner: jobs.NewOwnerName("api"), Types: types, MaxRunning: 1, LeaseSeconds: 300, Handlers: handlers,
+		DB: db, Owner: jobs.NewOwnerName("api"), Types: types, MaxRunning: 1, LeaseSeconds: 300, Handlers: fileHandlers,
 	}, mover, &storage.Trash{DB: db, Root: storagePath})
 
 	startIdentitySweep(context.Background(), db, directory)
@@ -196,9 +202,33 @@ func main() {
 		log.Printf("Heavy reads of the catalog: at most %d at once", catalogLimit)
 	}
 
+	// What the owner tunes from the administration (internal/performance): it starts with what is stored and follows each
+	// change at once, without a restart.
+	machine := performance.ThisMachine()
+	tuning := performance.NewLive(performance.Defaults(catalogLimit))
+	if overrides, err := performance.Overrides(context.Background(), db, machine); err != nil {
+		log.Printf("performance: could not read what the owner chose (using the defaults): %v", err)
+	} else {
+		tuning.Apply(overrides)
+	}
+	catalogGate := appMiddleware.NewGate(0, 0, 8*time.Second)
+	tuning.OnChange(func(s performance.Settings) {
+		limit := s[performance.CatalogReads]
+		if catalogLimit == 0 && !tuning.Overridden(performance.CatalogReads) {
+			limit = 0 // the installation turned the limit off and the owner has not chosen one
+		}
+		catalogGate.SetLimit(limit)
+	})
+	dedupeRunner := &jobs.Runner{
+		DB: db, Owner: jobs.NewOwnerName("api-dedupe"), Types: []string{jobDedupe}, LeaseSeconds: 300, Handlers: fileHandlers,
+		MaxRunningFn: func() int { return tuning.Get(performance.DedupeJobs) },
+	}
+	go dedupeRunner.LoopPool(context.Background(), 5*time.Second, func() int { return tuning.Get(performance.DedupeJobs) })
+
 	// 4. Configure Router
 	r := newRouter(routerDeps{
-		CatalogGate: appMiddleware.Gate(catalogLimit, 8*catalogLimit, 8*time.Second),
+		CatalogGate: catalogGate.Middleware(),
+		Performance: &handlers.PerformanceHandler{DB: db, Defaults: performance.Defaults(catalogLimit), Machine: machine, Live: tuning},
 		DB:          db,
 		RedisClient: redisClient,
 		Sessions:    sessionStore,

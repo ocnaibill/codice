@@ -3,6 +3,8 @@ import json
 import os
 import stat
 import subprocess
+import threading
+import time
 
 import fitz
 import pytest
@@ -190,6 +192,8 @@ class OcrDB(FakeDB):
         self.saved = {}
 
     def fetchone(self, query, params=None):
+        if 'FROM settings' in query and params == (ocr.PERFORMANCE_SETTING,):
+            return (self.performance,) if getattr(self, 'performance', None) is not None else None
         if 'FROM settings' in query:
             return (self.setting,) if self.setting is not None else None
         if 'FROM ocr_files' in query:
@@ -266,7 +270,8 @@ class TestHeartbeat:
         indexer(db, scans).heartbeat('working')
         key, value = self.reported(db)
         assert key == 'ocr.worker'
-        assert value == {'engine': 'tesseract', 'version': '5.3.0', 'languages': ['eng', 'por'], 'state': 'working', 'error': ''}
+        assert value == {'engine': 'tesseract', 'version': '5.3.0', 'languages': ['eng', 'por'], 'state': 'working', 'error': '',
+                         'pages': 1, 'threads': 1}
 
     def test_an_engine_that_is_not_installed_is_an_error_the_administration_can_read(self, scans):
         db = OcrDB([])
@@ -639,3 +644,255 @@ class TestLanguageOfAFile:
         indexer(db, tmp_path, engine).run(9)
         assert len(engine.calls) == 3 + 40
         assert [c[0] for c in engine.calls[:3]] == ['por+eng'] * 3
+
+
+# --- what the owner tunes: how many pages are read at once, and with how many cores ---
+
+class TestTuning:
+    def test_without_a_choice_it_is_one_page_with_the_cores_the_installation_gives(self, scans, monkeypatch):
+        monkeypatch.delenv('OCR_THREADS', raising=False)
+        assert indexer(OcrDB([]), scans).tuning() == (1, 1)
+        monkeypatch.setenv('OCR_THREADS', '3')
+        assert indexer(OcrDB([]), scans).tuning() == (1, 3)
+
+    def test_the_owner_choice_wins_over_the_installation(self, scans, monkeypatch):
+        monkeypatch.setenv('OCR_THREADS', '3')
+        db = OcrDB([])
+        db.performance = {'ocrPages': 4, 'ocrThreads': 2}
+        assert indexer(db, scans).tuning() == (4, 2)
+        db.performance = {'ocrPages': 4}  # only what was chosen: the other is still the installation's
+        assert indexer(db, scans).tuning() == (4, 3)
+
+    def test_what_is_not_a_number_in_its_range_is_as_if_it_was_not_there(self, scans, monkeypatch):
+        monkeypatch.delenv('OCR_THREADS', raising=False)
+        for bad in [{'ocrPages': 0}, {'ocrPages': 9}, {'ocrPages': -1}, {'ocrPages': '4'}, {'ocrPages': 2.5}, {'ocrPages': True},
+                    {'ocrPages': None}, {'ocrThreads': 9}, {'ocrThreads': 'x'}, 'nonsense', ['x'], 5, None]:
+            db = OcrDB([])
+            db.performance = bad
+            assert indexer(db, scans).tuning() == (1, 1), bad
+
+    def test_the_largest_values_are_allowed(self, scans):
+        db = OcrDB([])
+        db.performance = {'ocrPages': ocr.MAX_PAGES_AT_ONCE, 'ocrThreads': ocr.MAX_ENGINE_THREADS}
+        assert indexer(db, scans).tuning() == (8, 8)
+
+    def test_true_is_not_a_number_of_cores(self, scans, monkeypatch):
+        monkeypatch.setenv('OCR_THREADS', '3')
+        db = OcrDB([])
+        db.performance = {'ocrThreads': True, 'ocrPages': True}
+        assert indexer(db, scans).tuning() == (1, 3)  # True would be 1: the installation's 3 stays
+
+    def test_a_setting_that_arrives_as_text_is_read(self, scans):
+        db = OcrDB([])
+        db.performance = json.dumps({'ocrPages': 3, 'ocrThreads': 2})
+        assert indexer(db, scans).tuning() == (3, 2)
+        db.performance = '{not json'
+        assert indexer(db, scans).tuning() == (1, 1)
+
+    def test_a_threads_variable_that_is_not_a_number_is_one(self, scans, monkeypatch):
+        monkeypatch.setenv('OCR_THREADS', 'many')
+        assert indexer(OcrDB([]), scans).tuning() == (1, 1)
+        monkeypatch.setenv('OCR_THREADS', '99')
+        assert indexer(OcrDB([]), scans).tuning()[1] == ocr.MAX_ENGINE_THREADS
+
+    def test_a_job_takes_what_was_chosen_at_its_start_and_says_it(self, scans):
+        db = OcrDB([])
+        db.performance = {'ocrPages': 2, 'ocrThreads': 2}
+        engine = FakeEngine()
+        engine.threads = 1
+        ix = OcrIndexer(db, str(scans), engine, log=lambda *a: None)
+        ix.run(9)
+        assert (ix.pages_at_once, ix.threads, engine.threads) == (2, 2, 2)
+        reported = [json.loads(p[1]) for q, p in db.matching('INSERT INTO settings') if p and p[0] == 'ocr.worker']
+        assert reported and reported[-1]['pages'] == 2 and reported[-1]['threads'] == 2
+        # the next job, with a new choice, takes the new one
+        db.performance = {'ocrPages': 1}
+        ix.run(9)
+        assert (ix.pages_at_once, ix.threads) == (1, 1)
+
+
+# --- the pages of a file read at once ---
+
+def make_distinct_scan(storage, pages):
+    """A scan whose pages are told apart by their grey (the engine of the test reads it back from the picture)."""
+    doc = fitz.open()
+    for i in range(pages):
+        pix = fitz.Pixmap(fitz.csGRAY, fitz.IRect(0, 0, 150, 150), False)
+        pix.set_rect(pix.irect, (255 - 5 * i,))
+        doc.new_page(width=72, height=72).insert_image(fitz.Rect(0, 0, 72, 72), pixmap=pix)
+    doc.save(str(storage / 'scan.pdf'))
+    doc.close()
+
+
+def page_of(image):
+    return (255 - fitz.Pixmap(image).pixel(0, 0)[0]) // 5
+
+
+class AtOnceEngine:
+    """An engine that knows which page it was given, and how many it is reading at the same moment."""
+    name = 'tesseract'
+
+    def __init__(self, fail=(), blank=(), delay=0.05, missing_on=None):
+        self.fail, self.blank, self.delay, self.missing_on = set(fail), set(blank), delay, missing_on
+        self.lock = threading.Lock()
+        self.inside = self.peak = 0
+        self.order = []
+        self.threads = 1
+
+    def installed(self):
+        return True
+
+    def version(self):
+        return '5.3.0'
+
+    def languages(self):
+        return ['eng', 'por']
+
+    def recognize(self, image, language, dpi):
+        page = page_of(image)
+        with self.lock:
+            self.inside += 1
+            self.peak = max(self.peak, self.inside)
+            self.order.append(page)
+        try:
+            time.sleep(self.delay)
+            if page == self.missing_on:
+                raise EngineMissing('gone')
+            if page in self.fail:
+                raise EngineError(f'boom {page}')
+            if page in self.blank:
+                return ''
+            return f'Texto reconhecido da página {page}, com o bastante para contar como texto.'
+        finally:
+            with self.lock:
+                self.inside -= 1
+
+
+def parallel_indexer(scans, pages, engine, at_once, without=None, **kwargs):
+    make_distinct_scan(scans, pages)
+    db = OcrDB([], without=without or list(range(1, pages + 1)), **kwargs)
+    db.performance = {'ocrPages': at_once}
+    return db, OcrIndexer(db, str(scans), engine, log=lambda *a: None)
+
+
+class TestPagesAtOnce:
+    def test_it_reads_the_pages_together_and_never_more_than_asked(self, scans):
+        engine = AtOnceEngine()
+        db, ix = parallel_indexer(scans, 12, engine, at_once=3)
+        out = ix.run(9)
+        assert out == {7: {'read': 12, 'failed': 0}}
+        assert 2 <= engine.peak <= 3, f'peak {engine.peak}: it must read together, and never above 3'
+        assert sorted(db.saved) == list(range(12))
+
+    def test_one_at_a_time_is_what_it_has_always_been(self, scans):
+        engine = AtOnceEngine(delay=0.01)
+        db, ix = parallel_indexer(scans, 6, engine, at_once=1)
+        ix.run(9)
+        assert engine.peak == 1
+        assert engine.order == list(range(6))
+
+    def test_one_at_a_time_makes_no_threads_at_all(self, scans, monkeypatch):
+        def no_pool(*args, **kwargs):
+            raise AssertionError('a pool of threads was made for one page at a time')
+        monkeypatch.setattr(ocr, 'ThreadPoolExecutor', no_pool)
+        engine = AtOnceEngine(delay=0)
+        db, ix = parallel_indexer(scans, 4, engine, at_once=1)
+        ix.run(9)
+        assert sorted(db.saved) == [0, 1, 2, 3]
+
+    def test_no_more_pages_are_drawn_than_are_asked_for_ahead_of_what_is_saved(self, scans, monkeypatch):
+        engine = AtOnceEngine(delay=0.03)
+        db, ix = parallel_indexer(scans, 15, engine, at_once=3)
+        drawn = []
+        real = ocr.render
+
+        def counting(page):
+            drawn.append(len(db.saved))
+            return real(page)
+        monkeypatch.setattr(ocr, 'render', counting)
+        ix.run(9)
+        ahead = [n_drawn - saved for n_drawn, saved in zip(range(1, len(drawn) + 1), drawn)]
+        assert max(ahead) <= 3, f'{max(ahead)} pages were drawn and not saved at once: the memory is more than what was chosen'
+
+    def test_the_result_is_the_same_as_one_at_a_time_what_is_blank_and_what_failed_included(self, scans, tmp_path):
+        kinds = {}
+        for at_once in (1, 4):
+            engine = AtOnceEngine(fail={2, 7}, blank={3, 4, 9}, delay=0.01)
+            work = tmp_path / f'w{at_once}'
+            work.mkdir()
+            db, ix = parallel_indexer(work, 12, engine, at_once=at_once)
+            out = ix.run(9)
+            kinds[at_once] = ({p: (v['state'], v['text'], v['error']) for p, v in sorted(db.saved.items())}, out)
+        assert kinds[1] == kinds[4]
+        states = {p: v[0] for p, v in kinds[4][0].items()}
+        assert states[2] == states[7] == 'failed' and states[3] == states[4] == states[9] == 'blank' and states[0] == 'done'
+
+    def test_the_pages_are_saved_in_order_even_when_a_later_one_is_read_first(self, scans):
+        class Backwards(AtOnceEngine):
+            def recognize(self, image, language, dpi):
+                time.sleep(0.12 if page_of(image) == 0 else 0.0)  # the first page is the slowest
+                return super().recognize(image, language, dpi)
+        engine = Backwards(delay=0)
+        db, ix = parallel_indexer(scans, 6, engine, at_once=3)
+        ix.run(9)
+        order = [p[1] for q, p in db.matching('INSERT INTO ocr_pages')]
+        assert order == list(range(6)), order
+
+    def test_five_failures_in_a_row_stop_it_and_nothing_is_left_running(self, scans):
+        engine = AtOnceEngine(fail=set(range(10)), delay=0.02)
+        db, ix = parallel_indexer(scans, 20, engine, at_once=3)
+        with pytest.raises(RuntimeError, match='5 pages in a row'):
+            ix.run(9)
+        assert engine.inside == 0, 'a page was still being read when the job ended'
+        assert len(db.saved) == 5  # the five that counted are kept as failed, as with one at a time
+        assert all(v['state'] == 'failed' for v in db.saved.values())
+        assert not any(t.name.startswith('ocr-page') for t in threading.enumerate())
+
+    def test_a_good_page_among_the_failures_starts_the_count_again(self, scans):
+        engine = AtOnceEngine(fail={0, 1, 2, 3, 5, 6, 7, 8, 10, 11}, delay=0.01)  # four, one good, four, one good, two
+        db, ix = parallel_indexer(scans, 12, engine, at_once=3)
+        out = ix.run(9)
+        assert out == {7: {'read': 2, 'failed': 10}}
+
+    def test_a_job_that_is_cancelled_keeps_what_it_read_and_nothing_is_left_running(self, scans):
+        engine = AtOnceEngine(delay=0.03)
+        db, ix = parallel_indexer(scans, 20, engine, at_once=3)
+        seen = []
+
+        def checkpoint():
+            seen.append(len(db.saved))
+            if len(db.saved) >= 4:
+                raise Cancelled()
+        with pytest.raises(Cancelled):
+            ix.read_file(7, 'aa', 'pt', 'managed', None, 'scan.pdf', list(range(1, 21)), 'por+eng', False, checkpoint)
+        assert engine.inside == 0
+        assert 4 <= len(db.saved) < 20, len(db.saved)
+        assert not [t for t in threading.enumerate() if t.name.startswith('ocr-page')]
+
+    def test_an_engine_that_is_gone_is_said_and_stops_everything(self, scans):
+        engine = AtOnceEngine(missing_on=4, delay=0.01)
+        db, ix = parallel_indexer(scans, 12, engine, at_once=3)
+        with pytest.raises(EngineMissing):
+            ix.run(9)
+        assert engine.inside == 0
+
+    def test_a_page_that_cannot_be_drawn_is_a_failed_page_not_a_stop(self, scans, monkeypatch):
+        engine = AtOnceEngine(delay=0.01)
+        db, ix = parallel_indexer(scans, 6, engine, at_once=2)
+        real = ocr.render
+
+        def render_or_fail(page):
+            if page.number == 2:
+                raise RuntimeError('bad page')
+            return real(page)
+        monkeypatch.setattr(ocr, 'render', render_or_fail)
+        out = ix.run(9)
+        assert out == {7: {'read': 5, 'failed': 1}}
+        assert db.saved[2]['state'] == 'failed' and 'bad page' in db.saved[2]['error']
+        assert 2 not in engine.order
+
+    def test_the_engine_is_not_given_more_pages_than_there_are(self, scans):
+        engine = AtOnceEngine(delay=0.01)
+        db, ix = parallel_indexer(scans, 2, engine, at_once=8)
+        out = ix.run(9)
+        assert out == {7: {'read': 2, 'failed': 0}} and engine.peak <= 2

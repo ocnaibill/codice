@@ -219,7 +219,8 @@ services:
       CODICE_STORAGE_PATH: /app/storage
       WORKER_JOB_TYPES: ocr
       JOBS_MAX_CONCURRENT: 1
-      # How much it may cost: CPU threads for the engine, seconds for one page, pages of one file.
+      # How much it may cost: CPU threads for the engine, seconds for one page, pages of one file. OCR_THREADS is where it
+      # starts: the owner changes it, and how many pages are read at once, in Administração → Sistema → Desempenho.
       OCR_THREADS: ${OCR_THREADS:-1}
       OCR_PAGE_TIMEOUT: ${OCR_PAGE_TIMEOUT:-180}
       OCR_MAX_PAGES: ${OCR_MAX_PAGES:-3000}

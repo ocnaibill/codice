@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../lib/api', () => ({
-  api: { get: vi.fn(), post: vi.fn() },
+  api: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
 }));
 // The tab asks again while a job runs: quickly here, so the test can watch it end.
 vi.mock('../systemLimits', async (original) => ({ ...(await original()), POLL_MS: 20 }));
@@ -14,12 +14,18 @@ let view;
 const HOUR = 3600 * 1000;
 const ago = (ms) => new Date(Date.now() - ms).toISOString();
 
+const QUIET_PERFORMANCE = {
+  values: { catalogReads: 8, dedupeJobs: 1, ocrPages: 1, ocrThreads: 1 }, defaults: { catalogReads: 8, dedupeJobs: 1, ocrPages: 1, ocrThreads: 1 },
+  overridden: [], limits: { catalogReads: { min: 1, max: 20 }, dedupeJobs: { min: 1, max: 4 }, ocrPages: { min: 1, max: 8 }, ocrThreads: { min: 1, max: 8 } },
+  machine: { cores: 8, memoryBytes: 16 * 1024 ** 3 }, warnings: [], ocr: { reported: false, pages: 0, threads: 0 },
+};
 const OFF = { enabled: false, packages: [], job: null };
 const QUIET = { pending: 0, running: 0, failedRecent: 0, oldestWaiting: null };
 const ROOMY = { freeBytes: 80 * 1024 ** 3, totalBytes: 100 * 1024 ** 3 };
 
 async function open({ last = null, queue = QUIET, storage = ROOMY, health = { status: 'ok', components: { database: 'ok', redis: 'ok' } }, backupError, panel = OFF, isOwner = false } = {}) {
   api.get.mockImplementation(async (url) => {
+    if (url === '/admin/performance') return { data: QUIET_PERFORMANCE };
     if (url === '/healthz') return { data: health };
     if (url === '/admin/backup') {
       if (backupError) throw backupError;

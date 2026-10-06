@@ -12,10 +12,12 @@ administration can tell. A page it cannot read is kept as failed, with the reaso
 What is recognised is not the faithful transcription of the original: the engine, its version and the language it was
 told are recorded with every page.
 """
+import collections
 import json
 import os
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 import fitz  # PyMuPDF
 
@@ -25,6 +27,11 @@ from textindex.store import TextIndexer, resolve
 
 SETTING = 'ocr'
 WORKER_SETTING = 'ocr.worker'
+# What the owner tunes from the administration (internal/performance in the API): how many pages of a file are read at once,
+# and how many cores the engine may use for one. Read at the start of each job, so a change holds from the next one.
+PERFORMANCE_SETTING = 'performance'
+MAX_PAGES_AT_ONCE = 8
+MAX_ENGINE_THREADS = 8
 ENGINE_NAME = 'tesseract'
 DEFAULT_LANGUAGE = 'por+eng'
 
@@ -189,6 +196,9 @@ class OcrIndexer:
         self.engine = engine or Tesseract()
         self.log = log
         self.state, self.error = 'idle', ''
+        # What is in use now (see tuning): the pages read at once, and the cores of the engine for each.
+        self.pages_at_once = 1
+        self.threads = int(getattr(self.engine, 'threads', 1) or 1)
 
     # --- what the owner decided, and what this worker says of itself ---
 
@@ -204,6 +214,29 @@ class OcrIndexer:
         value = value if isinstance(value, dict) else {}
         return value.get('enabled') is True, (value.get('language') or DEFAULT_LANGUAGE)
 
+    def tuning(self):
+        """(pages at once, cores of the engine for each page) the owner chose in the administration, else what the installation
+        starts with (OCR_THREADS, one page at a time). A value that is not a number in its range is as if it was not there."""
+        chosen = {}
+        try:
+            row = self.db.fetchone("SELECT value FROM settings WHERE key = %s", (PERFORMANCE_SETTING,))
+            value = row[0] if row else None
+            if isinstance(value, (str, bytes)):
+                value = json.loads(value)
+            chosen = value if isinstance(value, dict) else {}
+        except (ValueError, TypeError, AttributeError):
+            chosen = {}
+
+        def pick(field, default, most):
+            n = chosen.get(field)
+            return n if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= most else default
+
+        try:
+            starting = max(1, min(MAX_ENGINE_THREADS, int(os.getenv('OCR_THREADS', '1'))))
+        except ValueError:
+            starting = 1
+        return pick('ocrPages', 1, MAX_PAGES_AT_ONCE), pick('ocrThreads', starting, MAX_ENGINE_THREADS)
+
     def heartbeat(self, state=None, error=None):
         """Tells the administration that the engine is here, with what languages, and what it is doing."""
         if state is not None:
@@ -216,7 +249,8 @@ class OcrIndexer:
             state, error = (self.state, self.error) if languages else ('error', 'O motor de OCR não está instalado.')
         except (EngineMissing, subprocess.SubprocessError, OSError) as err:
             languages, version, state, error = [], '', 'error', f'{type(err).__name__}: {err}'[:300]
-        value = json.dumps({'engine': self.engine.name, 'version': version, 'languages': languages, 'state': state, 'error': error})
+        value = json.dumps({'engine': self.engine.name, 'version': version, 'languages': languages, 'state': state, 'error': error,
+                            'pages': self.pages_at_once, 'threads': self.threads})
         self.db.execute("""INSERT INTO settings (key, value) VALUES (%s, %s::jsonb)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""", (WORKER_SETTING, value))
 
@@ -256,6 +290,10 @@ class OcrIndexer:
             self.heartbeat('idle', '')
             return {}
         outcome = {}
+        # What the owner chose holds from this job on; the one that was running when it changed finished as it was.
+        self.pages_at_once, self.threads = self.tuning()
+        if hasattr(self.engine, 'threads'):
+            self.engine.threads = self.threads
         self.heartbeat('working', '')
         try:
             for file_id, sha, language, mode, root, path, without_text in self.db.fetchall(FILES_TO_READ, (work_id,)):
@@ -296,9 +334,7 @@ class OcrIndexer:
             known = {int(page): state for page, state in self.db.fetchall(
                 "SELECT page, state FROM ocr_pages WHERE file_id = %s AND source_sha256 IS NOT DISTINCT FROM %s", (file_id, sha))}
             todo = [n - 1 for n in without_text if n >= 1 and (n - 1 not in known or (retry_failed and known[n - 1] == 'failed'))]
-            for index in todo:
-                checkpoint()
-                state, text, error, dpi = self.read_page(doc, index, lang)
+            for index, (state, text, error, dpi) in self.pages_read(doc, todo, lang, checkpoint):
                 self.db.execute(SAVE_PAGE, (file_id, index, sha, state, text, self.engine.name, version, lang, dpi, error))
                 if state == 'failed':
                     failed += 1
@@ -311,6 +347,59 @@ class OcrIndexer:
         finally:
             doc.close()
         return {'read': read, 'failed': failed}
+
+    def pages_read(self, doc, todo, lang, checkpoint):
+        """Yields (page index, (state, text, error, dpi)) for each page of `todo`, in order, as each is read. One page at a time
+        is how it has always been; with more than one at once (the owner's choice) the pages are drawn here, one after the other
+        (the PDF library is not thread-safe), and handed to the engine, which is a program run for each page and can run
+        several together. At most that many are in the air, so the memory stays what was chosen; the pages are saved by the
+        caller, in order, so a stop or a failure leaves the file as it would have been left one page at a time."""
+        parallel = max(1, self.pages_at_once)
+        if parallel == 1:
+            for index in todo:
+                checkpoint()
+                yield index, self.read_page(doc, index, lang)
+            return
+        pool = ThreadPoolExecutor(max_workers=parallel, thread_name_prefix='ocr-page')
+        in_the_air = collections.deque()
+        pending = iter(todo)
+
+        def fill():
+            while len(in_the_air) < parallel:
+                index = next(pending, None)
+                if index is None:
+                    return
+                checkpoint()
+                try:
+                    image, dpi = render(doc.load_page(index))
+                except (RuntimeError, ValueError) as err:
+                    in_the_air.append((index, ('failed', '', f'{type(err).__name__}: {err}'[:300], None)))
+                    continue
+                in_the_air.append((index, pool.submit(self.recognize_page, image, lang, dpi)))
+
+        try:
+            fill()
+            while in_the_air:
+                index, ahead = in_the_air.popleft()
+                result = ahead if isinstance(ahead, tuple) else ahead.result()
+                yield index, result
+                checkpoint()
+                fill()
+        finally:
+            # Whatever ended it (a stop, a failure, the end), nothing is left running or waiting.
+            pool.shutdown(wait=True, cancel_futures=True)
+
+    def recognize_page(self, image, lang, dpi):
+        """(state, text, error, dpi) of a page that was already drawn: what read_page does with the engine, apart."""
+        try:
+            text = self.engine.recognize(image, lang, dpi)
+        except EngineMissing:
+            raise
+        except (EngineError, RuntimeError, ValueError) as err:
+            return 'failed', '', f'{type(err).__name__}: {err}'[:300], dpi
+        if sum(1 for ch in text if not ch.isspace()) < MIN_TEXT_CHARS:
+            return 'blank', '', None, dpi
+        return 'done', text, None, dpi
 
     def language_of(self, doc, file_id, sha, declared, without_text, default, checkpoint):
         """The language to read the file in, decided once and kept (ocr_files): what was decided for this version of the
@@ -351,11 +440,6 @@ class OcrIndexer:
         try:
             page = doc.load_page(index)
             image, dpi = render(page)
-            text = self.engine.recognize(image, lang, dpi)
-        except EngineMissing:
-            raise
-        except (EngineError, RuntimeError, ValueError) as err:
+        except (RuntimeError, ValueError) as err:
             return 'failed', '', f'{type(err).__name__}: {err}'[:300], dpi
-        if sum(1 for ch in text if not ch.isspace()) < MIN_TEXT_CHARS:
-            return 'blank', '', None, dpi
-        return 'done', text, None, dpi
+        return self.recognize_page(image, lang, dpi)

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -15,44 +16,150 @@ import (
 //
 // At most `limit` requests are inside at once; up to `backlog` more wait, for at most `wait`; the rest, and the ones that
 // waited too long, are answered at once with 503 and Retry-After, instead of hanging. A `limit` of zero or less turns it off.
-// It goes before the authentication, which itself reads the database: a request that waits must not hold a connection.
+// The limit can be changed while it runs (SetLimit): the owner does it from the administration, and it holds from the next
+// request on. It goes before the authentication, which itself reads the database: a request that waits must not hold a
+// connection.
+type DynamicGate struct {
+	mu         sync.Mutex
+	limit      int
+	backlogPer int // places in the line for each one that may be inside
+	fixedBack  int // the line when the gate was made with a limit of zero
+	wait       time.Duration
+	inside     int
+	queue      []*gateWaiter
+}
+
+type gateWaiter struct {
+	ready   chan struct{}
+	granted bool
+}
+
+// NewGate makes the gate. `backlog` is the line for the limit given; when the limit changes the line keeps the same
+// proportion (a limit of 8 with a line of 64 is eight places for each one that may be inside).
+func NewGate(limit, backlog int, wait time.Duration) *DynamicGate {
+	per := 8
+	if limit > 0 && backlog > 0 {
+		per = max(1, backlog/limit)
+	}
+	return &DynamicGate{limit: limit, backlogPer: per, fixedBack: backlog, wait: wait}
+}
+
+// Gate is the middleware of a gate that does not change.
 func Gate(limit, backlog int, wait time.Duration) func(http.Handler) http.Handler {
-	if limit <= 0 {
-		return func(next http.Handler) http.Handler { return next }
+	return NewGate(limit, backlog, wait).Middleware()
+}
+
+// SetLimit changes how many may be inside at once. Raising it lets the ones that wait in at once.
+func (g *DynamicGate) SetLimit(limit int) {
+	g.mu.Lock()
+	g.limit = limit
+	g.dispatch()
+	g.mu.Unlock()
+}
+
+// Limit is how many may be inside at once now (zero or less: no limit).
+func (g *DynamicGate) Limit() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.limit
+}
+
+func (g *DynamicGate) backlog() int {
+	if g.limit > 0 {
+		return g.limit * g.backlogPer
 	}
-	slots := make(chan struct{}, limit)
-	queue := make(chan struct{}, backlog)
-	busy := func(w http.ResponseWriter) {
-		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(wait/time.Second)/4)))
-		http.Error(w, "The server is busy; try again in a moment", http.StatusServiceUnavailable)
+	return g.fixedBack
+}
+
+// dispatch gives the free places to the ones that wait, in order. The caller holds the lock.
+func (g *DynamicGate) dispatch() {
+	for len(g.queue) > 0 && (g.limit <= 0 || g.inside < g.limit) {
+		w := g.queue[0]
+		g.queue = g.queue[1:]
+		w.granted = true
+		g.inside++
+		close(w.ready)
 	}
+}
+
+func (g *DynamicGate) remove(w *gateWaiter) {
+	for i, other := range g.queue {
+		if other == w {
+			g.queue = append(g.queue[:i], g.queue[i+1:]...)
+			return
+		}
+	}
+}
+
+type gateOutcome int
+
+const (
+	gateIn gateOutcome = iota
+	gateBusy
+	gateGone
+)
+
+func (g *DynamicGate) enter(r *http.Request) gateOutcome {
+	g.mu.Lock()
+	if g.limit <= 0 || g.inside < g.limit {
+		g.inside++
+		g.mu.Unlock()
+		return gateIn
+	}
+	if len(g.queue) >= g.backlog() {
+		g.mu.Unlock()
+		return gateBusy
+	}
+	w := &gateWaiter{ready: make(chan struct{})}
+	g.queue = append(g.queue, w)
+	wait := g.wait
+	g.mu.Unlock()
+
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-w.ready:
+		return gateIn
+	case <-timer.C:
+	case <-r.Context().Done():
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if w.granted { // the place came just as the wait ended: it is this request's
+		if r.Context().Err() != nil {
+			g.inside--
+			g.dispatch()
+			return gateGone
+		}
+		return gateIn
+	}
+	g.remove(w)
+	if r.Context().Err() != nil {
+		return gateGone
+	}
+	return gateBusy
+}
+
+func (g *DynamicGate) leave() {
+	g.mu.Lock()
+	g.inside--
+	g.dispatch()
+	g.mu.Unlock()
+}
+
+// Middleware is the gate as a chi middleware.
+func (g *DynamicGate) Middleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			select {
-			case slots <- struct{}{}:
-			default:
-				// No slot: wait in the queue, if there is room in it.
-				select {
-				case queue <- struct{}{}:
-				default:
-					busy(w)
-					return
-				}
-				timer := time.NewTimer(wait)
-				defer timer.Stop()
-				select {
-				case slots <- struct{}{}:
-					<-queue
-				case <-timer.C:
-					<-queue
-					busy(w)
-					return
-				case <-r.Context().Done():
-					<-queue
-					return
-				}
+			switch g.enter(r) {
+			case gateBusy:
+				w.Header().Set("Retry-After", strconv.Itoa(max(1, int(g.wait/time.Second)/4)))
+				http.Error(w, "The server is busy; try again in a moment", http.StatusServiceUnavailable)
+				return
+			case gateGone:
+				return
 			}
-			defer func() { <-slots }()
+			defer g.leave()
 			next.ServeHTTP(w, r)
 		})
 	}

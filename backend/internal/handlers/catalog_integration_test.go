@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/performance"
 	"github.com/ocnaibill/codice/backend/internal/storage"
 	"github.com/ocnaibill/codice/backend/internal/testdb"
 )
@@ -39,6 +40,7 @@ type catalogStack struct {
 	db      *sql.DB
 	router  http.Handler
 	storage string
+	tuning  *performance.Live
 }
 
 func newCatalogStack(t *testing.T) *catalogStack {
@@ -97,6 +99,10 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Post("/admin/works/{id}/ocr/retry", ocrAdmin.Retry)
 	r.Post("/admin/files/{fileId}/ocr/language", ocrAdmin.SetLanguage)
 	ocrSettings := &OCRSettingsHandler{DB: db}
+	tuning := performance.NewLive(performance.Defaults(8))
+	perf := &PerformanceHandler{DB: db, Defaults: performance.Defaults(8), Machine: performance.Machine{Cores: 8, MemoryBytes: 16 << 30}, Live: tuning}
+	r.Get("/admin/performance", perf.Get)
+	r.Put("/admin/performance", perf.Set)
 	r.Get("/admin/ocr/settings", ocrSettings.Get)
 	r.Put("/admin/ocr/settings", ocrSettings.Set)
 	dup := &DuplicatesHandler{DB: db}
@@ -184,7 +190,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/opds/recent", opds.RecentFeed)
 	r.Get("/opds/search", opds.SearchFeed)
 
-	return &catalogStack{t: t, db: db, router: r, storage: storageDir}
+	return &catalogStack{t: t, db: db, router: r, storage: storageDir, tuning: tuning}
 }
 
 // identityFromHeaders stands in for the authentication middleware in tests.
