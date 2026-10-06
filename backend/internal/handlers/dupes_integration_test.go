@@ -85,6 +85,58 @@ func TestDuplicatesAPI_ReviewDismissAndLink(t *testing.T) {
 	}
 }
 
+func TestDuplicatesAPI_ListsInPagesWithTheTotal(t *testing.T) {
+	s := newCatalogStack(t)
+	for i := 0; i < 5; i++ {
+		a := s.addWork(fmt.Sprintf("Livro %d", i), "Ana", fmt.Sprintf("a%d.epub", i), "epub")
+		b := s.addWork(fmt.Sprintf("Livro %d", i), "Ana", fmt.Sprintf("b%d.pdf", i), "pdf")
+		s.exec(`INSERT INTO duplicate_candidates (work_a, work_b, reason) VALUES ($1, $2, 'title_author')`, a, b)
+	}
+	type page struct {
+		Data  []struct{ ID int64 }
+		Total int
+		More  bool
+	}
+	get := func(query string) (page, int) {
+		var p page
+		rec := s.do(admin, "GET", "/admin/duplicates"+query, "")
+		json.Unmarshal(rec.Body.Bytes(), &p)
+		return p, rec.Code
+	}
+
+	first, code := get("?limit=2")
+	if code != 200 || len(first.Data) != 2 || first.Total != 5 || !first.More {
+		t.Fatalf("first = %d %+v", code, first)
+	}
+	second, _ := get(fmt.Sprintf("?limit=2&after=%d", first.Data[1].ID))
+	if len(second.Data) != 2 || second.Data[0].ID <= first.Data[1].ID || !second.More {
+		t.Fatalf("second = %+v", second)
+	}
+	last, _ := get(fmt.Sprintf("?limit=2&after=%d", second.Data[1].ID))
+	if len(last.Data) != 1 || last.More || last.Total != 5 {
+		t.Fatalf("last = %+v", last)
+	}
+
+	// Without a limit the answer is a page, not the whole list; nonsense falls back to the defaults.
+	for _, query := range []string{"", "?limit=0", "?limit=abc&after=-4", "?limit=-1"} {
+		if p, code := get(query); code != 200 || len(p.Data) != 5 || p.More {
+			t.Errorf("%q = %d %+v", query, code, p)
+		}
+	}
+	// The page has a ceiling.
+	a := s.addWork("Base", "Ana", "base.epub", "epub")
+	for i := 0; i < duplicatesMaxPage; i++ {
+		s.exec(`INSERT INTO duplicate_candidates (work_a, work_b, reason) VALUES ($1, $2, 'content')`,
+			a, s.addWork(fmt.Sprintf("Outro %d", i), "Ana", fmt.Sprintf("o%d.pdf", i), "pdf"))
+	}
+	if p, _ := get("?limit=100000"); len(p.Data) != duplicatesMaxPage || !p.More || p.Total != 5+duplicatesMaxPage {
+		t.Errorf("limit is not capped: %d rows, more=%v, total=%d", len(p.Data), p.More, p.Total)
+	}
+	if p, _ := get(""); len(p.Data) != duplicatesPage || !p.More {
+		t.Errorf("default page: %d rows, more=%v", len(p.Data), p.More)
+	}
+}
+
 func TestOCRListing_ReportsPagesWithoutText(t *testing.T) {
 	s := newCatalogStack(t)
 	scanned := s.addWork("Escaneado", "Ana", "e.pdf", "pdf")

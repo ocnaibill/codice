@@ -19,16 +19,30 @@ type DuplicatesHandler struct {
 	DB *sql.DB
 }
 
-// List returns the pairs waiting for a decision.
+const (
+	duplicatesPage    = 50  // pairs in a page when the caller does not say
+	duplicatesMaxPage = 200 // the most a caller may ask for at once
+)
+
+// List returns a page of the pairs waiting for a decision, with how many wait in all. `limit` is the size of the page and
+// `after` the id of the last pair already seen; the answer says `more` when there is a next page.
 func (h *DuplicatesHandler) List(w http.ResponseWriter, r *http.Request) {
-	list, err := dupes.ListPending(r.Context(), h.DB)
+	q := r.URL.Query()
+	limit, after := duplicatesPage, int64(0)
+	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 {
+		limit = min(v, duplicatesMaxPage)
+	}
+	if v, err := strconv.ParseInt(q.Get("after"), 10, 64); err == nil && v > 0 {
+		after = v
+	}
+	list, err := dupes.ListPending(r.Context(), h.DB, after, limit)
 	if err != nil {
 		log.Println("Error listing duplicates:", err)
 		http.Error(w, "Error listing possible duplicates", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"data": list})
+	json.NewEncoder(w).Encode(list)
 }
 
 func candidateID(r *http.Request) (int64, bool) {

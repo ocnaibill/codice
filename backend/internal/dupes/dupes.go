@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/audit"
 	"github.com/ocnaibill/codice/backend/internal/people"
 	"github.com/ocnaibill/codice/backend/internal/versions"
@@ -230,15 +231,32 @@ type Summary struct {
 	ISBN     string   `json:"isbn,omitempty"`
 }
 
-// ListPending returns the pairs waiting for a decision, both works still active.
-func ListPending(ctx context.Context, db *sql.DB) ([]Candidate, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT d.id, d.reason, d.work_a, d.work_b, d.evidence FROM duplicate_candidates d
+// Page is one slice of the pairs waiting for a decision.
+type Page struct {
+	Data []Candidate `json:"data"`
+	// Total is how many pairs wait in all, not only in this page.
+	Total int `json:"total"`
+	// More says there are pairs after this page: ask again with After set to the id of the last one.
+	More bool `json:"more"`
+}
+
+// ListPending returns up to limit of the pairs waiting for a decision, both works still active, in id order, starting
+// after the pair with id `after` (0 for the first page). The summaries of a page are read in two queries, not two per pair.
+func ListPending(ctx context.Context, db *sql.DB, after int64, limit int) (Page, error) {
+	page := Page{Data: []Candidate{}}
+	const pending = `
+		FROM duplicate_candidates d
 		JOIN works a ON a.id = d.work_a AND a.retired_at IS NULL
 		JOIN works b ON b.id = d.work_b AND b.retired_at IS NULL
-		WHERE d.state = 'pending' ORDER BY d.id`)
+		WHERE d.state = 'pending'`
+	if err := db.QueryRowContext(ctx, `SELECT count(*)`+pending).Scan(&page.Total); err != nil {
+		return page, err
+	}
+	rows, err := db.QueryContext(ctx,
+		`SELECT d.id, d.reason, d.work_a, d.work_b, d.evidence`+pending+` AND d.id > $1 ORDER BY d.id LIMIT $2`,
+		after, limit+1) // one more than asked, to know whether there is a next page
 	if err != nil {
-		return nil, err
+		return page, err
 	}
 	type pair struct {
 		id       int64
@@ -251,51 +269,78 @@ func ListPending(ctx context.Context, db *sql.DB) ([]Candidate, error) {
 		var p pair
 		if err := rows.Scan(&p.id, &p.reason, &p.a, &p.b, &p.evidence); err != nil {
 			rows.Close()
-			return nil, err
+			return page, err
 		}
 		pairs = append(pairs, p)
 	}
 	rows.Close()
-	out := []Candidate{}
-	for _, p := range pairs {
-		a, err := summary(ctx, db, p.a)
-		if err != nil {
-			return nil, err
-		}
-		b, err := summary(ctx, db, p.b)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, Candidate{ID: p.id, Reason: p.reason, A: a, B: b, Evidence: json.RawMessage(p.evidence)})
+	if err := rows.Err(); err != nil {
+		return page, err
 	}
-	return out, nil
+	if len(pairs) > limit {
+		pairs, page.More = pairs[:limit], true
+	}
+	ids := make([]int64, 0, 2*len(pairs))
+	for _, p := range pairs {
+		ids = append(ids, int64(p.a), int64(p.b))
+	}
+	sums, err := summaries(ctx, db, ids)
+	if err != nil {
+		return page, err
+	}
+	for _, p := range pairs {
+		page.Data = append(page.Data, Candidate{ID: p.id, Reason: p.reason, A: sums[p.a], B: sums[p.b], Evidence: json.RawMessage(p.evidence)})
+	}
+	return page, nil
 }
 
-func summary(ctx context.Context, db *sql.DB, id int) (Summary, error) {
-	s := Summary{ID: id, Formats: []string{}}
-	err := db.QueryRowContext(ctx, `
-		SELECT w.original_title,
+// summaries describes the works with these ids, two queries for all of them.
+func summaries(ctx context.Context, db *sql.DB, ids []int64) (map[int]Summary, error) {
+	out := make(map[int]Summary, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT w.id, w.original_title,
 		       COALESCE((SELECT p.name FROM work_contributors c JOIN person p ON p.id = c.person_id
 		                 WHERE c.work_id = w.id AND c.role = 'author' ORDER BY c.position, p.name LIMIT 1), ''),
 		       COALESCE((SELECT e.language FROM editions e WHERE e.work_id = w.id AND e.is_primary), ''),
 		       COALESCE((SELECT e.isbn FROM editions e WHERE e.work_id = w.id AND e.is_primary), '')
-		FROM works w WHERE w.id = $1`, id).Scan(&s.Title, &s.Author, &s.Language, &s.ISBN)
+		FROM works w WHERE w.id = ANY($1)`, pq.Array(ids))
 	if err != nil {
-		return s, err
+		return nil, err
 	}
-	rows, err := db.QueryContext(ctx, `
-		SELECT DISTINCT COALESCE(f.format, '') FROM files f JOIN editions e ON e.id = f.edition_id WHERE e.work_id = $1 ORDER BY 1`, id)
+	for rows.Next() {
+		s := Summary{Formats: []string{}}
+		if err := rows.Scan(&s.ID, &s.Title, &s.Author, &s.Language, &s.ISBN); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out[s.ID] = s
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows, err = db.QueryContext(ctx, `
+		SELECT DISTINCT e.work_id, COALESCE(f.format, '') FROM files f JOIN editions e ON e.id = f.edition_id
+		WHERE e.work_id = ANY($1) ORDER BY 1, 2`, pq.Array(ids))
 	if err != nil {
-		return s, err
+		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
+		var id int
 		var f string
-		if rows.Scan(&f) == nil && f != "" {
+		if err := rows.Scan(&id, &f); err != nil {
+			return nil, err
+		}
+		if s, ok := out[id]; ok && f != "" {
 			s.Formats = append(s.Formats, f)
+			out[id] = s
 		}
 	}
-	return s, rows.Err()
+	return out, rows.Err()
 }
 
 // Errors of a decision.

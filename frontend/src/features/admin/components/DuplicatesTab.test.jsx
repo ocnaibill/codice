@@ -88,4 +88,33 @@ describe('DuplicatesTab', () => {
     expect(api.post).toHaveBeenCalledWith('/admin/duplicates/scan');
   });
 
+  it('says how many suggestions wait, and has no button to see more when it all fits', async () => {
+    await open();
+    expect(view.text()).toContain('1 sugestão.');
+    expect(view.buttonMatching(/Mostrar mais/)).toBeFalsy();
+  });
+
+  it('loads the next page, from the last pair it has, when asked', async () => {
+    const second = { ...pair, id: 9, a: { ...pair.a, id: 20, title: 'Neuromancer' }, b: { ...pair.b, id: 21, title: 'Neuromancer (PDF)' } };
+    api.get.mockImplementation(async (url, config) => {
+      if (url === '/admin/duplicates') {
+        return config?.params?.after === 3
+          ? { data: { data: [second], total: 3, more: false } }
+          : { data: { data: [{ ...pair, id: 1 }, pair], total: 3, more: true } };
+      }
+      if (url === '/admin/people/merges') return { data: { data: [] } };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    view = await mount(<DuplicatesTab />);
+    expect(view.text()).toContain('Mostrando 2 de 3 sugestões.');
+    expect(view.text()).not.toContain('Neuromancer');
+    expect(api.get).not.toHaveBeenCalledWith('/admin/duplicates', { params: { after: 1 } });
+
+    await view.click(view.button('Mostrar mais'));
+    expect(api.get).toHaveBeenCalledWith('/admin/duplicates', { params: { after: 3 } });
+    expect(view.text()).toContain('Neuromancer (PDF)');
+    expect(view.text()).toContain('Duna (PDF)');
+    expect(view.text()).toContain('3 sugestões.');
+    expect(view.buttonMatching(/Mostrar mais/)).toBeFalsy();
+  });
 });
