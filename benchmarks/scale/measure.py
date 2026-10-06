@@ -2,7 +2,7 @@
 """Measure how a Códice instance answers with a large library.
 
     python3 benchmarks/scale/measure.py --base http://127.0.0.1:18186 --token-file TOKEN \
-        --manifest DIR/manifest.jsonl [--label 1k] [--json out.json]
+        [--manifest DIR/manifest.jsonl] [--label 1k] [--json out.json]
 
 Standard library only. Reads what the screens read (the list, the search, the sidebar counts, the work
 sheet, the OPDS feeds, the covers, the administration lists) and times each: one request at a time
@@ -10,7 +10,10 @@ sheet, the OPDS feeds, the covers, the administration lists) and times each: one
 sign-in, which it times a few times (the login limit is 10 a minute per client, so it stays under).
 
 The manifest is the one written by testdata/generate_scale.py; it tells which marker word to search
-for (a word that is in exactly one work) and which titles exist.
+for (a word that is in exactly one work) and which titles exist. WITHOUT a manifest (a real library) the
+search by a word in the title uses a word of a title the library itself returns, the search for a marker
+is left out, and nothing printed names a work: the output is only times, sizes and counts, so it can be
+shared.
 """
 import argparse
 import json
@@ -85,7 +88,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True)
     ap.add_argument("--token-file", required=True)
-    ap.add_argument("--manifest", required=True)
+    ap.add_argument("--manifest")
     ap.add_argument("--label", default="")
     ap.add_argument("--json")
     ap.add_argument("--login-user")
@@ -94,14 +97,20 @@ def main():
 
     token = open(a.token_file).read().strip()
     c = Client(a.base, token)
-    manifest = [json.loads(l) for l in open(a.manifest, encoding="utf-8")]
-    texty = [m for m in manifest if m["format"] in ("epub", "txt", "pdf")]
-    marker = texty[len(texty) // 3]["marker"]
-    word = manifest[len(manifest) // 2]["title"].split()[0].lower()
-
     _, _, body = c.get("/works?limit=50&page=1")
     first = json.loads(body)
     total, pages = first["total"], first["totalPages"]
+    if a.manifest:
+        manifest = [json.loads(l) for l in open(a.manifest, encoding="utf-8")]
+        texty = [m for m in manifest if m["format"] in ("epub", "txt", "pdf")]
+        marker = texty[len(texty) // 3]["marker"]
+        word = manifest[len(manifest) // 2]["title"].split()[0].lower()
+    else:
+        # A real library: a word that one of its own titles has (the first long one, from a title in the middle of the page).
+        marker = None
+        titles = [w["title"] for w in first["data"]]
+        words = [x.lower() for t in titles[len(titles) // 2:] + titles for x in t.split() if len(x) >= 4 and x.isalpha()]
+        word = words[0] if words else "livro"
     cover = next((w["coverUrl"] for w in first["data"] if w.get("coverUrl")), None)
     work_id = first["data"][0]["id"]
     comics_page = "/works?limit=50&formatGroup=comics"
@@ -117,7 +126,6 @@ def main():
         ("work sheet", f"/works/{work_id}"),
         ("search: title word (many hits)", f"/search?q={urllib.parse.quote(word)}"),
         ("search: content, common word", "/search?q=silêncio".replace("ê", "%C3%AA")),
-        ("search: content, one-work marker", f"/search?q={marker}"),
         ("search: no hit", "/search?q=xyzxyzxyz"),
         ("OPDS: recent (50)", "/opds/v1.2/recent"),
         ("OPDS: search", f"/opds/v1.2/search?q={urllib.parse.quote(word)}"),
@@ -127,6 +135,8 @@ def main():
         ("admin: people to merge", "/admin/people/merges"),
         ("notes", "/notes?limit=50"),
     ]
+    if marker:
+        cases.insert(10, ("search: content, one-work marker", f"/search?q={marker}"))
     if cover:
         cases.append(("cover (one image)", cover))
 
@@ -144,7 +154,7 @@ def main():
     print("|---|---:|---:|---:|---:|---:|")
     mixes = {
         "the list (pages 1, middle, last)": ["/works?limit=50&page=1", f"/works?limit=50&page={pages // 2}", f"/works?limit=50&page={pages}"],
-        "the search (title, common word, marker)": [cases[8][1], cases[9][1], cases[10][1]],
+        "the search (title, common word, no hit)": [cases[8][1], cases[9][1], dict(cases)["search: no hit"]],
         "what opening the app asks": ["/works?limit=50&page=1", "/stats", "/favorites", "/auth/me"],
     }
     if cover:
