@@ -121,7 +121,7 @@ Em **Administração → Sistema → Desempenho** o **dono** (os administradores
 
 A tela mostra os núcleos e a memória da máquina e **avisa** quando o que você pediu passa do que ela tem (páginas do OCR vezes núcleos acima dos núcleos, ou o OCR sozinho acima de metade da memória, a ~340 MiB por página). **Medido** com um PDF escaneado de 18 páginas numa máquina de 10 núcleos: 8,4 s com 1 página por vez e **2,9 s com 4** (2,9 vezes mais rápido). **Como escolher:** suba um valor de cada vez, rode `scripts/relatorio-rodada.sh` e olhe o tempo dos trabalhos, a CPU e a memória; se as telas ficarem lentas, volte. "Voltar ao padrão" devolve o valor que a instalação traz (`.env`).
 
-**O que ainda não dá para ajustar:** a ingestão e o texto do worker e os embeddings correm **um trabalho de cada vez**, e subir o `JOBS_MAX_CONCURRENT` num contêiner só **não muda isso** (esse número é só um teto por conjunto de tipos entre contêineres; um processo executa um trabalho por vez). Para esses dois seria preciso o worker rodar mais de um trabalho junto, e isso fica para depois de medir se ajudaria (os embeddings já usam vários núcleos por trabalho).
+**O que ainda não dá para ajustar:** a ingestão e o texto do worker e os embeddings correm **um trabalho de cada vez**, e subir o `JOBS_MAX_CONCURRENT` num contêiner só **não muda isso** (esse número é só um teto por conjunto de tipos entre contêineres; um processo executa um trabalho por vez). Rodar mais de um trabalho junto exigiria threads com conexões próprias, e **ficou decidido deixá-los como são**: um trabalho de cada vez (os embeddings, aliás, já usam vários núcleos por trabalho).
 
 ## 10. Quando algo dá errado
 
