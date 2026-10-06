@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/lib/pq"
@@ -46,10 +47,13 @@ func Permanent(err error) error {
 // process does file-system work (organizing, scanning, transferring) with the
 // same leases, retries and visibility as any other job.
 type Runner struct {
-	DB           *sql.DB
-	Owner        string
-	Types        []string
-	MaxRunning   int
+	DB         *sql.DB
+	Owner      string
+	Types      []string
+	MaxRunning int
+	// MaxRunningFn, when set, says how many may run at once at the moment of each claim (it wins over MaxRunning). It is what
+	// lets the owner change the number while the process runs.
+	MaxRunningFn func() int
 	LeaseSeconds int
 	Handlers     map[string]Handler
 	Heartbeat    time.Duration // 0 means a quarter of the lease
@@ -59,6 +63,13 @@ type Runner struct {
 func NewOwnerName(prefix string) string {
 	host, _ := os.Hostname()
 	return fmt.Sprintf("%s-%s-%d-%d", prefix, host, os.Getpid(), time.Now().UnixNano()%1_000_000)
+}
+
+func (r *Runner) maxRunning() int {
+	if r.MaxRunningFn != nil {
+		return r.MaxRunningFn()
+	}
+	return r.MaxRunning
 }
 
 func (r *Runner) heartbeatEvery() time.Duration {
@@ -74,7 +85,7 @@ func (r *Runner) RunOnce(ctx context.Context) (bool, error) {
 	var workID sql.NullInt64
 	err := r.DB.QueryRowContext(ctx,
 		`SELECT id, type, work_id, payload, attempts FROM jobs_claim($1, $2, $3, $4)`,
-		r.Owner, r.LeaseSeconds, r.MaxRunning, pq.Array(r.Types)).Scan(&j.ID, &j.Type, &workID, &j.Payload, &j.Attempts)
+		r.Owner, r.LeaseSeconds, r.maxRunning(), pq.Array(r.Types)).Scan(&j.ID, &j.Type, &workID, &j.Payload, &j.Attempts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -177,6 +188,59 @@ func (r *Runner) Loop(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-time.After(interval):
+		}
+	}
+}
+
+// LoopPool runs as many loops of the runner as desired() says, and follows it while it runs: more are started within a
+// couple of seconds when the number goes up; when it goes down the extra loops end after the job they are in (a job that
+// is running is never cut: it finishes as it was). It returns when ctx is cancelled. Each loop takes its jobs through the same
+// claim as any worker, and the claim itself keeps the number of running jobs of the types at or below desired(), so the
+// pool cannot exceed it even for a moment.
+func (r *Runner) LoopPool(ctx context.Context, interval time.Duration, desired func() int) {
+	var mu sync.Mutex
+	running := map[int]bool{}
+	loop := func(index int) {
+		defer func() {
+			mu.Lock()
+			delete(running, index)
+			mu.Unlock()
+		}()
+		for ctx.Err() == nil {
+			if index >= desired() {
+				return
+			}
+			took, err := r.RunOnce(ctx)
+			if err != nil {
+				log.Printf("jobs: queue unreachable: %v", err)
+			}
+			if took && err == nil {
+				continue
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(interval):
+			}
+		}
+	}
+	start := func() {
+		want := desired()
+		mu.Lock()
+		defer mu.Unlock()
+		for i := 0; i < want; i++ {
+			if !running[i] {
+				running[i] = true
+				go loop(i)
+			}
+		}
+	}
+	for {
+		start()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
 		}
 	}
 }

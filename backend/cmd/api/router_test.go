@@ -86,6 +86,7 @@ type route struct{ method, path string }
 // Routes the specification reserves to owner and admin (DEC-003, RF-007).
 var staffRoutes = []route{
 	{"GET", "/admin/logins"},
+	{"GET", "/admin/performance"},
 	{"GET", "/users/" + someUUID + "/sessions"},
 	{"DELETE", "/users/" + someUUID + "/sessions"},
 	{"DELETE", "/users/" + someUUID + "/sessions/" + someUUID},
@@ -145,6 +146,7 @@ var staffRoutes = []route{
 // Routes reserved to the owner alone (DEC-056).
 var ownerRoutes = []route{
 	{"PUT", "/admin/logins/settings"},
+	{"PUT", "/admin/performance"},
 	{"PUT", "/admin/ldap/policy"},
 	{"POST", "/ownership/transfer"},
 	{"PUT", "/admin/trash/policy"},

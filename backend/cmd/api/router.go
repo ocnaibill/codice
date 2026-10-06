@@ -50,6 +50,8 @@ type routerDeps struct {
 	// CatalogGate limits how many heavy reads of the catalog (the list, the counters, the search, the favorites) run at once;
 	// nil is no limit. See appMiddleware.Gate.
 	CatalogGate func(http.Handler) http.Handler
+	// Performance is the owner's tuning (the "Desempenho" part of the System tab).
+	Performance *handlers.PerformanceHandler
 	// Optional overrides, so route tests can run without a database.
 	FileLookup  handlers.FileLookup
 	CoverLookup handlers.FileLookup
@@ -303,6 +305,12 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/admin/files/{fileId}/ocr/language", ocrAdmin.SetLanguage)
 	r.With(owner).Get("/admin/ocr/settings", ocrSettings.Get)
 	r.With(owner).Put("/admin/ocr/settings", ocrSettings.Set)
+	performanceHandler := d.Performance
+	if performanceHandler == nil {
+		performanceHandler = &handlers.PerformanceHandler{DB: db}
+	}
+	r.With(staff).Get("/admin/performance", performanceHandler.Get)
+	r.With(owner).Put("/admin/performance", performanceHandler.Set)
 	r.With(staff).Get("/invitations", invitesHandler.List)
 	r.With(staff).Post("/invitations", invitesHandler.Create)
 	r.With(staff).Delete("/invitations/{id}", invitesHandler.Revoke)

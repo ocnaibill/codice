@@ -258,3 +258,23 @@ export function useSetLoginRetention() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'logins'] }),
   });
 }
+
+/** What the owner may tune without a restart (Sistema → Desempenho): the values in use, the defaults, the limits of this machine,
+ *  and what the OCR service says it uses. Asked again every few seconds while the tab is open, so a change made elsewhere shows. */
+export function usePerformance() {
+  return useQuery({
+    queryKey: ['admin', 'performance'],
+    queryFn: async () => (await api.get('/admin/performance')).data,
+    staleTime: 0,
+    refetchInterval: 10000,
+  });
+}
+
+/** The owner changes some of the values; a null goes back to the default of the installation. */
+export function useSetPerformance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (changes) => (await api.put('/admin/performance', changes)).data,
+    onSuccess: (data) => queryClient.setQueryData(['admin', 'performance'], data),
+  });
+}

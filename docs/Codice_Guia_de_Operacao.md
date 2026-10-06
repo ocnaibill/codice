@@ -106,7 +106,22 @@ Ao subir, a API registra se o LDAP está ligado, em quantos proxies confia e o e
 
 ### Durante uma importação grande
 
-Enquanto o worker lê milhares de arquivos, **cada aba aberta** do app vê as obras mudando de estado. O app agrupa o que o servidor avisa (uma atualização imediata e, depois, no máximo uma a cada 4 segundos por aba; abas escondidas não pedem nada, e as notificações viram "N obras prontas"), e o servidor **limita quantas leituras pesadas do catálogo** (a lista, as contagens, a busca, os favoritos) correm ao mesmo tempo: o excesso espera um pouco e, se a espera for longa, recebe "ocupado" na hora, em vez de segurar o banco. Assim a entrada, a saúde e o ponto de leitura nunca ficam atrás da fila. **`CODICE_CATALOG_CONCURRENCY`** muda o limite (padrão 8, de um conjunto de 25 conexões; `0` desliga). Numa máquina muito mais rápida pode subir; numa mais fraca, descer. Uma tela que mostre "o servidor está ocupado" durante a importação é esperada e passa sozinha.
+Enquanto o worker lê milhares de arquivos, **cada aba aberta** do app vê as obras mudando de estado. O app agrupa o que o servidor avisa (uma atualização imediata e, depois, no máximo uma a cada 4 segundos por aba; abas escondidas não pedem nada, e as notificações viram "N obras prontas"), e o servidor **limita quantas leituras pesadas do catálogo** (a lista, as contagens, a busca, os favoritos) correm ao mesmo tempo: o excesso espera um pouco e, se a espera for longa, recebe "ocupado" na hora, em vez de segurar o banco. Assim a entrada, a saúde e o ponto de leitura nunca ficam atrás da fila. O limite é ajustado em **Administração → Sistema → Desempenho** (veja abaixo); `CODICE_CATALOG_CONCURRENCY` é o valor com que a instalação começa (padrão 8, de um conjunto de 25 conexões; `0` desliga, e `0` é **sem limite nenhum**, não "o máximo que a máquina aguenta"). Numa máquina muito mais rápida pode subir; numa mais fraca, descer. Uma tela que mostre "o servidor está ocupado" durante a importação é esperada e passa sozinha.
+
+### Ajustar o desempenho sem reiniciar
+
+Em **Administração → Sistema → Desempenho** o **dono** (os administradores veem os valores e não editam) escolhe quanto o servidor faz ao mesmo tempo. **Vale na hora, sem editar o `.env` e sem reiniciar nada**; o que já está rodando termina como estava, e a mudança vale a partir do **próximo** trabalho (no OCR, do próximo PDF). Cada mudança fica no registro de auditoria.
+
+| Ajuste | O que faz | Padrão | Máximo |
+|---|---|---|---|
+| Leituras pesadas das telas | quantas listas, contagens e buscas o servidor monta juntas; o excesso espera e, se a fila encher, recebe "ocupado" | 8 | 20 |
+| Comparações de duplicatas ao mesmo tempo | quantas obras o servidor compara por vez; é trabalho do banco | 1 | 4 (ou os núcleos) |
+| Páginas lidas ao mesmo tempo pelo OCR | quantas páginas de um PDF escaneado o OCR lê juntas; é o que mais encurta a fila do OCR | 1 | 8 (ou os núcleos) |
+| Núcleos por página do OCR | quantos núcleos o motor usa em uma página | 1 | 8 (ou os núcleos) |
+
+A tela mostra os núcleos e a memória da máquina e **avisa** quando o que você pediu passa do que ela tem (páginas do OCR vezes núcleos acima dos núcleos, ou o OCR sozinho acima de metade da memória, a ~340 MiB por página). **Medido** com um PDF escaneado de 18 páginas numa máquina de 10 núcleos: 8,4 s com 1 página por vez e **2,9 s com 4** (2,9 vezes mais rápido). **Como escolher:** suba um valor de cada vez, rode `scripts/relatorio-rodada.sh` e olhe o tempo dos trabalhos, a CPU e a memória; se as telas ficarem lentas, volte. "Voltar ao padrão" devolve o valor que a instalação traz (`.env`).
+
+**O que ainda não dá para ajustar:** a ingestão e o texto do worker e os embeddings correm **um trabalho de cada vez**, e subir o `JOBS_MAX_CONCURRENT` num contêiner só **não muda isso** (esse número é só um teto por conjunto de tipos entre contêineres; um processo executa um trabalho por vez). Para esses dois seria preciso o worker rodar mais de um trabalho junto, e isso fica para depois de medir se ajudaria (os embeddings já usam vários núcleos por trabalho).
 
 ## 10. Quando algo dá errado
 

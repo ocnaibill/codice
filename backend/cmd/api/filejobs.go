@@ -18,6 +18,9 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/storage"
 )
 
+// jobDedupe is the job that compares works to propose possible duplicates; it has a runner of its own (see main).
+const jobDedupe = "dedupe"
+
 // fileJobHandlers are the jobs that touch the file system, run inside the API
 // process through the same queue as every other job.
 func fileJobHandlers(db *sql.DB, mover *storage.Mover, panel backup.Panel, exports *handlers.DataExportHandler) map[string]jobs.Handler {
@@ -44,7 +47,7 @@ func fileJobHandlers(db *sql.DB, mover *storage.Mover, panel backup.Panel, expor
 			return err
 		},
 		// Look for works that may be the same book, and people that may be the same person. It only proposes.
-		"dedupe": func(ctx context.Context, j jobs.Claimed) error {
+		jobDedupe: func(ctx context.Context, j jobs.Claimed) error {
 			var err error
 			if j.WorkID != nil {
 				_, err = dupes.Detect(ctx, db, *j.WorkID)
