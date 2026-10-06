@@ -96,10 +96,40 @@ describe('what the server says of a work, on screen', () => {
   });
 
   it('shows one notice per work: a failure takes the place of the ready that came before', async () => {
-    await say({ type: 'WORK_READY', work_id: 7, title: 'Duna' });
-    await say({ type: 'WORK_ERROR', work_id: 7, error: 'x' });
-    expect(document.body.querySelector('[aria-label="Avisos"]').children).toHaveLength(1);
-    expect(view.text()).toContain('Não foi possível');
+    vi.useFakeTimers();
+    try {
+      await say({ type: 'WORK_READY', work_id: 7, title: 'Duna' }); // said at once
+      await say({ type: 'WORK_ERROR', work_id: 7, error: 'x' }); // gathered: said at the end of the window
+      await act(async () => { vi.advanceTimersByTime(4100); });
+      expect(document.body.querySelector('[aria-label="Avisos"]').children).toHaveLength(1);
+      expect(view.text()).toContain('Não foi possível');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refreshes the library once for a burst of messages, and once more at the end, not once for each', async () => {
+    vi.useFakeTimers();
+    try {
+      for (let i = 1; i <= 30; i += 1) await say({ type: i % 2 ? 'WORK_ANALYZING' : 'WORK_READY', work_id: i, title: `Obra ${i}` });
+      expect(refreshLibrary).toHaveBeenCalledTimes(1);
+      await act(async () => { vi.advanceTimersByTime(4100); });
+      expect(refreshLibrary).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says many works that are ready as one notice with the count, not one for each', async () => {
+    vi.useFakeTimers();
+    try {
+      for (let i = 1; i <= 12; i += 1) await say({ type: 'WORK_READY', work_id: i, title: `Obra ${i}` });
+      await act(async () => { vi.advanceTimersByTime(4100); });
+      expect(document.body.querySelector('[aria-label="Avisos"]').children.length).toBeLessThanOrEqual(3);
+      expect(view.text()).toContain('11 obras ficaram prontas.');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('survives a message that is not JSON', async () => {

@@ -25,15 +25,9 @@ import { ResetPassword } from './features/auth/components/ResetPassword';
 import { AcceptInvite } from './features/auth/components/AcceptInvite';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
 import { refreshLibrary } from './lib/refreshLibrary';
+import { createLibraryEvents } from './lib/libraryEvents';
 import { ToastRegion } from './components/ui/ToastRegion';
 import { useToasts } from './components/ui/toast';
-import { noticeForWorkEvent } from './features/library/workNotice';
-
-// What the server says of a work (ready, or failed) becomes a notice, with a way to open the work.
-function showWorkNotice(event) {
-  const notice = noticeForWorkEvent(event, useGlobalStore.getState().openWork);
-  if (notice) useToasts.getState().show(notice);
-}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -158,6 +152,13 @@ function App() {
     let socket = null;
     let reconnectTimeout = null;
     let isCancelled = false;
+    // What the server says of the works it processes: gathered, so that an import does not make every tab refresh the home
+    // at each message (see lib/libraryEvents.js).
+    const libraryEvents = createLibraryEvents({
+      refresh: () => refreshLibrary(queryClient),
+      notify: (notice) => useToasts.getState().show(notice),
+      openWork: (id) => useGlobalStore.getState().openWork(id),
+    });
 
     const connect = async () => {
       try {
@@ -172,19 +173,7 @@ function App() {
 
         socket.onmessage = (event) => {
           try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'WORK_READY') {
-              console.log(`🎉 Book processing completed: "${data.title}"`);
-              refreshLibrary(queryClient);
-              showWorkNotice(data);
-            } else if (data.type === 'WORK_ANALYZING') {
-              console.log(`🔍 Book analyzing: ID ${data.work_id}`);
-              refreshLibrary(queryClient);
-            } else if (data.type === 'WORK_ERROR') {
-              console.warn(`❌ Processing error for Work ID ${data.work_id}:`, data.error);
-              refreshLibrary(queryClient);
-              showWorkNotice(data);
-            }
+            libraryEvents.handle(JSON.parse(event.data));
           } catch (err) {
             console.error('Error parsing WebSocket message:', err);
           }
@@ -213,6 +202,7 @@ function App() {
     return () => {
       isCancelled = true;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      libraryEvents.dispose();
       if (socket) socket.close();
     };
   }, [queryClient, isAuthenticated]);

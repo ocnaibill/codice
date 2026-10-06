@@ -104,6 +104,10 @@ Ao subir, a API registra se o LDAP está ligado, em quantos proxies confia e o e
 
 `scripts/relatorio-rodada.sh` lê o servidor e escreve um relatório em Markdown: serviços (com reinícios e falta de memória), o acervo por formato e tamanho, a fila (tempo por tipo de trabalho e **por que os trabalhos falharam**), texto e OCR, tamanho do banco e da biblioteca, memória e CPU dos contêineres, contas e entradas. **Só lê**: a sessão do banco é aberta como somente leitura. Por padrão traz só contagens e motivos, sem o título de nenhuma obra nem o nome de arquivo, então dá para compartilhar; com `--com-nomes` lista também o que falhou, com nomes, para uso seu. É o que alimenta o relatório de uma rodada de testes reais (modelo em [`Codice_Rodada_de_Testes_MODELO.md`](Codice_Rodada_de_Testes_MODELO.md)), e serve também para olhar a saúde da instância de vez em quando.
 
+### Durante uma importação grande
+
+Enquanto o worker lê milhares de arquivos, **cada aba aberta** do app vê as obras mudando de estado. O app agrupa o que o servidor avisa (uma atualização imediata e, depois, no máximo uma a cada 4 segundos por aba; abas escondidas não pedem nada, e as notificações viram "N obras prontas"), e o servidor **limita quantas leituras pesadas do catálogo** (a lista, as contagens, a busca, os favoritos) correm ao mesmo tempo: o excesso espera um pouco e, se a espera for longa, recebe "ocupado" na hora, em vez de segurar o banco. Assim a entrada, a saúde e o ponto de leitura nunca ficam atrás da fila. **`CODICE_CATALOG_CONCURRENCY`** muda o limite (padrão 8, de um conjunto de 25 conexões; `0` desliga). Numa máquina muito mais rápida pode subir; numa mais fraca, descer. Uma tela que mostre "o servidor está ocupado" durante a importação é esperada e passa sozinha.
+
 ## 10. Quando algo dá errado
 
 | Sintoma | Causa provável | O que fazer |

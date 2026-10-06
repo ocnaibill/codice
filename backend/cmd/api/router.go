@@ -47,6 +47,9 @@ type routerDeps struct {
 	Directory     ldapauth.Directory
 	DirectoryHost string
 	DirectoryBase string
+	// CatalogGate limits how many heavy reads of the catalog (the list, the counters, the search, the favorites) run at once;
+	// nil is no limit. See appMiddleware.Gate.
+	CatalogGate func(http.Handler) http.Handler
 	// Optional overrides, so route tests can run without a database.
 	FileLookup  handlers.FileLookup
 	CoverLookup handlers.FileLookup
@@ -150,10 +153,16 @@ func newRouter(d routerDeps) http.Handler {
 		return auth(appMiddleware.RequireOwner(next))
 	}
 
+	// The heavy reads of the catalog go through the gate before the authentication, which reads the database itself.
+	catalog := d.CatalogGate
+	if catalog == nil {
+		catalog = func(next http.Handler) http.Handler { return next }
+	}
+
 	// Protected Application Endpoints (any authenticated user)
-	r.With(auth).Get("/works", libHandler.GetWorks)
+	r.With(catalog, auth).Get("/works", libHandler.GetWorks)
 	r.With(auth).Get("/works/{id}", libHandler.GetWorkByID)
-	r.With(auth).Get("/search", searchHandler.Search)
+	r.With(catalog, auth).Get("/search", searchHandler.Search)
 	r.With(auth).Patch("/works/{id}/progress", libHandler.UpdateProgress)
 	r.With(auth).Get("/progress/files/{id}", progressHandler.Get)
 	r.With(auth).Put("/progress/files/{id}", progressHandler.Put)
@@ -304,7 +313,7 @@ func newRouter(d routerDeps) http.Handler {
 	// Favorites, notes/quotes, and dashboard stats
 	r.With(auth).Post("/works/{id}/favorite", favoritesHandler.AddFavorite)
 	r.With(auth).Delete("/works/{id}/favorite", favoritesHandler.RemoveFavorite)
-	r.With(auth).Get("/favorites", favoritesHandler.GetFavorites)
+	r.With(catalog, auth).Get("/favorites", favoritesHandler.GetFavorites)
 	r.With(auth).Post("/works/{id}/notes", notesHandler.CreateNote)
 	r.With(auth).Get("/notes", notesHandler.ListNotes)
 	r.With(auth).Get("/notes/facets", notesHandler.NoteFacets)
@@ -324,7 +333,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Post("/relations", graphHandler.CreateRelation)
 	r.With(auth).Patch("/relations/{id}", graphHandler.UpdateRelation)
 	r.With(auth).Delete("/relations/{id}", graphHandler.DeleteRelation)
-	r.With(auth).Get("/stats", statsHandler.GetStats)
+	r.With(catalog, auth).Get("/stats", statsHandler.GetStats)
 
 	// Page streaming endpoints (CBZ/CBR)
 	pageHandler := &handlers.PageHandler{DB: db}
