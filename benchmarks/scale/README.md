@@ -40,4 +40,18 @@ dc down -v
 
 O `measure.py` só lê (e entra algumas vezes, abaixo do limite de 10 por minuto). Mede **uma requisição de cada vez** (o que uma pessoa sente) e **20 ao mesmo tempo** (o que uma família sente), e imprime tabelas em Markdown.
 
+## Contra uma instância real (sem o gerador)
+
+O `measure.py` também mede uma biblioteca de verdade: sem `--manifest`, a busca por palavra do título usa uma palavra de um título que a própria biblioteca devolve, a busca pelo marcador sintético é deixada de fora, e **nada do que ele imprime nomeia uma obra** (só tempos, tamanhos e contagens), então a saída pode ser compartilhada. Só lê (e, com `--login-user`, entra algumas vezes, abaixo do limite de 10 por minuto). Rode na máquina do servidor, contra a porta local do site, com uma sessão do dono:
+
+```bash
+TOKEN=$(curl -s -X POST http://127.0.0.1:8088/auth/login -H 'Content-Type: application/json' \
+  -d '{"username":"DONO","password":"..."}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+printf '%s' "$TOKEN" > /tmp/tok && chmod 600 /tmp/tok
+python3 benchmarks/scale/measure.py --base http://127.0.0.1:8088 --token-file /tmp/tok --label "alpha, 2.958 obras"
+rm -f /tmp/tok   # o arquivo é só seu: apague ao terminar
+```
+
+(A porta é a do `CODICE_PORT`; o login só aceita senha local.)
+
 A máquina importa: os números do relatório são de um Mac com 10 CPUs e 8 GB para o Docker; compare sempre **o antes e o depois na mesma máquina**.
