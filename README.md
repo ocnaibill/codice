@@ -140,7 +140,7 @@ A forma importa mais que os números: com **arquivos grandes** o tempo é o do d
 docker compose -f docker-compose.full.yml exec backend codice-admin recover-owner --base-url https://seu.endereco
 ```
 
-**Biblioteca que já existe no disco.** Para catalogar pastas sem copiá-las (modo referenciado), monte-as **no backend e no worker**, com o mesmo caminho nos dois, num arquivo `docker-compose.override.yml` ao lado, e depois autorize a pasta como dono em *Administração → Armazenamento*:
+**Biblioteca que já existe no disco.** Para catalogar pastas sem copiá-las (modo referenciado), monte-as **no backend, no worker e no serviço de OCR**, com o mesmo caminho nos três, num arquivo `docker-compose.override.yml` ao lado, e depois autorize a pasta como dono em *Administração → Armazenamento*. **O OCR também precisa dela**: ele lê os PDFs escaneados no lugar onde estão, e sem a pasta os trabalhos de OCR falham com `FileNotFoundError` (foi o que a primeira rodada real no alpha mostrou, com 56 trabalhos). Somente leitura basta no OCR:
 
 ```yaml
 services:
@@ -150,7 +150,12 @@ services:
   worker:
     volumes:
       - /mnt/livros:/mnt/livros
+  ocr:
+    volumes:
+      - /mnt/livros:/mnt/livros:ro
 ```
+
+Se o OCR já falhou por isso, monte a pasta e use "tentar de novo" na administração: os trabalhos que falharam por arquivo não encontrado passam.
 
 Os contêineres rodam como o usuário 10001, então essa pasta precisa ser legível por ele (e gravável, se você quiser mover arquivos para dentro do acervo ou remover os originais).
 

@@ -2,7 +2,7 @@
 # Report of a round of real-world tests (issue #89): the numbers of an instance installed with docker-compose.full.yml, read
 # from the server and written as Markdown, so that what goes in the report of the round is measured and not remembered.
 #
-#   scripts/relatorio-rodada.sh [--com-nomes] [--saida ARQUIVO]
+#   scripts/relatorio-rodada.sh [--com-nomes] [--saida ARQUIVO] [--desde 'AAAA-MM-DD HH:MM']
 #
 # It only READS: the database session is opened read-only, and nothing is written, restarted or removed. Run it from any folder
 # of the machine that runs the stack. By default it says COUNTS and REASONS, never the title or the name of a file, so the report
@@ -11,19 +11,31 @@
 #
 # For a stack with another project name or env file, the usual variables of compose work: COMPOSE_PROJECT_NAME,
 # COMPOSE_ENV_FILES.
+#
+# --desde (UTC) limits the sections of the QUEUE to the jobs created from that moment, so the time of a round is not mixed
+# with the jobs of before it (use the time the round began).
 set -euo pipefail
 
 names=0
 out=""
+since=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --com-nomes) names=1 ;;
     --saida) shift; out=${1:?--saida needs a file} ;;
-    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --desde) shift; since=${1:?--desde needs a date and time, like '2026-10-04 21:30'} ;;
+    -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
   shift
 done
+
+if [ -n "$since" ] && ! [[ "$since" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}([ T][0-9]{2}:[0-9]{2}(:[0-9]{2})?)?$ ]]; then
+  echo "--desde must look like '2026-10-04 21:30' (UTC), got: $since" >&2
+  exit 2
+fi
+jobs_from=""
+[ -n "$since" ] && jobs_from="AND created_at >= '$since'::timestamptz"
 
 cd "$(dirname "$0")/.."
 compose=(docker compose -f docker-compose.full.yml)
@@ -82,16 +94,18 @@ report() {
   echo
   table "Arquivos por formato e disponibilidade" "SELECT coalesce(format,'(nenhum)') AS formato, availability AS disponibilidade, count(*) AS arquivos, pg_size_pretty(coalesce(sum(size_bytes),0)) AS tamanho FROM files GROUP BY 1,2 ORDER BY 3 DESC"
   table "Obras por estado da análise" "SELECT media_status AS estado, count(*) AS obras FROM works GROUP BY 1 ORDER BY 2 DESC"
+  table "Tamanho por modo (gerenciado: dentro do volume da pilha; referenciado: na pasta externa, fora da pilha)" "SELECT sl.mode AS modo, count(*) AS arquivos, pg_size_pretty(coalesce(sum(f.size_bytes),0)) AS tamanho FROM storage_locations sl JOIN files f ON f.id = sl.file_id GROUP BY 1 ORDER BY 2 DESC"
   table "Onde os arquivos ficam" "SELECT mode AS modo, state AS estado, count(*) AS arquivos FROM storage_locations GROUP BY 1,2 ORDER BY 3 DESC"
   table "Idioma declarado pelas edições (os mais comuns)" "SELECT coalesce(language,'(nenhum)') AS idioma, count(*) AS edicoes FROM editions GROUP BY 1 ORDER BY 2 DESC LIMIT 12"
   table "Tamanho dos arquivos (o quanto os reais pesam)" "SELECT CASE WHEN size_bytes IS NULL THEN '(desconhecido)' WHEN size_bytes < 1048576 THEN 'menos de 1 MiB' WHEN size_bytes < 10485760 THEN '1 a 10 MiB' WHEN size_bytes < 104857600 THEN '10 a 100 MiB' WHEN size_bytes < 1073741824 THEN '100 MiB a 1 GiB' ELSE '1 GiB ou mais' END AS tamanho, count(*) AS arquivos FROM files GROUP BY 1 ORDER BY min(coalesce(size_bytes,0))"
 
   echo "## A fila: o que o worker fez"
   echo
-  table "Trabalhos por tipo e estado" "SELECT type AS tipo, state AS estado, coalesce(error_kind,'') AS tipo_de_erro, count(*) AS trabalhos FROM jobs GROUP BY 1,2,3 ORDER BY 1,2"
-  table "Quanto cada tipo de trabalho leva (segundos)" "SELECT type AS tipo, count(*) AS trabalhos, round(avg(extract(epoch FROM finished_at-started_at))::numeric,2) AS media_s, round((percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM finished_at-started_at)))::numeric,2) AS p95_s, round(max(extract(epoch FROM finished_at-started_at))::numeric,2) AS maximo_s FROM jobs WHERE state='succeeded' AND started_at IS NOT NULL AND finished_at IS NOT NULL GROUP BY 1 ORDER BY 3 DESC"
-  table "Do primeiro trabalho ao último (o tempo de relógio da importação)" "SELECT to_char(min(created_at),'YYYY-MM-DD HH24:MI') AS primeiro, to_char(max(finished_at),'YYYY-MM-DD HH24:MI') AS ultimo_concluido, round((extract(epoch FROM max(finished_at)-min(created_at))/60)::numeric,1) AS minutos, count(*) FILTER (WHERE type='ingest' AND state='succeeded') AS arquivos_lidos FROM jobs"
-  table "Por que trabalhos falharam (o motivo, com os caminhos cortados, e quantas vezes)" "SELECT type AS tipo, coalesce(error_kind,'') AS tipo_de_erro, left(regexp_replace(coalesce(last_error,'(sem mensagem)'), '/[^:]*', '<caminho>', 'g'), 110) AS motivo, count(*) AS trabalhos FROM jobs WHERE state='failed' GROUP BY 1,2,3 ORDER BY 4 DESC LIMIT 25"
+  [ -n "$since" ] && { echo "_Só os trabalhos criados a partir de ${since} (UTC), por causa do --desde._"; echo; }
+  table "Trabalhos por tipo e estado" "SELECT type AS tipo, state AS estado, coalesce(error_kind,'') AS tipo_de_erro, count(*) AS trabalhos FROM jobs WHERE true $jobs_from GROUP BY 1,2,3 ORDER BY 1,2"
+  table "Quanto cada tipo de trabalho leva (segundos)" "SELECT type AS tipo, count(*) AS trabalhos, round(avg(extract(epoch FROM finished_at-started_at))::numeric,2) AS media_s, round((percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM finished_at-started_at)))::numeric,2) AS p95_s, round(max(extract(epoch FROM finished_at-started_at))::numeric,2) AS maximo_s FROM jobs WHERE state='succeeded' AND started_at IS NOT NULL AND finished_at IS NOT NULL $jobs_from GROUP BY 1 ORDER BY 3 DESC"
+  table "Do primeiro trabalho ao último (o tempo de relógio da importação)" "SELECT to_char(min(created_at),'YYYY-MM-DD HH24:MI') AS primeiro, to_char(max(finished_at),'YYYY-MM-DD HH24:MI') AS ultimo_concluido, round((extract(epoch FROM max(finished_at)-min(created_at))/60)::numeric,1) AS minutos, count(*) FILTER (WHERE type='ingest' AND state='succeeded') AS arquivos_lidos FROM jobs WHERE true $jobs_from"
+  table "Por que trabalhos falharam (o motivo, com os caminhos cortados, e quantas vezes)" "SELECT type AS tipo, coalesce(error_kind,'') AS tipo_de_erro, left(regexp_replace(coalesce(last_error,'(sem mensagem)'), '/[^:]*', '<caminho>', 'g'), 110) AS motivo, count(*) AS trabalhos FROM jobs WHERE state='failed' $jobs_from GROUP BY 1,2,3 ORDER BY 4 DESC LIMIT 25"
   table "Trabalhos esperando ou rodando agora" "SELECT type AS tipo, state AS estado, count(*) AS trabalhos, to_char(min(created_at),'MM-DD HH24:MI') AS mais_antigo FROM jobs WHERE state IN ('pending','running') GROUP BY 1,2 ORDER BY 3 DESC"
 
   echo "## Texto, busca e OCR"
@@ -110,7 +124,7 @@ report() {
 
   echo "## Tamanho e peso"
   echo
-  echo "**Banco:** $(scalar "SELECT pg_size_pretty(pg_database_size(current_database()))"). **Biblioteca em disco:** $("${compose[@]}" exec -T backend sh -c 'du -sh "${CODICE_STORAGE_PATH:-/app/storage}" 2>/dev/null | cut -f1' | tr -d '\r\n')."
+  echo "**Banco:** $(scalar "SELECT pg_size_pretty(pg_database_size(current_database()))"). **Pasta gerenciada, dentro do contêiner** (os arquivos referenciados ficam fora dela: veja "Tamanho por modo" acima): $("${compose[@]}" exec -T backend sh -c 'du -sh "${CODICE_STORAGE_PATH:-/app/storage}" 2>/dev/null | cut -f1' | tr -d '\r\n')."
   echo
   table "As tabelas mais pesadas" "SELECT relname AS \"tabela\", pg_size_pretty(pg_total_relation_size(oid)) AS tamanho FROM pg_class WHERE relkind='r' AND relnamespace='public'::regnamespace ORDER BY pg_total_relation_size(oid) DESC LIMIT 8"
   echo "Memória e CPU dos contêineres neste momento:"
