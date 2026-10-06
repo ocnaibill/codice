@@ -83,7 +83,7 @@ O essencial (o detalhe, as opções e as medidas de tempo estão no README, seç
 | O que | Onde | Como cresce | O que fazer |
 |---|---|---|---|
 | A biblioteca e as capas | volume `codice_storage` | com cada envio | olhe o espaço livre em *Sistema*; a *Lixeira* guarda antes de apagar |
-| O banco | volume `codice_pgdata` | notas, destaques e, principalmente, **o texto para a busca** | o índice de busca pode pesar **várias vezes o texto** dos livros (6,5 vezes na medição com texto sintético): reserve espaço; o backup não o leva e ele é refeito depois de restaurar |
+| O banco | volume `codice_pgdata` | notas, destaques e, principalmente, **o texto para a busca** | o índice de busca pesa **cerca de 7 vezes o texto** dos livros (medido com texto real: 4 GB para 573 MB de texto), os vetores do modelo local, cerca de 5 vezes, e os dicionários, cerca de 3,5 GB: **um acervo de ~3 mil PDFs de 41 GB resultou num banco de 10 GB**; reserve espaço. O backup não leva o índice de busca nem os vetores, e eles são refeitos depois de restaurar |
 | Pacotes de backup | volume `codice_backups` ou `CODICE_BACKUP_HOST_DIR` | um por dia, até a retenção | de preferência em **outro disco** |
 | Modelos locais (opcional) | volume `codice_model_cache` | só se o dono ligar a IA local | baixa só o modelo escolhido |
 | Registro de entradas | tabela `login_events` | uma linha por tentativa | teto de linhas e prazo ajustável pelo dono (7 a 3650 dias) |
