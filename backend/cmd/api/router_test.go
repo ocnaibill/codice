@@ -35,12 +35,18 @@ func fakeSessions(ctx context.Context, sid string) (string, string, error) {
 // handler touches them.
 func testRouter(t *testing.T) http.Handler {
 	t.Helper()
+	return testRouterWith(t, nil)
+}
+
+// testRouterWith is testRouter with a change to the dependencies.
+func testRouterWith(t *testing.T, change func(*routerDeps)) http.Handler {
+	t.Helper()
 	t.Setenv("JWT_SECRET", testSecret)
 	auth := middleware.Authenticator{Sessions: fakeSessions}
 	notFound := func(ctx context.Context, rel string) (handlers.FileAccess, error) {
 		return handlers.FileAccess{}, handlers.ErrFileNotFound
 	}
-	return newRouter(routerDeps{
+	deps := routerDeps{
 		Auth:        auth,
 		WS:          &handlers.WsHandler{Auth: auth},
 		StoragePath: t.TempDir(),
@@ -48,7 +54,11 @@ func testRouter(t *testing.T) http.Handler {
 		// from "refused" (401), without a database.
 		FileLookup:  notFound,
 		CoverLookup: func(ctx context.Context, name string) (handlers.FileAccess, error) { return handlers.FileAccess{}, nil },
-	})
+	}
+	if change != nil {
+		change(&deps)
+	}
+	return newRouter(deps)
 }
 
 // tokenFor returns a session token whose session resolves to the given role.
@@ -564,5 +574,38 @@ func TestAuthRateLimiter_RecordsWhoWasStopped(t *testing.T) {
 		if i == 10 && out.Code != http.StatusTooManyRequests {
 			t.Errorf("without a recorder the 11th: %d", out.Code)
 		}
+	}
+}
+
+// The gate of the heavy reads stands in front of the four reads the screens repeat while a library is being imported, and in
+// front of nothing else: the sign-in, the health check, the sheet of a work and the saving of a reading position must never
+// wait in the line of the list.
+func TestCatalogGate_StandsInFrontOfTheHeavyReadsAndNothingElse(t *testing.T) {
+	const gated = http.StatusTeapot
+	h := testRouterWith(t, func(d *routerDeps) {
+		d.CatalogGate = func(http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(gated) })
+		}
+	})
+	token := tokenFor(t, "reader")
+	for _, r := range []route{{"GET", "/works"}, {"GET", "/search?q=a"}, {"GET", "/favorites"}, {"GET", "/stats"}} {
+		if rec := do(h, r.method, r.path, "", ""); rec.Code != gated {
+			t.Errorf("%s %s (anonymous) = %d, want it stopped by the gate (before the authentication)", r.method, r.path, rec.Code)
+		}
+	}
+	for _, r := range []route{
+		{"GET", "/healthz"}, {"GET", "/auth/me"}, {"POST", "/auth/login"}, {"GET", "/works/1"},
+		{"PUT", "/progress/files/1"}, {"POST", "/works/1/reading-heartbeat"}, {"GET", "/dictionary/languages"},
+	} {
+		if rec := do(h, r.method, r.path, token, "{}"); rec.Code == gated {
+			t.Errorf("%s %s went through the gate of the catalog", r.method, r.path)
+		}
+	}
+}
+
+func TestCatalogGate_AbsentMeansNoLimit(t *testing.T) {
+	h := testRouter(t)
+	if rec := do(h, "GET", "/stats", "", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("GET /stats without a gate and without a session = %d, want 401", rec.Code)
 	}
 }

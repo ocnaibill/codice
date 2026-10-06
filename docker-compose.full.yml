@@ -84,6 +84,10 @@ services:
       # Without the file the buttons stay off; the codice-admin command works either way.
       CODICE_BACKUP_DIR: ${CODICE_BACKUP_DIR:-/backups}
       CODICE_BACKUP_PASSPHRASE_FILE: ${CODICE_BACKUP_PASSPHRASE_FILE:-}
+      # How many heavy reads of the catalog (the list, the counters, the search, the favorites) run at once. The rest wait a
+      # little, and are answered "busy" if the wait is long, so that the sign-in, the health check and the reading position
+      # are never stuck behind them while a big library is being imported. Empty: 8 (of a pool of 25); 0: no limit.
+      CODICE_CATALOG_CONCURRENCY: ${CODICE_CATALOG_CONCURRENCY:-}
       PORT: "8080"
       # LDAP sign-in (optional). Leave LDAP_URL empty to keep it off; see the README.
       # The service account's password is read from a file, never from the environment.
