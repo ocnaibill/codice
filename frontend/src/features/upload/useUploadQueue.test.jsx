@@ -39,7 +39,7 @@ describe('the queue that sends one file after the other', () => {
     expect(queue.running).toBe(false);
     const summary = await begin();
     expect(calls).toHaveLength(0);
-    expect(summary).toEqual({ sent: 0, duplicates: 0, errors: 0, cancelled: 0, firstSent: null, allDone: false });
+    expect(summary).toEqual({ sent: 0, duplicates: 0, errors: 0, cancelled: 0, firstSent: null, allDone: false, converted: [] });
   });
 
   it('says what adding did, and has the rows at once', async () => {
@@ -120,7 +120,7 @@ describe('the queue that sends one file after the other', () => {
     expect(statuses()).toEqual(['done']);
     let again;
     await act(async () => { again = queue.start(); });
-    expect(await again).toEqual({ sent: 0, duplicates: 0, errors: 0, cancelled: 0, firstSent: null, allDone: false });
+    expect(await again).toEqual({ sent: 0, duplicates: 0, errors: 0, cancelled: 0, firstSent: null, allDone: false, converted: [] });
     expect(queue.running).toBe(false);
     expect(calls).toHaveLength(1);
   });
@@ -207,6 +207,19 @@ describe('the queue that sends one file after the other', () => {
     expect(queue.items[0]).toMatchObject({ status: 'uploading', progress: 0, message: '' });
     await settle(1);
     expect((await promise)).toMatchObject({ sent: 1, allDone: true });
+  });
+
+  it('lists, by name and encoding, the files the server converted to UTF-8, and notes it on their row', async () => {
+    await act(async () => { queue.add([file('a.txt'), file('b.txt'), file('c.txt')]); });
+    let promise;
+    await act(async () => { promise = queue.start(); });
+    await settle(0, 'ok', { converted_from: 'Windows-1252' });
+    await settle(1, 'ok', { work_id: 7 });
+    await settle(2, 'ok', undefined);
+    const summary = await promise;
+    expect(summary.converted).toEqual([{ name: 'a.txt', from: 'Windows-1252' }]);
+    expect(queue.items.find((i) => i.file.name === 'a.txt').message).toBe('Convertido de Windows-1252 para UTF-8.');
+    expect(queue.items.find((i) => i.file.name === 'b.txt').message).toBe('');
   });
 
   it('cancels the rest on stop, lets the file that is going finish, and counts what was cancelled', async () => {

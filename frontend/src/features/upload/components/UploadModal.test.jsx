@@ -533,6 +533,45 @@ describe('UploadModal, when one fails', () => {
     expect(useToasts.getState().items.at(-1)).toMatchObject({ tone: 'success', title: 'Arquivo enviado' });
   });
 
+  it('says a text was brought to UTF-8, by name and by the encoding it came in', async () => {
+    await open();
+    await choose(file('antigo.txt'));
+    await sendAll();
+    await answer(0, 'ok', { work_id: 1, converted_from: 'Windows-1252' });
+    const notice = useToasts.getState().items[0];
+    expect(notice).toMatchObject({ tone: 'success', title: 'Arquivo enviado' });
+    expect(notice.message).toContain('“antigo.txt” foi convertido de Windows-1252 para UTF-8.');
+  });
+
+  it('names only the files that were converted, when several go, and keeps it in the warning', async () => {
+    await open();
+    await choose(file('a.txt'), file('b.txt'), file('c.epub'));
+    await sendAll();
+    await answer(0, 'ok', { converted_from: 'UTF-16 LE' });
+    await answer(1);
+    await answer(2, 'fail', fails(409, { title: 'Duna', retired: false }));
+    const notice = useToasts.getState().items[0];
+    expect(notice).toMatchObject({ tone: 'warning', title: '2 arquivos enviados' });
+    expect(notice.message).toContain('“a.txt” foi convertido de UTF-16 LE para UTF-8.');
+    expect(notice.message).not.toContain('b.txt');
+  });
+
+  it('says nothing about a conversion when there was none', async () => {
+    await open();
+    await choose(file('Duna.epub'));
+    await sendAll();
+    await answer(0, 'ok', { work_id: 1 });
+    expect(useToasts.getState().items[0].message).not.toContain('UTF-8');
+  });
+
+  it('keeps the note on the row of a converted file that stays on the list', async () => {
+    await open();
+    await choose(file('antigo.txt'), file('virus.exe'));
+    await sendAll();
+    await answer(0, 'ok', { converted_from: 'Windows-1252' });
+    expect(row('antigo.txt').textContent).toContain('Enviado · Convertido de Windows-1252 para UTF-8.');
+  });
+
   it('says that a file is already in the library as a warning, with no way to send it again', async () => {
     await open();
     await choose(file('a.epub'), file('Duna.epub'));

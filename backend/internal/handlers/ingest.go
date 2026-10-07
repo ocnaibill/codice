@@ -17,6 +17,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/filecheck"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
+	"github.com/ocnaibill/codice/backend/internal/textenc"
 )
 
 // errTooLarge: the file exceeds the size limit.
@@ -43,7 +44,10 @@ func validateContent(path, ext string) error { return filecheck.Validate(path, e
 type ingestResult struct {
 	WorkID int
 	JobID  int64
-	SHA    string // of the stored bytes, to verify an original before removing it
+	SHA    string // of the bytes as they came, to verify an original before removing it
+	// ConvertedFrom names the encoding a text file came in ("Windows-1252", "UTF-16 LE") when it was brought to UTF-8
+	// on the way in; "" otherwise. The stored file then has other bytes than the original (and its own hash).
+	ConvertedFrom string
 }
 
 // ingestOptions tunes one ingestion.
@@ -99,10 +103,25 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 	if err := tmp.Close(); err != nil {
 		return nil, err
 	}
+	sum := hex.EncodeToString(hasher.Sum(nil))
+	origSum, convertedFrom := sum, ""
+	if ext == ".txt" || ext == ".md" {
+		// Text in Windows-1252 or UTF-16 is brought to UTF-8 here, so the extraction and the reader never see another
+		// encoding (#171). What cannot be told is left as it is, and validateContent refuses it below.
+		from, err := textenc.Convert(tmpPath)
+		if err != nil && !errors.Is(err, textenc.ErrUnknown) {
+			return nil, err
+		}
+		if from != "" {
+			convertedFrom = from
+			if sum, size, err = hashFile(tmpPath); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if err := validateContent(tmpPath, ext); err != nil {
 		return nil, err
 	}
-	sum := hex.EncodeToString(hasher.Sum(nil))
 
 	if dup, err := h.findByHash(ctx, sum); err != nil {
 		return nil, err
@@ -174,7 +193,19 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 		// picks it up when it polls.
 		log.Printf("job %d saved; workers were not woken (%v)", jobID, err)
 	}
-	return &ingestResult{WorkID: workID, JobID: jobID, SHA: sum}, nil
+	return &ingestResult{WorkID: workID, JobID: jobID, SHA: origSum, ConvertedFrom: convertedFrom}, nil
+}
+
+// hashFile is the SHA-256 and the size of a file.
+func hashFile(path string) (string, int64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	return hex.EncodeToString(h.Sum(nil)), n, err
 }
 
 func mustAbs(p string) string {

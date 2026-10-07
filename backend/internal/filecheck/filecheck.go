@@ -102,7 +102,7 @@ func Validate(path, ext string) error {
 		}
 	case ".txt", ".md":
 		if bytes.IndexByte(head, 0) >= 0 || !utf8.Valid(trimIncompleteRune(head)) {
-			return bad("not UTF-8 text")
+			return bad("not UTF-8 text; save it as UTF-8")
 		}
 	case ".mp3":
 		if !(bytes.HasPrefix(head, []byte("ID3")) || (len(head) > 1 && head[0] == 0xFF && head[1]&0xE0 == 0xE0)) {
