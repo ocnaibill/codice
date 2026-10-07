@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -44,10 +45,20 @@ func TestReaderPreferences_AChoiceIsKeptAndReadBack(t *testing.T) {
 	var put readerPreferences
 	json.Unmarshal(rec.Body.Bytes(), &put)
 	for _, got := range []string{string(put.Reader), string(readerPrefs(s, ana).Reader)} {
-		var back map[string]any
+		var back struct {
+			Shared  bool
+			Touch   map[string]any
+			Desktop map[string]any
+		}
 		json.Unmarshal([]byte(got), &back)
-		if back["theme"] != "sepia" || back["font"] != "dislexia" || back["size"] != float64(130) || back["margins"] != "larga" || back["justify"] != true {
-			t.Fatalf("read back: %s", got)
+		// a choice with no kind (what the app sent before there were kinds) is the choice of both
+		for _, kind := range []map[string]any{back.Touch, back.Desktop} {
+			if kind["theme"] != "sepia" || kind["font"] != "dislexia" || kind["size"] != float64(130) || kind["margins"] != "larga" || kind["justify"] != true {
+				t.Fatalf("read back: %s", got)
+			}
+		}
+		if back.Shared {
+			t.Fatalf("a choice does not make the kinds the same: %s", got)
 		}
 	}
 }
@@ -235,5 +246,198 @@ func TestDisplayName_TheTimeItWasAskedDoesNotMoveWhenItIsChanged(t *testing.T) {
 	s.do(ana, "PUT", "/auth/preferences", `{"displayName":"Aninha"}`)
 	if got := s.scalar(`SELECT display_name_asked_at::text FROM users WHERE id = $1`, ana.id); got != first {
 		t.Errorf("asked_at moved from %s to %s", first, got)
+	}
+}
+
+// The choice of the two kinds of device (#180).
+
+const (
+	sepiaReader = `{"theme":"sepia","font":"livro","size":120,"spacing":"media","margins":"media","justify":false}`
+	pretoReader = `{"theme":"preto","font":"sem-serifa","size":90,"spacing":"ampla","margins":"estreita","justify":true}`
+)
+
+type deviceReaders struct {
+	Shared  bool            `json:"shared"`
+	Touch   json.RawMessage `json:"touch"`
+	Desktop json.RawMessage `json:"desktop"`
+}
+
+func readersOf(s *catalogStack, a actor) *deviceReaders {
+	s.t.Helper()
+	raw := readerPrefs(s, a).Reader
+	if string(raw) == "null" {
+		return nil
+	}
+	var r deviceReaders
+	if err := json.Unmarshal(raw, &r); err != nil {
+		s.t.Fatal(err)
+	}
+	return &r
+}
+
+func putReader(s *catalogStack, a actor, body string) int {
+	return s.do(a, "PUT", "/auth/preferences", `{"reader":`+body+`}`).Code
+}
+
+func themeOf(raw json.RawMessage) string {
+	var t struct{ Theme string }
+	json.Unmarshal(raw, &t)
+	return t.Theme
+}
+
+func TestReaderDevices_EachKindIsItsOwnAndTheOtherIsNotTouched(t *testing.T) {
+	s := newCatalogStack(t)
+	if code := putReader(s, ana, `{"device":"touch","settings":`+sepiaReader+`}`); code != 200 {
+		t.Fatalf("touch: %d", code)
+	}
+	r := readersOf(s, ana)
+	if themeOf(r.Touch) != "sepia" || string(r.Desktop) != "null" || r.Shared {
+		t.Fatalf("only the phone has chosen: %+v", r)
+	}
+	if code := putReader(s, ana, `{"device":"desktop","settings":`+pretoReader+`}`); code != 200 {
+		t.Fatalf("desktop: %d", code)
+	}
+	r = readersOf(s, ana)
+	if themeOf(r.Touch) != "sepia" || themeOf(r.Desktop) != "preto" {
+		t.Fatalf("each has its own: %+v", r)
+	}
+	// changing one again leaves the other
+	putReader(s, ana, `{"device":"touch","settings":`+strings.Replace(sepiaReader, `"sepia"`, `"escuro"`, 1)+`}`)
+	if r = readersOf(s, ana); themeOf(r.Touch) != "escuro" || themeOf(r.Desktop) != "preto" {
+		t.Fatalf("the other kind was touched: %+v", r)
+	}
+}
+
+func TestReaderDevices_AChoiceBeforeThereWereKindsIsReadAsTheChoiceOfBoth(t *testing.T) {
+	s := newCatalogStack(t)
+	// what an account has in the database from before: one choice, with no kind
+	s.exec(`UPDATE users SET reader_prefs = $2::jsonb WHERE id = $1`, ana.id, sepiaReader)
+	r := readersOf(s, ana)
+	if r == nil || themeOf(r.Touch) != "sepia" || themeOf(r.Desktop) != "sepia" || r.Shared {
+		t.Fatalf("an old choice is for both, and they are not kept the same: %+v", r)
+	}
+	// and from then on they are independent
+	putReader(s, ana, `{"device":"desktop","settings":`+pretoReader+`}`)
+	if r = readersOf(s, ana); themeOf(r.Touch) != "sepia" || themeOf(r.Desktop) != "preto" {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestReaderDevices_KeepingThemTheSameCopiesOneToTheOtherAndFollowsEveryChange(t *testing.T) {
+	s := newCatalogStack(t)
+	putReader(s, ana, `{"device":"touch","settings":`+sepiaReader+`}`)
+	putReader(s, ana, `{"device":"desktop","settings":`+pretoReader+`}`)
+	if code := putReader(s, ana, `{"shared":true,"from":"touch"}`); code != 200 {
+		t.Fatalf("same: %d", code)
+	}
+	r := readersOf(s, ana)
+	if !r.Shared || themeOf(r.Touch) != "sepia" || themeOf(r.Desktop) != "sepia" {
+		t.Fatalf("the phone's choice is the one both have: %+v", r)
+	}
+	// a change on either one is the change of both
+	putReader(s, ana, `{"device":"desktop","settings":`+pretoReader+`}`)
+	if r = readersOf(s, ana); themeOf(r.Touch) != "preto" || themeOf(r.Desktop) != "preto" {
+		t.Fatalf("while they are the same, a change is of both: %+v", r)
+	}
+	// letting each be its own keeps what both have, and from then on they part
+	if code := putReader(s, ana, `{"shared":false}`); code != 200 {
+		t.Fatalf("not the same: %d", code)
+	}
+	r = readersOf(s, ana)
+	if r.Shared || themeOf(r.Touch) != "preto" || themeOf(r.Desktop) != "preto" {
+		t.Fatalf("%+v", r)
+	}
+	putReader(s, ana, `{"device":"touch","settings":`+sepiaReader+`}`)
+	if r = readersOf(s, ana); themeOf(r.Touch) != "sepia" || themeOf(r.Desktop) != "preto" {
+		t.Fatalf("they part: %+v", r)
+	}
+}
+
+func TestReaderDevices_KeepingThemTheSameWhenOnlyTheOtherKindChose(t *testing.T) {
+	s := newCatalogStack(t)
+	putReader(s, ana, `{"device":"desktop","settings":`+pretoReader+`}`)
+	putReader(s, ana, `{"shared":true,"from":"touch"}`) // the phone chose nothing: the computer's is what both have
+	if r := readersOf(s, ana); !r.Shared || themeOf(r.Touch) != "preto" || themeOf(r.Desktop) != "preto" {
+		t.Fatalf("%+v", r)
+	}
+	// with nothing chosen at all, there is nothing to copy, and it is still not a choice
+	if code := putReader(s, bob, `{"shared":true,"from":"touch"}`); code != 200 {
+		t.Fatalf("%d", code)
+	}
+	if r := readersOf(s, bob); r != nil {
+		t.Fatalf("nothing was chosen: %+v", r)
+	}
+}
+
+func TestReaderDevices_TwoDevicesThatChangeTheirOwnKindAtOnceDoNotUndoEachOther(t *testing.T) {
+	s := newCatalogStack(t)
+	themes := []string{"sepia", "preto", "papel", "escuro"}
+	one := func(theme string) string { return strings.Replace(sepiaReader, `"sepia"`, `"`+theme+`"`, 1) }
+	// Each round, a phone and a computer change their own kind at the very same moment, to something else than the round before:
+	// an update that read what was there before the other wrote would put the old one of the other kind back.
+	for round := 0; round < 40; round++ {
+		touch, desktop := themes[round%4], themes[(round+1)%4]
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); <-start; putReader(s, ana, `{"device":"touch","settings":`+one(touch)+`}`) }()
+		go func() {
+			defer wg.Done()
+			<-start
+			putReader(s, ana, `{"device":"desktop","settings":`+one(desktop)+`}`)
+		}()
+		close(start)
+		wg.Wait()
+		if r := readersOf(s, ana); themeOf(r.Touch) != touch || themeOf(r.Desktop) != desktop {
+			t.Fatalf("round %d: one kind undid the other: %+v, wanted %s and %s", round, r, touch, desktop)
+		}
+	}
+}
+
+func TestReaderDevices_WhatIsNotAChoiceOfAKindIsRefusedAndKeepsWhatWas(t *testing.T) {
+	s := newCatalogStack(t)
+	putReader(s, ana, `{"device":"touch","settings":`+sepiaReader+`}`)
+	for name, body := range map[string]string{
+		"a kind that is not one":       `{"device":"tv","settings":` + sepiaReader + `}`,
+		"a kind with no choice":        `{"device":"touch"}`,
+		"a choice with no kind":        `{"settings":` + sepiaReader + `}`,
+		"a choice that is not valid":   `{"device":"touch","settings":{"theme":"rosa","font":"livro","size":100,"spacing":"livro","margins":"livro","justify":false}}`,
+		"a field it does not know":     `{"device":"touch","settings":` + sepiaReader + `,"css":"x"}`,
+		"same with no source":          `{"shared":true}`,
+		"same from a kind that is not": `{"shared":true,"from":"tv"}`,
+		"not the same, with a source":  `{"shared":false,"from":"touch"}`,
+		"a kind and the sameness":      `{"device":"touch","shared":true,"from":"touch"}`,
+		"a choice and the sameness":    `{"device":"touch","settings":` + sepiaReader + `,"shared":true}`,
+		"a choice and a source":        `{"device":"touch","settings":` + sepiaReader + `,"from":"desktop"}`,
+		"an empty request":             `{}`,
+		"a number":                     `7`,
+	} {
+		if code := putReader(s, ana, body); code != 400 {
+			t.Errorf("%s: %d, want 400", name, code)
+		}
+	}
+	if r := readersOf(s, ana); themeOf(r.Touch) != "sepia" || r.Shared {
+		t.Fatalf("a refused request changed what was kept: %+v", r)
+	}
+}
+
+func TestReaderDevices_NullTakesEverythingAwayAndAChoiceNoLongerValidIsAsIfThereWereNone(t *testing.T) {
+	s := newCatalogStack(t)
+	putReader(s, ana, `{"device":"touch","settings":`+sepiaReader+`}`)
+	putReader(s, ana, `{"shared":true,"from":"touch"}`)
+	if code := putReader(s, ana, `null`); code != 200 || readersOf(s, ana) != nil {
+		t.Fatalf("null: %d %+v", code, readersOf(s, ana))
+	}
+	// a list changed since it was kept: it is as if nothing was chosen
+	s.exec(`UPDATE users SET reader_prefs = '{"shared":false,"touch":{"theme":"rosa","font":"livro","size":100,"spacing":"livro","margins":"livro","justify":false},"desktop":null}'::jsonb WHERE id = $1`, ana.id)
+	if readersOf(s, ana) != nil {
+		t.Fatalf("a choice that is not valid any more must not be offered")
+	}
+	// and the next valid choice starts afresh
+	if code := putReader(s, ana, `{"device":"desktop","settings":`+pretoReader+`}`); code != 200 {
+		t.Fatalf("%d", code)
+	}
+	if r := readersOf(s, ana); string(r.Touch) != "null" || themeOf(r.Desktop) != "preto" {
+		t.Fatalf("%+v", r)
 	}
 }

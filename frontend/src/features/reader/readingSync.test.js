@@ -30,19 +30,30 @@ describe('sending how the text looks to the server', () => {
     expect(api.put).not.toHaveBeenCalled();
     vi.advanceTimersByTime(PUSH_DELAY);
     expect(api.put).toHaveBeenCalledTimes(1);
-    expect(api.put).toHaveBeenCalledWith('/auth/preferences', { reader: choice({ size: 130 }) });
+    expect(api.put).toHaveBeenCalledWith('/auth/preferences', { reader: { device: 'desktop', settings: choice({ size: 130 }) } });
   });
 
   it('sends what the last change left, whole, and only the fields the lists have', () => {
     pushReadingSettings({ theme: 'preto', font: 'dislexia', size: 150, spacing: 'ampla', margins: 'larga', justify: true, extra: '<script>' });
     vi.advanceTimersByTime(PUSH_DELAY);
-    expect(api.put.mock.calls[0][1]).toEqual({ reader: { theme: 'preto', font: 'dislexia', size: 150, spacing: 'ampla', margins: 'larga', justify: true } });
+    expect(api.put.mock.calls[0][1]).toEqual({ reader: { device: 'desktop', settings: { theme: 'preto', font: 'dislexia', size: 150, spacing: 'ampla', margins: 'larga', justify: true } } });
   });
 
   it('sends what is not valid as the default, and does not send what the person did not choose', () => {
     pushReadingSettings({ theme: 'rosa', size: 999 });
     vi.advanceTimersByTime(PUSH_DELAY);
-    expect(api.put.mock.calls[0][1]).toEqual({ reader: DEFAULT_SETTINGS });
+    expect(api.put.mock.calls[0][1]).toEqual({ reader: { device: 'desktop', settings: DEFAULT_SETTINGS } });
+  });
+
+  it('says which kind of device the choice is of: a phone sends it as its own, and a computer as its own', () => {
+    const matches = (value) => vi.stubGlobal('matchMedia', () => ({ matches: value }));
+    matches(true);
+    pushReadingSettings(choice({ size: 110 }), 0);
+    expect(api.put.mock.calls[0][1].reader.device).toBe('touch');
+    matches(false);
+    pushReadingSettings(choice({ size: 120 }), 0);
+    expect(api.put.mock.calls[1][1].reader.device).toBe('desktop');
+    vi.unstubAllGlobals();
   });
 
   it('sends at once when it is told not to wait, and sends nothing twice', () => {

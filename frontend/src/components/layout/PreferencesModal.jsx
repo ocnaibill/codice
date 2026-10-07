@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useDialog } from '../../lib/useDialog';
 import { LoadError } from '../ui/LoadError';
-import { MAX_DISPLAY_NAME, NAME_ORDERS, usePreferences, useSetDisplayName, useSetNameOrder } from '../../features/auth/api/usePreferences';
+import { MAX_DISPLAY_NAME, NAME_ORDERS, usePreferences, useSetDisplayName, useSetNameOrder, useSetReadingShared } from '../../features/auth/api/usePreferences';
 import { useMe } from '../../features/auth/api/useMe';
 import { getKeepScreenOn, saveKeepScreenOn } from '../../features/reader/preferences';
 import { MyData } from '../../features/auth/components/MyData';
@@ -44,6 +44,32 @@ function CalledBy({ prefs }) {
         {save.isError && <span role="alert" className="text-[13px] text-danger">Não foi possível salvar.</span>}
       </div>
     </form>
+  );
+}
+
+/** Whether how the text looks is the same on a phone and on a computer (#180): each has its own, until the person says otherwise. */
+function ReadingShared({ prefs }) {
+  const save = useSetReadingShared();
+  const shared = !!prefs?.reader?.shared;
+  return (
+    <div className="mt-4">
+      <label className="flex cursor-pointer items-start gap-3 text-[14px] text-ink">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={shared}
+          disabled={save.isPending}
+          onChange={(event) => save.mutate(event.target.checked)}
+        />
+        <span>
+          Usar a mesma aparência do texto em todos os aparelhos
+          <span className="block text-[12px] text-ink-faint">
+            Desligado, o celular e o computador têm cada um a sua (cor, fonte, tamanho, espaço e margens). Ligado, o que você escolher em um vale para os dois.
+          </span>
+        </span>
+      </label>
+      {save.isError && <p role="alert" className="mt-1 text-[13px] text-danger">Não foi possível salvar.</p>}
+    </div>
   );
 }
 
@@ -119,6 +145,7 @@ export function PreferencesModal({ onClose }) {
           </div>
         </fieldset>
         {save.isError && <p role="alert" className="mt-3 text-[13px] text-danger">Não foi possível salvar.</p>}
+        {prefs && <ReadingShared prefs={prefs} />}
         <KeepScreenOn />
         <MyData />
         <div className="mt-5 flex justify-end">

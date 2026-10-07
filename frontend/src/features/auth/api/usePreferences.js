@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
+import { deviceClass } from '../../reader/deviceClass';
 
 /** How names of people are shown, and what applies to this account (#64, DEC-094). */
 export const NAME_ORDERS = {
@@ -55,3 +56,16 @@ export function useSetDisplayName() {
 
 /** The most characters a name to be called by may have (the server holds the same limit). */
 export const MAX_DISPLAY_NAME = 60;
+
+/**
+ * Whether how the text looks is kept the same on every device (#180): on, it takes this device's choice to the others; off, each
+ * kind of device keeps what it has and goes its own way.
+ */
+export function useSetReadingShared() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (shared) =>
+      (await api.put('/auth/preferences', { reader: shared ? { shared: true, from: deviceClass() } : { shared: false } })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preferences'] }),
+  });
+}

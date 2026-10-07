@@ -93,7 +93,7 @@ func (h *PeopleHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
 // is null until the person has made a choice.
 type preferencesResponse struct {
 	people.Preference
-	Reader *reading.Settings `json:"reader"`
+	Reader *reading.Prefs `json:"reader"`
 	// DisplayName is how the person wants to be called ("" for the user name), and DisplayNameAsked whether they were asked.
 	DisplayName      string `json:"displayName"`
 	DisplayNameAsked bool   `json:"displayNameAsked"`
@@ -135,14 +135,14 @@ func (h *PeopleHandler) SetPreferences(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var choice *reading.Settings
+	var change *reading.Change
 	if len(req.Reader) > 0 && string(req.Reader) != "null" {
-		parsed, err := reading.Parse(req.Reader)
+		parsed, err := reading.ParseChange(req.Reader)
 		if err != nil {
 			http.Error(w, "reader is a choice of the lists of the reader", http.StatusBadRequest)
 			return
 		}
-		choice = &parsed
+		change = &parsed
 	}
 	userID := currentUserID(r)
 	if req.NameOrder != nil {
@@ -160,7 +160,13 @@ func (h *PeopleHandler) SetPreferences(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(req.Reader) > 0 {
-		if err := reading.Set(r.Context(), h.DB, userID, choice); err != nil {
+		var err error
+		if change == nil {
+			err = reading.Clear(r.Context(), h.DB, userID)
+		} else {
+			err = reading.Apply(r.Context(), h.DB, userID, *change)
+		}
+		if err != nil {
 			log.Println("Error saving the reading preferences:", err)
 			http.Error(w, "Error saving the preference", http.StatusInternalServerError)
 			return
