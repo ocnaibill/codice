@@ -26,10 +26,11 @@ export const SWIPE_RATIO = 1.5;
 /**
  * What a tap does, at `x` (0 at the left edge of the page, 1 at the right): 'prev' at the left, 'next' at the right,
  * 'toggle' (show or hide the controls) in the middle, and everywhere when the page is zoomed, where the sides are
- * for moving the page, not for turning it. null when it was not a tap.
+ * for moving the page, not for turning it. null when it was not a tap. `maxMs` is how long a tap may last (a finger on a
+ * page that selects text has a shorter one: epubGestures.TOUCH_TAP_MAX_MS).
  */
-export function tapAction({ dx, dy, ms, x, zoom }) {
-  if (Math.abs(dx) > TAP_MAX_MOVE || Math.abs(dy) > TAP_MAX_MOVE || ms > TAP_MAX_MS) return null;
+export function tapAction({ dx, dy, ms, x, zoom, maxMs = TAP_MAX_MS }) {
+  if (Math.abs(dx) > TAP_MAX_MOVE || Math.abs(dy) > TAP_MAX_MOVE || ms > maxMs) return null;
   if (zoom > 1) return 'toggle';
   if (x < SIDE_ZONE) return 'prev';
   if (x > 1 - SIDE_ZONE) return 'next';

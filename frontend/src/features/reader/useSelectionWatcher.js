@@ -8,11 +8,15 @@ export const TOUCH_DELAY = 350;
 /**
  * Tells what is selected inside `rootRef` (a text of the app's own page: the PDF, a text, a Markdown), once the
  * selection has rested, as { text, rect, touch, clear }, and null when it is gone or the person scrolls. While the
- * selection is being changed (a handle dragged) it says null at once, and again when it rests.
+ * selection is being changed (a handle dragged) it says null at once, and again when it rests. `quiet` (optional) says
+ * whether a selection that appears now is not the person's (the word that was under a finger that turned the page, which the
+ * phone selected a moment late): it is let go, and the menu is not offered for it.
  */
-export function useSelectionWatcher(rootRef, onSelection, enabled = true) {
+export function useSelectionWatcher(rootRef, onSelection, enabled = true, quiet = null) {
   const callback = useRef(onSelection);
   callback.current = onSelection;
+  const quietRef = useRef(quiet);
+  quietRef.current = quiet;
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -32,6 +36,10 @@ export function useSelectionWatcher(rootRef, onSelection, enabled = true) {
     const onChange = () => {
       clearTimeout(timer);
       if (shown) say(null);
+      if (quietRef.current?.()) {
+        window.getSelection()?.removeAllRanges();
+        return;
+      }
       timer = setTimeout(read, touch ? TOUCH_DELAY : MOUSE_DELAY);
     };
     const onPointer = (event) => { touch = event.pointerType !== 'mouse'; };
