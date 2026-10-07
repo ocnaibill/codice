@@ -210,21 +210,21 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlac
     else if (tap === 'toggle') onImmersiveChange?.(!immersive);
   };
 
-  const pageWidth = Math.round(readingWidth(available) * zoom);
+  const pageWidth = Math.round(readingWidth(available, immersive) * zoom);
   const commitDraft = () => {
     if (draft !== null && draft !== '') goTo(parseInt(draft, 10));
     setDraft(null);
   };
 
   return (
-    <div ref={rootRef} className="relative flex min-h-full flex-col items-center px-2 pb-6 pt-3 sm:px-6">
+    <div ref={rootRef} className={`relative flex min-h-full flex-col items-center ${immersive ? 'pb-6 pt-0' : 'px-2 pb-6 pt-3 sm:px-6'}`}>
       {/* The page. A tap or a swipe on it turns it; a page larger than the screen (zoomed) moves inside its frame. */}
       <div
         data-pdf-page-area
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
         onPointerCancel={() => { gesture.current = null; }}
-        className="max-w-full overflow-auto rounded-sm border border-border-hairline bg-white shadow-lg"
+        className={`max-w-full overflow-auto bg-white ${immersive ? '' : 'rounded-sm border border-border-hairline shadow-lg'}`}
         style={{ touchAction: zoom > 1 ? 'pan-x pan-y' : 'pan-y' }}
       >
         <Document
