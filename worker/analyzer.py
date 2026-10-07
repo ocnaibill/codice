@@ -27,6 +27,38 @@ UPSERT_PRIMARY_EDITION_COVER = """
 MAX_TAG = 50  # tags.name is VARCHAR(50)
 
 
+# The most each column holds, in characters: works.original_title and editions.title VARCHAR(255), works.series
+# VARCHAR(512), editions.publisher VARCHAR(256), person.name, family_name and given_name VARCHAR(255), person_alias.alias
+# VARCHAR(255). A longer text is shortened (a title that is a whole blurb is still a title).
+SHORTENED_FIELDS = {'title': 255, 'series': 512, 'publisher': 256, 'author': 255}
+# editions.isbn VARCHAR(64), language VARCHAR(16), publication_date VARCHAR(32): shortened, they would be another value,
+# and one that long is not one of these at all, so it is left out.
+EXACT_FIELDS = {'isbn': 64, 'language': 16, 'publication_date': 32}
+
+
+def shorten(text, limit):
+    """A text as a column of `limit` characters can hold it. A book's fields are free text (an EPUB has put a whole
+    blurb in dc:title), and a value the column cannot hold must not fail the analysis of the file: it is cut at a word
+    when it can be, never ends on punctuation, and ends in an ellipsis to say it was cut."""
+    text = str(text)
+    if len(text) <= limit:
+        return text
+    cut = text[:limit - 1]
+    space = cut.rfind(' ')
+    if space >= limit // 2:
+        cut = cut[:space]
+    return cut.rstrip(' ,;:.-–—/') + '…'
+
+
+def fit_field(field, value):
+    """The value of a descriptive field as its column holds it, or None when it cannot be (see EXACT_FIELDS)."""
+    if value is None or isinstance(value, (int, float)) or field not in SHORTENED_FIELDS and field not in EXACT_FIELDS:
+        return value
+    if field in EXACT_FIELDS:
+        return value if len(str(value)) <= EXACT_FIELDS[field] else None
+    return shorten(value, SHORTENED_FIELDS[field])
+
+
 def clean_tag(name):
     """A tag as the database can hold it. A book's subjects are free text (one EPUB lists "Translated by
     Ebook Translator: https://translator.bookfere.com" as one), and a value the column cannot hold must
@@ -177,7 +209,7 @@ class Analyzer:
         for fields, sets, values in ((self.WORK_FIELDS, updates, params),
                                      (self.EDITION_FIELDS, edition_updates, edition_params)):
             for field, column in fields.items():
-                value = metadata.get(field)
+                value = fit_field(field, metadata.get(field))
                 if value and self._may_fill(state, field) and value != state['values'].get(field):
                     sets.append(f"{column} = %s")
                     values.append(value)
@@ -214,6 +246,7 @@ class Analyzer:
         # and what the file wrote is kept as an alias (#36).
         written = metadata.get('author')
         author, family, given, renamed = parse_name(written) if written and written != 'Unknown Author' else ('', None, None, False)
+        author, family, given = (fit_field('author', n) if n else n for n in (author, family, given))
         if author and self._may_fill(state, 'author') and author != state['values'].get('author'):
             # What is already known about the person is not replaced: the surname is learned once.
             author_id = self.db.fetchone(
@@ -226,7 +259,7 @@ class Analyzer:
             if author_id and renamed:
                 self.db.execute(
                     "INSERT INTO person_alias (person_id, alias) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                    (author_id[0], ' '.join(written.split())))
+                    (author_id[0], shorten(' '.join(written.split()), SHORTENED_FIELDS['author'])))
             if author_id:
                 self.db.execute(
                     "DELETE FROM work_contributors WHERE work_id = %s AND role = 'author' AND position = 0",
@@ -292,7 +325,9 @@ class Analyzer:
             lock_name = 'series' if field == 'series_index' else field
             if state['locks'].get(lock_name):
                 continue
-            text = str(value)
+            text = fit_field(field, str(value)) if field != 'series_index' else str(value)
+            if text is None:
+                continue
             current = state['values'].get(field)
             if field == 'series_index':
                 try:

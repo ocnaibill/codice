@@ -322,3 +322,111 @@ class TestContributorSuggestions:
         Analyzer(db).save_candidates(7, {'author': 'A One', 'credits': [{'name': 'B Two'}]}, 'Open Library', {})
         query = [q for q, p in db.matching("INSERT INTO metadata_candidates") if p[1] == 'contributors'][0]
         assert "ON CONFLICT (work_id, field, source, value) DO NOTHING" in query
+
+
+class TestLongFields:
+    """A file's metadata is free text. What a column cannot hold must not fail the analysis (#169)."""
+    BLURB = ('Uma história longa sobre um planeta de areia, três famílias e um segredo guardado por séculos, ' * 60).strip()
+
+    def work_values(self, db):
+        query, params = db.work_update()
+        return dict(zip([c.split(' = ')[0] for c in query.split('SET ')[1].split(', ')], params))
+
+    def edition_values(self, db):
+        update = db.edition_update()
+        if update is None:
+            return {}
+        query, params = update
+        return dict(zip([c.split(' = ')[0] for c in query.split('SET ')[1].split(' WHERE')[0].split(', ')], params))
+
+    def test_a_title_that_is_a_whole_blurb_is_shortened_at_a_word_and_says_so(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, {'title': self.BLURB})
+        title = self.work_values(db)['original_title']
+        assert len(title) <= 255 and title.endswith('…') and ' …' not in title and self.BLURB.startswith(title[:-1])
+
+    def test_the_limit_is_in_characters_not_bytes(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, {'title': 'ç' * 255})
+        assert self.work_values(db)['original_title'] == 'ç' * 255   # 510 bytes, 255 characters: it fits
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, {'title': 'ç' * 256})
+        assert len(self.work_values(db)['original_title']) == 255
+
+    def test_series_and_publisher_have_their_own_limits(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, {'title': 'Duna', 'series': 'S' * 600, 'publisher': 'P' * 300})
+        assert len(self.work_values(db)['series']) == 512
+        assert len(self.edition_values(db)['publisher']) == 256
+
+    def test_a_value_that_would_be_another_one_if_cut_is_left_out(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, {'title': 'Duna', 'isbn': '9' * 80, 'language': 'portuguese-brazilian-x', 'publication_date': '2020-05-01T00:00:00Z-and-more-text'})
+        assert self.edition_values(db) == {}
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, {'title': 'Duna', 'isbn': '9788576573135', 'language': 'pt-BR', 'publication_date': '2020-05-01'})
+        assert self.edition_values(db) == {'isbn': '9788576573135', 'language': 'pt-BR', 'publication_date': '2020-05-01'}
+
+    def test_an_author_name_that_is_too_long_and_its_alias_are_shortened(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, {'title': 'Duna', 'author': ('H' * 300) + ', ' + ('F' * 300) + ', author'})
+        (name, family, given), = [p for q, p in db.matching("INSERT INTO person (name")]
+        assert all(v is not None and len(v) <= 255 for v in (name, family, given))
+        (alias,) = [p[1] for q, p in db.matching("INSERT INTO person_alias")]
+        assert len(alias) == 255 and alias.endswith('…')
+
+    def test_the_limits_are_exact_at_the_edge(self):
+        for field, limit in (('author', 255),):
+            db = FakeDB()
+            Analyzer(db).save_metadata(7, {'title': 'Duna', field: 'a' * limit})
+            assert [p[0] for q, p in db.matching("INSERT INTO person (name")] == ['a' * limit]
+            db = FakeDB()
+            Analyzer(db).save_metadata(7, {'title': 'Duna', field: 'a' * (limit + 1)})
+            assert len([p[0] for q, p in db.matching("INSERT INTO person (name")][0]) == limit
+        for field, limit in (('isbn', 64), ('language', 16), ('publication_date', 32)):
+            db = FakeDB()
+            Analyzer(db).save_metadata(7, {'title': 'Duna', field: '1' * limit})
+            assert self.edition_values(db) == {field: '1' * limit}
+            db = FakeDB()
+            Analyzer(db).save_metadata(7, {'title': 'Duna', field: '1' * (limit + 1)})
+            assert self.edition_values(db) == {}
+
+    def test_what_fits_and_what_has_no_limit_is_left_alone(self):
+        db = FakeDB()
+        description = 'texto ' * 5000
+        Analyzer(db).save_metadata(7, {'title': 'Duna', 'description': description, 'series': 'Duna', 'series_index': 2.0})
+        values = self.work_values(db)
+        assert values['description'] == description and values['original_title'] == 'Duna' and values['series_index'] == 2.0
+
+    def test_reading_the_same_long_title_again_changes_nothing(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, {'title': self.BLURB})
+        shortened = self.work_values(db)['original_title']
+        again = FakeDB(values={'title': shortened}, sources={'title': 'file'})
+        Analyzer(again).save_metadata(7, {'title': self.BLURB})
+        assert again.work_update() is None
+
+    def test_a_suggestion_is_shortened_too_so_that_accepting_it_cannot_fail(self):
+        db = FakeDB()
+        Analyzer(db).save_candidates(7, {'title': self.BLURB, 'isbn': '9' * 80, 'publisher': 'Aleph'}, 'openlibrary')
+        proposed = {k[0]: v for k, v in candidates(db).items()}
+        assert len(proposed['title'][2]) <= 255 and 'isbn' not in proposed and 'publisher' in proposed
+
+
+class TestShorten:
+    def test_a_text_that_fits_is_the_same_text(self):
+        from analyzer import shorten
+        assert shorten('Duna', 255) == 'Duna' and shorten('x' * 255, 255) == 'x' * 255
+
+    def test_it_cuts_at_a_word_when_the_word_is_not_too_far_back(self):
+        from analyzer import shorten
+        assert shorten('um dois três quatro cinco', 16) == 'um dois três…'
+
+    def test_it_cuts_anywhere_when_there_is_no_word_to_cut_at(self):
+        from analyzer import shorten
+        assert shorten('x' * 100, 20) == 'x' * 19 + '…'
+        assert shorten('ab ' + 'x' * 100, 20) == 'ab ' + 'x' * 16 + '…'   # a space too far back is not worth cutting at
+
+    def test_it_never_ends_on_punctuation_before_the_ellipsis(self):
+        from analyzer import shorten
+        assert shorten('palavra, outra, e mais coisas', 17) == 'palavra, outra…'
