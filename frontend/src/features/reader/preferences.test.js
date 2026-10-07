@@ -131,3 +131,43 @@ describe('color of the highlights', () => {
     expect(() => saveHighlightColor('sage')).not.toThrow();
   });
 });
+
+describe('keeping the screen on while reading (#180)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setPreferenceOwner('ana');
+  });
+
+  it('is on until it is turned off, and the choice is remembered', async () => {
+    const { getKeepScreenOn, saveKeepScreenOn } = await import('./preferences');
+    expect(getKeepScreenOn()).toBe(true);
+    saveKeepScreenOn(false);
+    expect(getKeepScreenOn()).toBe(false);
+    saveKeepScreenOn(true);
+    expect(getKeepScreenOn()).toBe(true);
+  });
+
+  it('belongs to the account on this device: another person starts from the default', async () => {
+    const { getKeepScreenOn, saveKeepScreenOn } = await import('./preferences');
+    saveKeepScreenOn(false);
+    setPreferenceOwner('bob');
+    expect(getKeepScreenOn()).toBe(true);
+    setPreferenceOwner('ana');
+    expect(getKeepScreenOn()).toBe(false);
+  });
+
+  it('remembers nothing when nobody is signed in', async () => {
+    const { getKeepScreenOn, saveKeepScreenOn } = await import('./preferences');
+    setPreferenceOwner(null);
+    saveKeepScreenOn(false);
+    expect(getKeepScreenOn()).toBe(true);
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('is on when the storage cannot be read', async () => {
+    const { getKeepScreenOn } = await import('./preferences');
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    expect(getKeepScreenOn()).toBe(true);
+    vi.restoreAllMocks();
+  });
+});

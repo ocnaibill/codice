@@ -3,6 +3,7 @@ import { useDialog } from '../../lib/useDialog';
 import { LoadError } from '../ui/LoadError';
 import { MAX_DISPLAY_NAME, NAME_ORDERS, usePreferences, useSetDisplayName, useSetNameOrder } from '../../features/auth/api/usePreferences';
 import { useMe } from '../../features/auth/api/useMe';
+import { getKeepScreenOn, saveKeepScreenOn } from '../../features/reader/preferences';
 import { MyData } from '../../features/auth/components/MyData';
 
 /**
@@ -43,6 +44,33 @@ function CalledBy({ prefs }) {
         {save.isError && <span role="alert" className="text-[13px] text-danger">Não foi possível salvar.</span>}
       </div>
     </form>
+  );
+}
+
+/** Whether the screen stays on while this device reads (#180): about the battery of this phone, so it is of the device. */
+function KeepScreenOn() {
+  const [on, setOn] = useState(getKeepScreenOn);
+  const supported = typeof navigator !== 'undefined' && !!navigator.wakeLock?.request;
+  return (
+    <div className="mt-4">
+      <label className={`flex items-start gap-3 text-[14px] text-ink ${supported ? 'cursor-pointer' : 'opacity-60'}`}>
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={supported && on}
+          disabled={!supported}
+          onChange={(event) => { setOn(event.target.checked); saveKeepScreenOn(event.target.checked); }}
+        />
+        <span>
+          Manter a tela acesa enquanto eu leio
+          <span className="block text-[12px] text-ink-faint">
+            {supported
+              ? 'Só neste aparelho. A tela não escurece sozinha durante a leitura de livros, PDFs, quadrinhos e textos (o áudio não precisa).'
+              : 'Este navegador, ou este endereço sem HTTPS, não permite. O aparelho escurece a tela como ele estiver configurado.'}
+          </span>
+        </span>
+      </label>
+    </div>
   );
 }
 
@@ -91,6 +119,7 @@ export function PreferencesModal({ onClose }) {
           </div>
         </fieldset>
         {save.isError && <p role="alert" className="mt-3 text-[13px] text-danger">Não foi possível salvar.</p>}
+        <KeepScreenOn />
         <MyData />
         <div className="mt-5 flex justify-end">
           <button onClick={onClose} className="rounded-lg bg-surface-alt px-4 py-2 text-[13px] text-ink hover:brightness-95">Fechar</button>

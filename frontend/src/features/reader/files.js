@@ -107,3 +107,8 @@ export function candidateLabel(candidate) {
   const confidence = CONFIDENCE_LABEL[candidate?.confidence] ?? '';
   return confidence ? `${method}, ${confidence}` : method;
 }
+
+// The formats that are read on the screen, with the eyes and little touching of it: the screen is kept on for them (#180).
+// Audio plays with the screen off, and a book that cannot be opened is not read.
+const READ_ON_SCREEN = new Set(['pdf', 'epub', 'cbz', 'cbr', 'txt', 'md']);
+export const isReadOnScreen = (format) => READ_ON_SCREEN.has((format || '').toLowerCase());
