@@ -24,7 +24,7 @@ function describe(item) {
   switch (item.status) {
     case STATUS.QUEUED: return { text: formatBytes(item.file.size), tone: 'text-ink-soft' };
     case STATUS.UPLOADING: return { text: `Enviando… ${item.progress}%`, tone: 'text-ink-soft' };
-    case STATUS.DONE: return { text: 'Enviado', tone: 'text-success' };
+    case STATUS.DONE: return { text: item.message ? `Enviado · ${item.message}` : 'Enviado', tone: 'text-success' };
     case STATUS.DUPLICATE: return { text: item.message, tone: 'text-warning' };
     case STATUS.CANCELLED: return { text: 'Cancelado', tone: 'text-ink-soft' };
     default: return { text: item.message, tone: 'text-danger' }; // error, refused
@@ -69,15 +69,17 @@ export function UploadModal() {
   };
 
   // What the system says when a run is over, and whether the dialog has nothing left to show.
-  const afterRun = ({ sent, duplicates, errors, cancelled, firstSent, allDone }) => {
+  const afterRun = ({ sent, duplicates, errors, cancelled, firstSent, allDone, converted = [] }) => {
     if (sent > 0) {
       const issues = [];
       if (duplicates) issues.push(`${plural(duplicates, 'já estava', 'já estavam')} no acervo`);
       if (errors) issues.push(`${plural(errors, 'com erro', 'com erro')}`);
       if (cancelled) issues.push(`${plural(cancelled, 'cancelado', 'cancelados')}`);
-      if (issues.length > 0) toast.warning(plural(sent, 'arquivo enviado', 'arquivos enviados'), { message: `${issues.join(' · ')}.` });
-      else if (sent === 1) toast.success('Arquivo enviado', { message: `${firstSent} será lido agora e logo aparece no acervo.` });
-      else toast.success(`${sent} arquivos enviados`, { message: 'Serão lidos agora e logo aparecem no acervo.' });
+      // A text that came in Windows-1252 or UTF-16 is kept as UTF-8: the stored file is not the bytes that were sent.
+      const conversion = converted.length ? ` ${converted.map(({ name, from }) => `“${name}” foi convertido de ${from} para UTF-8.`).join(' ')}` : '';
+      if (issues.length > 0) toast.warning(plural(sent, 'arquivo enviado', 'arquivos enviados'), { message: `${issues.join(' · ')}.${conversion}` });
+      else if (sent === 1) toast.success('Arquivo enviado', { message: `${firstSent} será lido agora e logo aparece no acervo.${conversion}` });
+      else toast.success(`${sent} arquivos enviados`, { message: `Serão lidos agora e logo aparecem no acervo.${conversion}` });
     }
     if (allDone) {
       queue.reset();

@@ -104,6 +104,7 @@ describe('what the server says', () => {
     'Format does not support page serving',
     'Invalid JSON payload',
     'Invalid multipart form',
+    'not UTF-8, and not Windows-1252 or UTF-16 with a byte order mark', // never reaches a client: the upload answers with the filecheck message
     'Invalid page number',
     'Pages not yet extracted. Call GetPages first.',
     'The hash of the previewed plan is required',

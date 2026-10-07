@@ -48,6 +48,18 @@ describe('ImportFolder', () => {
     expect(view.text()).toContain('Originais apagados: 2');
   });
 
+  it('says how many texts were brought to UTF-8, and nothing when none was', async () => {
+    await view.type(view.container.querySelector('input'), '/livros');
+    await view.click(view.button('Importar'));
+    await view.click(view.button('Manter originais'));
+    expect(view.text()).not.toContain('UTF-8');
+
+    api.post.mockResolvedValue({ data: { ...summary, converted: 2 } });
+    await view.click(view.button('Importar'));
+    await view.click(view.button('Manter originais'));
+    expect(view.text()).toContain('2 texto(s) em outra codificação foi(ram) convertido(s) para UTF-8.');
+  });
+
   it('does nothing when the question is cancelled', async () => {
     await view.click(view.button('Importar'));
     await view.click(view.button('Cancelar'));

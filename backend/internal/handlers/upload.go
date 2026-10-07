@@ -220,12 +220,16 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 			ingestStatus(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		answer := map[string]interface{}{
 			"message": "Upload completed and enqueued",
 			"work_id": res.WorkID,
 			"job_id":  res.JobID,
-		})
+		}
+		if res.ConvertedFrom != "" {
+			answer["converted_from"] = res.ConvertedFrom // the owner is told the stored text is not the bytes sent
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(answer)
 		return
 	}
 }
@@ -246,6 +250,8 @@ type BulkImportResponse struct {
 	OriginalsRemoved int    `json:"originalsRemoved"`
 	CleanupPending   int    `json:"cleanupPending"`
 	Errors           int    `json:"errors"`
+	// Converted is how many of the enqueued text files were brought to UTF-8 on the way in.
+	Converted int `json:"converted"`
 }
 
 // HandleBulkImport scans a directory recursively and enqueues all discovered PDF/EPUB/CBZ documents
@@ -279,7 +285,7 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var scannedCount, enqueuedCount, duplicateCount, errorCount, removedCount, pendingCount int
+	var scannedCount, enqueuedCount, duplicateCount, errorCount, removedCount, pendingCount, convertedCount int
 	removeOriginals := req.RemoveOriginals
 	ctx := r.Context()
 	actor := currentUserID(r)
@@ -313,6 +319,9 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 		switch {
 		case err == nil:
 			enqueuedCount++
+			if res.ConvertedFrom != "" {
+				convertedCount++
+			}
 			if removeOriginals {
 				// A move: the original goes only if it is still what was copied.
 				if storage.RemoveVerifiedOrigin(ctx, h.DB, path, res.SHA, info) {
@@ -341,6 +350,7 @@ func (h *UploadHandler) HandleBulkImport(w http.ResponseWriter, r *http.Request)
 		Message:          "Bulk import completed",
 		Scanned:          scannedCount,
 		Enqueued:         enqueuedCount,
+		Converted:        convertedCount,
 		Duplicates:       duplicateCount,
 		OriginalsRemoved: removedCount,
 		CleanupPending:   pendingCount,

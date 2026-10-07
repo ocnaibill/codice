@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -408,5 +411,119 @@ func TestBulkImport_NamesFromADiskThatDoNotFitAreCut(t *testing.T) {
 	}
 	if got := s.scalar(`SELECT count(*) FROM works WHERE original_title = 'linha1 linha2.txt'`); got != "1" {
 		t.Errorf("the title with a line break was not cleaned")
+	}
+}
+
+// A text in Windows-1252, as an old .txt is saved.
+func cp1252Text() []byte {
+	return []byte("Cora\xe7\xe3o, a\xe7\xe3o e emo\xe7\xe3o: \x93aspas\x94 e travess\xe3o \x97 tamb\xe9m \x805.\r\nSegunda linha.\n")
+}
+
+const cp1252TextInUTF8 = "Coração, ação e emoção: “aspas” e travessão — também €5.\r\nSegunda linha.\n"
+
+func utf16LEWithBOM(s string) []byte {
+	out := []byte{0xff, 0xfe}
+	for _, r := range s {
+		out = append(out, byte(r), byte(r>>8)) // the test text is all in the first plane
+	}
+	return out
+}
+
+func TestUpload_TextInAnotherEncodingIsStoredAsUTF8AndSaysSo(t *testing.T) {
+	s := newCatalogStack(t)
+	for name, tc := range map[string]struct {
+		file, from string
+		content    []byte
+		want       string // what is stored; "" for "not compared"
+	}{
+		"windows-1252": {"antigo.txt", "Windows-1252", cp1252Text(), cp1252TextInUTF8},
+		"markdown":     {"antigo.md", "Windows-1252", cp1252Text()[:20], ""},
+		"UTF-16 LE":    {"bloco.txt", "UTF-16 LE", utf16LEWithBOM("Olá, mundo — em UTF-16.\r\n"), "Olá, mundo — em UTF-16.\r\n"},
+	} {
+		rec := s.upload(admin, tc.file, tc.content)
+		if rec.Code != 200 {
+			t.Fatalf("%s: %d %s", name, rec.Code, strings.TrimSpace(rec.Body.String()))
+		}
+		var resp struct {
+			WorkID        int    `json:"work_id"`
+			ConvertedFrom string `json:"converted_from"`
+		}
+		json.Unmarshal(rec.Body.Bytes(), &resp)
+		if resp.ConvertedFrom != tc.from {
+			t.Errorf("%s: converted_from = %q, want %q", name, resp.ConvertedFrom, tc.from)
+		}
+		var stored string
+		var size int64
+		var sum string
+		s.db.QueryRow(`SELECT l.path, f.size_bytes, f.sha256 FROM storage_locations l JOIN files f ON f.id = l.file_id
+			JOIN editions e ON e.id = f.edition_id WHERE e.work_id = $1`, resp.WorkID).Scan(&stored, &size, &sum)
+		bytesOnDisk, err := os.ReadFile(filepath.Join(s.storage, stored))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !utf8.Valid(bytesOnDisk) || bytes.ContainsRune(bytesOnDisk, 0xfeff) || int64(len(bytesOnDisk)) != size {
+			t.Errorf("%s: the stored file is not clean UTF-8 of the size recorded (%d, recorded %d)", name, len(bytesOnDisk), size)
+		}
+		if h := sha256.Sum256(bytesOnDisk); hex.EncodeToString(h[:]) != sum {
+			t.Errorf("%s: the recorded hash is not the hash of the stored bytes", name)
+		}
+		if tc.want != "" && string(bytesOnDisk) != tc.want {
+			t.Errorf("%s: stored %q, want %q", name, bytesOnDisk, tc.want)
+		}
+	}
+	// The same original again is the same file: it converts to the same bytes and is found as a duplicate.
+	if rec := s.upload(admin, "outra-copia.txt", cp1252Text()); rec.Code != 409 {
+		t.Errorf("the same text again: %d, want 409", rec.Code)
+	}
+	// And the same text already in UTF-8 is the same file too.
+	if rec := s.upload(admin, "em-utf8.txt", []byte(cp1252TextInUTF8)); rec.Code != 409 {
+		t.Errorf("the text in UTF-8: %d, want 409", rec.Code)
+	}
+}
+
+func TestUpload_UTF8TextIsNotTouchedAndDoesNotSayItWasConverted(t *testing.T) {
+	s := newCatalogStack(t)
+	rec := s.upload(admin, "novo.txt", []byte(cp1252TextInUTF8))
+	if rec.Code != 200 || strings.Contains(rec.Body.String(), "converted_from") {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	var stored string
+	s.db.QueryRow(`SELECT path FROM storage_locations`).Scan(&stored)
+	if got, _ := os.ReadFile(filepath.Join(s.storage, stored)); string(got) != cp1252TextInUTF8 {
+		t.Errorf("a UTF-8 file changed: %q", got)
+	}
+}
+
+func TestUpload_TextThatCannotBeToldIsRefusedWithWhatToDo(t *testing.T) {
+	s := newCatalogStack(t)
+	for name, content := range map[string][]byte{
+		"a byte windows-1252 does not have": append(cp1252Text(), 0x81),
+		"binary":                            []byte("abc\x00\x01\x02def"),
+		"UTF-16 without a byte order mark":  []byte("a\x00b\x00c\x00"),
+	} {
+		rec := s.upload(admin, "x"+name+".txt", content)
+		if rec.Code != 415 || !strings.Contains(rec.Body.String(), "not UTF-8 text") {
+			t.Errorf("%s: %d %s", name, rec.Code, strings.TrimSpace(rec.Body.String()))
+		}
+	}
+	if got := s.counts(); got != "0/0/0" || len(s.stored()) != 0 {
+		t.Errorf("a refused text left something behind: %s %v", got, s.stored())
+	}
+}
+
+func TestBulkImport_AMovedTextInAnotherEncodingGoesOnceItIsSafelyCopied(t *testing.T) {
+	s := newCatalogStack(t)
+	dir := t.TempDir()
+	s.addRoot(admin, dir)
+	original := filepath.Join(dir, "antigo.txt")
+	os.WriteFile(original, cp1252Text(), 0o644)
+	rec := s.do(admin, "POST", "/works/bulk-import", fmt.Sprintf(`{"directory":%q,"removeOriginals":true}`, dir))
+	var r BulkImportResponse
+	json.Unmarshal(rec.Body.Bytes(), &r)
+	if rec.Code != 200 || r.Enqueued != 1 || r.Converted != 1 || r.OriginalsRemoved != 1 || r.CleanupPending != 0 {
+		t.Fatalf("bulk import: %d %+v", rec.Code, r)
+	}
+	if _, err := os.Stat(original); !os.IsNotExist(err) {
+		t.Error("the original was kept although its content was copied (as UTF-8)")
 	}
 }

@@ -69,7 +69,7 @@ export function queueReducer(items, action) {
 }
 
 /** How a row looks at the end of a run: the status it has, or the one this run gave it. */
-const emptySummary = () => ({ sent: 0, duplicates: 0, errors: 0, cancelled: 0, firstSent: null, allDone: false });
+const emptySummary = () => ({ sent: 0, duplicates: 0, errors: 0, cancelled: 0, firstSent: null, allDone: false, converted: [] });
 
 /** How many rows take a place on the list: the ones that are not sent yet (a sent one is only there to be seen). */
 export const placesTaken = (items) => items.filter((item) => item.status !== STATUS.DONE).length;
@@ -80,7 +80,7 @@ export const placesTaken = (items) => items.filter((item) => item.status !== STA
  * `upload(file, onProgress)` sends one and answers when it is done; a failure with a 409 is "already in the library".
  *
  * start() sends what is queued (or the files asked for) and answers, when it is over, with what happened:
- * { sent, duplicates, errors, cancelled, firstSent, allDone }. stop() lets the file that is going finish and
+ * { sent, duplicates, errors, cancelled, firstSent, allDone, converted: [{ name, from }] }. stop() lets the file that is going finish and
  * cancels the ones that have not started.
  */
 export function useUploadQueue(upload, describeError) {
@@ -145,8 +145,11 @@ export function useUploadQueue(upload, describeError) {
         setPosition({ index: n + 1, total: ids.length });
         dispatch({ type: 'patch', id, patch: { status: STATUS.UPLOADING, progress: 0, message: '' } });
         try {
-          await upload(item.file, (progress) => dispatch({ type: 'patch', id, patch: { progress } }));
-          dispatch({ type: 'patch', id, patch: { status: STATUS.DONE, progress: 100, message: '' } });
+          const answer = await upload(item.file, (progress) => dispatch({ type: 'patch', id, patch: { progress } }));
+          // A text that came in another encoding is stored as UTF-8: the owner is told what was changed.
+          const from = answer?.converted_from;
+          if (from) result.converted.push({ name: item.file.name, from });
+          dispatch({ type: 'patch', id, patch: { status: STATUS.DONE, progress: 100, message: from ? `Convertido de ${from} para UTF-8.` : '' } });
           final.set(id, STATUS.DONE);
           result.sent += 1;
           result.firstSent ??= item.file.name;

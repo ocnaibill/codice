@@ -45,6 +45,7 @@ export function ImportFolder() {
           {result.scanned} arquivo(s) encontrado(s): {result.enqueued} importado(s), {result.duplicates} já
           existia(m), {result.errors} com erro. Originais apagados: {result.originalsRemoved}
           {result.cleanupPending > 0 && ` (${result.cleanupPending} aguardando remoção, veja Armazenamento)`}.
+          {result.converted > 0 && ` ${result.converted} texto(s) em outra codificação foi(ram) convertido(s) para UTF-8.`}
         </p>
       )}
 
