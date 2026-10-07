@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../../lib/api', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
 import { api } from '../../../lib/api';
-import { useSetLibraryNameOrder, useSetNameOrder } from './usePreferences';
+import { MAX_DISPLAY_NAME, useSetDisplayName, useSetLibraryNameOrder, useSetNameOrder } from './usePreferences';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let container;
@@ -13,7 +13,7 @@ let root;
 let client;
 let hooks;
 function Probe() {
-  hooks = { account: useSetNameOrder(), library: useSetLibraryNameOrder() };
+  hooks = { account: useSetNameOrder(), library: useSetLibraryNameOrder(), calledBy: useSetDisplayName() };
   return null;
 }
 beforeEach(() => {
@@ -48,5 +48,19 @@ describe('changing how names are shown', () => {
     const spy = vi.spyOn(client, 'invalidateQueries');
     await act(async () => { await hooks.account.mutateAsync('family_first').catch(() => {}); });
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('changing how the person wants to be called (#179)', () => {
+  it('sends the name, and asks the account and the preferences to be read again so that the greeting changes', async () => {
+    await mount();
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    await act(async () => { await hooks.calledBy.mutateAsync('Aninha'); });
+    expect(api.put).toHaveBeenCalledWith('/auth/preferences', { displayName: 'Aninha' });
+    expect(invalidated(spy)).toEqual(['me', 'preferences']);
+  });
+
+  it('holds the same limit as the server', () => {
+    expect(MAX_DISPLAY_NAME).toBe(60);
   });
 });

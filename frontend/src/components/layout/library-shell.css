@@ -573,6 +573,16 @@
 .library-book-actions a:hover {
   background: var(--color-surface-alt);
 }
+/* The heart of a card: outline when it is not a favorite, filled in the brand colour when it is. */
+.library-favorite[aria-pressed='true'] {
+  color: var(--color-brand);
+}
+.library-favorite[aria-pressed='true'] .library-icon {
+  fill: currentColor;
+}
+.library-favorite:disabled {
+  opacity: 0.5;
+}
 .library-books[data-view='list'] {
   grid-template-columns: minmax(0, 1fr);
 }

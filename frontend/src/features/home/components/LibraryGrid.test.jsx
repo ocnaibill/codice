@@ -2,8 +2,10 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-vi.mock('../../../lib/api', () => ({ authenticatedUrl: (u) => u }));
+vi.mock('../../../lib/api', () => ({ authenticatedUrl: (u) => u, api: { post: vi.fn(), delete: vi.fn() } }));
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { api } from '../../../lib/api';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { LibraryGrid } from './LibraryGrid';
 import { formatBadge } from '../utils/format';
@@ -17,11 +19,20 @@ const card = (over) => ({
 
 let container;
 let root;
-const render = async (items) => { await act(async () => { root.render(<LibraryGrid items={items} isLoading={false} />); }); };
+let queryClient;
+const render = async (items) => {
+  await act(async () => {
+    root.render(<QueryClientProvider client={queryClient}><LibraryGrid items={items} isLoading={false} /></QueryClientProvider>);
+  });
+};
 const readButton = () => container.querySelector('article button[title]:not([title="Ver edições e arquivos"])');
 const state = () => useGlobalStore.getState();
 
 beforeEach(() => {
+  vi.clearAllMocks();
+  api.post.mockResolvedValue({});
+  api.delete.mockResolvedValue({});
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -74,5 +85,50 @@ describe('the corner of a cover says the format, or how many formats there are',
     await render([card({ format: 'epub', formatCount: 2 }), card({ id: 2, format: 'cbz', formatCount: 1 })]);
     const corners = [...container.querySelectorAll('article .library-book-cover span')].map((s) => s.textContent);
     expect(corners).toEqual(['2 formatos', 'CBZ']);
+  });
+});
+
+describe('the heart of a card (#179)', () => {
+  const heart = () => container.querySelector('button.library-favorite');
+  const settle = () => act(async () => { await Promise.resolve(); });
+
+  it('is there for every card, and says what it does by the title of the work', async () => {
+    await render([card({ id: 1, title: 'Duna' }), card({ id: 2, title: 'Neuromancer', isFavorite: true })]);
+    const hearts = [...container.querySelectorAll('button.library-favorite')];
+    expect(hearts.map((h) => h.getAttribute('aria-label'))).toEqual([
+      'Adicionar aos favoritos: Duna', 'Remover dos favoritos: Neuromancer']);
+    expect(hearts.map((h) => h.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+  });
+
+  it('favorites a work without opening it', async () => {
+    await render([card({ id: 7 })]);
+    await act(async () => { heart().click(); });
+    await settle();
+    expect(api.post).toHaveBeenCalledWith('/works/7/favorite');
+    expect(api.delete).not.toHaveBeenCalled();
+    expect(state()).toMatchObject({ activeBookId: null, sheetWorkId: null });
+  });
+
+  it('takes a work off the favorites', async () => {
+    await render([card({ id: 7, isFavorite: true })]);
+    await act(async () => { heart().click(); });
+    await settle();
+    expect(api.delete).toHaveBeenCalledWith('/works/7/favorite');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('asks the library to be read again once it is done, so that the heart changes', async () => {
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+    await render([card({ id: 7 })]);
+    await act(async () => { heart().click(); });
+    await settle();
+    expect(spy.mock.calls.map((c) => c[0].queryKey[0])).toEqual(expect.arrayContaining(['works', 'favorites']));
+  });
+
+  it('is a button of its own, not a part of the one that reads', async () => {
+    await render([card({ id: 7 })]);
+    expect(heart().closest('.library-book-actions')).not.toBeNull();
+    expect(heart().type).toBe('button');
+    expect(readButton()).not.toBe(heart());
   });
 });

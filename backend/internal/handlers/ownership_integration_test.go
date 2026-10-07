@@ -183,3 +183,31 @@ func TestRecovery_TheOwnerIsToldAtTheNextSignInAndTheLinkResetsThePassword(t *te
 	}
 	_ = bossID
 }
+
+func TestAuthMe_SaysHowThePersonWantsToBeCalledAndWhetherTheyWereAsked(t *testing.T) {
+	s := newAuthStack(t)
+	id := s.addUserWithPassword(t, "ana", "reader", "s3cret")
+	ana := s.login(t, "ana", "s3cret")
+	var me struct {
+		Username         string `json:"username"`
+		DisplayName      string `json:"displayName"`
+		DisplayNameAsked bool   `json:"displayNameAsked"`
+	}
+	read := func() {
+		me = struct {
+			Username         string `json:"username"`
+			DisplayName      string `json:"displayName"`
+			DisplayNameAsked bool   `json:"displayNameAsked"`
+		}{}
+		json.Unmarshal(s.req("GET", "/auth/me", ana, "").Body.Bytes(), &me)
+	}
+	read()
+	if me.Username != "ana" || me.DisplayName != "" || me.DisplayNameAsked {
+		t.Fatalf("new account: %+v", me)
+	}
+	s.db.Exec(`UPDATE users SET display_name = 'Aninha', display_name_asked_at = now() WHERE id = $1`, id)
+	read()
+	if me.Username != "ana" || me.DisplayName != "Aninha" || !me.DisplayNameAsked {
+		t.Fatalf("after choosing: %+v", me)
+	}
+}

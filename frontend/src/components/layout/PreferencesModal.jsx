@@ -1,13 +1,51 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useDialog } from '../../lib/useDialog';
 import { LoadError } from '../ui/LoadError';
-import { NAME_ORDERS, usePreferences, useSetNameOrder } from '../../features/auth/api/usePreferences';
+import { MAX_DISPLAY_NAME, NAME_ORDERS, usePreferences, useSetDisplayName, useSetNameOrder } from '../../features/auth/api/usePreferences';
+import { useMe } from '../../features/auth/api/useMe';
 import { MyData } from '../../features/auth/components/MyData';
 
 /**
  * How this account wants the names of authors shown, and how the library is sorted by author. It only
  * changes what is shown: what is stored is never touched (#64). "The library's" is the default the owner set.
  */
+function CalledBy({ prefs }) {
+  const { data: me } = useMe();
+  const save = useSetDisplayName();
+  const saved = prefs?.displayName ?? '';
+  const [draft, setDraft] = useState(null); // null: what is saved is what is shown
+  const shown = draft ?? saved;
+  const changed = draft !== null && draft.trim() !== saved;
+  return (
+    <form
+      className="mt-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save.mutate(draft ?? saved, { onSuccess: () => setDraft(null) });
+      }}
+    >
+      <label className="flex flex-col gap-1 text-[13px] font-medium text-ink">
+        Como você quer ser chamado
+        <input
+          value={shown}
+          onChange={(event) => setDraft(event.target.value)}
+          maxLength={MAX_DISPLAY_NAME}
+          autoComplete="given-name"
+          placeholder={me?.username ?? ''}
+          className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[14px] font-normal text-ink outline-none focus:border-brand"
+        />
+      </label>
+      <p className="mt-1 text-[12px] text-ink-soft">
+        É o nome da sua saudação. Vazio, vale o seu usuário{me?.username ? ` (${me.username})` : ''}, que continua sendo o que você digita para entrar.
+      </p>
+      <div className="mt-2 flex items-center gap-3">
+        <button type="submit" disabled={!changed || save.isPending} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-40">Salvar</button>
+        {save.isError && <span role="alert" className="text-[13px] text-danger">Não foi possível salvar.</span>}
+      </div>
+    </form>
+  );
+}
+
 export function PreferencesModal({ onClose }) {
   const { data: prefs, isLoading, isError, error, refetch, isRefetching } = usePreferences();
   const save = useSetNameOrder();
@@ -27,6 +65,7 @@ export function PreferencesModal({ onClose }) {
     >
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Preferências" className="max-h-[92vh] w-full max-w-md animate-pop-in overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="font-display text-xl font-semibold text-ink">Preferências</h2>
+        {prefs && <CalledBy prefs={prefs} />}
         <fieldset className="mt-4" disabled={isLoading || save.isPending}>
           <legend className="text-[13px] font-medium text-ink">Como mostrar o nome dos autores</legend>
           <p className="mt-1 text-[12px] text-ink-soft">

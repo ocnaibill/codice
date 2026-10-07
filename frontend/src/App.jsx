@@ -18,6 +18,7 @@ import { OwnershipBanner } from './features/ownership/OwnershipBanner';
 import { ReadingPreferencesSync } from './features/reader/ReadingPreferencesSync';
 import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
 import { PreferencesModal } from './components/layout/PreferencesModal';
+import { AskDisplayName } from './components/layout/DisplayNamePrompt';
 import { AppsModal } from './components/layout/AppsModal';
 import { AboutModal } from './components/layout/AboutModal';
 import { SessionsModal } from './components/layout/SessionsModal';
@@ -275,6 +276,7 @@ function App() {
       <ToastRegion />
       <UploadModal />
       <OwnershipBanner me={me} />
+      <AskDisplayName me={me} />
       <ReadingPreferencesSync key={me?.id ?? "none"} userId={me?.id} />
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
       {preferencesOpen && <PreferencesModal onClose={() => setPreferencesOpen(false)} />}

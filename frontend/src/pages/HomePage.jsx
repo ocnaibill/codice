@@ -73,7 +73,7 @@ function HomeDashboard() {
   return (
     <div className="library-dashboard">
       <GreetingStats
-        userName={me?.username}
+        userName={me?.displayName || me?.username}
         stats={stats.data}
         isLoading={stats.isLoading}
         error={stats.isError}

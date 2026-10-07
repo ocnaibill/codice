@@ -5,7 +5,7 @@ vi.mock('../../lib/api', () => ({
 }));
 
 import { api } from '../../lib/api';
-import { mount } from '../../features/admin/testUtils';
+import { flush, mount } from '../../features/admin/testUtils';
 import { PreferencesModal } from './PreferencesModal';
 
 let view;
@@ -15,6 +15,7 @@ async function open(prefs = { choice: '', library: 'given_first', effective: 'gi
   api.get.mockImplementation(async (url) => {
     if (url === '/auth/preferences') return { data: prefs };
     if (url === '/auth/export') return { data: { export: null } };
+    if (url === '/auth/me') return { data: { id: 'u1', username: 'ana', displayNameAsked: true } };
     throw new Error(`unexpected GET ${url}`);
   });
   api.put.mockResolvedValue({ data: prefs });
@@ -93,5 +94,44 @@ describe('PreferencesModal, how it appears', () => {
     expect(view.dialog().className).toContain('animate-pop-in');
     expect(view.dialog().parentElement.className).toContain('animate-fade-in');
   });
-});
 
+  describe('how the person wants to be called (#179)', () => {
+    const field = () => view.dialog().querySelector('input[autocomplete="given-name"]');
+
+    it('shows what is saved, and the user name as the placeholder', async () => {
+      await open({ choice: '', library: 'given_first', effective: 'given_first', displayName: 'Aninha', displayNameAsked: true });
+      await flush(); // the account is read once the form is there
+      expect(field().value).toBe('Aninha');
+      expect(field().placeholder).toBe('ana');
+      expect(view.dialog().textContent).toContain('Vazio, vale o seu usuário (ana)');
+    });
+
+    it('saves only when there is something changed, and goes back to the user name when it is emptied', async () => {
+      await open({ choice: '', library: 'given_first', effective: 'given_first', displayName: 'Aninha', displayNameAsked: true });
+      const save = () => [...view.dialog().querySelectorAll('button')].find((b) => b.textContent === 'Salvar');
+      expect(save().disabled).toBe(true);
+      await view.type(field(), '  Aninha ');
+      expect(save().disabled).toBe(true); // the same name with spaces around it is not a change
+      await view.type(field(), 'Ana Maria');
+      expect(save().disabled).toBe(false);
+      await view.click(save());
+      expect(api.put).toHaveBeenCalledWith('/auth/preferences', { displayName: 'Ana Maria' });
+      await view.type(field(), '');
+      await view.click(save());
+      expect(api.put).toHaveBeenLastCalledWith('/auth/preferences', { displayName: '' });
+    });
+
+    it('limits what can be typed to what the server keeps', async () => {
+      await open();
+      expect(field().maxLength).toBe(60);
+    });
+
+    it('says so when it could not be saved', async () => {
+      await open();
+      api.put.mockRejectedValue({ response: { status: 500 } });
+      await view.type(field(), 'Ana');
+      await view.click([...view.dialog().querySelectorAll('button')].find((b) => b.textContent === 'Salvar'));
+      expect(view.dialog().textContent).toContain('Não foi possível salvar.');
+    });
+  });
+});

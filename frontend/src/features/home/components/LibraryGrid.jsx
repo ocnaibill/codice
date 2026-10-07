@@ -2,6 +2,8 @@ import iconActionRead from '../../../assets/icons/card-action-read.svg';
 import iconActionDownload from '../../../assets/icons/card-action-download.svg';
 import { EmptyState, Skeleton } from '../../../components/ui/EmptyState';
 import { WorkCover } from '../../../components/ui/WorkCover';
+import { LibraryIcon } from '../../../components/ui/LibraryIcon';
+import { useFavoriteToggle } from '../../reader/api/useFavoriteToggle';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { authenticatedUrl } from '../../../lib/api';
 import { readLabel, readTarget } from '../../reader/readTarget';
@@ -14,6 +16,25 @@ const STATUS_LABEL = {
   QUEUED: 'Na fila',
   ERROR: 'Erro ao processar',
 };
+
+/** The heart of a card: to favorite a work without opening it (#179). */
+function FavoriteButton({ item }) {
+  const toggle = useFavoriteToggle(item.id);
+  const label = item.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos';
+  return (
+    <button
+      type="button"
+      className="library-favorite"
+      onClick={() => toggle.mutate(!item.isFavorite)}
+      disabled={toggle.isPending}
+      aria-pressed={!!item.isFavorite}
+      aria-label={`${label}: ${item.title}`}
+      title={label}
+    >
+      <LibraryIcon name="heart" />
+    </button>
+  );
+}
 
 function BookCard({ item, onOpen, onSheet }) {
   const isReady = item.mediaStatus === 'READY' || !item.mediaStatus;
@@ -60,6 +81,7 @@ function BookCard({ item, onOpen, onSheet }) {
         >
           <img src={iconActionRead} alt="" className="h-4 w-5" />
         </button>
+        <FavoriteButton item={item} />
         {item.fileUrl ? (
           <a
             href={authenticatedUrl(item.fileUrl)}
