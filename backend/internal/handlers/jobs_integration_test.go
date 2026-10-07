@@ -91,3 +91,75 @@ func TestJobsAdmin_ListRerunAndCancel(t *testing.T) {
 		t.Errorf("audit trail = %q", got)
 	}
 }
+
+func TestJobsAdmin_RerunAllFailedAtOnce(t *testing.T) {
+	s := newCatalogStack(t)
+	w1 := s.addWork("Um", "Ana", "um.epub", "epub")
+	w2 := s.addWork("Dois", "Ana", "dois.pdf", "pdf")
+	w3 := s.addWork("Três", "Ana", "tres.epub", "epub")
+	w4 := s.addWork("Quatro", "Ana", "quatro.epub", "epub")
+	w5 := s.addWork("Cinco", "Ana", "cinco.epub", "epub")
+	job := func(kind string, work any, state, payload string) int64 {
+		var id int64
+		err := s.db.QueryRow(`INSERT INTO jobs (type, work_id, payload, state, attempts, last_error, error_kind, finished_at)
+			VALUES ($1, $2, $3::jsonb, $4::varchar, 3, CASE WHEN $4 = 'failed' THEN 'it did not work' END, CASE WHEN $4 = 'failed' THEN 'permanent' END,
+			        CASE WHEN $4 IN ('failed', 'succeeded', 'cancelled') THEN now() END) RETURNING id`, kind, work, payload, state).Scan(&id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	ingest := job("ingest", w1, "failed", `{"file_path": "/old/place/um.epub"}`)
+	ocr := job("ocr", w2, "failed", `{}`)
+	oldText := job("extract_text", w3, "failed", `{}`)
+	newText := job("extract_text", w3, "failed", `{}`)
+	busyFailed := job("ingest", w4, "failed", `{}`)
+	busyLive := job("ingest", w4, "pending", `{}`)
+	scan := job("scan", nil, "failed", `{"root_id": 1}`)
+	done := job("extract_text", w5, "succeeded", `{}`)
+	cancelled := job("ocr", w5, "cancelled", `{}`)
+
+	rec := s.do(admin, "POST", "/admin/jobs/rerun-failed", "")
+	var r struct{ Requeued, Left int }
+	json.Unmarshal(rec.Body.Bytes(), &r)
+	if rec.Code != 200 || r.Requeued != 3 || r.Left != 3 {
+		t.Fatalf("%d %s, want 3 requeued and 3 left", rec.Code, rec.Body.String())
+	}
+	state := func(id int64) string {
+		return s.scalar(`SELECT state || '/' || attempts || '/' || COALESCE(last_error, '-') FROM jobs WHERE id = $1`, id)
+	}
+	for name, id := range map[string]int64{"ingest": ingest, "ocr": ocr, "newest text": newText} {
+		if got := state(id); got != "pending/0/-" {
+			t.Errorf("%s = %q, want pending/0/-", name, got)
+		}
+	}
+	// What it must not touch: the older failed job of the same kind (the newest returns), a work that already has a live
+	// job of that kind, a job with no work, and what is not failed.
+	for name, id := range map[string]int64{"older text": oldText, "work with a live job": busyFailed, "scan": scan} {
+		if got := state(id); got != "failed/3/it did not work" {
+			t.Errorf("%s = %q, want it left failed", name, got)
+		}
+	}
+	if state(busyLive) != "pending/3/-" || state(done) != "succeeded/3/-" || state(cancelled) != "cancelled/3/-" {
+		t.Errorf("a job that was not failed changed: %s %s %s", state(busyLive), state(done), state(cancelled))
+	}
+	// The ingestion looks for its file where it is now, not where it was.
+	want := s.storage + "/" + s.scalar(`SELECT l.path FROM work_primary wp JOIN storage_locations l ON l.file_id = wp.file_id WHERE wp.work_id = $1`, w1)
+	if got := s.scalar(`SELECT payload->>'file_path' FROM jobs WHERE id = $1`, ingest); got != want {
+		t.Errorf("file_path = %q, want %q", got, want)
+	}
+	// It is audited, with what it did.
+	if got := s.scalar(`SELECT details->>'requeued' || '/' || (details->>'left') FROM audit_log WHERE action = 'job.rerun_failed'`); got != "3/3" {
+		t.Errorf("audit = %q, want 3/3", got)
+	}
+
+	// Asking again has nothing left that it may touch, and says so without an audit entry of nothing.
+	rec = s.do(admin, "POST", "/admin/jobs/rerun-failed", "")
+	json.Unmarshal(rec.Body.Bytes(), &r)
+	if rec.Code != 200 || r.Requeued != 0 || r.Left != 3 {
+		t.Errorf("second call: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := s.scalar(`SELECT count(*) FROM audit_log WHERE action = 'job.rerun_failed'`); got != "1" {
+		t.Errorf("%s audit entries, want 1", got)
+	}
+}

@@ -134,6 +134,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Post("/admin/storage/orphans/trash", trashAdmin.TrashOrphans)
 	r.Get("/works/{id}/pages", pages.GetPages)
 	r.Post("/admin/storage/reorganize", storageAdmin.Reorganize)
+	r.Post("/admin/jobs/rerun-failed", jobsAdmin.RerunFailed)
 	r.Post("/admin/jobs/{id}/rerun", jobsAdmin.Rerun)
 	r.Post("/admin/works/{id}/extract-text", jobsAdmin.ExtractText)
 	r.Get("/search", (&SearchHandler{DB: db}).Search)

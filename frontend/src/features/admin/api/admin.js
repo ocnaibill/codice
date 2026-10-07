@@ -180,6 +180,8 @@ export const useSetMetadataProvider = () =>
   useAdminAction(({ id, enabled }) => api.put(`/admin/metadata-providers/${id}`, { enabled }));
 
 export const useRerunJob = () => useAdminAction((id) => api.post(`/admin/jobs/${id}/rerun`));
+/** Puts every failed job of a work back in the queue; answers with how many went and how many failed jobs are left. */
+export const useRerunFailedJobs = () => useAdminAction(async () => (await api.post('/admin/jobs/rerun-failed')).data);
 export const useCancelJob = () => useAdminAction((id) => api.post(`/admin/jobs/${id}/cancel`));
 
 export const useAddRoot = () => useAdminAction((path) => api.post('/admin/storage/roots', { path }));

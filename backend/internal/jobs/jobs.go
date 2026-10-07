@@ -160,6 +160,57 @@ func Rerun(ctx context.Context, db *sql.DB, id int64) error {
 	return affected(ctx, db, res, err, id)
 }
 
+// RerunFailed puts every failed job of a work back in the queue, with a fresh set of attempts: the one button for "try
+// them all again" after a bad hour (a folder that was not mounted, a service that was down). It answers with the ids it
+// requeued and how many failed jobs it left as they are, which are the ones it must not touch: a job without a work
+// (a scan, a backup: those are looked at one by one), and one whose work already has a live job of the same kind
+// (asking twice is not a way to run it twice, DEC-069). When a work has several failed jobs of one kind, the newest is
+// the one that returns. An ingestion keeps the path the file had when it was created, and the file may have moved since,
+// so the paths are refreshed from where the files are now, as for one job.
+func RerunFailed(ctx context.Context, db *sql.DB, storagePath string) (requeued []int64, left int, err error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE jobs j SET payload = jsonb_set(j.payload, '{file_path}', to_jsonb(
+		       CASE WHEN l.mode = 'managed' THEN $1::text || '/' || l.path ELSE l.root || '/' || l.path END))
+		FROM work_primary wp JOIN storage_locations l ON l.file_id = wp.file_id
+		WHERE j.type = 'ingest' AND j.state = 'failed' AND wp.work_id = j.work_id`, storagePath); err != nil {
+		return nil, 0, err
+	}
+	rows, err := tx.QueryContext(ctx, `
+		WITH candidates AS (
+			SELECT DISTINCT ON (j.type, j.work_id) j.id FROM jobs j
+			WHERE j.state = 'failed' AND j.work_id IS NOT NULL
+			  AND NOT EXISTS (SELECT 1 FROM jobs a WHERE a.type = j.type AND a.work_id = j.work_id AND a.state IN ('pending', 'running'))
+			ORDER BY j.type, j.work_id, j.id DESC)
+		UPDATE jobs SET state = 'pending', attempts = 0, run_at = now(), cancel_requested = FALSE,
+		       last_error = NULL, error_kind = NULL, finished_at = NULL, updated_at = now()
+		WHERE id IN (SELECT id FROM candidates)
+		RETURNING id`)
+	if err != nil {
+		return nil, 0, err
+	}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, 0, err
+		}
+		requeued = append(requeued, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM jobs WHERE state = 'failed'`).Scan(&left); err != nil {
+		return nil, 0, err
+	}
+	return requeued, left, tx.Commit()
+}
+
 // Cancel stops a pending job at once and asks a running one to stop; the worker
 // notices at its next heartbeat and publishes nothing.
 func Cancel(ctx context.Context, db *sql.DB, id int64) error {

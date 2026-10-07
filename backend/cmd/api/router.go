@@ -215,6 +215,7 @@ func newRouter(d routerDeps) http.Handler {
 
 	// Jobs administration (RF-020)
 	r.With(staff).Get("/admin/jobs", jobsHandler.List)
+	r.With(staff).Post("/admin/jobs/rerun-failed", jobsHandler.RerunFailed)
 	r.With(staff).Post("/admin/jobs/{id}/rerun", jobsHandler.Rerun)
 	r.With(staff).Post("/admin/jobs/{id}/cancel", jobsHandler.Cancel)
 	r.With(staff).Post("/admin/works/{id}/extract-text", jobsHandler.ExtractText)
