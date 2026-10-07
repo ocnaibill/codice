@@ -43,6 +43,7 @@ import { setPreferenceOwner } from '../../preferences';
 import { themeName } from '../../epubThemes';
 import { MOUSE_DELAY, TOUCH_DELAY } from '../../useSelectionWatcher';
 import { QUIET_AFTER_TURN_MS, TOUCH_TAP_MAX_MS } from '../../epubGestures';
+import { REDRAW_DELAY } from '../../epubMarks';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -1138,6 +1139,123 @@ describe('the EPUB reader: the highlights underlined on the page', () => {
     state.rendition.annotations = undefined;
     await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[mark(A), mark(B)]} />); });
     expect(container.querySelector('[data-epub-page]')).not.toBeNull();
+  });
+});
+
+describe('the EPUB reader: the marks are drawn again where the text may have moved (#180)', () => {
+  const A = 'epubcfi(/6/4!/4/2,/1:0,/1:20)';
+  const B = 'epubcfi(/6/6!/4/2,/1:3,/1:9)';
+  const wait = (ms) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
+  const painted = () => state.rendition.annotations.highlight.mock.calls.map((c) => c[0]);
+  const removed = () => state.rendition.annotations.remove.mock.calls.map((c) => c[0]);
+
+  async function withMarks(marks = [{ cfi: A, color: 'indigo' }, { cfi: B }]) {
+    await open({ marks });
+    state.rendition.annotations.highlight.mockClear();
+    state.rendition.annotations.remove.mockClear();
+  }
+  const expectRedrawn = () => {
+    expect(removed()).toEqual([A, B]);
+    expect(painted()).toEqual([A, B]);
+  };
+
+  it('when the window or the phone is resized', async () => {
+    await withMarks();
+    await act(async () => { state.events.resized(); });
+    expect(painted()).toEqual([]); // not before the text has settled
+    await wait(REDRAW_DELAY - 60);
+    expect(painted()).toEqual([]);
+    await wait(120);
+    expectRedrawn();
+  });
+
+  it('when a page comes: the marks of the new page are drawn over the text as it is now', async () => {
+    await withMarks();
+    await relocate('epubcfi(/6/4!/4/8)');
+    await wait(REDRAW_DELAY + 80);
+    expectRedrawn();
+  });
+
+  it('when the text is laid out again for another letter size', async () => {
+    await withMarks();
+    await relocate(); // the place the person is at, which the layout goes back to
+    await wait(REDRAW_DELAY + 80);
+    state.rendition.annotations.highlight.mockClear();
+    state.rendition.annotations.remove.mockClear();
+    await click(button('Aparência do texto'));
+    await click(container.querySelector('[role="dialog"] button[aria-label="Aumentar a letra"]'));
+    await wait(80 + 250 + REDRAW_DELAY + 120);
+    expect(painted()).toEqual(expect.arrayContaining([A, B]));
+    expect(removed()).toEqual(expect.arrayContaining([A, B]));
+  });
+
+  it('when a font that arrives after the page is drawn moves the text, and when the fonts of the page are all there', async () => {
+    await withMarks();
+    const doc = document.implementation.createHTMLDocument('p');
+    let loadingdone;
+    doc.fonts = { ready: Promise.resolve(), addEventListener: (type, fn) => { if (type === 'loadingdone') loadingdone = fn; } };
+    await act(async () => { state.hooks[0]({ document: doc, addStylesheetCss: vi.fn(), cfiFromRange: vi.fn() }); });
+    await wait(REDRAW_DELAY + 80); // the fonts that were there already
+    expectRedrawn();
+    state.rendition.annotations.highlight.mockClear();
+    state.rendition.annotations.remove.mockClear();
+    await act(async () => { loadingdone(); }); // a font came a moment later
+    await wait(REDRAW_DELAY + 80);
+    expectRedrawn();
+  });
+
+  it('once for a few reasons that come together', async () => {
+    await withMarks();
+    await act(async () => { state.events.resized(); });
+    await relocate();
+    await act(async () => { state.events.resized(); });
+    await wait(REDRAW_DELAY + 120);
+    expect(painted()).toEqual([A, B]);
+    expect(removed()).toEqual([A, B]);
+  });
+
+  it('draws each mark in its own color, as it did the first time', async () => {
+    await withMarks();
+    await act(async () => { state.events.resized(); });
+    await wait(REDRAW_DELAY + 80);
+    const fills = state.rendition.annotations.highlight.mock.calls.map((c) => c[4].fill);
+    expect(fills).toEqual(['#3c4d9c', '#944516']);
+  });
+
+  it('draws only the marks that are on the page, not the one that was taken away', async () => {
+    await withMarks();
+    await act(async () => { root.render(<EpubViewer fileUrl="/f.epub" onProgress={vi.fn()} marks={[{ cfi: A, color: 'indigo' }]} />); });
+    state.rendition.annotations.highlight.mockClear();
+    state.rendition.annotations.remove.mockClear();
+    await act(async () => { state.events.resized(); });
+    await wait(REDRAW_DELAY + 80);
+    expect(painted()).toEqual([A]);
+  });
+
+  it('is not stopped by a passage the book does not have any more, and does nothing without any marks', async () => {
+    await withMarks();
+    state.rendition.annotations.highlight.mockImplementationOnce(() => { throw new Error('No Section Found'); });
+    await act(async () => { state.events.resized(); });
+    await wait(REDRAW_DELAY + 80);
+    expect(painted()).toEqual([A, B]);
+    state.rendition.annotations.highlight.mockClear();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ marks: [] });
+    state.rendition.annotations.highlight.mockClear();
+    await act(async () => { state.events.resized(); });
+    await wait(REDRAW_DELAY + 80);
+    expect(painted()).toEqual([]);
+  });
+
+  it('does not draw after the reader is gone', async () => {
+    await withMarks();
+    const rendition = state.rendition;
+    await act(async () => { state.events.resized(); });
+    act(() => root.unmount());
+    root = createRoot(container);
+    await wait(REDRAW_DELAY + 80);
+    expect(rendition.annotations.highlight).not.toHaveBeenCalled();
   });
 });
 

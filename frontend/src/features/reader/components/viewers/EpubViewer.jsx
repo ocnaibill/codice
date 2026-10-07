@@ -9,6 +9,7 @@ import { cleanQuote } from '../../selection';
 import { MOUSE_DELAY, TOUCH_DELAY } from '../../useSelectionWatcher';
 import { flattenToc } from '../../epubToc';
 import { tapAction, swipeAction } from '../../pdfGestures';
+import { REDRAW_DELAY } from '../../epubMarks';
 import { QUIET_AFTER_TURN_MS, TOUCH_TAP_MAX_MS, acrossPage, liftMeaning, toScreen } from '../../epubGestures';
 import { getEpubSettings, saveEpubSettings } from '../../preferences';
 import { pushReadingSettings } from '../../readingSync';
@@ -68,6 +69,7 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
   const selectRef = useRef(onSelection);
   selectRef.current = onSelection;
   const markedRef = useRef(new Map()); // the passages underlined on the page now: their CFI, and the color
+  const redrawTimer = useRef(null);
   const surfaceRef = useRef(null);
   const placeRef = useRef(null); // where the page in view starts (a CFI), to come back to it when the text is laid out again
   const layoutRef = useRef(null);
@@ -78,6 +80,29 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
   immersiveRef.current = immersive;
 
   // ── Helpers ──────────────────────────────────────────────────────
+
+  // A passage is underlined with a drawing laid over the page, made from where the text is when it is drawn. Text that moves
+  // afterwards (a letter size, a font that arrives late, a window or a phone that changes, a page that comes back) leaves the
+  // drawing where the text was (#180). So the drawings are made again when the text may have moved, a moment after it has
+  // settled; several reasons close together are one redraw.
+  const paintMark = (annotations, cfi, color) => annotations.highlight(cfi, {}, null, 'codice-highlight', { fill: highlightColor(color).hex, 'fill-opacity': '0.28', 'mix-blend-mode': 'multiply' });
+  const redrawMarks = () => {
+    clearTimeout(redrawTimer.current);
+    redrawTimer.current = setTimeout(() => {
+      const annotations = renditionRef.current?.annotations;
+      if (!annotations) return;
+      for (const [cfi, color] of markedRef.current) {
+        try {
+          annotations.remove(cfi, 'highlight');
+          paintMark(annotations, cfi, color);
+        } catch {
+          // A passage the book no longer has is not underlined; nothing else depends on it.
+        }
+      }
+    }, REDRAW_DELAY);
+  };
+  const redrawRef = useRef(redrawMarks);
+  redrawRef.current = redrawMarks;
 
   /**
    * Find a spine Section whose href matches `rawHref` (which may be
@@ -168,6 +193,9 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
             }));
           doc.addEventListener('pointercancel', () => touchRef.current.cancel());
           doc.addEventListener('keyup', (e) => keyRef.current(e));
+          // A font that arrives after the page is drawn moves the text without a word to anybody: when it is there, the marks follow.
+          doc.fonts?.ready?.then(() => redrawRef.current());
+          doc.fonts?.addEventListener?.('loadingdone', () => redrawRef.current());
           // What is selected on the page of the book is told to whoever offers what to do with it, once it has rested,
           // with the place of the passage in the book (a CFI of the range) and where it is on the screen.
           let timer = null;
@@ -234,12 +262,15 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
         rendition.on('relocated', (location) => {
           if (!location || !location.start || settlingRef.current) return;
           selectRef.current?.(null); // the page turned: the selection is not on it any more
+          redrawRef.current();
           placeRef.current = location.start.cfi;
           accept(location);
         });
         // After the text is laid out again: back to the place, and what is saved is the page that shows it.
+        rendition.on('resized', () => redrawRef.current());
         settleRef.current = async (place) => {
           await rendition.display(place);
+          redrawRef.current();
           const location = rendition.currentLocation?.();
           if (!cancelled && location?.start) accept(location);
         };
@@ -366,7 +397,7 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
       backTimer.current = setTimeout(() => { settlingRef.current = false; }, 250);
     }, 80);
   }, [settings]);
-  useEffect(() => () => clearTimeout(backTimer.current), []);
+  useEffect(() => () => { clearTimeout(backTimer.current); clearTimeout(redrawTimer.current); }, []);
 
   // The text is laid out for the room there is with the header shown, and stays at the bottom of the screen: when the
   // header folds away to leave only the page, the text does not move and is not laid out again (it would start at
@@ -413,7 +444,7 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
     for (const [cfi, color] of wanted) {
       if (markedRef.current.has(cfi)) continue;
       try {
-        annotations.highlight(cfi, {}, null, 'codice-highlight', { fill: highlightColor(color).hex, 'fill-opacity': '0.28', 'mix-blend-mode': 'multiply' });
+        paintMark(annotations, cfi, color);
         markedRef.current.set(cfi, color);
       } catch {
         // A passage the book no longer has is not underlined; nothing else depends on it.
