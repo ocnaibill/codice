@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_READING_WIDTH, SIDE_ZONE, SWIPE_MIN, SWIPE_RATIO, TAP_MAX_MOVE, TAP_MAX_MS, ZOOMS, readingWidth, swipeAction, tapAction } from './pdfGestures';
+import { IMMERSIVE_MAX_READING_WIDTH, MAX_READING_WIDTH, SIDE_ZONE, SWIPE_MIN, SWIPE_RATIO, TAP_MAX_MOVE, TAP_MAX_MS, ZOOMS, readingWidth, swipeAction, tapAction } from './pdfGestures';
 
 describe('how wide a PDF page is drawn', () => {
   it('takes what the screen gives, less a gutter at each side', () => {
@@ -14,6 +14,23 @@ describe('how wide a PDF page is drawn', () => {
   it('never gets narrower than a page can be read', () => {
     expect(readingWidth(100)).toBe(240);
     expect(readingWidth(0)).toBe(240);
+  });
+  it('takes nearly all of the screen when only the page is on it (#181), and goes further on a big one', () => {
+    expect(readingWidth(360, true)).toBe(356);
+    expect(readingWidth(375, true)).toBe(371);
+    expect(readingWidth(1200, true)).toBe(1196);
+    expect(readingWidth(1920, true)).toBe(IMMERSIVE_MAX_READING_WIDTH);
+    expect(readingWidth(IMMERSIVE_MAX_READING_WIDTH + 4, true)).toBe(IMMERSIVE_MAX_READING_WIDTH);
+    expect(readingWidth(IMMERSIVE_MAX_READING_WIDTH + 3, true)).toBe(IMMERSIVE_MAX_READING_WIDTH - 1);
+    expect(IMMERSIVE_MAX_READING_WIDTH).toBeGreaterThan(MAX_READING_WIDTH);
+  });
+  it('is wider with only the page, on every size of screen', () => {
+    for (const available of [320, 375, 768, 1024, 1440, 1920]) {
+      expect(readingWidth(available, true)).toBeGreaterThan(readingWidth(available, false));
+    }
+  });
+  it('never gets narrower than a page can be read, hidden controls or not', () => {
+    expect(readingWidth(100, true)).toBe(240);
   });
   it('has steps of zoom that start at the width of the screen and grow', () => {
     expect(ZOOMS[0]).toBe(1);

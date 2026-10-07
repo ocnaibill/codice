@@ -6,12 +6,20 @@ export const ZOOMS = [1, 1.25, 1.5, 2, 2.5, 3];
 
 /** The widest a page is drawn at zoom 1: beyond this a line of text is too long to read, and the screen has room to spare. */
 export const MAX_READING_WIDTH = 900;
+/** With only the page on the screen (the controls hidden) the person came for the page: it may be drawn wider, and nearer the edges. */
+export const IMMERSIVE_MAX_READING_WIDTH = 1400;
 const MIN_READING_WIDTH = 240;
 const SIDE_GUTTER = 16;
+const IMMERSIVE_SIDE_GUTTER = 2;
 
-/** The width of the page at zoom 1, given what the screen gives: all of it, up to a comfortable measure. */
-export function readingWidth(available) {
-  return Math.max(MIN_READING_WIDTH, Math.min(MAX_READING_WIDTH, Math.round(available - SIDE_GUTTER * 2)));
+/**
+ * The width of the page at zoom 1, given what the screen gives: all of it, up to a comfortable measure. With the controls
+ * hidden (#181) it takes nearly all of the screen, and goes further on a big one, since nothing else is there to be seen.
+ */
+export function readingWidth(available, immersive = false) {
+  const gutter = immersive ? IMMERSIVE_SIDE_GUTTER : SIDE_GUTTER;
+  const widest = immersive ? IMMERSIVE_MAX_READING_WIDTH : MAX_READING_WIDTH;
+  return Math.max(MIN_READING_WIDTH, Math.min(widest, Math.round(available - gutter * 2)));
 }
 
 /** A tap is a touch that hardly moved and did not stay. */

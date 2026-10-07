@@ -189,6 +189,65 @@ describe('the zoom', () => {
     }
   });
 
+  describe('with only the page on the screen (#181)', () => {
+    const area = () => container.querySelector('[data-pdf-page-area]');
+    const root_ = () => container.firstElementChild;
+    const withWidth = async (px, props) => {
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return px; } });
+      try { await open(props); } finally { delete HTMLElement.prototype.clientWidth; }
+    };
+
+    it('draws the page nearly as wide as the screen, and wider than the usual on a big one', async () => {
+      await withWidth(375, { immersive: true });
+      expect(width()).toBe(371); // 375 less 2 at each side; with the controls shown it is 343
+      act(() => root.unmount());
+      root = createRoot(container);
+      await withWidth(1920, { immersive: true });
+      expect(width()).toBe(1400);
+      act(() => root.unmount());
+      root = createRoot(container);
+      await withWidth(375, { immersive: false });
+      expect(width()).toBe(343);
+      act(() => root.unmount());
+      root = createRoot(container);
+      await withWidth(1920, { immersive: false });
+      expect(width()).toBe(900);
+    });
+
+    it('takes the padding and the frame away, which would take room from the page', async () => {
+      await withWidth(375, { immersive: true });
+      expect(root_().className).not.toMatch(/\bpx-/);
+      expect(root_().className).toMatch(/pt-0/);
+      expect(area().className).not.toMatch(/border|shadow|rounded/);
+      act(() => root.unmount());
+      root = createRoot(container);
+      await withWidth(375, { immersive: false });
+      expect(root_().className).toMatch(/\bpx-2\b/);
+      expect(area().className).toMatch(/border/);
+    });
+
+    it('draws the page again, wider, the moment the controls are hidden, and narrower when they come back', async () => {
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return 375; } });
+      try {
+        await open({ immersive: false });
+        expect(width()).toBe(343);
+        await act(async () => { root.render(<PdfViewer fileUrl="/f.pdf" onProgress={vi.fn().mockResolvedValue({})} immersive />); });
+        expect(width()).toBe(371);
+        await act(async () => { root.render(<PdfViewer fileUrl="/f.pdf" onProgress={vi.fn().mockResolvedValue({})} immersive={false} />); });
+        expect(width()).toBe(343);
+      } finally {
+        delete HTMLElement.prototype.clientWidth;
+      }
+    });
+
+    it('keeps the zoom on top of that width', async () => {
+      await withWidth(375, { immersive: true });
+      const fit = width();
+      await click(label('Aumentar o zoom'));
+      expect(width()).toBe(Math.round(fit * 1.25));
+    });
+  });
+
   it('follows the window when the browser has no such engine', async () => {
     const before = window.innerWidth;
     try {
