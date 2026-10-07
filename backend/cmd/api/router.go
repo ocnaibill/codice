@@ -295,6 +295,7 @@ func newRouter(d routerDeps) http.Handler {
 	// Whoever reads can look a word up (what was installed is the owner's choice).
 	r.With(auth).Get("/dictionary", dictionaryLookup.Lookup)
 	r.With(auth).Get("/dictionary/languages", dictionaryLookup.Languages)
+	r.With(auth).Get("/dictionary/others", dictionaryLookup.Others)
 	r.With(staff).Get("/admin/dictionaries", dictionaryAdmin.List)
 	r.With(owner).Post("/admin/dictionaries/{id}/install", dictionaryAdmin.Install)
 	r.With(owner).Post("/admin/dictionaries/{id}/cancel", dictionaryAdmin.Cancel)

@@ -598,7 +598,7 @@ func TestCatalogGate_StandsInFrontOfTheHeavyReadsAndNothingElse(t *testing.T) {
 	}
 	for _, r := range []route{
 		{"GET", "/healthz"}, {"GET", "/auth/me"}, {"POST", "/auth/login"}, {"GET", "/works/1"},
-		{"PUT", "/progress/files/1"}, {"POST", "/works/1/reading-heartbeat"}, {"GET", "/dictionary/languages"},
+		{"PUT", "/progress/files/1"}, {"POST", "/works/1/reading-heartbeat"}, {"GET", "/dictionary/languages"}, {"GET", "/dictionary/others"},
 	} {
 		if rec := do(h, r.method, r.path, token, "{}"); rec.Code == gated {
 			t.Errorf("%s %s went through the gate of the catalog", r.method, r.path)

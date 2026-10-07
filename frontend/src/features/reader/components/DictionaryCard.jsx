@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useDialog } from '../../../lib/useDialog';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useDictionaryLookup } from '../api/useDictionaryLookup';
+import { useDictionaryOthers } from '../api/useDictionaryOthers';
 import { useDictionaryLanguages } from '../api/useDictionaryLanguages';
 import { LOOKUP_LANGUAGES, groupTranslations, languageName, posLabel, senseFormOf, tagsLine, visibleSenses } from '../dictionaryLookup';
 import { getDictionaryTarget, saveDictionaryTarget } from '../preferences';
@@ -149,10 +150,20 @@ export function DictionaryCard({ word, language, onClose }) {
   const wordAvailable = !known || known.words.includes(lang);
   const { data, isLoading, isError } = useDictionaryLookup({ word, lang, prefer: wanted, enabled: settled });
 
+  // A word the language of the book does not have may be a word of another language that is installed (#183): then it is looked
+  // up in the others, and each that has it is shown after the other, with the name of its language.
+  const bridgeFound = wordAvailable && (data?.bridge?.candidates?.length ?? 0) > 0;
+  const nothingHere = !!data?.installed && data.items.length === 0 && !bridgeFound;
+  const elsewhere = useDictionaryOthers({ word, lang, prefer: wanted, enabled: nothingHere });
+  const otherResults = nothingHere ? (elsewhere.data?.results ?? []) : [];
+  const lookingElsewhere = nothingHere && elsewhere.isLoading;
+
   // A card beside the page, not over it: the focus goes to it and comes back, Escape closes it, and Tab is free to leave.
   const cardRef = useRef(null);
   useDialog(cardRef, { onEscape: onClose, trap: false });
 
+  // Where what is shown comes from: the lookup, and the other languages that were shown after it, each source once.
+  const sources = [...(data?.sources ?? []), ...otherResults.flatMap((r) => r.result.sources ?? [])].filter((s, i, all) => all.findIndex((o) => o.package === s.package) === i);
   // With the words of more than one package, each is said under the name of the package it comes from.
   const items = data?.items ?? [];
   const sourceName = (id) => data?.sources.find((s) => s.package === id)?.name ?? id;
@@ -218,15 +229,21 @@ export function DictionaryCard({ word, language, onClose }) {
             Nenhum dicionário está instalado neste servidor. O dono do acervo pode instalar um em Administração → Dicionários.
           </p>
         )}
-        {data?.installed && !wordAvailable && (
-          <p className="text-sm text-ink-soft">
-            Nenhum dicionário instalado neste servidor tem palavras de {languageName(lang)}. O dono do acervo pode instalar um em
-            Administração → Dicionários.
+        {nothingHere && lookingElsewhere && <Skeleton label="Procurando em outros idiomas" className="h-24 w-full" />}
+        {nothingHere && !lookingElsewhere && otherResults.length > 0 && (
+          <p className="mb-3 text-[13px] leading-snug text-ink-soft">
+            Não achei “{word}” em {languageName(lang)}, mas achei em {otherResults.length === 1 ? 'outro idioma instalado' : 'outros idiomas instalados'}:
           </p>
         )}
-        {data?.installed && wordAvailable && data.items.length === 0 && !bridgeFirst && (
+        {nothingHere && !lookingElsewhere && otherResults.length === 0 && !wordAvailable && (
           <p className="text-sm text-ink-soft">
-            Não achei “{word}” em {languageName(lang)}. Se a palavra é de outro idioma, troque o idioma acima; se está flexionada ou com grafia
+            Nenhum dicionário instalado neste servidor tem palavras de {languageName(lang)}, nem de outro idioma que tenha “{word}”. O dono do acervo pode
+            instalar um em Administração → Dicionários.
+          </p>
+        )}
+        {nothingHere && !lookingElsewhere && otherResults.length === 0 && wordAvailable && (
+          <p className="text-sm text-ink-soft">
+            Não achei “{word}” em {languageName(lang)}, nem nos outros idiomas instalados. Se está flexionada ou com grafia
             diferente, tente selecionar só a palavra.
           </p>
         )}
@@ -238,11 +255,17 @@ export function DictionaryCard({ word, language, onClose }) {
           </section>
         ))}
         {bridge && !bridgeFirst && <Bridge bridge={bridge} word={word} />}
+        {otherResults.map(({ lang: code, result }) => (
+          <section key={code} aria-label={`Em ${languageName(code)}`} className="mt-3 first:mt-0">
+            <h2 className="mb-1 font-mono text-[10px] uppercase tracking-widest text-ink-faint">Em {languageName(code)}</h2>
+            {result.items.map((item) => <Entry key={`${code}-${item.kind}-${item.entry.id}`} item={item} prefer={target} />)}
+          </section>
+        ))}
       </div>
 
-      {data?.sources.length > 0 && (
+      {sources.length > 0 && (
         <footer className="shrink-0 border-t border-border-hairline px-4 py-2 text-[11px] text-ink-faint">
-          Fonte: {data.sources.map((s, i) => (
+          Fonte: {sources.map((s, i) => (
             <span key={s.package}>
               {i > 0 && '; '}
               <a href={s.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">{s.name}</a>
