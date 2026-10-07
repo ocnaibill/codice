@@ -1,6 +1,7 @@
 import { LibraryIcon } from '../ui/LibraryIcon';
 import { useGlobalStore } from '../../store/useGlobalStore';
 import { useStats } from '../../features/home/api/useStats';
+import { useCollections } from '../../features/collections/api/useCollections';
 import { bracketCount } from '../../features/home/utils/format';
 
 // What each item counts, from GET /stats (retired works are not counted). "Todas as obras" is always there; a kind of
@@ -25,6 +26,8 @@ export function Sidebar({ onGoHome, onNavigate, canAdmin, onOpenAdmin }) {
   const openNotes = useGlobalStore((state) => state.openNotes);
   const setView = useGlobalStore((state) => state.setLibraryView);
   const { data: stats } = useStats();
+  // Collections are offered once there is one; the staff always has them, to make the first (#206).
+  const collections = useCollections({ limit: 1 }).data?.total ?? 0;
   const navigate = (key) => {
     setView(key);
     onNavigate?.();
@@ -64,6 +67,7 @@ export function Sidebar({ onGoHome, onNavigate, canAdmin, onOpenAdmin }) {
           Biblioteca {stats?.worksTotal != null && <span>{bracketCount(stats.worksTotal)}</span>}
         </p>
         {LIBRARIES.map(navItem)}
+        {(collections > 0 || canAdmin) && navItem({ key: 'collections', label: 'Coleções', icon: 'grid', count: () => collections })}
         <p className="library-eyebrow library-nav-group">Sua coleção</p>
         {COLLECTION.map(navItem)}
         <button

@@ -11,6 +11,9 @@ import { useNotes } from '../features/home/api/useNotes';
 import { useWorks } from '../features/library/api/useWorks';
 import { useGlobalStore } from '../store/useGlobalStore';
 import { SearchPage } from '../features/search/SearchPage';
+import { CollectionsGrid } from '../features/collections/components/CollectionsGrid';
+import { useCollections } from '../features/collections/api/useCollections';
+import { isStaff } from '../features/auth/api/useMe';
 
 // "Adicionados recentemente" says how the catalog is sorted, so it only holds while it is: sorted by title or
 // by author the heading says that instead (the other views are named by what they hold, not by the order).
@@ -22,6 +25,7 @@ const GRID_TITLES = {
   audio: 'Audiolivros',
   reading: 'Em leitura',
   favorites: 'Obras favoritas',
+  collections: 'Coleções',
 };
 
 function QueryError({ children, onRetry }) {
@@ -61,6 +65,7 @@ function HomeDashboard() {
     sort,
   });
   const favorites = useFavorites();
+  const collections = useCollections({ limit: 1 });
   const notes = useNotes({ limit: 3 });
   const totalPages = grid.data?.totalPages ?? 1;
   const changePage = (next) => {
@@ -103,9 +108,13 @@ function HomeDashboard() {
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           sort={sort}
-          onSortChange={setSort}
+          onSortChange={view === 'collections' ? undefined : setSort}
+          collectionsTotal={collections.data?.total ?? 0}
+          canManageCollections={isStaff(me)}
         />
-        {grid.isError ? (
+        {view === 'collections' ? (
+          <CollectionsGrid viewMode={viewMode} />
+        ) : grid.isError ? (
           <QueryError onRetry={() => grid.refetch()}>
             Não foi possível carregar o acervo.
           </QueryError>

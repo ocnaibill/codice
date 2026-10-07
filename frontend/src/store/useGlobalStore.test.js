@@ -31,3 +31,30 @@ describe('reading state', () => {
     expect(useGlobalStore.getState()).toMatchObject({ seek: null, activeBookId: null, activeFileId: null });
   });
 });
+
+describe('the page of a collection', () => {
+  beforeEach(() => {
+    reset();
+    useGlobalStore.getState().closeCollection();
+  });
+
+  it('opens and closes, and the sheet of a work opens over it without closing it', () => {
+    useGlobalStore.getState().openCollection(5);
+    expect(useGlobalStore.getState().collectionSheetId).toBe(5);
+    useGlobalStore.getState().openWork(7);
+    expect(useGlobalStore.getState()).toMatchObject({ collectionSheetId: 5, sheetWorkId: 7 });
+    useGlobalStore.getState().closeSheet();
+    expect(useGlobalStore.getState().collectionSheetId).toBe(5);
+    useGlobalStore.getState().closeCollection();
+    expect(useGlobalStore.getState().collectionSheetId).toBeNull();
+  });
+
+  it('is left behind by changing the shelf and by opening a book', () => {
+    useGlobalStore.getState().openCollection(5);
+    useGlobalStore.getState().setLibraryView('audio');
+    expect(useGlobalStore.getState().collectionSheetId).toBeNull();
+    useGlobalStore.getState().openCollection(5);
+    useGlobalStore.getState().openBook(7, 20);
+    expect(useGlobalStore.getState().collectionSheetId).toBeNull();
+  });
+});
