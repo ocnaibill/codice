@@ -7,6 +7,7 @@ import { completionFor } from '../../progressRules';
 import { pdfPlaceProblem } from '../../placeCheck';
 import { loadOutline } from '../../pdfOutline';
 import { ZOOMS, readingWidth, tapAction, swipeAction } from '../../pdfGestures';
+import { QUIET_AFTER_TURN_MS, TOUCH_TAP_MAX_MS, liftMeaning } from '../../epubGestures';
 import { useSelectionWatcher } from '../../useSelectionWatcher';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -45,13 +46,15 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlac
   const timeoutRef = useRef(null);
   const rootRef = useRef(null);
   const gesture = useRef(null);
+  const quietUntil = useRef(0); // until when a selection that appears is the phone's own, late (see QUIET_AFTER_TURN_MS)
   const outlineRef = useRef(null);
   // What is selected on the page is told to whoever offers what to do with it (the menu by the selection).
   // It is tied to the page it is on (the page number is the person's: the one shown now).
   useSelectionWatcher(
     rootRef,
     (found) => onSelection?.(found && { text: found.text, rect: found.rect, touch: found.touch, clear: found.clear, locator: { type: 'pdf', page: pageNumber - 1 } }),
-    !!onSelection
+    !!onSelection,
+    () => Date.now() < quietUntil.current
   );
   const outlineOpenerRef = useRef(null);
   // The contents: the focus goes in, Escape closes them and the focus goes back to the button that opened them.
@@ -166,23 +169,42 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlac
   }, [showOutline]);
 
   // Touch: a tap turns the page at the sides and shows or hides the controls in the middle; a swipe turns it. Whoever
-  // is selecting text, or touches a link, is not turning a page.
+  // is selecting text, or touches a link, is not turning a page. A finger that taps is not selecting: a phone may select the
+  // word under it anyway, and that word goes (#180), as it does on the page of an EPUB.
+  const selectedNow = () => !!window.getSelection?.()?.toString();
   const onPointerDown = (event) => {
     if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
-    gesture.current = { x: event.clientX, y: event.clientY, at: Date.now() };
+    gesture.current = { x: event.clientX, y: event.clientY, at: Date.now(), selected: selectedNow() };
   };
   const onPointerUp = (event) => {
     const start = gesture.current;
     gesture.current = null;
     if (!start) return;
-    if (window.getSelection?.()?.toString()) return;
-    if (event.target?.closest?.('a, button, input')) return;
+    const meaning = liftMeaning({
+      pointerType: event.pointerType, selectedAtDown: start.selected, selectedNow: selectedNow(), onLink: !!event.target?.closest?.('a, button, input'),
+    });
+    if (meaning === 'ignore') return;
+    if (meaning === 'dismiss') {
+      window.getSelection?.()?.removeAllRanges?.();
+      return;
+    }
     const dx = event.clientX - start.x;
     const dy = event.clientY - start.y;
-    const swipe = swipeAction({ dx, dy, zoom });
-    if (swipe) return swipe === 'next' ? nextPage() : prevPage();
+    const acted = () => {
+      quietUntil.current = Date.now() + QUIET_AFTER_TURN_MS;
+      if (selectedNow()) window.getSelection?.()?.removeAllRanges?.();
+    };
+    if (!selectedNow()) {
+      const swipe = swipeAction({ dx, dy, zoom });
+      if (swipe) {
+        acted();
+        return swipe === 'next' ? nextPage() : prevPage();
+      }
+    }
     const rect = event.currentTarget.getBoundingClientRect();
-    const tap = tapAction({ dx, dy, ms: Date.now() - start.at, x: (event.clientX - rect.left) / (rect.width || 1), zoom });
+    const tap = tapAction({ dx, dy, ms: Date.now() - start.at, x: (event.clientX - rect.left) / (rect.width || 1), zoom, maxMs: TOUCH_TAP_MAX_MS });
+    if (!tap) return;
+    acted();
     if (tap === 'next') nextPage();
     else if (tap === 'prev') prevPage();
     else if (tap === 'toggle') onImmersiveChange?.(!immersive);

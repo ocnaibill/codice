@@ -195,6 +195,46 @@ describe('the EPUB reader under a finger: a tap on the page around the book', ()
   });
 });
 
+describe('the EPUB reader under a finger: how long a tap is, and the word a phone selects (#180)', () => {
+  it('a finger taps for 300 ms at the most (a press that stays is the person selecting), a mouse clicks for 500', async () => {
+    await open();
+    await touch({ from: [360, 300], ms: 300 });
+    expect(state.rendition.next).toHaveBeenCalledTimes(1);
+    await touch({ from: [360, 300], ms: 450 });
+    expect(state.rendition.next).toHaveBeenCalledTimes(1); // too long for a finger
+    await touch({ from: [360, 300], ms: 450, type: 'mouse' });
+    expect(state.rendition.next).toHaveBeenCalledTimes(2); // not for a mouse
+  });
+
+  it('around the book: a tap that the phone turned into a selected word still turns the page, and the word goes', async () => {
+    await open();
+    const clear = vi.fn();
+    const current = { text: '' };
+    vi.spyOn(window, 'getSelection').mockImplementation(() => ({ toString: () => current.text, removeAllRanges: clear }));
+    const el = container.querySelector('[data-epub-page]');
+    const fire = (name, [x, y]) => {
+      const event = new MouseEvent(name, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+      Object.defineProperty(event, 'pointerType', { value: 'touch' });
+      el.dispatchEvent(event);
+    };
+    await act(async () => { fire('pointerdown', [360, 300]); });
+    current.text = 'palavra'; // the phone selects the word under the finger
+    vi.setSystemTime(Date.now() + 120);
+    await act(async () => { fire('pointerup', [360, 300]); });
+    expect(state.rendition.next).toHaveBeenCalledTimes(1);
+    expect(clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('around the book: a tap on a page that already had a selection only lets it go', async () => {
+    await open();
+    const clear = vi.fn();
+    vi.spyOn(window, 'getSelection').mockImplementation(() => ({ toString: () => 'palavra', removeAllRanges: clear }));
+    await touch({ from: [360, 300], ms: 100 });
+    expect(state.rendition.next).not.toHaveBeenCalled();
+    expect(clear).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('the EPUB reader under a finger: a swipe', () => {
   it('to the left brings the next page, to the right the one before', async () => {
     await open();

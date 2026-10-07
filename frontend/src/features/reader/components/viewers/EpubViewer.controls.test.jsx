@@ -42,6 +42,7 @@ import { pushReadingSettings } from '../../readingSync';
 import { setPreferenceOwner } from '../../preferences';
 import { themeName } from '../../epubThemes';
 import { MOUSE_DELAY, TOUCH_DELAY } from '../../useSelectionWatcher';
+import { QUIET_AFTER_TURN_MS, TOUCH_TAP_MAX_MS } from '../../epubGestures';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -856,6 +857,181 @@ describe('the EPUB reader: what is selected on the page of the book', () => {
     await act(async () => { doc.dispatchEvent(new frame.contentWindow.Event('selectionchange')); });
     await wait(MOUSE_DELAY + 80);
     expect(container.querySelector('[data-epub-page]')).not.toBeNull();
+  });
+});
+
+describe('the EPUB reader: a finger and the word under it (#180)', () => {
+  const RANGE = 'epubcfi(/6/4!/4/2,/1:0,/1:20)';
+  let frame;
+  let doc;
+  const wait = (ms) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
+  const later = (ms) => vi.setSystemTime(Date.now() + ms);
+
+  async function bookPage(onSelection) {
+    await open({ onSelection });
+    frame = document.createElement('iframe');
+    container.appendChild(frame);
+    doc = frame.contentDocument;
+    doc.body.innerHTML = '<p id="p">Era uma vez um texto que se lê devagar.</p>';
+    state.hooks[0]({ document: doc, addStylesheetCss: vi.fn(), cfiFromRange: vi.fn(() => RANGE) });
+    doc.defaultView.Range.prototype.getBoundingClientRect = () => ({ left: 30, top: 40, width: 100, height: 16 });
+    vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue({ left: -600, top: 50, width: 1200, height: 600 });
+  }
+  const fire = (name, init = {}, type = 'touch') => {
+    const event = new frame.contentWindow.MouseEvent(name, { bubbles: true, cancelable: true, clientX: 900, clientY: 300, ...init });
+    Object.defineProperty(event, 'pointerType', { value: type });
+    return act(async () => { doc.dispatchEvent(event); });
+  };
+  // What a phone does with a word: selects it, and says so.
+  const selectWord = async () => {
+    const node = doc.querySelector('#p').firstChild;
+    const range = doc.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, 3);
+    const sel = doc.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    await act(async () => { doc.dispatchEvent(new frame.contentWindow.Event('selectionchange')); });
+  };
+  const selected = () => !doc.getSelection().isCollapsed;
+  const told = (onSelection) => onSelection.mock.calls.filter(([v]) => v !== null);
+
+  beforeEach(() => vi.useFakeTimers({ toFake: ['Date'] }));
+  afterEach(() => vi.useRealTimers());
+
+  it('a short tap turns the page, and the word the phone selected under it goes, with no menu for it', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await fire('pointerdown');
+    await selectWord();
+    later(120);
+    await fire('pointerup');
+    expect(state.rendition.next).toHaveBeenCalledTimes(1);
+    expect(selected()).toBe(false);
+    await wait(TOUCH_DELAY + 80);
+    expect(told(onSelection)).toHaveLength(0);
+  });
+
+  it('a tap at the left side turns back, in the same way', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await fire('pointerdown', { clientX: 100 });
+    await selectWord();
+    later(100);
+    await fire('pointerup', { clientX: 100 });
+    expect(state.rendition.prev).toHaveBeenCalledTimes(1);
+    expect(selected()).toBe(false);
+  });
+
+  it('a selection that the phone makes after the tap, for the page that has turned, is let go too', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await fire('pointerdown');
+    later(120);
+    await fire('pointerup');
+    expect(state.rendition.next).toHaveBeenCalledTimes(1);
+    later(150); // the word comes a moment after the finger went up
+    await selectWord();
+    expect(selected()).toBe(false);
+    await wait(TOUCH_DELAY + 80);
+    expect(told(onSelection)).toHaveLength(0);
+  });
+
+  it('but a selection that comes after the quiet time is the person\'s, and is offered', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await fire('pointerdown');
+    later(120);
+    await fire('pointerup');
+    later(QUIET_AFTER_TURN_MS + 10);
+    await fire('pointerdown', { clientX: 300 }); // the finger is back, to select
+    await selectWord();
+    await wait(TOUCH_DELAY + 80);
+    expect(told(onSelection)).toHaveLength(1);
+    expect(selected()).toBe(true);
+  });
+
+  it('a finger that stays is selecting: it turns nothing, and the selection is offered', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await fire('pointerdown');
+    await selectWord();
+    later(TOUCH_TAP_MAX_MS + 100); // a press of 400 ms
+    await fire('pointerup');
+    expect(state.rendition.next).not.toHaveBeenCalled();
+    expect(selected()).toBe(true);
+    await wait(TOUCH_DELAY + 80);
+    expect(told(onSelection)).toHaveLength(1);
+  });
+
+  it('a tap on a page that has a selection only lets it go: it does not turn the page', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await selectWord();
+    await wait(TOUCH_DELAY + 80);
+    expect(told(onSelection)).toHaveLength(1);
+    await fire('pointerdown');
+    later(100);
+    await fire('pointerup');
+    expect(state.rendition.next).not.toHaveBeenCalled();
+    expect(selected()).toBe(false);
+  });
+
+  it('a finger that drags to select does not turn the page by the distance it went', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await fire('pointerdown', { clientX: 900 });
+    await selectWord();
+    later(200);
+    await fire('pointerup', { clientX: 600 }); // far and across: it would be a swipe, if nothing were selected
+    expect(state.rendition.next).not.toHaveBeenCalled();
+    expect(state.rendition.prev).not.toHaveBeenCalled();
+    expect(selected()).toBe(true);
+  });
+
+  it('a swipe with nothing selected turns the page, and quiets the late word as well', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await fire('pointerdown', { clientX: 900 });
+    later(150);
+    await fire('pointerup', { clientX: 600 });
+    expect(state.rendition.next).toHaveBeenCalledTimes(1);
+    await selectWord();
+    expect(selected()).toBe(false);
+  });
+
+  it('a mouse does not get the quiet time: a double click that selects a word is offered at once', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await fire('pointerdown', {}, 'mouse');
+    later(100);
+    await fire('pointerup', {}, 'mouse'); // a click at the side: it turns, and there is no selection to let go of
+    expect(state.rendition.next).toHaveBeenCalledTimes(1);
+    await fire('pointerdown', {}, 'mouse');
+    await selectWord();
+    await wait(MOUSE_DELAY + 80);
+    expect(told(onSelection)).toHaveLength(1);
+  });
+
+  it('a mouse that selects a word by double click does not turn the page', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await fire('pointerdown', {}, 'mouse');
+    await selectWord();
+    later(100);
+    await fire('pointerup', {}, 'mouse');
+    expect(state.rendition.next).not.toHaveBeenCalled();
+    expect(selected()).toBe(true);
+  });
+
+  it('a tap in the middle shows the controls and lets go of the word under it the same way', async () => {
+    const onSelection = vi.fn();
+    await bookPage(onSelection);
+    await fire('pointerdown', { clientX: 600 }); // the middle of the page (the page is as wide as the iframe in this test)
+    await selectWord();
+    later(100);
+    await fire('pointerup', { clientX: 600 });
+    expect(selected()).toBe(false);
   });
 });
 

@@ -5,11 +5,11 @@ import { api } from '../../../../lib/api';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { buildEpubProgress } from '../../epubProgress';
 import { applyEpubSettings, fontFaceCss, marginStyle, sanitizeSettings, READING_THEMES } from '../../epubThemes';
-import { toScreen, acrossPage } from '../../epubGestures';
 import { cleanQuote } from '../../selection';
 import { MOUSE_DELAY, TOUCH_DELAY } from '../../useSelectionWatcher';
 import { flattenToc } from '../../epubToc';
 import { tapAction, swipeAction } from '../../pdfGestures';
+import { QUIET_AFTER_TURN_MS, TOUCH_TAP_MAX_MS, acrossPage, liftMeaning, toScreen } from '../../epubGestures';
 import { getEpubSettings, saveEpubSettings } from '../../preferences';
 import { pushReadingSettings } from '../../readingSync';
 import { epubPlaceProblem } from '../../placeCheck';
@@ -62,6 +62,7 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const gesture = useRef(null);
+  const quietUntil = useRef(0); // until when a selection that appears is the phone's own, late (see QUIET_AFTER_TURN_MS)
   const touchRef = useRef({ down() {}, up() {}, cancel() {} });
   const keyRef = useRef(() => {});
   const selectRef = useRef(onSelection);
@@ -156,11 +157,14 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
             const at = frame ? frame.getBoundingClientRect() : { left: 0, top: 0 };
             return toScreen({ frameLeft: at.left, frameTop: at.top, clientX: e.clientX, clientY: e.clientY });
           };
-          doc.addEventListener('pointerdown', (e) => touchRef.current.down(point(e), e));
+          const selectedHere = () => !!doc.defaultView.getSelection?.()?.toString();
+          const letGoHere = () => doc.defaultView.getSelection?.()?.removeAllRanges?.();
+          doc.addEventListener('pointerdown', (e) => touchRef.current.down(point(e), e, { selected: selectedHere() }));
           doc.addEventListener('pointerup', (e) =>
             touchRef.current.up(point(e), e, {
-              selected: !!doc.defaultView.getSelection?.()?.toString(),
+              selected: selectedHere(),
               onLink: !!e.target?.closest?.('a'),
+              clearSelection: letGoHere,
             }));
           doc.addEventListener('pointercancel', () => touchRef.current.cancel());
           doc.addEventListener('keyup', (e) => keyRef.current(e));
@@ -174,10 +178,17 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
             selectRef.current?.(value);
           };
           doc.addEventListener('pointerdown', (e) => { touch = e.pointerType !== 'mouse'; }, true);
+          // A selection that comes a moment after a tap turned the page is the word that was under the finger: let it go.
+          const lateOne = (selection) => {
+            if (Date.now() >= quietUntil.current) return false;
+            selection?.removeAllRanges?.();
+            return true;
+          };
           doc.addEventListener('selectionchange', () => {
             if (!selectRef.current) return;
             clearTimeout(timer);
             if (shown) say(null);
+            if (lateOne(doc.getSelection?.())) return;
             timer = setTimeout(() => {
               const selection = doc.getSelection?.();
               if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
@@ -470,28 +481,53 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
   // A tap turns the page at the sides and shows or hides the controls in the middle; a finger swiped across turns it
   // too. With a panel open, a tap on the page only closes it. Whoever is selecting text, or touches a link, is not
   // turning a page. A mouse turns by click but not by dragging.
+  // A finger that taps is not selecting: a phone may select the word under it anyway (a tap that stays, a double tap), and that
+  // selection is let go, whether it is there when the finger rises or arrives a moment later (the quiet time after a turn).
   touchRef.current = {
-    down(point, event) {
+    down(point, event, { selected = false } = {}) {
       if (event.button > 0) return;
-      gesture.current = { ...point, at: Date.now() };
+      gesture.current = { ...point, at: Date.now(), selected };
     },
-    up(point, event, { selected = false, onLink = false } = {}) {
+    up(point, event, { selected = false, onLink = false, clearSelection = null } = {}) {
       const start = gesture.current;
       gesture.current = null;
-      if (!start || selected || onLink) return;
+      if (!start) return;
+      const meaning = liftMeaning({ pointerType: event.pointerType, selectedAtDown: start.selected, selectedNow: selected, onLink });
+      if (meaning === 'ignore') return;
+      if (meaning === 'dismiss') {
+        clearSelection?.();
+        return;
+      }
+      const touching = event.pointerType !== 'mouse';
       const dx = point.x - start.x;
       const dy = point.y - start.y;
       const ms = Date.now() - start.at;
+      const maxMs = touching ? TOUCH_TAP_MAX_MS : undefined;
+      // What the finger did to the page, and with it the selection that came of the touch: gone, and the menu with it.
+      const acted = () => {
+        if (touching) {
+          quietUntil.current = Date.now() + QUIET_AFTER_TURN_MS;
+          if (selected) clearSelection?.();
+        }
+      };
       if (panel) {
-        if (tapAction({ dx, dy, ms, x: 0.5, zoom: 1 })) setPanel(null);
+        if (tapAction({ dx, dy, ms, x: 0.5, zoom: 1, maxMs })) {
+          acted();
+          setPanel(null);
+        }
         return;
       }
-      if (event.pointerType !== 'mouse') {
+      if (touching && !selected) {
         const swipe = swipeAction({ dx, dy, zoom: 1 });
-        if (swipe) return swipe === 'next' ? nextPage() : prevPage();
+        if (swipe) {
+          acted();
+          return swipe === 'next' ? nextPage() : prevPage();
+        }
       }
       const rect = viewerRef.current.getBoundingClientRect();
-      const tap = tapAction({ dx, dy, ms, x: acrossPage({ x: point.x, left: rect.left, width: rect.width }), zoom: 1 });
+      const tap = tapAction({ dx, dy, ms, x: acrossPage({ x: point.x, left: rect.left, width: rect.width }), zoom: 1, maxMs });
+      if (!tap) return;
+      acted();
       if (tap === 'next') nextPage();
       else if (tap === 'prev') prevPage();
       else if (tap === 'toggle') onImmersiveChange?.(!immersive);
@@ -500,13 +536,16 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
       gesture.current = null;
     },
   };
-  const onSurfaceDown = (event) => touchRef.current.down({ x: event.clientX, y: event.clientY }, event);
+  const onSurfaceDown = (event) => touchRef.current.down({ x: event.clientX, y: event.clientY }, event, { selected: !!window.getSelection?.()?.toString() });
   const onSurfaceUp = (event) => {
     if (event.target?.closest?.('[data-chrome], a, button, input')) {
       gesture.current = null;
       return;
     }
-    touchRef.current.up({ x: event.clientX, y: event.clientY }, event, { selected: !!window.getSelection?.()?.toString() });
+    touchRef.current.up({ x: event.clientX, y: event.clientY }, event, {
+      selected: !!window.getSelection?.()?.toString(),
+      clearSelection: () => window.getSelection?.()?.removeAllRanges?.(),
+    });
   };
 
   // The panels close by a press outside them. The bar they open from is not outside (its buttons close them by

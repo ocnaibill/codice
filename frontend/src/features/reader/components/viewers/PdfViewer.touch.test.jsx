@@ -18,6 +18,7 @@ vi.mock('react-pdf/dist/Page/AnnotationLayer.css', () => ({}));
 vi.mock('react-pdf/dist/Page/TextLayer.css', () => ({}));
 
 import PdfViewer from './PdfViewer';
+import { QUIET_AFTER_TURN_MS, TOUCH_TAP_MAX_MS } from '../../epubGestures';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -245,5 +246,98 @@ describe('the PDF reader under a finger: when the page is zoomed', () => {
     expect(area().style.touchAction).toBe('pan-y');
     await zoomIn();
     expect(area().style.touchAction).toBe('pan-x pan-y');
+  });
+});
+
+describe('the PDF reader under a finger: the word a phone selects (#180)', () => {
+  // A selection the test moves: what the phone has selected at each moment, and the calls that let it go.
+  let current;
+  let clear;
+  beforeEach(() => {
+    current = { text: '' };
+    clear = vi.fn(() => { current.text = ''; });
+    vi.spyOn(window, 'getSelection').mockImplementation(() => ({ toString: () => current.text, removeAllRanges: clear, isCollapsed: !current.text, rangeCount: current.text ? 1 : 0 }));
+  });
+  const fire = (name, [x, y] = [360, 300], type = 'touch') => {
+    const event = new MouseEvent(name, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+    Object.defineProperty(event, 'pointerType', { value: type });
+    return act(async () => { container.querySelector('[data-testid="page"]').dispatchEvent(event); });
+  };
+
+  it('a finger taps for 300 ms at the most: a press that stays is the person selecting', async () => {
+    await open();
+    await touch({ from: [360, 300], ms: TOUCH_TAP_MAX_MS });
+    expect(page()).toBe('page 11');
+    await touch({ from: [360, 300], ms: TOUCH_TAP_MAX_MS + 1 });
+    expect(page()).toBe('page 11');
+  });
+
+  it('a tap that the phone turned into a selected word still turns the page, and the word goes', async () => {
+    await open();
+    await fire('pointerdown');
+    current.text = 'palavra';
+    vi.setSystemTime(Date.now() + 120);
+    await fire('pointerup');
+    expect(page()).toBe('page 11');
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(current.text).toBe('');
+  });
+
+  it('a tap on a page that already had a selection only lets it go', async () => {
+    await open();
+    current.text = 'palavra';
+    await touch({ from: [360, 300], ms: 100 });
+    expect(page()).toBe('page 10');
+    expect(clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('a finger that drags to select does not turn the page by the distance it went', async () => {
+    await open();
+    await fire('pointerdown', [360, 300]);
+    current.text = 'palavra';
+    vi.setSystemTime(Date.now() + 200);
+    await fire('pointerup', [60, 300]);
+    expect(page()).toBe('page 10');
+    expect(current.text).toBe('palavra');
+  });
+
+  it('a swipe with nothing selected still turns the page', async () => {
+    await open();
+    await touch({ from: [300, 300], to: [100, 310], ms: 150 });
+    expect(page()).toBe('page 11');
+  });
+
+  it('the word that comes a moment after the tap, for the page that has gone, is let go; later ones are the person\'s', async () => {
+    const onSelection = vi.fn();
+    await open({ onSelection });
+    await touch({ from: [360, 300], ms: 100 });
+    expect(page()).toBe('page 11');
+    clear.mockClear();
+    vi.setSystemTime(Date.now() + 150);
+    current.text = 'tarde';
+    await act(async () => { document.dispatchEvent(new Event('selectionchange')); });
+    expect(clear).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(Date.now() + QUIET_AFTER_TURN_MS + 10);
+    current.text = 'minha';
+    await act(async () => { document.dispatchEvent(new Event('selectionchange')); });
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(current.text).toBe('minha');
+    expect(onSelection).not.toHaveBeenCalledWith(expect.objectContaining({ text: 'tarde' }));
+  });
+
+  it('a mouse is not a finger: it does not turn the page by clicking, and nothing is let go', async () => {
+    await open();
+    await touch({ from: [360, 300], ms: 100, type: 'mouse' });
+    expect(page()).toBe('page 10');
+    expect(clear).not.toHaveBeenCalled();
+  });
+
+  it('a link or a button is touched, not turned', async () => {
+    await open();
+    const link = document.createElement('a');
+    link.href = '#x';
+    container.querySelector('[data-testid="page"]').appendChild(link);
+    await touch({ from: [360, 300], target: link });
+    expect(page()).toBe('page 10');
   });
 });
