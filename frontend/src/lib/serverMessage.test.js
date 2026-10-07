@@ -103,6 +103,7 @@ describe('what the server says', () => {
     'Format does not support page listing',
     'Format does not support page serving',
     'Invalid JSON payload',
+    'Invalid multipart form',
     'Invalid page number',
     'Pages not yet extracted. Call GetPages first.',
     'The hash of the previewed plan is required',
