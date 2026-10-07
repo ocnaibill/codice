@@ -146,7 +146,7 @@ def epubs(out):
 
     record(out, "epub_sem_titulo_nem_autor.epub", "ok", "Metadados vazios: a obra existe com um título derivado do arquivo",
            zip_bytes(epub_entries(title="", author="")))
-    odd = "Título " + "ñ‮RTL\u0000\x07🙂" * 3000
+    odd = "Título " + "ñ\u202eRTL\u0000\x07🙂" * 3000
     record(out, "epub_titulo_enorme_e_estranho.epub", "ok", "Título de ~30 mil caracteres com RTL, NUL, controle e emoji: o banco e a tela não podem quebrar",
            zip_bytes(epub_entries(title=odd.replace("\x00", "").replace("\x07", ""), author="A" * 5000)))
     real = zip_bytes(epub_entries())
@@ -192,7 +192,9 @@ def audios(out):
 def texts(out):
     sample = "Coração, ação e emoção: acentuação em português. “Aspas” e travessão — também.\n" * 40
     record(out, "txt_cp1252.txt", "ok", "Texto Windows-1252 de verdade (acentos em um byte): é a codificação do TXT antigo", sample.encode("cp1252"))
-    record(out, "txt_utf16le_bom.txt", "ok", "UTF-16 LE com BOM (o 'Unicode' do Bloco de Notas)", b"\xff\xfe" + sample.encode("utf-16-le"))
+    # Another text than the Windows-1252 one: the same text in two encodings is the same file once converted (DEC-126), a duplicate.
+    other = "Um texto em UTF-16, com acentuação: ação, coração e emoção — salvo pelo Bloco de Notas.\r\n" * 30
+    record(out, "txt_utf16le_bom.txt", "ok", "UTF-16 LE com BOM (o 'Unicode' do Bloco de Notas)", b"\xff\xfe" + other.encode("utf-16-le"))
     record(out, "txt_utf8_bom.txt", "ok", "UTF-8 com BOM", b"\xef\xbb\xbf" + sample.encode("utf-8"))
     record(out, "md_cp1252.md", "ok", "Markdown em Windows-1252", ("# Título\n\n" + sample).encode("cp1252"))
     record(out, "txt_binario_com_extensao_txt.txt", "refuse", "Bytes aleatórios chamados .txt", random.Random(3).randbytes(4096))
@@ -205,8 +207,8 @@ def names(out):
     for slug, sent, expect, note in (
         ("nome_com_barras.txt", "../../../etc/passwd.txt", "ok", "O nome enviado tenta sair da pasta: o arquivo guardado fica dentro dela, com o nome limpo"),
         ("nome_comprido.txt", ("n" * 300) + ".txt", "ok", "Nome de 300 caracteres (o limite comum do sistema de arquivos é 255)"),
-        ("nome_com_quebra.txt", "linha1\nlinha2\r\n.txt", "ok", "Nome com quebras de linha"),
-        ("nome_rtl_e_nul.txt", "livro‮txt.exe\u0000.txt", "ok", "Nome com inversão de direção (RTL) e NUL"),
+        ("nome_com_quebra.txt", "linha1\nlinha2\r\n.txt", "refuse", "Nome com quebras de linha cruas no cabeçalho: não é um formulário válido, 400 com mensagem (os nomes que vêm de um disco são limpos pela importação em lote)"),
+        ("nome_rtl_e_nul.txt", "livro\u202etxt.exe\u0000.txt", "refuse", "Nome com inversão de direção (RTL) e um NUL cru no cabeçalho: 400 com mensagem (a limpeza do nome cobre os que vêm de um disco)"),
         ("nome_so_extensao.txt", ".txt", "ok", "Nome que é só a extensão"),
     ):
         record(out, slug, expect, note, good + slug.encode() + b"\n", upload_as=sent)  # distinct bytes: the same content is refused as a duplicate
