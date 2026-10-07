@@ -172,6 +172,14 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	cols := &CollectionsHandler{DB: db}
 	r.Get("/collections", cols.List)
 	r.Get("/collections/{id}", cols.Get)
+	colsAdmin := &CollectionsAdminHandler{DB: db}
+	r.Post("/collections", colsAdmin.Create)
+	r.Patch("/collections/{id}", colsAdmin.Rename)
+	r.Delete("/collections/{id}", colsAdmin.Retire)
+	r.Post("/collections/{id}/restore", colsAdmin.Restore)
+	r.Put("/collections/{id}/works/{workId}", colsAdmin.AddWork)
+	r.Delete("/collections/{id}/works/{workId}", colsAdmin.RemoveWork)
+	r.Put("/collections/{id}/order", colsAdmin.Order)
 	r.Post("/works/{id}/notes", notes.CreateNote)
 	r.Get("/notes", notes.ListNotes)
 	r.Get("/notes/facets", notes.NoteFacets)

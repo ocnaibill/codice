@@ -38,7 +38,7 @@ type CollectionWork struct {
 }
 
 // visibleCollection is the condition for a collection (alias c) the caller ($1) may see: an official one that is not
-// retired, or one of their own. The retired ones are for the staff (#205) and are not read here.
+// retired, or one of their own. The retired ones are for the staff, who ask for them apart.
 const visibleCollection = `((c.kind = 'official' AND c.retired_at IS NULL) OR c.owner_id = $1::uuid)`
 
 // A collection born from the series of a work, that no work has now, is not worth a card: it is shown once a person has
@@ -57,14 +57,20 @@ func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		limit = v
 	}
 
+	// The staff can list the retired collections, to restore them: all of them, empty or not.
+	where := visibleCollection + ` AND ` + shownCollection
+	if isStaffRequest(r) && r.URL.Query().Get("retired") == "true" {
+		where = `c.kind = 'official' AND c.retired_at IS NOT NULL AND $1::text IS NOT NULL`
+	}
+
 	var total int
-	if err := h.DB.QueryRow(`SELECT count(*) FROM collections c WHERE `+visibleCollection+` AND `+shownCollection, userID).Scan(&total); err != nil {
+	if err := h.DB.QueryRow(`SELECT count(*) FROM collections c WHERE `+where, userID).Scan(&total); err != nil {
 		log.Println("Error counting collections:", err)
 		http.Error(w, "Error fetching collections", http.StatusInternalServerError)
 		return
 	}
 	rows, err := h.DB.Query(`
-		SELECT c.id, c.kind, c.name,
+		SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL,
 		       COALESCE(s.works, 0), COALESCE(s.completed, 0), COALESCE(s.cover, '')
 		FROM collections c
 		LEFT JOIN LATERAL (
@@ -78,7 +84,7 @@ func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN reading_progress rp ON rp.file_id = wp.file_id AND rp.user_id = $1::uuid
 			WHERE cw.collection_id = c.id
 		) s ON TRUE
-		WHERE `+visibleCollection+` AND `+shownCollection+`
+		WHERE `+where+`
 		ORDER BY lower(c.name), c.id
 		LIMIT $2 OFFSET $3`, userID, limit, (page-1)*limit)
 	if err != nil {
@@ -90,7 +96,7 @@ func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	items := []Collection{}
 	for rows.Next() {
 		var c Collection
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Name, &c.WorkCount, &c.CompletedCount, &c.CoverURL); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.WorkCount, &c.CompletedCount, &c.CoverURL); err != nil {
 			log.Println("Error scanning collection:", err)
 			continue
 		}
@@ -115,9 +121,14 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The staff can open a retired collection too.
+	visible := visibleCollection
+	if isStaffRequest(r) {
+		visible = `(c.kind = 'official' OR c.owner_id = $1::uuid)`
+	}
 	var c Collection
-	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name FROM collections c WHERE c.id = $2 AND `+visibleCollection, userID, id).
-		Scan(&c.ID, &c.Kind, &c.Name)
+	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
+		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Collection not found", http.StatusNotFound)
 		return
