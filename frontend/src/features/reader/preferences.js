@@ -10,6 +10,7 @@ const PREFIX = 'codice:comic-mode:';
 const EPUB_PREFIX = 'codice:epub-settings:';
 const DICTIONARY_PREFIX = 'codice:dictionary-target:';
 const HIGHLIGHT_PREFIX = 'codice:highlight-color:';
+const KEEP_SCREEN_ON_PREFIX = 'codice:keep-screen-on:';
 export const COMIC_MODES = ['ltr', 'rtl', 'webtoon', 'double'];
 
 let owner = null;
@@ -102,6 +103,26 @@ export function saveHighlightColor(color) {
   if (!owner || !isHighlightColor(color)) return;
   try {
     localStorage.setItem(HIGHLIGHT_PREFIX + owner, color);
+  } catch {
+    // not being able to remember it is not a problem
+  }
+}
+
+/** Whether the screen is kept on while this account reads on this device (#180): yes until it is turned off. It is of the device,
+ *  not of the account everywhere: it is about the battery of this phone. */
+export function getKeepScreenOn() {
+  if (!owner) return true;
+  try {
+    return localStorage.getItem(KEEP_SCREEN_ON_PREFIX + owner) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function saveKeepScreenOn(on) {
+  if (!owner) return;
+  try {
+    localStorage.setItem(KEEP_SCREEN_ON_PREFIX + owner, on ? 'on' : 'off');
   } catch {
     // not being able to remember it is not a problem
   }

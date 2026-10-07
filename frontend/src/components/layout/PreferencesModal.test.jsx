@@ -7,6 +7,7 @@ vi.mock('../../lib/api', () => ({
 import { api } from '../../lib/api';
 import { flush, mount } from '../../features/admin/testUtils';
 import { PreferencesModal } from './PreferencesModal';
+import { getKeepScreenOn, saveKeepScreenOn, setPreferenceOwner } from '../../features/reader/preferences';
 
 let view;
 const radio = (label) => [...document.body.querySelectorAll('label')].find((l) => l.textContent.includes(label))?.querySelector('input');
@@ -132,6 +133,38 @@ describe('PreferencesModal, how it appears', () => {
       await view.type(field(), 'Ana');
       await view.click([...view.dialog().querySelectorAll('button')].find((b) => b.textContent === 'Salvar'));
       expect(view.dialog().textContent).toContain('Não foi possível salvar.');
+    });
+  });
+
+  describe('keeping the screen on while reading (#180)', () => {
+    const box = () => [...view.dialog().querySelectorAll('input[type="checkbox"]')][0];
+    afterEach(() => { delete navigator.wakeLock; localStorage.clear(); });
+    beforeEach(() => { localStorage.clear(); setPreferenceOwner('ana'); });
+
+    it('is on, and turning it off is remembered on this device', async () => {
+      Object.defineProperty(navigator, 'wakeLock', { value: { request: vi.fn() }, configurable: true });
+      await open();
+      expect(box().checked).toBe(true);
+      expect(view.dialog().textContent).toContain('Só neste aparelho');
+      await view.click(box());
+      expect(getKeepScreenOn()).toBe(false);
+      expect(box().checked).toBe(false);
+      await view.click(box());
+      expect(getKeepScreenOn()).toBe(true);
+    });
+
+    it('shows what was chosen before', async () => {
+      Object.defineProperty(navigator, 'wakeLock', { value: { request: vi.fn() }, configurable: true });
+      saveKeepScreenOn(false);
+      await open();
+      expect(box().checked).toBe(false);
+    });
+
+    it('says why it cannot be chosen where the browser has no such thing, and does not pretend it is on', async () => {
+      await open();
+      expect(box().disabled).toBe(true);
+      expect(box().checked).toBe(false);
+      expect(view.dialog().textContent).toContain('sem HTTPS');
     });
   });
 });

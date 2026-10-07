@@ -4,7 +4,8 @@ import { useWork } from '../api/useWork';
 import { useReadingHeartbeat } from '../api/useReadingHeartbeat';
 import { useFavoriteToggle } from '../api/useFavoriteToggle';
 import { useFileProgress } from '../api/useFileProgress';
-import { findFile, languageName, placeLabel, positionFromLocator } from '../files';
+import { findFile, isReadOnScreen, languageName, placeLabel, positionFromLocator } from '../files';
+import { useWakeLock } from '../../../lib/useWakeLock';
 import { otherVersionsInProgress } from '../finishPrompt';
 import { useSetWorkFinished } from '../api/useCompletion';
 import { useAcceptEquivalentPosition, useEquivalentPosition } from '../api/useEquivalentPosition';
@@ -14,7 +15,7 @@ import { SelectionMenu } from './SelectionMenu';
 import { DictionaryCard } from './DictionaryCard';
 import { isLookupable, lookupLanguage, scriptLanguage } from '../dictionaryLookup';
 import { isHighlightColor } from '../highlightColors';
-import { getHighlightColor, saveHighlightColor } from '../preferences';
+import { getHighlightColor, getKeepScreenOn, saveHighlightColor } from '../preferences';
 import { useCreateNote, useWorkNotes } from '../api/useWorkNotes';
 import { copyText } from '../copyText';
 import { reason as noteReason } from '../noteText';
@@ -46,6 +47,10 @@ export function Reader() {
   const file = useMemo(() => findFile(book, activeFileId), [book, activeFileId]);
   const progress = useFileProgress(file?.id);
   useReadingHeartbeat(activeBookId, file?.id);
+  // A phone dims its screen when it is not touched, and a book is read without touching it (#180).
+  const [keepScreenOn] = useState(getKeepScreenOn);
+  const readable = !!file?.url && file.availability !== 'missing';
+  useWakeLock(keepScreenOn && readable && isReadOnScreen(file.format || file.url.split('.').pop()));
   const favoriteToggle = useFavoriteToggle(activeBookId);
   const [showNotes, setShowNotes] = useState(false);
   // What is selected in the text, and what the menu by it does with it (copy, highlight, a note on it).
