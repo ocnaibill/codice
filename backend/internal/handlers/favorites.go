@@ -59,7 +59,12 @@ func (h *FavoritesHandler) RemoveFavorite(w http.ResponseWriter, r *http.Request
 // a favorited work plus how many works share its series and how many of
 // those the current user has finished. Works without a series are treated
 // as a series of one (so "read 1 of 1" / "read 0 of 1").
+//
+// The favorites of one series come as a single item (#184): Kind is "series", Title is the name of the series,
+// WorkID and the cover are those of the favorite that comes first in the series, and FavoriteCount says how many of
+// the series are favorites. A favorite with no series stays loose (Kind "work").
 type FavoriteSeriesItem struct {
+	Kind            string `json:"kind"`
 	WorkID          int    `json:"workId"`
 	Title           string `json:"title"`
 	Author          string `json:"author"`
@@ -67,6 +72,55 @@ type FavoriteSeriesItem struct {
 	SeriesLabel     string `json:"seriesLabel"`
 	SeriesTotal     int    `json:"seriesTotal"`
 	SeriesCompleted int    `json:"seriesCompleted"`
+	FavoriteCount   int    `json:"favoriteCount"`
+}
+
+const (
+	favoriteKindWork   = "work"
+	favoriteKindSeries = "series"
+)
+
+// groupFavoriteSeries folds the favorites of one series into the item of the series. The rows come newest favorite
+// first, and the item of a series takes the place of its newest favorite. Inside a series, the favorite with the
+// lowest number (then the lowest id) stands for it.
+func groupFavoriteSeries(rows []favoriteRow) []FavoriteSeriesItem {
+	items := []FavoriteSeriesItem{}
+	at := map[string]int{}
+	lead := map[string]favoriteRow{}
+	for _, row := range rows {
+		if row.series == "" {
+			row.item.Kind = favoriteKindWork
+			row.item.FavoriteCount = 1
+			items = append(items, row.item)
+			continue
+		}
+		i, seen := at[row.series]
+		if !seen {
+			at[row.series] = len(items)
+			lead[row.series] = row
+			row.item.Kind = favoriteKindSeries
+			row.item.Title = row.series
+			row.item.FavoriteCount = 1
+			items = append(items, row.item)
+			continue
+		}
+		items[i].FavoriteCount++
+		cur := lead[row.series]
+		if row.index < cur.index || (row.index == cur.index && row.item.WorkID < cur.item.WorkID) {
+			lead[row.series] = row
+			items[i].WorkID = row.item.WorkID
+			items[i].CoverURL = row.item.CoverURL
+			items[i].Author = row.item.Author
+		}
+	}
+	return items
+}
+
+// favoriteRow is a favorite as the query reads it, before the series are folded.
+type favoriteRow struct {
+	item   FavoriteSeriesItem
+	series string
+	index  float64
 }
 
 // GetFavorites returns the current user's favorited works enriched with
@@ -84,6 +138,8 @@ func (h *FavoritesHandler) GetFavorites(w http.ResponseWriter, r *http.Request) 
 			` + authorLabelFor(people.OrderFor(r.Context(), h.DB, userID).Effective) + `,
 			COALESCE(wp.cover_url, '') as cover_url,
 			` + label("w") + ` as series_label,
+			COALESCE(w.series, '') as series,
+			COALESCE(w.series_index, 0) as series_index,
 			(
 				SELECT COUNT(*) FROM works w2
 				WHERE w2.retired_at IS NULL AND ` + label("w2") + ` = ` + label("w") + `
@@ -116,18 +172,20 @@ func (h *FavoritesHandler) GetFavorites(w http.ResponseWriter, r *http.Request) 
 	}
 	defer rows.Close()
 
-	items := []FavoriteSeriesItem{}
+	var favorites []favoriteRow
 	for rows.Next() {
-		var item FavoriteSeriesItem
-		if err := rows.Scan(&item.WorkID, &item.Title, &item.Author, &item.CoverURL, &item.SeriesLabel, &item.SeriesTotal, &item.SeriesCompleted); err != nil {
+		var row favoriteRow
+		item := &row.item
+		if err := rows.Scan(&item.WorkID, &item.Title, &item.Author, &item.CoverURL, &item.SeriesLabel, &row.series, &row.index, &item.SeriesTotal, &item.SeriesCompleted); err != nil {
 			log.Println("Error scanning favorite:", err)
 			continue
 		}
 		if item.CoverURL == "" {
 			item.CoverURL = "/covers/placeholder.svg"
 		}
-		items = append(items, item)
+		favorites = append(favorites, row)
 	}
+	items := groupFavoriteSeries(favorites)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

@@ -819,10 +819,16 @@ func TestFavoritesAndStats(t *testing.T) {
 	b := s.addWork("Vol 2", "Alan Moore", "v2.cbz", "cbz")
 	c := s.addWork("Solo", "Alguém", "solo.epub", "epub")
 	s.exec(`UPDATE works SET series = 'Watchmen' WHERE id IN ($1, $2)`, a, b)
-	s.exec(`UPDATE editions SET cover_url = '/covers/a.jpg' WHERE work_id = $1`, a)
+	s.exec(`UPDATE works SET series_index = 2 WHERE id = $1`, a)
+	s.exec(`UPDATE works SET series_index = 1 WHERE id = $1`, b)
+	s.exec(`UPDATE editions SET cover_url = '/covers/b.jpg' WHERE work_id = $1`, b)
 
+	// The newer favorite of the series is the volume numbered 2; the item still stands for the one numbered 1.
+	s.do(ana, "POST", fmt.Sprintf("/works/%d/favorite", b), "")
+	s.exec(`UPDATE favorites SET created_at = now() - interval '2 hours' WHERE work_id = $1`, b)
 	s.do(ana, "POST", fmt.Sprintf("/works/%d/favorite", a), "")
 	s.do(ana, "POST", fmt.Sprintf("/works/%d/favorite", c), "")
+	s.exec(`UPDATE favorites SET created_at = now() - interval '1 hour' WHERE work_id = $1`, c)
 	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete, completed_at, reading_seconds) VALUES ($1, $2, 'fim', 100, now(), 500)`, idAna, s.primaryFile(b))
 	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete, reading_seconds) VALUES ($1, $2, 'cap-1', 20, 100)`, idAna, s.primaryFile(c))
 
@@ -834,11 +840,18 @@ func TestFavoritesAndStats(t *testing.T) {
 	for _, f := range fav.Data {
 		bySeries[f.SeriesLabel] = f
 	}
-	if w := bySeries["Watchmen"]; w.SeriesTotal != 2 || w.SeriesCompleted != 1 || w.Author != "Alan Moore" || w.CoverURL != "/covers/a.jpg" {
+	if len(fav.Data) != 2 {
+		t.Fatalf("two favorites of one series and a loose one must be 2 items, got %+v", fav.Data)
+	}
+	if w := bySeries["Watchmen"]; w.Kind != "series" || w.Title != "Watchmen" || w.WorkID != b || w.FavoriteCount != 2 ||
+		w.SeriesTotal != 2 || w.SeriesCompleted != 1 || w.Author != "Alan Moore" || w.CoverURL != "/covers/b.jpg" {
 		t.Errorf("series widget = %+v", w)
 	}
-	if s := bySeries["Solo"]; s.SeriesTotal != 1 || s.SeriesCompleted != 0 {
-		t.Errorf("a work without a series counts as a series of one: %+v", s)
+	if s := bySeries["Solo"]; s.Kind != "work" || s.Title != "Solo" || s.WorkID != c || s.FavoriteCount != 1 || s.SeriesTotal != 1 || s.SeriesCompleted != 0 {
+		t.Errorf("a work without a series stays loose, as a series of one: %+v", s)
+	}
+	if fav.Data[0].SeriesLabel != "Watchmen" {
+		t.Errorf("the item of a series takes the place of its newest favorite: %+v", fav.Data)
 	}
 
 	var st DashboardStats
