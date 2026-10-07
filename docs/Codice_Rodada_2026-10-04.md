@@ -91,3 +91,24 @@ Os trabalhos de `dedupe` mais lentos (de 5 a 17 min) são todos da hora do incid
 - Rodar de novo o relatório com `--desde` e uma re-importação pequena, **já com o #160**, para confirmar que o app fica responsivo durante a fila.
 - **Experimento de paralelismo:** a máquina estava quase ociosa depois da fila (carga 0,3), e cada serviço trabalha em um trabalho por vez. Em **Administração → Sistema → Desempenho** (DEC-125) o dono sobe, um de cada vez, as **páginas lidas juntas pelo OCR** e as **comparações de duplicatas ao mesmo tempo**, e mede o efeito no tempo da fila, na CPU e na memória com o relatório. (Uma correção a este relatório: eu tinha sugerido subir `JOBS_MAX_CONCURRENT` e `EMBEDDINGS_MAX_CONCURRENT`; **isso não acelera nada num contêiner só**, porque cada processo executa um trabalho por vez. Paralelizar a ingestão e os embeddings exigiria threads com conexões próprias e fica para depois.)
 - Registrar a leitura de verdade (EPUB, PDF, CBR, áudio) e o que a segunda pessoa encontrar em Windows e Android.
+
+## 9. A medida com o `measure.py` na instância real (06/10/2026)
+
+`benchmarks/scale/measure.py` contra o próprio alpha, **sem arquivos novos** (mede o que já está no acervo): 2.951 obras, 19 pedidos, vários comparáveis ao teste de escala sintético. Duas rodadas: antes e depois do #165.
+
+| Pedido | antes (p50 ms) | depois (p50 ms) | bytes depois |
+|---|---:|---:|---:|
+| lista: primeira página, do meio, última | 4 a 6 | 4 a 6 | 0,6 a 18 KB |
+| contagens da barra lateral (`/stats`) | 63 | 62 | 283 B |
+| busca por palavra do título | n/d | 25 | 10 KB |
+| busca no conteúdo, palavra comum | 182 | 177 | 11 KB |
+| OPDS: recentes (50) | n/d | 2 | 26 KB |
+| administração: trabalhos | n/d | 3 | 18 KB |
+| **administração: duplicatas (1.010 pares)** | **1.203 (365 KB)** | **4 (18 KB)** | 18 KB |
+| administração: fila de sugestões | n/d | 13 | 25 KB |
+| administração: pessoas a juntar | n/d | 44 | 11 KB |
+| capa | n/d | 1 | 184 KB |
+
+Vinte pedidos ao mesmo tempo (300 de uma mistura): lista **609 req/s, p95 40 ms**; o que a abertura do app pede **175 req/s, p95 280 ms**; capas **1.156 req/s**; **a busca é o ponto mais pesado: 53 req/s, p50 292 ms, p95 673 ms** (o conteúdo de palavra comum domina). Nenhum erro. Entrada: p50 201 ms (é o custo do `bcrypt`, de propósito).
+
+**Leitura:** com 2.951 obras e o texto de 41 GiB indexado, **a lista, a ficha, o OPDS e a administração respondem em poucos milissegundos**, e o achado desta rodada (as duplicatas, 1,2 s e 365 KB) está resolvido (#165). **O que sobra de mais lento é a busca no conteúdo por palavra muito comum**, 180 ms sozinha e 670 ms no p95 com 20 pessoas ao mesmo tempo; não é um problema para o uso previsto (poucas pessoas), fica **registrado, sem proposta de mudança**. As pessoas a juntar (44 ms) e as contagens (62 ms) são as próximas da lista se o acervo crescer.
