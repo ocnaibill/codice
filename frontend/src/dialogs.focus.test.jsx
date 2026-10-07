@@ -7,6 +7,7 @@ vi.mock('./features/auth/api/usePreferences', () => ({
   usePreferences: () => ({ data: { choice: '', library: 'given_first' }, isLoading: false, isError: false }),
   useSetNameOrder: () => ({ mutate: vi.fn(), isPending: false }),
   useSetDisplayName: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useSetReadingShared: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   MAX_DISPLAY_NAME: 60,
 }));
 vi.mock('./features/auth/components/MyData', () => ({ MyData: () => null }));

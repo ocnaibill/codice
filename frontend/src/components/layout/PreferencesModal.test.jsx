@@ -137,7 +137,7 @@ describe('PreferencesModal, how it appears', () => {
   });
 
   describe('keeping the screen on while reading (#180)', () => {
-    const box = () => [...view.dialog().querySelectorAll('input[type="checkbox"]')][0];
+    const box = () => [...view.dialog().querySelectorAll('label')].find((l) => l.textContent.includes('Manter a tela acesa'))?.querySelector('input');
     afterEach(() => { delete navigator.wakeLock; localStorage.clear(); });
     beforeEach(() => { localStorage.clear(); setPreferenceOwner('ana'); });
 
@@ -165,6 +165,44 @@ describe('PreferencesModal, how it appears', () => {
       expect(box().disabled).toBe(true);
       expect(box().checked).toBe(false);
       expect(view.dialog().textContent).toContain('sem HTTPS');
+    });
+  });
+
+  describe('the same look of the text on every device (#180)', () => {
+    const box = () => [...view.dialog().querySelectorAll('label')].find((l) => l.textContent.includes('mesma aparência'))?.querySelector('input');
+    const prefs = (shared) => ({ choice: '', library: 'given_first', effective: 'given_first', displayName: '', displayNameAsked: true, reader: shared === undefined ? null : { shared, touch: null, desktop: null } });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('is off until the person turns it on, and says what it means', async () => {
+      await open(prefs(false));
+      expect(box().checked).toBe(false);
+      expect(view.dialog().textContent).toContain('o celular e o computador têm cada um a sua');
+      view.unmount();
+      await open(prefs(undefined));
+      expect(box().checked).toBe(false);
+    });
+
+    it('shows that it is on', async () => {
+      await open(prefs(true));
+      expect(box().checked).toBe(true);
+    });
+
+    it('turning it on says from which kind of device, and turning it off names none', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      await open(prefs(false));
+      await view.click(box());
+      expect(api.put).toHaveBeenCalledWith('/auth/preferences', { reader: { shared: true, from: 'touch' } });
+      view.unmount();
+      await open(prefs(true));
+      await view.click(box());
+      expect(api.put).toHaveBeenLastCalledWith('/auth/preferences', { reader: { shared: false } });
+    });
+
+    it('says so when it could not be saved', async () => {
+      await open(prefs(false));
+      api.put.mockRejectedValue({ response: { status: 500 } });
+      await view.click(box());
+      expect(view.dialog().textContent).toContain('Não foi possível salvar.');
     });
   });
 });

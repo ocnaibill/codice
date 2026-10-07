@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../../lib/api', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
 import { api } from '../../../lib/api';
-import { MAX_DISPLAY_NAME, useSetDisplayName, useSetLibraryNameOrder, useSetNameOrder } from './usePreferences';
+import { MAX_DISPLAY_NAME, useSetDisplayName, useSetLibraryNameOrder, useSetNameOrder, useSetReadingShared } from './usePreferences';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let container;
@@ -13,7 +13,7 @@ let root;
 let client;
 let hooks;
 function Probe() {
-  hooks = { account: useSetNameOrder(), library: useSetLibraryNameOrder(), calledBy: useSetDisplayName() };
+  hooks = { account: useSetNameOrder(), library: useSetLibraryNameOrder(), calledBy: useSetDisplayName(), shared: useSetReadingShared() };
   return null;
 }
 beforeEach(() => {
@@ -62,5 +62,31 @@ describe('changing how the person wants to be called (#179)', () => {
 
   it('holds the same limit as the server', () => {
     expect(MAX_DISPLAY_NAME).toBe(60);
+  });
+});
+
+describe('keeping how the text looks the same on every device (#180)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('turning it on takes the choice of this kind of device to the others, and asks the preferences to be read again', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    await mount();
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    await act(async () => { await hooks.shared.mutateAsync(true); });
+    expect(api.put).toHaveBeenCalledWith('/auth/preferences', { reader: { shared: true, from: 'touch' } });
+    expect(invalidated(spy)).toEqual(['preferences']);
+  });
+
+  it('turning it on from a computer says so', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    await mount();
+    await act(async () => { await hooks.shared.mutateAsync(true); });
+    expect(api.put).toHaveBeenCalledWith('/auth/preferences', { reader: { shared: true, from: 'desktop' } });
+  });
+
+  it('turning it off lets each kind have its own, and names no source', async () => {
+    await mount();
+    await act(async () => { await hooks.shared.mutateAsync(false); });
+    expect(api.put).toHaveBeenCalledWith('/auth/preferences', { reader: { shared: false } });
   });
 });
