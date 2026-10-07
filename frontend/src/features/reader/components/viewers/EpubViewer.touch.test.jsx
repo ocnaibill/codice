@@ -31,6 +31,7 @@ vi.mock('epubjs', () => ({
 
 import EpubViewer from './EpubViewer';
 import { setPreferenceOwner } from '../../preferences';
+import { TOUCH_CSS } from '../../epubGestures';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -232,6 +233,18 @@ describe('the EPUB reader under a finger: how long a tap is, and the word a phon
     await touch({ from: [360, 300], ms: 100 });
     expect(state.rendition.next).not.toHaveBeenCalled();
     expect(clear).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the EPUB reader under a finger: across the page of the book', () => {
+  it('the page of the book keeps up and down for the browser and takes the horizontal drag, so that the swipe that turns the page is not cancelled', async () => {
+    await open();
+    const addStylesheetCss = vi.fn();
+    frame = document.createElement('iframe');
+    container.appendChild(frame);
+    state.hooks[0]({ document: frame.contentDocument, addStylesheetCss });
+    expect(addStylesheetCss).toHaveBeenCalledWith(TOUCH_CSS, 'codice-touch');
+    expect(TOUCH_CSS).toBe('html, body { touch-action: pan-y pinch-zoom; }');
   });
 });
 
