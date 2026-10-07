@@ -69,3 +69,32 @@ func (h *DictionaryLookupHandler) Lookup(w http.ResponseWriter, r *http.Request)
 	}
 	json.NewEncoder(w).Encode(res)
 }
+
+// Others answers GET /dictionary/others?lang=pt&word=bonjour: the word looked up in the other languages the installed
+// dictionaries have it in (#183), for a word that is not one of the language of the book. `lang` is the language that was
+// already asked, which is left out.
+func (h *DictionaryLookupHandler) Others(w http.ResponseWriter, r *http.Request) {
+	word := strings.TrimSpace(r.URL.Query().Get("word"))
+	lang := baseLanguage(r.URL.Query().Get("lang"))
+	prefer := baseLanguage(r.URL.Query().Get("prefer"))
+	if word == "" || !langCode.MatchString(lang) || (prefer != "" && !langCode.MatchString(prefer)) {
+		http.Error(w, "Informe a palavra e o idioma.", http.StatusBadRequest)
+		return
+	}
+	if utf8.RuneCountInString(word) > maxLookupWord {
+		http.Error(w, "O trecho é longo demais para procurar no dicionário.", http.StatusBadRequest)
+		return
+	}
+	results, err := dictionary.LookupOthers(r.Context(), h.DB, lang, prefer, word)
+	if errors.Is(err, dictionary.ErrNoWord) {
+		http.Error(w, "Nenhuma palavra para procurar.", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		log.Println("Error looking up a word in the other languages:", err)
+		http.Error(w, "Error looking up the word", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"word": word, "lang": lang, "results": results})
+}
