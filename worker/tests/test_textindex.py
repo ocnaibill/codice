@@ -206,6 +206,71 @@ def make_pdf(path, pages, password=None, fontsize=11):
     doc.close()
 
 
+ENCRYPTION = ('<?xml version="1.0"?><encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container">{}</encryption>')
+
+
+def encrypted(*algorithms):
+    return ENCRYPTION.format(''.join(
+        f'<EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#"><EncryptionMethod Algorithm="{a}"/>'
+        f'<CipherData><CipherReference URI="OEBPS/x"/></CipherData></EncryptedData>' for a in algorithms))
+
+
+class TestEpubWithDRM:
+    """An EPUB whose content is encrypted is not read as text (#167): its ciphertext would be indexed."""
+    CHAPTER = {'a.xhtml': '<p>Um texto qualquer, com palavras suficientes para virar um trecho de busca.</p>'}
+
+    def read(self, path):
+        return list(epub_segments(str(path)))
+
+    def test_encrypted_content_stops_the_extraction_and_says_why(self, tmp_path):
+        for name, algorithm in (('adept', 'http://www.w3.org/2001/04/xmlenc#aes128-cbc'),
+                                ('other', 'http://example.com/our-own-drm')):
+            path = tmp_path / f'{name}.epub'
+            make_epub(path, self.CHAPTER, extra={'META-INF/encryption.xml': encrypted(algorithm)})
+            with pytest.raises(ValueError, match=r'protected by DRM \(' + algorithm):
+                self.read(path)
+
+    def test_one_encrypted_chapter_among_obfuscated_fonts_is_DRM(self, tmp_path):
+        path = tmp_path / 'mixed.epub'
+        make_epub(path, self.CHAPTER, extra={'META-INF/encryption.xml': encrypted(
+            'http://www.idpf.org/2008/embedding', 'http://www.w3.org/2001/04/xmlenc#aes128-cbc')})
+        with pytest.raises(ValueError, match='protected by DRM'):
+            self.read(path)
+
+    def test_obfuscated_fonts_are_an_ordinary_book(self, tmp_path):
+        path = tmp_path / 'fonts.epub'
+        make_epub(path, self.CHAPTER, extra={'META-INF/encryption.xml': encrypted(
+            'http://www.idpf.org/2008/embedding', 'http://ns.adobe.com/pdf/enc#RC')})
+        assert self.read(path)
+
+    def test_what_proves_nothing_is_read(self, tmp_path):
+        for name, extra in {'no file': {}, 'sinf alone': {'META-INF/sinf.xml': '<fairplay/>'},
+                            'rights alone': {'META-INF/rights.xml': '<rights/>'},
+                            'not xml': {'META-INF/encryption.xml': 'not xml <<<'},
+                            'empty': {'META-INF/encryption.xml': ''},
+                            'no method': {'META-INF/encryption.xml': '<encryption><EncryptedData/></encryption>'},
+                            'blank algorithm': {'META-INF/encryption.xml': encrypted(' ')}}.items():
+            path = tmp_path / f'{name.replace(" ", "-")}.epub'
+            make_epub(path, self.CHAPTER, extra=extra)
+            assert self.read(path), name
+
+    def test_the_encryption_file_is_found_whatever_its_case(self, tmp_path):
+        path = tmp_path / 'case.epub'
+        make_epub(path, self.CHAPTER, extra={'META-INF/Encryption.XML': encrypted('http://www.w3.org/2001/04/xmlenc#aes128-cbc')})
+        with pytest.raises(ValueError, match='protected by DRM'):
+            self.read(path)
+
+    def test_the_text_job_ends_failed_with_the_reason_and_publishes_no_text(self, tmp_path):
+        make_epub(tmp_path / 'drm.epub', self.CHAPTER, extra={'META-INF/encryption.xml': encrypted('http://www.w3.org/2001/04/xmlenc#aes128-cbc')})
+        db = FakeDB([file_row(7, 'epub', 'aa', 'pt', path='drm.epub')])
+        assert TextIndexer(db, str(tmp_path)).run(9) == {7: 'failed'}
+        (failure,) = [c[2] for c in db.calls if c[1] == 'text_extraction_fail']
+        assert failure[0] == 7 and 'protected by DRM' in failure[3]          # the reason is what the owner reads
+        assert not [c for c in db.calls if c[1] == 'text_extraction_publish']
+        assert db.rows == []                                                   # not a byte of ciphertext as text
+        assert not [c for c in db.calls if c[1] == 'INSERT INTO jobs']         # nothing to compare
+
+
 class TestPdf:
     def test_one_segment_per_page_of_text_with_its_index_from_zero(self, tmp_path):
         path = tmp_path / 'a.pdf'

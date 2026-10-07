@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -30,10 +31,14 @@ var Supported = map[string]bool{
 // ErrUnsupported: the extension is not one the library accepts.
 var ErrUnsupported = errors.New("unsupported file format")
 
-// BadContent means the bytes do not match the extension the file claims.
-type BadContent struct{ Ext, Why string }
+// BadContent means the bytes do not match the extension the file claims, or the file is one that is not taken. Msg, when
+// there is one, is the whole sentence (the file may be a valid one, as an EPUB with DRM is).
+type BadContent struct{ Ext, Why, Msg string }
 
 func (e *BadContent) Error() string {
+	if e.Msg != "" {
+		return e.Msg
+	}
 	return fmt.Sprintf("the content is not a valid %s file (%s)", e.Ext, e.Why)
 }
 
@@ -78,7 +83,7 @@ func Validate(path, ext string) error {
 					if strings.TrimSpace(string(b)) != "application/epub+zip" {
 						return bad("wrong mimetype")
 					}
-					return nil
+					return epubProtection(zr, ext)
 				}
 			}
 			return bad("no mimetype entry")
@@ -126,6 +131,48 @@ func Validate(path, ext string) error {
 		}
 	default:
 		return ErrUnsupported
+	}
+	return nil
+}
+
+// fontObfuscation are the two algorithms that META-INF/encryption.xml names for what is not DRM: the obfuscation of an
+// embedded font (IDPF and Adobe), which publishers use in ordinary books.
+var fontObfuscation = map[string]bool{
+	"http://www.idpf.org/2008/embedding": true,
+	"http://ns.adobe.com/pdf/enc#RC":     true,
+}
+
+// epubProtection refuses an EPUB whose content is encrypted: any algorithm in META-INF/encryption.xml other than the
+// obfuscation of fonts (Adobe ADEPT, Kobo, B&N and the like). Codice neither reads nor removes DRM, and without this the
+// ciphertext would be read as text and indexed. A file that only has a rights or sinf file, or an encryption.xml that
+// cannot be read, is not proof of anything and is taken.
+func epubProtection(zr *zip.ReadCloser, ext string) error {
+	for _, zf := range zr.File {
+		if !strings.EqualFold(zf.Name, "META-INF/encryption.xml") {
+			continue
+		}
+		rc, err := zf.Open()
+		if err != nil {
+			return nil
+		}
+		defer rc.Close()
+		dec := xml.NewDecoder(io.LimitReader(rc, 1<<20))
+		for {
+			tok, err := dec.Token()
+			if err != nil {
+				return nil
+			}
+			el, ok := tok.(xml.StartElement)
+			if !ok || el.Name.Local != "EncryptionMethod" {
+				continue
+			}
+			for _, a := range el.Attr {
+				if a.Name.Local == "Algorithm" && !fontObfuscation[strings.TrimSpace(a.Value)] {
+					return &BadContent{Ext: ext, Why: "protected by DRM", Msg: fmt.Sprintf(
+						"this %s is protected by DRM (%s), which Codice neither reads nor removes", ext, strings.TrimSpace(a.Value))}
+				}
+			}
+		}
 	}
 	return nil
 }
