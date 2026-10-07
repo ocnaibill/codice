@@ -331,3 +331,82 @@ func TestBulkImport_UsesTheSameChecksAtBatchPriority(t *testing.T) {
 		t.Errorf("second run = %+v, want everything already stored", r)
 	}
 }
+
+func TestUpload_HostileNamesAreCleanedNotRefused(t *testing.T) {
+	s := newCatalogStack(t)
+	for i, name := range []string{
+		strings.Repeat("n", 300) + ".txt",
+		strings.Repeat("ação ", 80) + ".txt",
+		"livro\u202etxt.exe.txt",
+		".txt",
+		"../../../etc/passwd.txt",
+		`C:\Users\Ana\Duna.txt`,
+	} {
+		content := []byte(fmt.Sprintf("texto número %d, um arquivo diferente de cada vez\n", i))
+		if rec := s.upload(admin, name, content); rec.Code != 200 {
+			t.Fatalf("%q: %d %s", name, rec.Code, strings.TrimSpace(rec.Body.String()))
+		}
+	}
+	for _, name := range s.stored() {
+		base := filepath.Base(name)
+		if len(base) > storedNameMax {
+			t.Errorf("a stored name of %d bytes: %q", len(base), base)
+		}
+		if strings.ContainsAny(base, "\n\r\x00\u202e") || strings.Contains(name, "..") || filepath.Dir(name) != "." {
+			t.Errorf("a stored name that was not cleaned: %q", name)
+		}
+	}
+	if n := s.scalar(`SELECT count(*) FROM works WHERE char_length(original_title) > 255 OR original_title ~ '[\x00-\x1f]'`); n != "0" {
+		t.Errorf("%s titles are too long or have control characters", n)
+	}
+	for _, want := range []string{"livro txt.exe.txt", "arquivo.txt", "passwd.txt", "Duna.txt"} {
+		if s.scalar(`SELECT count(*) FROM works WHERE original_title = '`+want+`'`) != "1" {
+			t.Errorf("no work titled %q", want)
+		}
+	}
+	if got := s.scalar(`SELECT count(*) FROM works`); got != "6" {
+		t.Errorf("%s works, want 6", got)
+	}
+}
+
+func TestUpload_AMalformedFormIsABadRequestNotAServerError(t *testing.T) {
+	s := newCatalogStack(t)
+	// A raw NUL in the file name is not a valid header; the answer is the client's error.
+	if rec := s.upload(admin, "livro\x00.txt", []byte("texto\n")); rec.Code != 400 {
+		t.Errorf("a NUL in the name: %d, want 400", rec.Code)
+	}
+	if got := s.counts(); got != "0/0/0" || len(s.stored()) != 0 {
+		t.Errorf("a refused upload left something behind: %s %v", got, s.stored())
+	}
+}
+
+func TestBulkImport_NamesFromADiskThatDoNotFitAreCut(t *testing.T) {
+	s := newCatalogStack(t)
+	dir := filepath.Join(s.storage, "import")
+	os.MkdirAll(dir, 0o755)
+	// 250 bytes with accents (the most a file system takes is 255) and a name with a line break.
+	long := strings.Repeat("ç", 123) + ".txt"
+	weird := "linha1\nlinha2.txt"
+	for i, name := range []string{long, weird} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(fmt.Sprintf("texto %d\n", i)), 0o644); err != nil {
+			t.Skip("this file system does not take the name: ", err)
+		}
+	}
+	rec := s.do(admin, "POST", "/works/bulk-import", "{}")
+	var r BulkImportResponse
+	json.Unmarshal(rec.Body.Bytes(), &r)
+	if rec.Code != 200 || r.Enqueued != 2 || r.Errors != 0 {
+		t.Fatalf("bulk import: %d %+v", rec.Code, r)
+	}
+	for _, name := range s.stored() {
+		if strings.HasPrefix(name, "import") {
+			continue
+		}
+		if len(filepath.Base(name)) > storedNameMax || strings.ContainsAny(name, "\n") {
+			t.Errorf("a stored name that does not fit or was not cleaned: %q", name)
+		}
+	}
+	if got := s.scalar(`SELECT count(*) FROM works WHERE original_title = 'linha1 linha2.txt'`); got != "1" {
+		t.Errorf("the title with a line break was not cleaned")
+	}
+}

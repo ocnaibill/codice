@@ -60,8 +60,8 @@ type ingestOptions struct {
 // and the job are created in one transaction (DEC-067), so a crash cannot leave
 // a job without its work or a work nobody will process.
 func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename string, opts ingestOptions) (*ingestResult, error) {
-	safeName := filepath.Base(filename)
-	ext := strings.ToLower(filepath.Ext(safeName))
+	clean := cleanFilename(filename)
+	ext := strings.ToLower(filepath.Ext(clean))
 	if !SupportedFormats[ext] {
 		return nil, errUnsupportedFormat
 	}
@@ -116,7 +116,7 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 	if _, err := rand.Read(rnd[:]); err != nil {
 		return nil, err
 	}
-	stored := fmt.Sprintf("%s_%s", hex.EncodeToString(rnd[:]), safeName)
+	stored := fmt.Sprintf("%s_%s", hex.EncodeToString(rnd[:]), storedFilename(clean))
 	finalPath := filepath.Join(storage, stored)
 	if err := os.Rename(tmpPath, finalPath); err != nil {
 		return nil, err
@@ -134,11 +134,11 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 	var workID, editionID int
 	var fileID int64
 	format := strings.TrimPrefix(ext, ".")
-	if err := tx.QueryRowContext(ctx, `INSERT INTO works (original_title) VALUES ($1) RETURNING id`, safeName).Scan(&workID); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO works (original_title) VALUES ($1) RETURNING id`, titleOf(clean)).Scan(&workID); err != nil {
 		cleanup()
 		return nil, err
 	}
-	if err := tx.QueryRowContext(ctx, `INSERT INTO editions (work_id, title, is_primary) VALUES ($1, $2, TRUE) RETURNING id`, workID, safeName).Scan(&editionID); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO editions (work_id, title, is_primary) VALUES ($1, $2, TRUE) RETURNING id`, workID, titleOf(clean)).Scan(&editionID); err != nil {
 		cleanup()
 		return nil, err
 	}
