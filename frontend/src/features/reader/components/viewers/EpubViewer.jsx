@@ -10,7 +10,7 @@ import { MOUSE_DELAY, TOUCH_DELAY } from '../../useSelectionWatcher';
 import { flattenToc } from '../../epubToc';
 import { tapAction, swipeAction } from '../../pdfGestures';
 import { REDRAW_DELAY } from '../../epubMarks';
-import { QUIET_AFTER_TURN_MS, TOUCH_TAP_MAX_MS, acrossPage, liftMeaning, toScreen } from '../../epubGestures';
+import { QUIET_AFTER_TURN_MS, TOUCH_CSS, TOUCH_TAP_MAX_MS, acrossPage, liftMeaning, toScreen } from '../../epubGestures';
 import { getEpubSettings, saveEpubSettings } from '../../preferences';
 import { pushReadingSettings } from '../../readingSync';
 import { epubPlaceProblem } from '../../placeCheck';
@@ -175,6 +175,7 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
         applyEpubSettings(rendition, settingsRef.current);
         rendition.hooks.content.register((contents) => {
           contents.addStylesheetCss(fontFaceCss(), 'codice-fonts');
+          contents.addStylesheetCss(TOUCH_CSS, 'codice-touch');
           const doc = contents.document;
           const frame = doc.defaultView?.frameElement;
           if (frame && !frame.getAttribute('title')) frame.setAttribute('title', titleRef.current ? `Texto de “${titleRef.current}”` : 'Texto do livro');

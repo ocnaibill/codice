@@ -610,11 +610,12 @@ describe('the EPUB reader: the keyboard', () => {
     expect(state.rendition.next).toHaveBeenCalledTimes(1);
     await act(async () => { doc.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', bubbles: true, ctrlKey: true })); });
     expect(state.rendition.prev).not.toHaveBeenCalled();
-    expect(contents.addStylesheetCss).toHaveBeenCalledTimes(1);
+    expect(contents.addStylesheetCss).toHaveBeenCalledTimes(2); // the fonts, and the touch rule
     const [css, key] = contents.addStylesheetCss.mock.calls[0];
     expect(key).toBe('codice-fonts');
     expect(css).toContain('@font-face');
     expect(css).toContain('Codice Serif');
+    expect(contents.addStylesheetCss.mock.calls[1][1]).toBe('codice-touch');
   });
 });
 

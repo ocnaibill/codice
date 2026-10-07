@@ -37,3 +37,10 @@ export function liftMeaning({ pointerType, selectedAtDown, selectedNow, onLink }
   if (pointerType === 'mouse') return selectedNow ? 'ignore' : 'gesture';
   return selectedAtDown ? 'dismiss' : 'gesture';
 }
+
+/**
+ * The page of the book is in an iframe of its own, whose touch rules are its own: without this, a finger that drags
+ * across it is taken by the browser to move the page (and the swipe that turns it is cancelled halfway, with nothing said). Up
+ * and down is the browser's (the book scrolls, a text zooms by pinch); across is ours.
+ */
+export const TOUCH_CSS = 'html, body { touch-action: pan-y pinch-zoom; }';
