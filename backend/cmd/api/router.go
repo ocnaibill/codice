@@ -84,6 +84,7 @@ func newRouter(d routerDeps) http.Handler {
 	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
+	collectionsHandler := &handlers.CollectionsHandler{DB: db}
 	progressHandler := &handlers.ProgressHandler{DB: db}
 	searchHandler := &handlers.SearchHandler{DB: db}
 	equivalenceHandler := &handlers.EquivalenceHandler{DB: db}
@@ -163,6 +164,8 @@ func newRouter(d routerDeps) http.Handler {
 
 	// Protected Application Endpoints (any authenticated user)
 	r.With(catalog, auth).Get("/works", libHandler.GetWorks)
+	r.With(catalog, auth).Get("/collections", collectionsHandler.List)
+	r.With(catalog, auth).Get("/collections/{id}", collectionsHandler.Get)
 	r.With(auth).Get("/works/{id}", libHandler.GetWorkByID)
 	r.With(catalog, auth).Get("/search", searchHandler.Search)
 	r.With(auth).Patch("/works/{id}/progress", libHandler.UpdateProgress)
