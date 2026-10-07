@@ -200,6 +200,12 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err != nil {
+			var maxErr *http.MaxBytesError
+			if !errors.As(err, &maxErr) {
+				// A form that cannot be read (a name with a NUL or a line break is not a valid header) is the client's error.
+				http.Error(w, "Invalid multipart form", http.StatusBadRequest)
+				return
+			}
 			ingestStatus(w, err)
 			return
 		}
