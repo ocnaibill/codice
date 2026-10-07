@@ -5,7 +5,7 @@
  */
 export function refreshLibrary(queryClient) {
   // 'work' is the detail of one work, with the reader's position in each of its files.
-  for (const key of ['works', 'work', 'stats', 'favorites']) {
+  for (const key of ['works', 'work', 'stats', 'favorites', 'collections', 'collection']) {
     queryClient.invalidateQueries({ queryKey: [key] });
   }
 }

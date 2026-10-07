@@ -75,3 +75,32 @@ describe('LibraryFilterBar: the kinds of work that the library has', () => {
     expect(onFilterChange).not.toHaveBeenCalled();
   });
 });
+
+describe('LibraryFilterBar: collections', () => {
+  const labels = () => [...container.querySelectorAll('[aria-label="Filtrar acervo"] button')].map((b) => b.textContent);
+
+  it('offers them after the kinds of work, with their count, once there is one', async () => {
+    await render({ worksTotal: 9, breakdown: { livros: 5, mangas: 0, audio: 4 }, collectionsTotal: 3 });
+    expect(labels()).toEqual(['Todos[09]', 'Livros digitais[05]', 'Audiolivros[04]', 'Coleções[03]']);
+  });
+
+  it('does not offer them while there is none, to a reader', async () => {
+    await render({ worksTotal: 9, breakdown: { livros: 9, mangas: 0, audio: 0 }, collectionsTotal: 0 });
+    expect(labels()).toEqual(['Todos[09]', 'Livros digitais[09]']);
+  });
+
+  it('offers them to the staff even with none, so that the first is made', async () => {
+    await render({ worksTotal: 9, breakdown: { livros: 9, mangas: 0, audio: 0 }, collectionsTotal: 0, canManageCollections: true });
+    expect(labels()).toEqual(['Todos[09]', 'Livros digitais[09]', 'Coleções[00]']);
+  });
+
+  it('picks them, and is not sent back to Todos for not being a kind of work', async () => {
+    const onFilterChange = vi.fn();
+    await render({ worksTotal: 9, breakdown: { livros: 9, mangas: 0, audio: 0 }, collectionsTotal: 2, activeFilter: 'collections', onFilterChange });
+    const buttons = [...container.querySelectorAll('[aria-label="Filtrar acervo"] button')];
+    expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true']);
+    expect(onFilterChange).not.toHaveBeenCalled();
+    await act(async () => buttons[2].click());
+    expect(onFilterChange).toHaveBeenCalledWith('collections');
+  });
+});

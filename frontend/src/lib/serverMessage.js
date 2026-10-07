@@ -106,6 +106,7 @@ const EXACT = {
   'Relation not found': 'Relação não encontrada.',
   // The library
   'Book not found': 'Obra não encontrada.',
+  'Collection not found': 'Coleção não encontrada.',
   'Work not found': 'Obra não encontrada.',
   'Book or file not found': 'Obra ou arquivo não encontrado.',
   'Work or edition not found': 'Obra ou edição não encontrada.',

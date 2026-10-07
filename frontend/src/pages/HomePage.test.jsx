@@ -175,3 +175,50 @@ describe('library hub', () => {
     expect(view.text()).not.toContain('Adicionar');
   });
 });
+
+describe('library hub: collections', () => {
+  const collections = (total) => ({ data: { data: [{ id: 1, kind: 'official', name: 'Duna', workCount: 2, completedCount: 0, coverUrl: '/c.jpg' }], total, totalPages: 1, page: 1 } });
+  const withCollections = (role) => api.get.mockImplementation(async (url) => {
+    if (url === '/auth/me') return { data: { id: 1, username: 'ana', role } };
+    if (url === '/stats') return { data: { worksTotal: 25, libraryBreakdown: { livros: 25, mangas: 0, audio: 0 } } };
+    if (url === '/collections') return collections(1);
+    if (url.startsWith('/works?')) return { data: { data: [work], total: 25, totalPages: 1, page: 1 } };
+    return { data: { data: [], total: 0 } };
+  });
+
+  it('shows the collections instead of the works when that shelf is picked, with no sort to choose', async () => {
+    withCollections('reader');
+    view = await mount(<HomePage />);
+    await flush();
+    expect(document.body.querySelector('select[aria-label="Ordenar o acervo"]')).not.toBeNull();
+    await view.click(view.buttonMatching(/^Coleções/));
+    expect(useGlobalStore.getState().libraryView).toBe('collections');
+    expect(view.text()).toContain('Coleção');
+    expect(document.body.querySelector('[aria-label="Abrir a coleção Duna"]')).not.toBeNull();
+    expect(document.body.querySelector('select[aria-label="Ordenar o acervo"]')).toBeNull();
+    expect(view.text()).not.toContain('Adicionados recentemente');
+    await view.click(view.buttonMatching(/^Todos/));
+    expect(view.text()).toContain('Adicionados recentemente');
+    expect(document.body.querySelector('[aria-label="Abrir a coleção Duna"]')).toBeNull();
+  });
+
+  it('offers the shelf to the staff when there is no collection yet, and not to a reader', async () => {
+    const none = (role) => api.get.mockImplementation(async (url) => {
+      if (url === '/auth/me') return { data: { id: 1, username: 'ana', role } };
+      if (url === '/stats') return { data: { worksTotal: 25, libraryBreakdown: { livros: 25, mangas: 0, audio: 0 } } };
+      if (url === '/collections') return { data: { data: [], total: 0, totalPages: 0 } };
+      if (url.startsWith('/works?')) return { data: { data: [work], total: 25, totalPages: 1, page: 1 } };
+      return { data: { data: [], total: 0 } };
+    });
+    none('reader');
+    view = await mount(<HomePage />);
+    await flush();
+    expect(view.buttonMatching(/^Coleções/)).toBeUndefined();
+    view.unmount();
+    none('admin');
+    view = await mount(<HomePage />);
+    await flush();
+    expect(view.buttonMatching(/^Coleções/)).toBeTruthy();
+  });
+});
+
