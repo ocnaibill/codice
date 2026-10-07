@@ -7,10 +7,11 @@ import os
 import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
+import fitz
 import pytest
 from extractors.base import ExtractedMetadata
 from extractors.epub_extractor import EpubExtractor
-from extractors.pdf_extractor import PdfExtractor
+from extractors.pdf_extractor import COVER_MAX_SIDE, PdfExtractor
 from extractors.cbz_extractor import CbzExtractor
 from extractors.txt_extractor import TxtExtractor
 
@@ -199,3 +200,60 @@ class TestPdfExtractor:
             meta = self.extractor.extract(pdf_path, covers_dir)
             assert meta.title == "test"  # Fallback from filename
             assert meta.format == "pdf"
+
+
+def pdf_with_page_size(tmpdir, width, height, name="page.pdf"):
+    path = os.path.join(tmpdir, name)
+    doc = fitz.open()
+    page = doc.new_page(width=width, height=height)
+    page.insert_text((72, 72), "Texto da primeira página")
+    doc.save(path)
+    doc.close()
+    return path
+
+
+class TestPdfCover:
+    """The cover is a convenience: its size is bounded, and failing to draw it does not fail the file (#170)."""
+
+    def setup_method(self):
+        self.extractor = PdfExtractor()
+
+    def extract(self, tmp, width, height):
+        covers = os.path.join(tmp, "covers")
+        os.makedirs(covers, exist_ok=True)
+        meta = self.extractor.extract(pdf_with_page_size(tmp, width, height), covers)
+        return meta, covers
+
+    def size_of(self, covers, meta):
+        pix = fitz.Pixmap(os.path.join(covers, os.path.basename(meta.cover_path)))
+        return pix.width, pix.height
+
+    def test_a_page_of_the_largest_size_gets_a_cover_of_bounded_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            meta, covers = self.extract(tmp, 14400, 14400)
+            assert meta.cover_path and meta.page_count == 1
+            assert COVER_MAX_SIDE == 2000 and max(self.size_of(covers, meta)) <= 2000   # the policy: 2,000 px on the longer side
+
+    def test_a_tall_poster_is_bounded_by_its_longer_side(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            meta, covers = self.extract(tmp, 600, 14400)
+            width, height = self.size_of(covers, meta)
+            assert COVER_MAX_SIDE - 2 <= height <= COVER_MAX_SIDE and width < height
+
+    def test_an_a4_page_keeps_the_cover_it_always_had(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            meta, covers = self.extract(tmp, 595, 842)
+            assert self.size_of(covers, meta) == (1190, 1684)
+
+    def test_a_small_page_is_not_enlarged_past_twice_its_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            meta, covers = self.extract(tmp, 200, 300)
+            assert self.size_of(covers, meta) == (400, 600)
+
+    def test_a_page_that_cannot_be_drawn_leaves_the_work_without_a_cover_but_not_without_the_rest(self, monkeypatch):
+        with tempfile.TemporaryDirectory() as tmp:
+            def refuse(self, *args, **kwargs):
+                raise RuntimeError("code=5: Overly large image")
+            monkeypatch.setattr(fitz.Page, "get_pixmap", refuse)
+            meta, _ = self.extract(tmp, 595, 842)
+            assert not meta.cover_path and meta.page_count == 1 and meta.format == "pdf"
