@@ -18,6 +18,7 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
+	"github.com/ocnaibill/codice/backend/internal/profile"
 	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -546,6 +547,12 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error reading the account", http.StatusInternalServerError)
 		return
 	}
+	// How the person wants to be called, and whether they were asked yet (the screen asks once).
+	called, err := profile.Get(r.Context(), h.DB, userID)
+	if err != nil {
+		http.Error(w, "Error reading the account", http.StatusInternalServerError)
+		return
+	}
 	// Things the person must see now, such as a recovery done on the server.
 	type notice struct {
 		ID        int64           `json:"id"`
@@ -566,7 +573,8 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"id": userID, "username": username, "role": role, "notices": notices})
+	json.NewEncoder(w).Encode(map[string]any{"id": userID, "username": username, "role": role, "notices": notices,
+		"displayName": called.Display, "displayNameAsked": called.Asked})
 }
 
 // SetupStatusResponse indicates whether the system needs first-run wizard initialization

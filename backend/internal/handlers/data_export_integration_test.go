@@ -86,6 +86,7 @@ func TestDataExport_HoldsEverythingThatIsThePersonsAndNothingOfAnyoneElse(t *tes
 	s := newAuthStack(t)
 	ana := s.addUserWithPassword(t, "ana", "reader", "s3cret")
 	bia := s.addUserWithPassword(t, "bia", "reader", "s3cret")
+	s.db.Exec(`UPDATE users SET display_name = 'Aninha' WHERE id = $1`, ana)
 	s.seedPerson(t, "ana", ana, "etiqueta-da-ana", true)
 	s.seedPerson(t, "bia", bia, "etiqueta-da-bia", true)
 
@@ -113,7 +114,7 @@ func TestDataExport_HoldsEverythingThatIsThePersonsAndNothingOfAnyoneElse(t *tes
 
 	// What is hers is there.
 	for name, wants := range map[string][]string{
-		"conta.json":       {`"username": "ana"`, `"nameOrder": "family_first"`, `"theme": "sepia"`, `"provider": "ldap"`, `"role": "reader"`},
+		"conta.json":       {`"username": "ana"`, `"displayName": "Aninha"`, `"nameOrder": "family_first"`, `"theme": "sepia"`, `"provider": "ldap"`, `"role": "reader"`},
 		"anotacoes.md":     {"Livro de ana", "Minha nota ana", "Citação de ana", "#etiqueta-da-ana"},
 		"anotacoes.json":   {`"body": "Minha nota ana"`, `"color": "sage"`, `"count": 1`, `"cfi": "epubcfi(/6/2)"`},
 		"favoritos.json":   {`"title": "Livro de ana"`, `"authors": "Autor de ana"`, `"inLibrary": true`},

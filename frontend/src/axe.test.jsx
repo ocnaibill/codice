@@ -7,6 +7,8 @@ vi.mock('./features/auth/api/usePreferences', () => ({
   NAME_ORDERS: { given_first: { label: 'Nome primeiro', example: 'Frank Herbert' }, family_first: { label: 'Sobrenome primeiro', example: 'Herbert, Frank' } },
   usePreferences: () => ({ data: { choice: '', library: 'given_first' }, isLoading: false, isError: false }),
   useSetNameOrder: () => ({ mutate: vi.fn(), isPending: false }),
+  useSetDisplayName: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  MAX_DISPLAY_NAME: 60,
 }));
 vi.mock('./features/auth/components/MyData', () => ({ MyData: () => null }));
 

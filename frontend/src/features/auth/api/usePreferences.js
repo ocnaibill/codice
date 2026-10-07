@@ -41,3 +41,17 @@ export function useSetLibraryNameOrder() {
     onSuccess: () => refreshNames(queryClient),
   });
 }
+
+/** How the person wants to be called (#179): '' goes back to the user name. The answer is also "asked": the first-sign-in question is not repeated. */
+export function useSetDisplayName() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (displayName) => (await api.put('/auth/preferences', { displayName })).data,
+    onSuccess: () => {
+      for (const key of ['me', 'preferences']) queryClient.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
+/** The most characters a name to be called by may have (the server holds the same limit). */
+export const MAX_DISPLAY_NAME = 60;

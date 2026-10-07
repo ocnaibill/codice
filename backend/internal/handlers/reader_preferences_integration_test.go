@@ -147,3 +147,93 @@ func TestReaderPreferences_WhatIsKeptAndNoLongerValidIsAsIfThereWereNone(t *test
 		t.Fatalf("an old value that is not in the lists any more: %s", got)
 	}
 }
+
+type namePrefs struct {
+	DisplayName      string `json:"displayName"`
+	DisplayNameAsked bool   `json:"displayNameAsked"`
+	Choice           string `json:"choice"`
+}
+
+func namePrefsOf(s *catalogStack, a actor) namePrefs {
+	s.t.Helper()
+	var p namePrefs
+	json.Unmarshal(s.do(a, "GET", "/auth/preferences", "").Body.Bytes(), &p)
+	return p
+}
+
+func TestDisplayName_NobodyWasAskedUntilTheyAnswer(t *testing.T) {
+	s := newCatalogStack(t)
+	if p := namePrefsOf(s, ana); p.DisplayName != "" || p.DisplayNameAsked {
+		t.Fatalf("a new account: %+v", p)
+	}
+}
+
+func TestDisplayName_IsCleanedKeptReadBackAndTheirOwn(t *testing.T) {
+	s := newCatalogStack(t)
+	rec := s.do(ana, "PUT", "/auth/preferences", `{"displayName":"  Ana   Maria‮ "}`)
+	var put namePrefs
+	json.Unmarshal(rec.Body.Bytes(), &put)
+	if rec.Code != 200 || put.DisplayName != "Ana Maria" || !put.DisplayNameAsked {
+		t.Fatalf("PUT: %d %s", rec.Code, rec.Body)
+	}
+	if p := namePrefsOf(s, ana); p.DisplayName != "Ana Maria" || !p.DisplayNameAsked {
+		t.Errorf("read back: %+v", p)
+	}
+	if p := namePrefsOf(s, bob); p.DisplayName != "" || p.DisplayNameAsked {
+		t.Errorf("bob sees ana's name or was marked as asked: %+v", p)
+	}
+}
+
+func TestDisplayName_AnswerOfMyUserNameIsAnAnswerAndIsNotAskedAgain(t *testing.T) {
+	s := newCatalogStack(t)
+	s.do(ana, "PUT", "/auth/preferences", `{"displayName":"Aninha"}`)
+	if rec := s.do(ana, "PUT", "/auth/preferences", `{"displayName":""}`); rec.Code != 200 {
+		t.Fatalf("%d", rec.Code)
+	}
+	if p := namePrefsOf(s, ana); p.DisplayName != "" || !p.DisplayNameAsked {
+		t.Errorf("after going back to the user name: %+v", p)
+	}
+	if s.scalar(`SELECT (display_name IS NULL)::text FROM users WHERE id = $1`, ana.id) != "true" {
+		t.Errorf("the user name is kept as nothing, not as an empty text")
+	}
+	if rec := s.do(bob, "PUT", "/auth/preferences", `{"displayName":"   "}`); rec.Code != 200 || !namePrefsOf(s, bob).DisplayNameAsked {
+		t.Errorf("an answer of only spaces is the user name, and counts as an answer")
+	}
+}
+
+func TestDisplayName_ALongOneIsRefusedAndNothingChanges(t *testing.T) {
+	s := newCatalogStack(t)
+	s.do(ana, "PUT", "/auth/preferences", `{"displayName":"Ana"}`)
+	if rec := s.do(ana, "PUT", "/auth/preferences", fmt.Sprintf(`{"displayName":%q}`, strings.Repeat("ç", 61))); rec.Code != 400 {
+		t.Errorf("61 characters: %d, want 400", rec.Code)
+	}
+	if p := namePrefsOf(s, ana); p.DisplayName != "Ana" {
+		t.Errorf("a refused name changed something: %+v", p)
+	}
+	if rec := s.do(ana, "PUT", "/auth/preferences", fmt.Sprintf(`{"displayName":%q}`, strings.Repeat("ç", 60))); rec.Code != 200 {
+		t.Errorf("60 characters: %d, want 200", rec.Code)
+	}
+}
+
+func TestDisplayName_OtherPreferencesLeaveItAloneAndItLeavesThem(t *testing.T) {
+	s := newCatalogStack(t)
+	s.do(ana, "PUT", "/auth/preferences", `{"displayName":"Ana","nameOrder":"family_first"}`)
+	s.do(ana, "PUT", "/auth/preferences", `{"nameOrder":"given_first"}`)
+	if p := namePrefsOf(s, ana); p.DisplayName != "Ana" || p.Choice != "given_first" {
+		t.Errorf("a request that did not mention the name changed it: %+v", p)
+	}
+	s.do(ana, "PUT", "/auth/preferences", `{"displayName":"Aninha"}`)
+	if p := namePrefsOf(s, ana); p.Choice != "given_first" {
+		t.Errorf("a request that only had the name changed the order: %+v", p)
+	}
+}
+
+func TestDisplayName_TheTimeItWasAskedDoesNotMoveWhenItIsChanged(t *testing.T) {
+	s := newCatalogStack(t)
+	s.do(ana, "PUT", "/auth/preferences", `{"displayName":"Ana"}`)
+	first := s.scalar(`SELECT display_name_asked_at::text FROM users WHERE id = $1`, ana.id)
+	s.do(ana, "PUT", "/auth/preferences", `{"displayName":"Aninha"}`)
+	if got := s.scalar(`SELECT display_name_asked_at::text FROM users WHERE id = $1`, ana.id); got != first {
+		t.Errorf("asked_at moved from %s to %s", first, got)
+	}
+}

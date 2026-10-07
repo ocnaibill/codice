@@ -100,6 +100,8 @@ describe('what the server says', () => {
     'Deleting for good needs confirm=true',
     'Emptying the trash needs confirm=true',
     'Expected a multipart form',
+    'display name is too long', // never reaches a client: the preferences answer with the line below
+    'displayName is at most 60 characters', // the screen does not let a longer name be typed
     'Format does not support page listing',
     'Format does not support page serving',
     'Invalid JSON payload',

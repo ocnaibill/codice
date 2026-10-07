@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/people"
+	"github.com/ocnaibill/codice/backend/internal/profile"
 	"github.com/ocnaibill/codice/backend/internal/reading"
 )
 
@@ -93,6 +94,9 @@ func (h *PeopleHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
 type preferencesResponse struct {
 	people.Preference
 	Reader *reading.Settings `json:"reader"`
+	// DisplayName is how the person wants to be called ("" for the user name), and DisplayNameAsked whether they were asked.
+	DisplayName      string `json:"displayName"`
+	DisplayNameAsked bool   `json:"displayNameAsked"`
 }
 
 func (h *PeopleHandler) writePreferences(w http.ResponseWriter, r *http.Request) {
@@ -103,19 +107,33 @@ func (h *PeopleHandler) writePreferences(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Error reading the preferences", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, preferencesResponse{Preference: people.OrderFor(r.Context(), h.DB, userID), Reader: saved})
+	called, err := profile.Get(r.Context(), h.DB, userID)
+	if err != nil {
+		log.Println("Error reading the display name:", err)
+		http.Error(w, "Error reading the preferences", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, preferencesResponse{Preference: people.OrderFor(r.Context(), h.DB, userID), Reader: saved,
+		DisplayName: called.Display, DisplayNameAsked: called.Asked})
 }
 
 // SetPreferences records an account's own choices: how names are shown (empty goes back to the library's) and how the text of
 // a book looks (null takes the choice away). What the request does not mention stays as it is.
 func (h *PeopleHandler) SetPreferences(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		NameOrder *string         `json:"nameOrder"`
-		Reader    json.RawMessage `json:"reader"`
+		NameOrder   *string         `json:"nameOrder"`
+		Reader      json.RawMessage `json:"reader"`
+		DisplayName *string         `json:"displayName"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req); err != nil || (req.NameOrder != nil && *req.NameOrder != "" && !people.ValidOrder(*req.NameOrder)) {
 		http.Error(w, "nameOrder is given_first, family_first or empty", http.StatusBadRequest)
 		return
+	}
+	if req.DisplayName != nil {
+		if _, err := profile.CleanDisplayName(*req.DisplayName); err != nil {
+			http.Error(w, "displayName is at most 60 characters", http.StatusBadRequest)
+			return
+		}
 	}
 	var choice *reading.Settings
 	if len(req.Reader) > 0 && string(req.Reader) != "null" {
@@ -130,6 +148,13 @@ func (h *PeopleHandler) SetPreferences(w http.ResponseWriter, r *http.Request) {
 	if req.NameOrder != nil {
 		if err := people.SetChoice(r.Context(), h.DB, userID, *req.NameOrder); err != nil {
 			log.Println("Error saving a name order:", err)
+			http.Error(w, "Error saving the preference", http.StatusInternalServerError)
+			return
+		}
+	}
+	if req.DisplayName != nil {
+		if err := profile.Set(r.Context(), h.DB, userID, *req.DisplayName); err != nil {
+			log.Println("Error saving a display name:", err)
 			http.Error(w, "Error saving the preference", http.StatusInternalServerError)
 			return
 		}

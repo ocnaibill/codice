@@ -143,7 +143,7 @@ func BuildDataExport(ctx context.Context, db *sql.DB, userID string, w io.Writer
 	out := exportFile{zw}
 
 	accounts, err := queryRows(ctx, db, `
-		SELECT username, email, role, created_at AS "createdAt", name_order AS "nameOrder", reader_prefs AS "reader", blocked_at AS "blockedAt"
+		SELECT username, email, role, created_at AS "createdAt", name_order AS "nameOrder", display_name AS "displayName", reader_prefs AS "reader", blocked_at AS "blockedAt"
 		FROM users WHERE id = $1`, userID)
 	if err != nil || len(accounts) != 1 {
 		if err == nil {
