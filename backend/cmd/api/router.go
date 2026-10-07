@@ -85,6 +85,7 @@ func newRouter(d routerDeps) http.Handler {
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
 	collectionsHandler := &handlers.CollectionsHandler{DB: db}
+	collectionsAdmin := &handlers.CollectionsAdminHandler{DB: db}
 	progressHandler := &handlers.ProgressHandler{DB: db}
 	searchHandler := &handlers.SearchHandler{DB: db}
 	equivalenceHandler := &handlers.EquivalenceHandler{DB: db}
@@ -166,6 +167,13 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(catalog, auth).Get("/works", libHandler.GetWorks)
 	r.With(catalog, auth).Get("/collections", collectionsHandler.List)
 	r.With(catalog, auth).Get("/collections/{id}", collectionsHandler.Get)
+	r.With(staff).Post("/collections", collectionsAdmin.Create)
+	r.With(staff).Patch("/collections/{id}", collectionsAdmin.Rename)
+	r.With(staff).Delete("/collections/{id}", collectionsAdmin.Retire)
+	r.With(staff).Post("/collections/{id}/restore", collectionsAdmin.Restore)
+	r.With(staff).Put("/collections/{id}/works/{workId}", collectionsAdmin.AddWork)
+	r.With(staff).Delete("/collections/{id}/works/{workId}", collectionsAdmin.RemoveWork)
+	r.With(staff).Put("/collections/{id}/order", collectionsAdmin.Order)
 	r.With(auth).Get("/works/{id}", libHandler.GetWorkByID)
 	r.With(catalog, auth).Get("/search", searchHandler.Search)
 	r.With(auth).Patch("/works/{id}/progress", libHandler.UpdateProgress)
