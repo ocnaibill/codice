@@ -208,6 +208,31 @@ def _table_of_contents(zf, package, opf_dir):
     return max(candidates, key=len, default=[])
 
 
+# What META-INF/encryption.xml names for what is not DRM: the obfuscation of an embedded font (IDPF and Adobe).
+FONT_OBFUSCATION = frozenset({'http://www.idpf.org/2008/embedding', 'http://ns.adobe.com/pdf/enc#RC'})
+
+
+def drm_algorithm(zf):
+    """The algorithm that encrypts the content of an EPUB, or None when it is not encrypted (a rights or sinf file
+    alone, or an encryption.xml that cannot be read, proves nothing). Codice neither reads nor removes DRM; without
+    this the ciphertext is read as text and indexed."""
+    names = {name.lower(): name for name in zf.namelist()}
+    member = names.get('meta-inf/encryption.xml')
+    if member is None:
+        return None
+    try:
+        root = etree.fromstring(zf.read(member), parser=etree.XMLParser(recover=True, resolve_entities=False))
+    except (KeyError, etree.XMLSyntaxError, ValueError):
+        return None
+    if root is None:
+        return None
+    for method in root.iter('{*}EncryptionMethod'):
+        algorithm = (method.get('Algorithm') or '').strip()
+        if algorithm and algorithm not in FONT_OBFUSCATION:
+            return algorithm
+    return None
+
+
 def epub_segments(path, checkpoint=lambda: None, out=None):
     """Yields the segments of the book. When `out` is a dict, the outline's nodes are put in it under
     'structure' once every segment has been yielded (a segment carries the index of its node)."""
@@ -219,6 +244,9 @@ def epub_segments(path, checkpoint=lambda: None, out=None):
         infos = zf.infolist()
         if sum(i.file_size for i in infos) > Limits.MAX_ARCHIVE_BYTES:
             raise ValueError('the EPUB expands into too much data')
+        algorithm = drm_algorithm(zf)
+        if algorithm:
+            raise ValueError(f'the EPUB is protected by DRM ({algorithm}), which Codice neither reads nor removes')
         opf = _opf_path(zf)
         opf_dir = posixpath.dirname(opf)
         try:

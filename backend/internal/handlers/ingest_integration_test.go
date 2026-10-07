@@ -527,3 +527,28 @@ func TestBulkImport_AMovedTextInAnotherEncodingGoesOnceItIsSafelyCopied(t *testi
 		t.Error("the original was kept although its content was copied (as UTF-8)")
 	}
 }
+
+func TestUpload_AnEPUBWithDRMIsRefusedWithTheReasonAndLeavesNothing(t *testing.T) {
+	s := newCatalogStack(t)
+	drm := zipOf(t, map[string]string{
+		"mimetype": "application/epub+zip",
+		"META-INF/encryption.xml": `<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#">` +
+			`<EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/></EncryptedData></encryption>`,
+	})
+	rec := s.upload(admin, "kindle.epub", drm)
+	if rec.Code != 415 || !strings.Contains(rec.Body.String(), "protected by DRM") {
+		t.Fatalf("%d %s", rec.Code, strings.TrimSpace(rec.Body.String()))
+	}
+	if got := s.counts(); got != "0/0/0" || len(s.stored()) != 0 {
+		t.Errorf("a refused EPUB left something behind: %s %v", got, s.stored())
+	}
+	// The same book with only its fonts obfuscated is an ordinary one.
+	fonts := zipOf(t, map[string]string{
+		"mimetype": "application/epub+zip",
+		"META-INF/encryption.xml": `<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#">` +
+			`<EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/></EncryptedData></encryption>`,
+	})
+	if rec := s.upload(admin, "editora.epub", fonts); rec.Code != 200 {
+		t.Errorf("obfuscated fonts are not DRM: %d %s", rec.Code, strings.TrimSpace(rec.Body.String()))
+	}
+}
