@@ -169,6 +169,9 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Post("/works/{id}/favorite", fav.AddFavorite)
 	r.Delete("/works/{id}/favorite", fav.RemoveFavorite)
 	r.Get("/favorites", fav.GetFavorites)
+	cols := &CollectionsHandler{DB: db}
+	r.Get("/collections", cols.List)
+	r.Get("/collections/{id}", cols.Get)
 	r.Post("/works/{id}/notes", notes.CreateNote)
 	r.Get("/notes", notes.ListNotes)
 	r.Get("/notes/facets", notes.NoteFacets)
