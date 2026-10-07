@@ -54,6 +54,25 @@ func (h *JobsHandler) Rerun(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// RerunFailed puts every failed job of a work back in the queue at once (see jobs.RerunFailed), and says how many went
+// and how many failed jobs are left, which are looked at one by one.
+func (h *JobsHandler) RerunFailed(w http.ResponseWriter, r *http.Request) {
+	requeued, left, err := jobs.RerunFailed(r.Context(), h.DB, h.StoragePath)
+	if err != nil {
+		log.Println("Error requeueing failed jobs:", err)
+		http.Error(w, "Error updating jobs", http.StatusInternalServerError)
+		return
+	}
+	if len(requeued) > 0 {
+		if err := audit.Record(r.Context(), h.DB, currentUserID(r), "job.rerun_failed", "job", "", map[string]any{"requeued": len(requeued), "left": left}); err != nil {
+			log.Println("Could not audit job.rerun_failed", err)
+		}
+		// One wake-up is enough: the workers find the rest in the database.
+		jobs.Notify(r.Context(), h.RedisClient, requeued[0])
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"requeued": len(requeued), "left": left})
+}
+
 // Cancel stops a pending job and asks a running one to stop.
 func (h *JobsHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	h.act(w, r, "job.cancel", jobs.Cancel)

@@ -66,4 +66,71 @@ describe('JobsTab', () => {
     await open([]);
     expect(view.text()).toContain('Nenhum trabalho');
   });
+
+  describe('trying all the failed ones again', () => {
+    const onFailed = async (counts = { failed: 5 }) => {
+      await open([job({ id: 7 })], counts);
+      await view.click(view.buttonMatching(/^Com falha/));
+    };
+
+    it('has no such button outside the failed filter, or when nothing failed', async () => {
+      await open([job()], { failed: 5 });
+      expect(view.buttonMatching(/Tentar todos/)).toBeUndefined();
+      await view.click(view.buttonMatching(/^Com falha/));
+      expect(view.buttonMatching(/Tentar todos de novo \(5\)/)).toBeDefined();
+      view.unmount();
+      await open([job({ state: 'succeeded' })], { failed: 0, succeeded: 1 });
+      await view.click(view.buttonMatching(/^Concluídos/));
+      expect(view.buttonMatching(/Tentar todos/)).toBeUndefined();
+      await view.click(view.buttonMatching(/^Com falha/));
+      expect(view.buttonMatching(/Tentar todos/)).toBeUndefined();   // on the failed filter, but nothing failed
+    });
+
+    it('asks first, and does nothing when it is cancelled', async () => {
+      await onFailed();
+      await view.click(view.buttonMatching(/Tentar todos de novo/));
+      expect(view.dialog().textContent).toContain('Tentar de novo todos os trabalhos com falha?');
+      expect(api.post).not.toHaveBeenCalled();
+      await view.click(view.button('Cancelar'));
+      expect(view.dialog()).toBeNull();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('sends the request once it is confirmed, and says how many went back and how many are left', async () => {
+      await onFailed();
+      api.post.mockResolvedValue({ data: { requeued: 3, left: 2 } });
+      await view.click(view.buttonMatching(/Tentar todos de novo/));
+      await view.click(view.button('Tentar todos de novo'));
+      expect(view.dialog()).toBeNull();
+      expect(api.post).toHaveBeenCalledWith('/admin/jobs/rerun-failed');
+      expect(view.text()).toContain('3 trabalhos voltaram para a fila.');
+      expect(view.text()).toContain('2 continuam com falha');
+    });
+
+    it('speaks in the singular, and says so when nothing could go back', async () => {
+      await onFailed();
+      api.post.mockResolvedValue({ data: { requeued: 1, left: 1 } });
+      await view.click(view.buttonMatching(/Tentar todos de novo/));
+      await view.click(view.button('Tentar todos de novo'));
+      expect(view.text()).toContain('1 trabalho voltou para a fila.');
+      expect(view.text()).toContain('1 continua com falha');
+      expect(view.text()).toContain('Tente-o um a um');
+      view.unmount();
+
+      await onFailed();
+      api.post.mockResolvedValue({ data: { requeued: 0, left: 0 } });
+      await view.click(view.buttonMatching(/Tentar todos de novo/));
+      await view.click(view.button('Tentar todos de novo'));
+      expect(view.text()).toContain('Nenhum trabalho voltou para a fila.');
+      expect(view.text()).not.toContain('continua');
+    });
+
+    it('says when the server refuses', async () => {
+      await onFailed();
+      api.post.mockRejectedValue({ response: { status: 403, data: 'Forbidden\n' } });
+      await view.click(view.buttonMatching(/Tentar todos de novo/));
+      await view.click(view.button('Tentar todos de novo'));
+      expect(view.text()).toContain('Você não tem permissão para isso.');
+    });
+  });
 });

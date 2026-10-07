@@ -136,6 +136,7 @@ var staffRoutes = []route{
 	{"GET", "/admin/storage/cleanups"},
 	{"POST", "/admin/storage/cleanups/retry"},
 	{"POST", "/admin/storage/reorganize"},
+	{"POST", "/admin/jobs/rerun-failed"},
 	{"POST", "/admin/jobs/1/rerun"},
 	{"POST", "/admin/jobs/1/cancel"},
 	{"GET", "/works/1/candidates"},
