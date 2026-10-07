@@ -5,6 +5,7 @@ import { Skeleton } from '../../../../components/ui/Skeleton';
 import { completionFor } from '../../progressRules';
 import { imagePlaceProblem } from '../../placeCheck';
 import { getComicMode, saveComicMode } from '../../preferences';
+import { preloadOrder } from '../../comicPreload';
 import { MAX_READING_WIDTH, tapAction, swipeAction } from '../../pdfGestures';
 
 // Number of pages to preload ahead and behind
@@ -22,6 +23,8 @@ const MODES = [
   { id: 'webtoon', label: 'Tira para rolar' },
   { id: 'double', label: 'Página dupla' },
 ];
+// The short name of a mode, for the button that opens the list of modes: it says what the page is now, in words.
+const MODE_SHORT = { ltr: 'Esq → Dir', rtl: 'Dir → Esq', webtoon: 'Tira', double: 'Página dupla' };
 const FILE_SAID = {
   rtl: 'O arquivo indica leitura da direita para a esquerda.',
   webtoon: 'O arquivo indica que é uma tira para rolar.',
@@ -136,14 +139,11 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
     return authenticatedUrl(`/works/${workIdValue}/pages/${pageNum}/thumbnail`);
   }, [workIdValue]);
 
-  // Preload adjacent pages
+  // Preload the pages around the one in view: the ones on the screen first (both, when two are shown), then the ones ahead
+  // (as far as the page that turns brings), then the ones behind (comicPreload.js).
+  const shown = readingDirection === 'double' ? 2 : 1;
   useEffect(() => {
-    const toPreload = [];
-    for (let i = currentPage - PRELOAD_COUNT; i <= currentPage + PRELOAD_COUNT; i++) {
-      if (i >= 0 && i < pages.length && !pageStatus[i]) {
-        toPreload.push(i);
-      }
-    }
+    const toPreload = preloadOrder({ current: currentPage, shown, count: PRELOAD_COUNT, total: pages.length }).filter((i) => !pageStatus[i]);
 
     toPreload.forEach((pageNum) => {
       setPageStatus((prev) => ({ ...prev, [pageNum]: 'loading' }));
@@ -160,9 +160,10 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
         clearTimeout(timer);
         setPageStatus((prev) => ({ ...prev, [pageNum]: 'error' }));
       };
+      img.fetchPriority = pageNum >= currentPage && pageNum < currentPage + shown ? 'high' : 'auto';
       img.src = getPageUrl(pageNum);
     });
-  }, [currentPage, pages.length, getPageUrl, pageStatus]);
+  }, [currentPage, shown, pages.length, getPageUrl, pageStatus]);
 
   // Debounced progress saving when currentPage changes
   const changePage = useCallback((newPage) => {
@@ -376,8 +377,8 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
         <div {...area} className="flex h-full items-center justify-center gap-1 p-2 sm:p-4">
           {readingDirection === 'double' ? (
             <>
-              {pageImage(leftPage, 'max-h-full max-w-[50%] object-contain')}
-              {hasRight && pageImage(rightPage, 'max-h-full max-w-[50%] object-contain')}
+              {pageImage(leftPage, 'max-h-full max-w-[50%] object-contain', { fetchPriority: 'high' })}
+              {hasRight && pageImage(rightPage, 'max-h-full max-w-[50%] object-contain', { fetchPriority: 'high' })}
             </>
           ) : pageStatus[currentPage] === 'error' ? (
             <div className="flex flex-col items-center gap-3 text-center">
@@ -390,7 +391,7 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
               </button>
             </div>
           ) : (
-            pageImage(currentPage, 'max-h-full max-w-full object-contain')
+            pageImage(currentPage, 'max-h-full max-w-full object-contain', { fetchPriority: 'high' })
           )}
         </div>
       )}
@@ -478,9 +479,10 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
               aria-expanded={showModes}
               aria-label={`Modo de leitura: ${mode.label}`}
               title={`Modo de leitura: ${mode.label}`}
-              className={`${control} ${showModes ? 'bg-brand/10 text-brand' : ''}`}
+              className={`flex h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-3 text-[13px] font-medium text-ink transition-[background-color,transform] duration-150 hover:bg-surface-alt active:scale-95 max-sm:px-2 ${showModes ? 'bg-brand/10 text-brand' : ''}`}
             >
-              <svg {...iconProps}><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+              {MODE_SHORT[mode.id]}
+              <svg {...iconProps} width={14} height={14}><path d="M6 9l6 6 6-6" /></svg>
             </button>
             <button onClick={() => onImmersiveChange?.(true)} aria-label="Esconder os controles" title="Esconder os controles" className={control}>
               <svg {...iconProps}><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>

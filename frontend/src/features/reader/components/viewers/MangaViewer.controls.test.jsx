@@ -366,3 +366,89 @@ describe('the comic reader: when it cannot show the comic', () => {
     expect(container.querySelector('img').getAttribute('alt')).toBe('Página 1');
   });
 });
+
+describe('the comic reader: the two pages of the double view, and the button of the mode (#181)', () => {
+  // What the browser is asked for, in order, and with what priority.
+  const asked = [];
+  let OriginalImage;
+  beforeEach(() => {
+    asked.length = 0;
+    OriginalImage = globalThis.Image;
+    globalThis.Image = class {
+      set src(v) { asked.push({ src: v, priority: this.fetchPriority }); queueMicrotask(() => this.onload?.()); }
+    };
+  });
+  afterEach(() => { globalThis.Image = OriginalImage; });
+  const first = (n) => asked.slice(0, n).map((a) => a.src);
+
+  it('asks for both pages that are shown before the ones behind, in the double view', async () => {
+    await open({ count: 20, progress: '10', mode: 'double' });
+    expect(first(2)).toEqual(['/works/7/pages/10', '/works/7/pages/11']);
+    // then the ones ahead, and only then the ones behind
+    expect(asked.map((a) => a.src).indexOf('/works/7/pages/9')).toBeGreaterThan(asked.map((a) => a.src).indexOf('/works/7/pages/13'));
+  });
+
+  it('asks for the pages that are shown with high priority, and for the rest with the usual', async () => {
+    await open({ count: 20, progress: '10', mode: 'double' });
+    const priority = (n) => asked.find((a) => a.src === `/works/7/pages/${n}`).priority;
+    expect(priority(10)).toBe('high');
+    expect(priority(11)).toBe('high');
+    expect(priority(12)).toBe('auto');
+    expect(priority(9)).toBe('auto');
+  });
+
+  it('in the single view, asks for the page that is shown first, with high priority', async () => {
+    await open({ count: 20, progress: '10', mode: 'ltr' });
+    expect(first(1)).toEqual(['/works/7/pages/10']);
+    expect(asked[0].priority).toBe('high');
+  });
+
+  it('turns two pages and the next two are already on their way: the page of the right is not asked for last', async () => {
+    await open({ count: 30, progress: '10', mode: 'double' });
+    asked.length = 0;
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' })); });
+    await flush();
+    // 12 and 13 are on the screen now: they were asked for ahead of time, so nothing needs to be asked for them again, and what
+    // is asked for is further ahead
+    expect(asked.map((a) => a.src)).not.toContain('/works/7/pages/12');
+    expect(asked.map((a) => a.src)).not.toContain('/works/7/pages/13');
+    expect(asked.map((a) => a.src)).toEqual(expect.arrayContaining(['/works/7/pages/16', '/works/7/pages/17']));
+  });
+
+  it('puts the same priority on the image of the page in the single view', async () => {
+    await open({ count: 20, progress: '10', mode: 'ltr' });
+    expect([...container.querySelectorAll('img')].map((i) => i.getAttribute('fetchpriority'))).toEqual(['high']);
+  });
+
+  it('puts the same priority on the images of the page, which are the ones the person is waiting for', async () => {
+    await open({ count: 20, progress: '10', mode: 'double' });
+    const imgs = [...container.querySelectorAll('img')];
+    expect(imgs.map((i) => i.getAttribute('fetchpriority'))).toEqual(['high', 'high']);
+  });
+
+  it('has a button for the mode that says, in words, how the comic is read now', async () => {
+    await open({ count: 20, progress: '10', mode: 'double' });
+    const opener = container.querySelector('button[aria-haspopup="menu"]');
+    expect(opener.textContent.trim()).toBe('Página dupla');
+    expect(opener.getAttribute('aria-label')).toBe('Modo de leitura: Página dupla');
+  });
+
+  it('says it for each mode, short enough for a phone, and in the full name for a screen reader', async () => {
+    for (const [mode, short, full] of [['ltr', 'Esq → Dir', 'Esquerda para a direita'], ['rtl', 'Dir → Esq', 'Direita para a esquerda'], ['webtoon', 'Tira', 'Tira para rolar']]) {
+      await open({ count: 20, progress: '10', mode });
+      const opener = container.querySelector('button[aria-haspopup="menu"]');
+      expect(opener.textContent.trim()).toBe(short);
+      expect(opener.getAttribute('aria-label')).toBe(`Modo de leitura: ${full}`);
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+  });
+
+  it('follows the choice: the button says the new mode as soon as it is chosen', async () => {
+    await open({ count: 20, progress: '10', mode: 'ltr' });
+    const opener = () => container.querySelector('button[aria-haspopup="menu"]');
+    await click(opener());
+    await click([...container.querySelectorAll('[role="menuitemradio"]')].find((b) => b.textContent.includes('Página dupla')));
+    expect(opener().textContent.trim()).toBe('Página dupla');
+  });
+});
