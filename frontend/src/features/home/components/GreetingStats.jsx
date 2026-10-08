@@ -51,7 +51,7 @@ export function GreetingStats({ userName, stats, isLoading, error, onRetry }) {
     <section className="library-intro" aria-labelledby="library-heading">
       <div>
         <p className="library-eyebrow">{dateLabel}</p>
-        <h1 id="library-heading">Biblioteca & repositório</h1>
+        <h1 id="library-heading">Biblioteca</h1>
         <p className="library-intro-subtitle">
           {greetingPeriod(now.getHours())}
           {userName && (

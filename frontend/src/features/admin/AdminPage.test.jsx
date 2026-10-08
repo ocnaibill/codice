@@ -9,12 +9,14 @@ import { mount } from './testUtils';
 import { AdminPage } from './AdminPage';
 import { isStaff } from '../auth/api/useMe';
 import { Header } from '../../components/layout/Header';
+import { useGlobalStore } from '../../store/useGlobalStore';
 
 let view;
 let queueTotal = 0;
 let providerList = [{ id: 'openlibrary', name: 'Open Library', enabled: true, sends: ['title'] }];
 beforeEach(() => {
   vi.clearAllMocks();
+  useGlobalStore.setState({ adminTab: 'jobs' });
   queueTotal = 0;
   providerList = [{ id: 'openlibrary', name: 'Open Library', enabled: true, sends: ['title'] }];
   api.get.mockImplementation(async (url) => {
@@ -37,6 +39,34 @@ beforeEach(() => {
   });
 });
 afterEach(() => view.unmount());
+
+describe('AdminPage: the tab is the one the store says (#182)', () => {
+  const selected = () => [...view.container.querySelectorAll('[role="tab"][aria-selected="true"]')].map((t) => t.textContent);
+
+  it('opens on the tab the store says, and changing the tab changes the store', async () => {
+    useGlobalStore.setState({ adminTab: 'trash' });
+    view = await mount(<AdminPage isOwner={false} />);
+    expect(selected()).toEqual(['Lixeira']);
+    await view.click(view.button('Armazenamento'));
+    expect(useGlobalStore.getState().adminTab).toBe('storage');
+    expect(selected()).toEqual(['Armazenamento']);
+  });
+
+  it('opens on the first tab for what the store says that the account has not, and on the owner\'s tab for the owner', async () => {
+    useGlobalStore.setState({ adminTab: 'ldap' });
+    view = await mount(<AdminPage isOwner={false} />);
+    expect(selected()).toEqual(['Trabalhos']);
+    expect(view.button('Login externo')).toBeUndefined();
+    view.unmount();
+    useGlobalStore.setState({ adminTab: 'nada' });
+    view = await mount(<AdminPage isOwner />);
+    expect(selected()).toEqual(['Trabalhos']);
+    view.unmount();
+    useGlobalStore.setState({ adminTab: 'ldap' });
+    view = await mount(<AdminPage isOwner />);
+    expect(selected()).toEqual(['Login externo']);
+  });
+});
 
 describe('AdminPage: the queue of suggestions (#70)', () => {
   it('has the tab, which says how many works wait when some do, and shows the queue', async () => {

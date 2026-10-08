@@ -17,4 +17,9 @@ describe('GreetingStats', () => {
     expect(view.text()).not.toContain('undefined');
     expect(view.text()).not.toContain(':)');
   });
+
+  it('titles the home just Biblioteca', async () => {
+    view = await mount(<GreetingStats userName="ana" stats={null} isLoading />);
+    expect(document.body.querySelector('#library-heading').textContent).toBe('Biblioteca');
+  });
 });

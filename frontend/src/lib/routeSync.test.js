@@ -10,10 +10,12 @@ const pick = () => {
   return {
     view: s.libraryView, page: s.libraryPage, sort: s.librarySort, sheet: s.sheetWorkId, collection: s.collectionSheetId,
     person: s.personSheetId, book: s.activeBookId, file: s.activeFileId, notes: s.notesOpen, admin: s.adminOpen,
+    tab: s.adminTab, search: s.searchQuery, dialogs: s.accountDialogs,
   };
 };
 const blank = {
   view: 'all', page: 1, sort: 'added', sheet: null, collection: null, person: null, book: null, file: null, notes: false, admin: false,
+  tab: 'jobs', search: '', dialogs: [],
 };
 
 let stop;
@@ -25,7 +27,8 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/');
   store.setState({
     libraryView: 'all', libraryPage: 1, librarySort: 'added', sheetWorkId: null, collectionSheetId: null, personSheetId: null,
-    activeBookId: null, activeFileId: null, notesOpen: false, adminOpen: false, fromStart: false, seek: null, searchQuery: '',
+    activeBookId: null, activeFileId: null, notesOpen: false, adminOpen: false, adminTab: 'jobs', accountDialogs: [], fromStart: false,
+    seek: null, searchQuery: '',
   });
 });
 afterEach(() => {
@@ -73,11 +76,21 @@ describe('startRouteSync: the address is the source of the screens (#182)', () =
     expect(pick().admin).toBe(true);
   });
 
-  it('leaves what the address does not own alone', () => {
-    store.setState({ searchQuery: 'duna' });
+  it('puts on screen the search, the tab of the administration and the dialogs of the account the address says', () => {
+    window.history.replaceState(null, '', '/#/busca?q=duna+herbert&obra=3&conta=sobre');
+    start();
+    expect(pick()).toEqual({ ...blank, search: 'duna herbert', sheet: 3, dialogs: ['sobre'] });
+    stop();
+    window.history.replaceState(null, '', '/#/admin/storage');
+    start();
+    expect(pick()).toEqual({ ...blank, admin: true, tab: 'storage' });
+  });
+
+  it('takes the search off when the address says none, whatever the store held', () => {
+    store.setState({ searchQuery: 'duna', adminTab: 'logins', accountDialogs: ['senha'] });
     window.history.replaceState(null, '', '/#/mangas');
     start();
-    expect(store.getState().searchQuery).toBe('duna');
+    expect(pick()).toEqual({ ...blank, view: 'mangas' });
   });
 });
 
@@ -198,10 +211,98 @@ describe('startRouteSync: what the person does is written to the address', () =>
   it('does nothing about what the address does not carry', () => {
     start();
     const before = window.history.length;
-    store.getState().setSearchQuery('duna');
     store.getState().openUploadModal();
+    store.getState().openMetadata(4);
     expect(hash()).toBe('');
     expect(window.history.length).toBe(before);
+  });
+
+  it('makes a place of the beginning of a search, writes what is typed over it, and the back button ends it', async () => {
+    start();
+    const before = window.history.length;
+    store.getState().setSearchQuery('d');
+    expect(hash()).toBe('#/busca?q=d');
+    expect(window.history.length).toBe(before + 1);
+    store.getState().setSearchQuery('du');
+    store.getState().setSearchQuery('dun');
+    expect(hash()).toBe('#/busca?q=dun');
+    expect(window.history.length).toBe(before + 1); // typing is not a place
+    window.history.back();
+    await settle();
+    expect(pick().search).toBe('');
+    expect(hash()).toBe('');
+  });
+
+  it('goes back in the history when the search is emptied, and goes on after it', async () => {
+    start();
+    store.getState().setLibraryView('mangas');
+    store.getState().setSearchQuery('dun');
+    const before = window.history.length;
+    store.getState().setSearchQuery('');
+    await settle();
+    expect(hash()).toBe('#/mangas');
+    expect(window.history.length).toBe(before);
+    store.getState().setSearchQuery('x');
+    expect(hash()).toBe('#/busca?q=x');
+  });
+
+  it('opens a work over the search and back closes the work and keeps the search', async () => {
+    start();
+    store.getState().setSearchQuery('duna');
+    store.getState().openWork(3);
+    expect(hash()).toBe('#/busca?q=duna&obra=3');
+    window.history.back();
+    await settle();
+    expect(pick()).toEqual({ ...blank, search: 'duna' });
+  });
+
+  it('writes the tab of the administration over the address, and the back button leaves the administration', async () => {
+    start();
+    store.getState().openAdmin();
+    expect(hash()).toBe('#/admin');
+    const before = window.history.length;
+    store.getState().setAdminTab('storage');
+    store.getState().setAdminTab('logins');
+    expect(hash()).toBe('#/admin/logins');
+    expect(window.history.length).toBe(before); // a tab is not a place
+    window.history.back();
+    await settle();
+    expect(pick().admin).toBe(false);
+    // The administration opens on the first tab again.
+    store.getState().openAdmin();
+    expect(pick().tab).toBe('jobs');
+    expect(hash()).toBe('#/admin');
+  });
+
+  it('makes a place of each dialog of the account, and the back button closes them one at a time', async () => {
+    start();
+    store.getState().openAccountDialog('sessoes');
+    store.getState().openAccountDialog('aplicativos');
+    store.getState().openAccountDialog('aplicativos'); // already open
+    expect(hash()).toBe('#/acervo?conta=sessoes%2Caplicativos');
+    window.history.back();
+    await settle();
+    expect(pick().dialogs).toEqual(['sessoes']);
+    window.history.back();
+    await settle();
+    expect(pick().dialogs).toEqual([]);
+    expect(hash()).toBe('');
+  });
+
+  it('goes back in the history when a dialog of the account is closed, instead of piling up places', async () => {
+    start();
+    store.getState().openAccountDialog('senha');
+    store.getState().closeAccountDialog('senha');
+    await settle();
+    expect(pick().dialogs).toEqual([]);
+    expect(hash()).toBe('');
+    window.history.forward(); // the dialog is still ahead: the close went back, and added no place
+    await settle();
+    expect(pick().dialogs).toEqual(['senha']);
+    window.history.back();
+    await settle();
+    store.getState().closeAccountDialog('senha'); // not open: nothing happens
+    expect(hash()).toBe('');
   });
 });
 
