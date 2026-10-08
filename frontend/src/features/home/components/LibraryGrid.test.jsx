@@ -131,4 +131,18 @@ describe('the heart of a card (#179)', () => {
     expect(heart().type).toBe('button');
     expect(readButton()).not.toBe(heart());
   });
+
+  it('shows the author of a card as a link to the page of the person, and the text when the card has no authors one by one (#186)', async () => {
+    await render([
+      card({ id: 1, title: 'Duna', author: 'Frank Herbert, Brian Herbert', authors: [{ id: 3, name: 'Frank Herbert' }, { id: 4, name: 'Brian Herbert' }] }),
+      card({ id: 2, title: 'Outra', author: 'Sem ids', authors: [] }),
+    ]);
+    const first = container.querySelectorAll('article')[0].querySelector('.library-author');
+    expect([...first.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Frank Herbert', 'Brian Herbert']);
+    await act(async () => { first.querySelectorAll('button')[1].click(); });
+    expect(state().personSheetId).toBe(4);
+    const second = container.querySelectorAll('article')[1].querySelector('.library-author');
+    expect(second.textContent).toBe('Sem ids');
+    expect(second.querySelector('button')).toBeNull();
+  });
 });

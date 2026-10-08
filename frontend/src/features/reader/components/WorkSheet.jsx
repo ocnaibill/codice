@@ -14,6 +14,7 @@ import { WorkCover } from '../../../components/ui/WorkCover';
 import { sheetNote } from '../../../lib/ocr';
 import { fileTextState } from '../../../lib/processing';
 import { peopleOf, ROLES } from '../credits';
+import { AuthorLinks } from '../../people/components/AuthorLinks';
 
 const NOTE_TONE = { ok: 'text-success', warn: 'text-warning', plain: 'text-ink-soft' };
 
@@ -191,16 +192,9 @@ function WorkMenu({ workId, pending }) {
   );
 }
 
-/** The names of some people, each opening the page of that person (#186), with a comma between them. */
-function PeopleLinks({ people, onOpen }) {
-  return people.map((c, i) => (
-    <React.Fragment key={`${c.personId}-${c.role}`}>
-      {i > 0 && ', '}
-      <button onClick={() => onOpen(c.personId)} className="rounded-sm text-left underline-offset-2 hover:underline focus-visible:underline">
-        {c.displayName || c.name}
-      </button>
-    </React.Fragment>
-  ));
+/** The people of a role on the work, each opening their page; the name is the one the account is shown. */
+function PeopleLinks({ people }) {
+  return <AuthorLinks authors={people.map((c) => ({ id: c.personId, name: c.displayName || c.name }))} />;
 }
 
 /**
@@ -221,7 +215,6 @@ export function WorkSheet() {
   const staff = isStaff(useMe().data);
   const pending = useCandidates(workId, { enabled: staff }).data?.length ?? 0;
   const openWork = useGlobalStore((state) => state.openWork);
-  const openPerson = useGlobalStore((state) => state.openPerson);
   const splitEdition = useSplitEdition();
   const [joining, setJoining] = React.useState(false);
   const [splitting, setSplitting] = React.useState(null); // the edition waiting for a yes
@@ -300,14 +293,14 @@ export function WorkSheet() {
                     )}
                     <h3 className="font-display text-4xl leading-tight text-ink sm:text-5xl">{work.title}</h3>
                     <p className="mt-1 font-body text-sm font-semibold text-brand sm:text-base">
-                      {authors.length > 0 ? <PeopleLinks people={authors} onOpen={openPerson} /> : work.author}
+                      {authors.length > 0 ? <PeopleLinks people={authors} /> : work.author}
                     </p>
                     {otherRoles.length > 0 && (
                       <p className="mt-1 text-xs text-ink-soft sm:text-sm">
                         {otherRoles.map((r, i) => (
                           <React.Fragment key={r.key}>
                             {i > 0 && ' · '}
-                            {r.heading}: <PeopleLinks people={r.people} onOpen={openPerson} />
+                            {r.heading}: <PeopleLinks people={r.people} />
                           </React.Fragment>
                         ))}
                       </p>

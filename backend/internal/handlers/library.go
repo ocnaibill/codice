@@ -27,9 +27,12 @@ import (
 // shown through its primary edition and file; GET /works/{id} also lists every
 // edition and file.
 type Work struct {
-	ID              int           `json:"id"`
-	Title           string        `json:"title"`
-	Author          string        `json:"author"`
+	ID     int    `json:"id"`
+	Title  string `json:"title"`
+	Author string `json:"author"`
+	// Authors are the authors one by one (the id of the person and the name as the account is shown it), for the card to link each to
+	// the page of the person; Author is the same names in one text.
+	Authors         []WorkAuthor  `json:"authors"`
 	CoverURL        string        `json:"coverUrl"`
 	FileURL         string        `json:"fileUrl,omitempty"`
 	FileID          *int64        `json:"fileId,omitempty"`
@@ -156,7 +159,7 @@ func workIDParam(r *http.Request) (int, bool) {
 // cardColumnsFor are the columns of a Work as the catalog shows it, with the author in the order the caller
 // prefers.
 func cardColumnsFor(order string) string {
-	return strings.Replace(cardColumns, authorLabel, authorLabelFor(order), 1)
+	return strings.Replace(strings.Replace(cardColumns, authorLabel, authorLabelFor(order), 1), "au.person_names", personNamesFor(order), 1)
 }
 
 // cardColumns are the columns of a Work as the catalog shows it. $1 is the
@@ -185,7 +188,8 @@ const cardColumns = `
 	(SELECT count(*) FROM files fc JOIN editions ec ON ec.id = fc.edition_id
 	  WHERE ec.work_id = w.id AND fc.availability = 'available'),
 	(SELECT count(DISTINCT lower(fc.format)) FROM files fc JOIN editions ec ON ec.id = fc.edition_id
-	  WHERE ec.work_id = w.id AND fc.availability = 'available')`
+	  WHERE ec.work_id = w.id AND fc.availability = 'available'),
+	COALESCE(au.ids, '{}'), COALESCE(au.person_names, '{}')`
 
 // hasPosition is the condition for a reading_progress row (alias a) that says where the person
 // is, or that they finished. A row can exist for less: counting seconds of reading creates one
@@ -233,13 +237,15 @@ func scanWork(row rowScanner) (Work, error) {
 	var last ContinueFile
 	var lastMode string
 	var finished bool
+	var authorIDs pq.Int64Array
+	var authorNames pq.StringArray
 	err := row.Scan(
 		&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format,
 		&work.Series, &work.SeriesIndex, &work.MediaStatus, pq.Array(&work.Tags),
 		&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
 		&fileID, &work.Retired, &mode,
 		&lastFile, &last.Format, &lastPath, &lastMode, &last.Position, &last.PercentComplete, &last.Completed,
-		&last.Language, &finished, &work.FileCount, &work.FormatCount,
+		&last.Language, &finished, &work.FileCount, &work.FormatCount, &authorIDs, &authorNames,
 	)
 	if err != nil {
 		return work, err
@@ -252,6 +258,7 @@ func scanWork(row rowScanner) (Work, error) {
 		// The card speaks for the version that counts, not for the primary file (DEC-079).
 		work.ReadingProgress, work.PercentComplete, work.Completed = last.Position, last.PercentComplete, last.Completed
 	}
+	work.Authors = workAuthorsOf(authorIDs, authorNames)
 	work.Finished = finished
 	work.InProgress = work.Continue != nil && !work.Continue.Completed && !finished
 	if fileID.Valid {

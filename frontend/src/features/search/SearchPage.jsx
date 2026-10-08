@@ -1,3 +1,4 @@
+import { AuthorLinks } from '../people/components/AuthorLinks';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
@@ -102,7 +103,7 @@ export function SearchPage({ query }) {
           : workItems.length === 0 ? <p className="mt-3 text-sm text-ink-soft">Nenhuma obra encontrada.</p>
             : <ul className="mt-3 space-y-3">{workItems.map((work) => <li key={work.id} className="rounded border border-surface-alt p-3">
               <button type="button" onClick={() => openWork(work.id)} className="font-semibold text-ink hover:text-brand">{work.title}</button>
-              <p className="text-sm text-ink-soft">{work.author}</p>
+              <p className="text-sm text-ink-soft"><AuthorLinks authors={work.authors} fallback={work.author} /></p>
               {!scope && <button type="button" onClick={() => chooseScope(work)} className="mt-1 text-xs text-brand hover:underline">Buscar só nesta obra</button>}
             </li>)}</ul>}
       {!scope && active && <Pager page={worksPage} hasMore={worksPage + 1 < (works.data?.totalPages ?? 0)} onPageChange={setWorksPage} />}
@@ -121,7 +122,7 @@ export function SearchPage({ query }) {
         : passages.isError ? <LoadError className="mt-3" error={passages.error} onRetry={() => passages.refetch()} retrying={passages.isRefetching}>Não foi possível buscar passagens.</LoadError>
           : !passages.data?.data?.length ? <p className="mt-3 text-sm text-ink-soft">Nenhuma passagem encontrada.</p>
             : <ul className="mt-3 space-y-3">{passages.data.data.map((hit) => <li key={hit.segmentId} className="rounded border border-surface-alt p-3">
-              <p className="text-sm font-semibold text-ink">{hit.workTitle} <span className="font-normal text-ink-soft">· {hit.workAuthor}</span></p>
+              <p className="text-sm font-semibold text-ink">{hit.workTitle} <span className="font-normal text-ink-soft">· <AuthorLinks authors={hit.workAuthors} fallback={hit.workAuthor} /></span></p>
               <p className="text-xs text-ink-soft">{hit.format?.toUpperCase()}{hit.language ? ` · ${hit.language.toUpperCase()}` : ''}{hit.section ? ` · ${hit.section}` : ''} · {sourceLabel(hit)}</p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-ink"><HighlightedSnippet text={hit.snippet} matches={hit.matches} /></p>
               <div className="mt-2 flex gap-4 text-xs text-brand">

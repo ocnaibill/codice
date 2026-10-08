@@ -56,4 +56,13 @@ describe('ContinueReading', () => {
     await act(async () => { c.querySelector('button').click(); });
     expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 8, activeFileId: null });
   });
+
+  it('links the author of a card to the page of the person, and says the text when it has no authors one by one (#186)', async () => {
+    await render([{ ...work, authors: [{ id: 3, name: 'Frank Herbert' }] }, { ...plain, authors: [] }]);
+    const linked = card('Duna');
+    await act(async () => { [...linked.querySelectorAll('button')].find((b) => b.textContent === 'Frank Herbert').click(); });
+    expect(useGlobalStore.getState().personSheetId).toBe(3);
+    expect([...card('Outro').querySelectorAll('button')].some((b) => b.textContent === 'X')).toBe(false);
+    expect(card('Outro').textContent).toContain('X');
+  });
 });

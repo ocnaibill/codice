@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/authz"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/storage"
@@ -19,14 +20,47 @@ import (
 // still one row and no handler joins `editions` directly.
 const catalogFrom = `
 	FROM works w
-	LEFT JOIN work_primary wp ON wp.work_id = w.id
+	LEFT JOIN work_primary wp ON wp.work_id = w.id` + authorLateral
+
+// authorLateral is the join (alias `au`) that gives a work its authors: their names joined, given names first or surname first, and
+// each author apart (the id and the name as it is shown), in their order, for the card to link each to the page of the person (#186).
+const authorLateral = `
 	LEFT JOIN LATERAL (
 		SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name) AS names,
 		       string_agg(CASE WHEN p.family_name IS NULL THEN p.name ELSE p.family_name || COALESCE(', ' || p.given_name, '') END,
-		                  '; ' ORDER BY c.position, p.name) AS names_family
+		                  '; ' ORDER BY c.position, p.name) AS names_family,
+		       array_agg(p.id ORDER BY c.position, p.name) AS ids,
+		       array_agg(p.name ORDER BY c.position, p.name) AS person_names,
+		       array_agg(CASE WHEN p.family_name IS NULL THEN p.name ELSE p.family_name || COALESCE(', ' || p.given_name, '') END
+		                 ORDER BY c.position, p.name) AS person_names_family
 		FROM work_contributors c JOIN person p ON p.id = c.person_id
 		WHERE c.work_id = w.id AND c.role = 'author'
 	) au ON TRUE`
+
+// WorkAuthor is an author of a work as a card links it: the person, and the name as the account is shown it.
+type WorkAuthor struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// personNamesFor is the column of the names of the authors, each apart, for the order an account prefers.
+func personNamesFor(order string) string {
+	if order == people.FamilyFirst {
+		return "au.person_names_family"
+	}
+	return "au.person_names"
+}
+
+// workAuthorsOf pairs the ids and the names read for a work (never null: a work with no author has none).
+func workAuthorsOf(ids pq.Int64Array, names pq.StringArray) []WorkAuthor {
+	out := make([]WorkAuthor, 0, len(ids))
+	for i, id := range ids {
+		if i < len(names) {
+			out = append(out, WorkAuthor{ID: int(id), Name: names[i]})
+		}
+	}
+	return out
+}
 
 // authorLabel is the author text shown for a work, given names first; absence is stated, never invented.
 const authorLabel = `COALESCE(au.names, 'Unknown Author')`
