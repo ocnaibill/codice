@@ -676,7 +676,7 @@ func TestStats_FollowTheFileReadLast(t *testing.T) {
 	// Read only in the comic file, which is not the primary one: it is a comic in progress.
 	s.progress(ana, "PUT", comic, `{"locator":{"type":"image","index":3},"percent":20}`)
 	got := stats(ana)
-	if got.InProgressCount != 1 || got.InProgressBreakdown.Mangas != 1 || got.InProgressBreakdown.Livros != 0 || got.CompletedThisMonth != 0 {
+	if got.InProgressCount != 1 || got.InProgressBreakdown.Quadrinhos != 1 || got.InProgressBreakdown.Livros != 0 || got.CompletedThisMonth != 0 {
 		t.Errorf("in progress: %+v", got)
 	}
 	if other := stats(bob); other.InProgressCount != 0 || other.CompletedThisMonth != 0 {
@@ -686,7 +686,7 @@ func TestStats_FollowTheFileReadLast(t *testing.T) {
 	// Finished this month: no longer in progress, and counted where it was read.
 	s.progress(ana, "PUT", comic, `{"locator":{"type":"image","index":9},"percent":100,"completed":true}`)
 	got = stats(ana)
-	if got.InProgressCount != 0 || got.CompletedThisMonth != 1 || got.CompletedBreakdown.Mangas != 1 {
+	if got.InProgressCount != 0 || got.CompletedThisMonth != 1 || got.CompletedBreakdown.Quadrinhos != 1 {
 		t.Errorf("completed: %+v", got)
 	}
 

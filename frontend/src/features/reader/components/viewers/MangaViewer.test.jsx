@@ -173,3 +173,46 @@ describe('MangaViewer: an image that is not there (#14)', () => {
     expect(container.textContent).toContain('1 / 3');
   });
 });
+
+describe('MangaViewer: a work marked as a manga (#187)', () => {
+  it('opens right to left when the file says nothing, whatever was remembered', async () => {
+    for (const before of [null, 'ltr', 'webtoon', 'double']) {
+      localStorage.clear();
+      if (before) localStorage.setItem('codice:comic-mode:ana', before);
+      await open({ comicKind: 'manga' });
+      expect(modeNow(), String(before)).toBe('rtl');
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+  });
+
+  it('lets what the file declares win, even a strip', async () => {
+    await open({ comicKind: 'manga', declaredMode: 'webtoon' });
+    expect(modeNow()).toBe('webtoon');
+    expect(noteText()).toContain('pelo arquivo');
+    expect(noteText()).not.toContain('pelo tipo da obra');
+  });
+
+  it('says the mode came from the kind, until the person changes it, and remembers only that choice', async () => {
+    await open({ comicKind: 'manga' });
+    expect(remembered()).toBeNull();
+    expect(noteText()).toContain('pelo tipo da obra');
+    expect(noteText()).not.toContain('pelo arquivo');
+    const chip = [...container.querySelectorAll('span')].find((s) => s.textContent.includes('pelo tipo da obra'));
+    expect(chip.title).toBe('A obra está marcada como mangá, que se lê da direita para a esquerda.');
+    await choose('ltr');
+    expect(noteText()).not.toContain('pelo tipo da obra');
+    expect(remembered()).toBe('ltr');
+  });
+
+  it('follows the remembered mode for a comic, for a work with no kind and for a kind it does not know', async () => {
+    for (const comicKind of ['comic', '', undefined, null, 'webcomic']) {
+      localStorage.setItem('codice:comic-mode:ana', 'double');
+      await open({ comicKind });
+      expect(modeNow(), String(comicKind)).toBe('double');
+      expect(noteText()).not.toContain('pelo tipo da obra');
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+  });
+});

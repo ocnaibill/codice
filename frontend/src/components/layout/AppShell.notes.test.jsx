@@ -24,4 +24,14 @@ describe('the bottom bar of a phone (#13)', () => {
     view = await mount(<AppShell searchQuery="duna" canAdmin={false}><p>x</p></AppShell>);
     expect(current()).toEqual(['Buscar']);
   });
+
+  it('keeps Acervo as the current page while any shelf of the library is open, the mangas too (#187)', async () => {
+    for (const libraryView of ['ebooks', 'comics', 'mangas', 'audio']) {
+      useGlobalStore.setState({ libraryView });
+      view = await mount(<AppShell searchQuery="" canAdmin={false}><p>x</p></AppShell>);
+      expect(current(), libraryView).toEqual(['Acervo']);
+      view.unmount();
+    }
+    view = await mount(<AppShell searchQuery="" canAdmin={false}><p>x</p></AppShell>);
+  });
 });

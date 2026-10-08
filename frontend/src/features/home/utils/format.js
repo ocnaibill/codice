@@ -6,11 +6,12 @@ export function formatCount(n) {
 
 const LABELS = {
   livros: ['livro', 'livros'],
+  quadrinhos: ['quadrinho', 'quadrinhos'],
   mangas: ['mangá', 'mangás'],
   audio: ['áudio', 'áudios'],
 };
 
-/** "2 livros • 1 mangá • 1 áudio" — skips zero categories, singular/plural aware. */
+/** "2 livros • 1 quadrinho • 1 mangá • 1 áudio" — skips zero categories, singular/plural aware. */
 export function formatBreakdown(breakdown) {
   if (!breakdown) return '';
   return Object.entries(breakdown)

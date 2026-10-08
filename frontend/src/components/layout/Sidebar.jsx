@@ -5,12 +5,13 @@ import { useCollections } from '../../features/collections/api/useCollections';
 import { bracketCount } from '../../features/home/utils/format';
 
 // What each item counts, from GET /stats (retired works are not counted). "Todas as obras" is always there; a kind of
-// work (books, comics, audiobooks) is there only when the library has at least one of it, so a library with no
+// work (books, comics, mangas, audiobooks) is there only when the library has at least one of it, so a library with no
 // audiobooks does not offer a shelf of them (`dynamic`). Nothing is offered until the counts are known.
 const LIBRARIES = [
   { key: 'all', label: 'Todas as obras', icon: 'library', count: (stats) => stats?.worksTotal },
   { key: 'ebooks', label: 'Livros digitais', icon: 'book', dynamic: true, count: (stats) => stats?.libraryBreakdown?.livros },
-  { key: 'comics', label: 'Quadrinhos & mangás', icon: 'comics', dynamic: true, count: (stats) => stats?.libraryBreakdown?.mangas },
+  { key: 'comics', label: 'Quadrinhos', icon: 'comics', dynamic: true, count: (stats) => stats?.libraryBreakdown?.quadrinhos },
+  { key: 'mangas', label: 'Mangás', icon: 'comics', dynamic: true, count: (stats) => stats?.libraryBreakdown?.mangas },
   { key: 'audio', label: 'Audiolivros', icon: 'audio', dynamic: true, count: (stats) => stats?.libraryBreakdown?.audio },
 ];
 const COLLECTION = [

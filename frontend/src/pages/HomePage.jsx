@@ -21,7 +21,8 @@ const SORTED_TITLES = { title: 'Todas as obras, por título', author: 'Todas as 
 const GRID_TITLES = {
   all: 'Adicionados recentemente',
   ebooks: 'Livros digitais',
-  comics: 'Mangás & HQs',
+  comics: 'Quadrinhos',
+  mangas: 'Mangás',
   audio: 'Audiolivros',
   reading: 'Em leitura',
   favorites: 'Obras favoritas',
@@ -59,7 +60,7 @@ function HomeDashboard() {
   const grid = useWorks({
     page,
     limit: 12,
-    formatGroup: ['ebooks', 'comics', 'audio'].includes(view) ? view : 'all',
+    formatGroup: ['ebooks', 'comics', 'mangas', 'audio'].includes(view) ? view : 'all',
     inProgress: view === 'reading',
     favorite: view === 'favorites',
     sort,

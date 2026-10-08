@@ -19,7 +19,8 @@ export function LibraryFilterBar({
   // offered before the counts are known.
   const kinds = [
     { key: 'ebooks', label: 'Livros digitais', count: breakdown?.livros },
-    { key: 'comics', label: 'Mangás & HQs', count: breakdown?.mangas },
+    { key: 'comics', label: 'Quadrinhos', count: breakdown?.quadrinhos },
+    { key: 'mangas', label: 'Mangás', count: breakdown?.mangas },
     { key: 'audio', label: 'Audiolivros', count: breakdown?.audio },
   ];
   // Collections come after the kinds: when there is one, or for the staff, who make the first.

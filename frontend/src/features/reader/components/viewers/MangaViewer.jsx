@@ -29,6 +29,7 @@ const FILE_SAID = {
   rtl: 'O arquivo indica leitura da direita para a esquerda.',
   webtoon: 'O arquivo indica que é uma tira para rolar.',
 };
+const KIND_SAID = 'A obra está marcada como mangá, que se lê da direita para a esquerda.';
 
 const iconProps = { viewBox: '0 0 24 24', width: 18, height: 18, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
 const Chevron = ({ dir }) => (
@@ -46,7 +47,7 @@ const control =
  * comic is read toward), a tap in the middle hides or shows the controls, and a swipe turns it too; on a keyboard the
  * arrows do.
  */
-export default function MangaViewer({ fileUrl, onProgress, initialProgress, workId, onPlaceFailed, declaredMode, immersive = false, onImmersiveChange }) {
+export default function MangaViewer({ fileUrl, onProgress, initialProgress, workId, onPlaceFailed, declaredMode, comicKind, immersive = false, onImmersiveChange }) {
   const [pages, setPages] = useState([]);
   const [currentPage, setCurrentPage] = useState(
     initialProgress ? parseInt(initialProgress, 10) || 0 : 0
@@ -54,16 +55,18 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0); // asking for the page list again
-  // 'ltr', 'rtl', 'webtoon' or 'double'. A comic that declares how it is read opens that way; otherwise it opens in
-  // the mode remembered from the last comic read on this device (DEC-078). Opening one that declares a mode does
-  // not touch what is remembered: that was not a choice of the person, who still makes it by changing the mode.
+  // 'ltr', 'rtl', 'webtoon' or 'double'. A comic that declares how it is read opens that way; one that says nothing
+  // but is marked as a manga opens right to left (#187); otherwise it opens in the mode remembered from the last
+  // comic read on this device (DEC-078). Opening one that is told a mode does not touch what is remembered: that
+  // was not a choice of the person, who still makes it by changing the mode.
   const declared = FILE_MODES.includes(declaredMode) ? declaredMode : null;
-  const [readingDirection, setDirection] = useState(() => declared || getComicMode());
-  const [fromFile, setFromFile] = useState(!!declared);
+  const byKind = !declared && comicKind === 'manga' ? 'rtl' : null;
+  const [readingDirection, setDirection] = useState(() => declared || byKind || getComicMode());
+  const [said, setSaid] = useState(declared ? 'file' : byKind ? 'kind' : null); // who told the mode, until the person changes it
   const [showModes, setShowModes] = useState(false);
   const setReadingDirection = (mode) => {
     setDirection(mode);
-    setFromFile(false);
+    setSaid(null);
     saveComicMode(mode);
   };
   const [pageStatus, setPageStatus] = useState({}); // { [pageNum]: 'loading'|'loaded'|'error' }
@@ -438,12 +441,12 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
                 ))}
               </div>
             )}
-            {!showModes && fromFile && (
+            {!showModes && said && (
               <span
-                title={FILE_SAID[readingDirection]}
+                title={said === 'kind' ? KIND_SAID : FILE_SAID[readingDirection]}
                 className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-ink/70 px-3 py-1 text-[11px] text-white"
               >
-                {mode.label} · pelo arquivo
+                {mode.label} · {said === 'kind' ? 'pelo tipo da obra' : 'pelo arquivo'}
               </span>
             )}
 
