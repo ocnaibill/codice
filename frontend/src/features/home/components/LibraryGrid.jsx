@@ -9,7 +9,7 @@ import { AuthorLinks } from '../../people/components/AuthorLinks';
 import { authenticatedUrl } from '../../../lib/api';
 import { readLabel, readTarget } from '../../reader/readTarget';
 import { formatBadge, formatCount } from '../utils/format';
-import { goOnText, seriesCounts } from '../../collections/text';
+import { goOnText, newText, seriesCounts } from '../../collections/text';
 
 const STATUS_LABEL = {
   READY: 'Pronto para ler',
@@ -120,6 +120,14 @@ function SeriesBookCard({ item, onCollection, onOpen }) {
         >
           <WorkCover item={{ ...item, title: series.name }} />
           <span className="absolute left-1.5 top-1.5 rounded-sm bg-brand px-1.5 py-1 font-mono text-[9px] text-white">SÉRIE</span>
+          {series.newCount > 0 && (
+            <span
+              className="absolute right-1.5 top-1.5 rounded-sm bg-success px-1.5 py-1 font-mono text-[9px] text-white"
+              title="Chegaram na última semana e você ainda não terminou"
+            >
+              {newText(series.newCount)}
+            </span>
+          )}
         </button>
         <div className="library-book-meta">
           <p className="library-book-status">Série</p>

@@ -164,6 +164,19 @@ describe('a series in the grid (#187)', () => {
     expect(article().querySelector('img').getAttribute('alt')).toBe('One Piece');
   });
 
+  it('says how many are new, in the singular too, and says nothing when none is', async () => {
+    await render([seriesCard({ newCount: 3 })]);
+    const badge = () => [...article().querySelectorAll('span')].find((e) => /novo/.test(e.textContent));
+    expect(badge().textContent).toBe('3 novos');
+    expect(badge().title).toBe('Chegaram na última semana e você ainda não terminou');
+    await render([seriesCard({ newCount: 1 })]);
+    expect(badge().textContent).toBe('1 novo');
+    await render([seriesCard({ newCount: 0 })]);
+    expect(badge()).toBeUndefined();
+    await render([seriesCard({ newCount: undefined })]);
+    expect(badge()).toBeUndefined();
+  });
+
   it('opens the collection from the cover, and does not open the sheet of the work that carries it', async () => {
     await render([seriesCard()]);
     useGlobalStore.setState({ collectionSheetId: null, sheetWorkId: null });

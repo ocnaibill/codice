@@ -17,6 +17,9 @@ type SeriesCard struct {
 	Chapters     int    `json:"chapters"`
 	OneShots     int    `json:"oneShots"`
 	CoverURL     string `json:"coverUrl"`
+	// NewCount: the works of the series that came in the last days and that the caller has not finished; the same for everybody who has
+	// not read them, whether or not they have read the series.
+	NewCount int `json:"newCount"`
 	// Continue: where the caller goes on, as on the page of the collection; nil when they have read it all.
 	Continue *SeriesStep `json:"continue"`
 }
@@ -99,6 +102,11 @@ func loadSeriesCards(db *sql.DB, collectionIDs []int64, userID string) (map[int6
 			return nil, err
 		}
 		card.Continue = continueSeries(entries)
+		for _, e := range entries {
+			if e.New && !e.Done {
+				card.NewCount++
+			}
+		}
 	}
 	return cards, nil
 }

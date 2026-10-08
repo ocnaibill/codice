@@ -282,3 +282,45 @@ func TestSeriesCards_ALibraryWithNoUnitIsTheListItAlwaysWas(t *testing.T) {
 		}
 	}
 }
+
+func TestSeriesCards_TheCardCountsTheWorksThatCameInTheLastSevenDaysAndWereNotFinished(t *testing.T) {
+	s := newCatalogStack(t)
+	_, ids := s.seriesOf("Bleach", "chapter", "chapter", "chapter", "chapter", "chapter")
+	card := func(a actor) *SeriesCard { return s.collapsed(a, "").Data[0].Collapsed }
+	// Everything came a month ago, but a few: a bit under seven days ago is new, a bit over is not.
+	s.exec(`UPDATE works SET created_at = now() - interval '30 days' WHERE id = ANY($1)`, pq.Array(ids))
+	if got := card(ana).NewCount; got != 0 {
+		t.Fatalf("nothing is new: %d", got)
+	}
+	s.exec(`UPDATE works SET created_at = now() - interval '6 days 23 hours' WHERE id = $1`, ids[3])
+	s.exec(`UPDATE works SET created_at = now() - interval '7 days 1 hour' WHERE id = $1`, ids[2])
+	s.exec(`UPDATE works SET created_at = now() WHERE id = $1`, ids[4])
+	if got := card(ana).NewCount; got != 2 {
+		t.Errorf("just under seven days and today are new, just over is not: %d", got)
+	}
+	// It is for everybody, and what a person finished is not new to them.
+	s.read(idAna, ids[4], true)
+	if a, b := card(ana).NewCount, card(bob).NewCount; a != 1 || b != 2 {
+		t.Errorf("ana finished one: ana %d, bob %d", a, b)
+	}
+	// A work begun and not finished is still new; one marked as finished is not.
+	s.read(idAna, ids[3], false)
+	if got := card(ana).NewCount; got != 1 {
+		t.Errorf("begun is not finished: %d", got)
+	}
+	s.exec(`INSERT INTO work_reading_state (user_id, work_id) VALUES ($1, $2)`, idAna, ids[3])
+	if got := card(ana).NewCount; got != 0 {
+		t.Errorf("marked as finished: %d", got)
+	}
+	// Reading none of the series, or reading all the old ones, changes nothing for what is new.
+	s.read(idBob, ids[0], true)
+	if got := card(bob).NewCount; got != 2 {
+		t.Errorf("bob read an old one: %d", got)
+	}
+	// What is in the trash, or has no file on the disk, is not counted.
+	s.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, ids[4])
+	s.exec(`UPDATE files SET availability = 'missing' WHERE id = $1`, s.primaryFile(ids[3]))
+	if got := card(bob).NewCount; got != 0 {
+		t.Errorf("trash and missing: %d", got)
+	}
+}
