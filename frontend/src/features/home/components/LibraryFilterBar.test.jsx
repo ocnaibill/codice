@@ -61,6 +61,17 @@ describe('LibraryFilterBar: the kinds of work that the library has', () => {
     expect(onFilterChange).toHaveBeenCalledWith('all');
   });
 
+  it('goes back to all of the works from the shelf of mangas when it has none left, even if there are comics', async () => {
+    const onFilterChange = vi.fn();
+    await render({ worksTotal: 3, breakdown: { livros: 0, quadrinhos: 3, mangas: 0, audio: 0 }, activeFilter: 'mangas', onFilterChange });
+    expect(onFilterChange).toHaveBeenCalledWith('all');
+  });
+
+  it('offers the comics and the mangas as two kinds, each with its own count', async () => {
+    await render({ worksTotal: 9, breakdown: { livros: 2, quadrinhos: 4, mangas: 3, audio: 0 } });
+    expect(labels()).toEqual(['Todos[09]', 'Livros digitais[02]', 'Quadrinhos[04]', 'Mangás[03]']);
+  });
+
   it('goes back to all of the works when the kind on screen has none left', async () => {
     const onFilterChange = vi.fn();
     await render({ worksTotal: 3, breakdown: { livros: 3, mangas: 0, audio: 0 }, activeFilter: 'comics', onFilterChange });
@@ -70,7 +81,8 @@ describe('LibraryFilterBar: the kinds of work that the library has', () => {
   it('does not go back while the counts are unknown, nor from a kind that has works, nor from all', async () => {
     const onFilterChange = vi.fn();
     await render({ worksTotal: undefined, breakdown: undefined, activeFilter: 'comics', onFilterChange });
-    await render({ worksTotal: 4, breakdown: { livros: 0, mangas: 4, audio: 0 }, activeFilter: 'comics', onFilterChange });
+    await render({ worksTotal: 4, breakdown: { livros: 0, quadrinhos: 4, mangas: 0, audio: 0 }, activeFilter: 'comics', onFilterChange });
+    await render({ worksTotal: 4, breakdown: { livros: 0, quadrinhos: 0, mangas: 4, audio: 0 }, activeFilter: 'mangas', onFilterChange });
     await render({ worksTotal: 0, breakdown: { livros: 0, mangas: 0, audio: 0 }, activeFilter: 'all', onFilterChange });
     expect(onFilterChange).not.toHaveBeenCalled();
   });

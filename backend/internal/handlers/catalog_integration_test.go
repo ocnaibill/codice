@@ -895,13 +895,13 @@ func TestFavoritesAndStats(t *testing.T) {
 
 	var st DashboardStats
 	json.Unmarshal(s.do(ana, "GET", "/stats", "").Body.Bytes(), &st)
-	if st.WorksTotal != 3 || st.LibraryBreakdown.Mangas != 2 || st.LibraryBreakdown.Livros != 1 {
+	if st.WorksTotal != 3 || st.LibraryBreakdown.Quadrinhos != 2 || st.LibraryBreakdown.Livros != 1 {
 		t.Errorf("library stats = %+v", st)
 	}
 	if st.InProgressCount != 1 || st.InProgressBreakdown.Livros != 1 {
 		t.Errorf("in progress = %+v", st)
 	}
-	if st.CompletedThisMonth != 1 || st.CompletedBreakdown.Mangas != 1 {
+	if st.CompletedThisMonth != 1 || st.CompletedBreakdown.Quadrinhos != 1 {
 		t.Errorf("completed = %+v", st)
 	}
 	if st.TotalReadingSeconds != 600 {

@@ -32,7 +32,7 @@ beforeEach(() => {
       return {
         data: {
           worksTotal: 25,
-          libraryBreakdown: { livros: 20, mangas: 4, audio: 1 },
+          libraryBreakdown: { livros: 20, quadrinhos: 4, mangas: 3, audio: 1 },
         },
       };
     if (url.startsWith('/works?')) {
@@ -67,9 +67,23 @@ describe('library hub', () => {
     expect(view.text()).toContain('Todas as obras, por autor');
     expect(view.text()).not.toContain('Adicionados recentemente');
     expect(useGlobalStore.getState().librarySort).toBe('author');
-    await view.click(view.buttonMatching(/^Mangás & HQs/));
+    await view.click(view.buttonMatching(/^Quadrinhos/));
     expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&formatGroup=comics&sort=author');
-    expect(view.text()).toContain('Mangás & HQs'); // a category is named by what it holds
+    expect(view.text()).toContain('Quadrinhos'); // a category is named by what it holds
+  });
+
+  it('shows the mangas apart from the comics, each shelf named by what it holds (#187)', async () => {
+    view = await mount(<HomePage />);
+    await flush();
+    await view.click(view.buttonMatching(/^Mangás/));
+    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&formatGroup=mangas');
+    expect(useGlobalStore.getState().libraryView).toBe('mangas');
+    const headings = () => [...view.container.querySelectorAll('h2')].map((h) => h.textContent);
+    expect(headings()).toContain('Mangás');
+    await view.click(view.buttonMatching(/^Quadrinhos/));
+    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&formatGroup=comics');
+    expect(headings()).toContain('Quadrinhos');
+    expect(headings()).not.toContain('Mangás');
   });
 
   it('paginates the catalog and resets to page one when its category changes', async () => {
@@ -77,7 +91,7 @@ describe('library hub', () => {
     await flush();
     await view.click(view.button('Próxima'));
     expect(api.get).toHaveBeenCalledWith('/works?page=2&limit=12');
-    await view.click(view.buttonMatching(/^Mangás & HQs/));
+    await view.click(view.buttonMatching(/^Quadrinhos/));
     expect(api.get).toHaveBeenCalledWith(
       '/works?page=1&limit=12&formatGroup=comics'
     );

@@ -96,7 +96,7 @@ export function AppShell({
               !adminOpen &&
               !notesOpen &&
               (view === key ||
-                (key === 'all' && ['ebooks', 'comics', 'audio'].includes(view)))
+                (key === 'all' && ['ebooks', 'comics', 'mangas', 'audio'].includes(view)))
                 ? 'page'
                 : undefined
             }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -282,5 +283,74 @@ func TestComicUnits_ClassifyingRefusesWhatMakesNoSense(t *testing.T) {
 	}
 	if s.kinds(ids[0]) != "-|-" {
 		t.Errorf("a refused classification changed a work: %s", s.kinds(ids[0]))
+	}
+}
+
+// The shelves (#187): a comic or a manga is a matter of the kind of the work, not of its format.
+func TestComicShelves_TheKindDecidesTheShelfAndTheFormatOnlyWhenThereIsNone(t *testing.T) {
+	s := newCatalogStack(t)
+	book := s.addWork("Duna", "Frank Herbert", "duna.epub", "epub")
+	plainComic := s.addWork("Watchmen", "Alan Moore", "watchmen.cbz", "cbz")
+	mangaCbz := s.addWork("One Piece 1", "Eiichiro Oda", "op1.cbz", "cbz")
+	mangaPdf := s.addWork("Akira 1", "Katsuhiro Otomo", "akira.pdf", "pdf")
+	comicPdf := s.addWork("Maus", "Art Spiegelman", "maus.pdf", "pdf")
+	audio := s.addWork("Hobbit", "J.R.R. Tolkien", "hobbit.m4b", "m4b")
+	retiredManga := s.addWork("Velho", "Alguém", "velho.cbz", "cbz")
+	// The kind a person gives wins over the format, whatever it is: an audio drama marked as a comic is on the comic
+	// shelf and not on the audio one.
+	audioComic := s.addWork("Drama", "Alguém", "drama.m4b", "m4b")
+	s.exec(`UPDATE works SET comic_kind = 'comic' WHERE id = $1`, audioComic)
+	s.exec(`UPDATE works SET comic_kind = 'manga' WHERE id IN ($1, $2, $3)`, mangaCbz, mangaPdf, retiredManga)
+	s.exec(`UPDATE works SET comic_kind = 'comic' WHERE id = $1`, comicPdf)
+	s.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, retiredManga)
+
+	stats := func() DashboardStats {
+		var st DashboardStats
+		json.Unmarshal(s.do(ana, "GET", "/stats", "").Body.Bytes(), &st)
+		return st
+	}
+	// A manga in PDF is a manga and not a book; a comic in PDF is a comic; a CBZ with no kind is still a comic; a work
+	// that was retired is on no shelf.
+	if got := stats().LibraryBreakdown; got != (FormatBreakdown{Livros: 1, Quadrinhos: 3, Mangas: 2, Audio: 1}) {
+		t.Errorf("library = %+v", got)
+	}
+
+	for group, want := range map[string][]int{
+		"ebooks": {book},
+		"comics": {plainComic, comicPdf, audioComic},
+		"mangas": {mangaCbz, mangaPdf},
+		"audio":  {audio},
+	} {
+		if got := ids(s.list(ana, "?formatGroup="+group).Data); !sameIDs(got, want...) {
+			t.Errorf("formatGroup=%s = %v, want %v", group, got, want)
+		}
+	}
+	// The pages and the total follow the filter.
+	if l := s.list(ana, "?formatGroup=mangas&limit=1"); l.Total != 2 || len(l.Data) != 1 {
+		t.Errorf("a page of mangas: total %d, %d on the page", l.Total, len(l.Data))
+	}
+	// Read last, and finished: they are counted on the shelf of the work, under the format that was read.
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete) VALUES ($1, $2, '3', 20)`, idAna, s.primaryFile(mangaPdf))
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete) VALUES ($1, $2, '3', 20)`, idAna, s.primaryFile(plainComic))
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete) VALUES ($1, $2, '3', 20)`, idAna, s.primaryFile(book))
+	if got := stats(); got.InProgressCount != 3 || got.InProgressBreakdown != (FormatBreakdown{Livros: 1, Quadrinhos: 1, Mangas: 1}) {
+		t.Errorf("in progress = %+v", got.InProgressBreakdown)
+	}
+	for _, w := range []int{mangaCbz, mangaPdf, comicPdf} {
+		f := s.primaryFile(w)
+		s.exec(`INSERT INTO reading_completions (user_id, work_id, file_id, format, completed_at) SELECT $1, $2, id, format, now() FROM files WHERE id = $3`, idAna, w, f)
+	}
+	if got := stats(); got.CompletedThisMonth != 3 || got.CompletedBreakdown != (FormatBreakdown{Quadrinhos: 1, Mangas: 2}) {
+		t.Errorf("completed = %+v (%d)", got.CompletedBreakdown, got.CompletedThisMonth)
+	}
+
+	// Changing the kind moves the work from a shelf to another, with no other change.
+	s.editWork(plainComic, `,"comic_kind":"manga"`)
+	if got := stats().LibraryBreakdown; got != (FormatBreakdown{Livros: 1, Quadrinhos: 2, Mangas: 3, Audio: 1}) {
+		t.Errorf("after marking the Watchmen as a manga: %+v", got)
+	}
+	s.editWork(mangaPdf, `,"comic_kind":""`)
+	if got := stats().LibraryBreakdown; got != (FormatBreakdown{Livros: 2, Quadrinhos: 2, Mangas: 2, Audio: 1}) {
+		t.Errorf("after clearing the kind of a manga in PDF (it is a book again): %+v", got)
 	}
 }

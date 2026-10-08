@@ -10,10 +10,10 @@ vi.mock('../../../lib/api', () => ({
 // What the Reader hands the comic viewer is what is checked here.
 let mounts = 0;
 vi.mock('./viewers/MangaViewer', () => ({
-  default: function MangaStub({ declaredMode, workId, immersive, onImmersiveChange }) {
+  default: function MangaStub({ declaredMode, comicKind, workId, immersive, onImmersiveChange }) {
     React.useEffect(() => { mounts += 1; }, []);
     return (
-      <div data-testid="comic" data-declared={declaredMode ?? ''} data-work={workId} data-immersive={String(immersive)}>
+      <div data-testid="comic" data-declared={declaredMode ?? ''} data-kind={comicKind ?? ''} data-work={workId} data-immersive={String(immersive)}>
         <button onClick={() => onImmersiveChange(!immersive)}>toggle</button>
       </div>
     );
@@ -74,6 +74,19 @@ describe('Reader: the comic viewer', () => {
     expect(container.querySelector('[data-immersive]').getAttribute('data-immersive')).toBe('true');
     await toggle();
     expect(seen()).toBe('false');
+  });
+
+  it('is told the kind of the work, when it has one', async () => {
+    const kind = () => container.querySelector('[data-testid="comic"]').dataset.kind;
+    await render();
+    expect(kind()).toBe('');
+    detail.metadata = { comicKind: 'manga' };
+    try {
+      await openFile(11);
+      expect(kind()).toBe('manga');
+    } finally {
+      delete detail.metadata;
+    }
   });
 
   it('is told how the file being read says it is read', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bracketCount } from './format';
+import { bracketCount, formatBreakdown } from './format';
 
 describe('bracketCount, the count of a shelf as a menu shows it', () => {
   it('has two digits at least, so that a column lines up', () => {
@@ -16,5 +16,13 @@ describe('bracketCount, the count of a shelf as a menu shows it', () => {
   it('says nothing for a count that is not known yet', () => {
     expect(bracketCount(undefined)).toBe('');
     expect(bracketCount(null)).toBe('');
+  });
+});
+
+describe('formatBreakdown, what is read or finished said by shelf', () => {
+  it('names the comics and the mangas apart, singular or plural, and skips the empty shelves (#187)', () => {
+    expect(formatBreakdown({ livros: 2, quadrinhos: 1, mangas: 3, audio: 0 })).toBe('2 livros • 1 quadrinho • 3 mangás');
+    expect(formatBreakdown({ livros: 0, quadrinhos: 4, mangas: 1, audio: 1 })).toBe('4 quadrinhos • 1 mangá • 1 áudio');
+    expect(formatBreakdown(undefined)).toBe('');
   });
 });

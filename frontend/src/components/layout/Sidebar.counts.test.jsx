@@ -25,8 +25,8 @@ afterEach(() => view.unmount());
 
 describe('the menu of the library: the count of each shelf, and only the shelves that have something', () => {
   it('counts each shelf instead of naming the format', async () => {
-    await open(stats({ libraryBreakdown: { livros: 5, mangas: 12, audio: 1420 } }));
-    expect(items()).toEqual(['Todas as obras[07]', 'Livros digitais[05]', 'Quadrinhos & mangás[12]', 'Audiolivros[1.420]', 'Em leitura[03]', 'Favoritos', 'Minhas listas', 'Anotações']);
+    await open(stats({ libraryBreakdown: { livros: 5, quadrinhos: 12, mangas: 3, audio: 1420 } }));
+    expect(items()).toEqual(['Todas as obras[07]', 'Livros digitais[05]', 'Quadrinhos[12]', 'Mangás[03]', 'Audiolivros[1.420]', 'Em leitura[03]', 'Favoritos', 'Minhas listas', 'Anotações']);
     expect(document.body.textContent).not.toMatch(/EPUB|CBZ|CBR|PDF/);
   });
 
@@ -62,5 +62,14 @@ describe('the menu of the library: the count of each shelf, and only the shelves
     expect([...document.body.querySelectorAll('[aria-current="page"]')].map((b) => b.textContent.trim())).toEqual(['Audiolivros[02]']);
     await view.click(view.buttonMatching(/^Livros digitais/));
     expect(useGlobalStore.getState().libraryView).toBe('ebooks');
+  });
+
+  it('opens the shelf of the mangas apart from the one of the comics, each only when it has works (#187)', async () => {
+    await open(stats({ libraryBreakdown: { livros: 0, quadrinhos: 0, mangas: 5, audio: 0 } }));
+    expect(items()).toContain('Mangás[05]');
+    expect(items().some((i) => i.startsWith('Quadrinhos'))).toBe(false);
+    await view.click(view.buttonMatching(/^Mangás/));
+    expect(useGlobalStore.getState().libraryView).toBe('mangas');
+    expect([...document.body.querySelectorAll('[aria-current="page"]')].map((b) => b.textContent.trim())).toEqual(['Mangás[05]']);
   });
 });

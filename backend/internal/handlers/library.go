@@ -285,7 +285,7 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	search := r.URL.Query().Get("search")
 	inProgressOnly := r.URL.Query().Get("inProgress") == "true"
 	favoriteOnly := r.URL.Query().Get("favorite") == "true"
-	formatGroup := r.URL.Query().Get("formatGroup") // "ebooks" | "comics" | "audio"
+	formatGroup := r.URL.Query().Get("formatGroup") // "ebooks" | "comics" | "mangas" | "audio"
 	person, role := r.URL.Query().Get("person"), r.URL.Query().Get("role")
 	retiredOnly := isStaffRequest(r) && r.URL.Query().Get("retired") == "true"
 
@@ -347,13 +347,8 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	if favoriteOnly {
 		whereClauses = append(whereClauses, "f.user_id IS NOT NULL")
 	}
-	switch formatGroup {
-	case "ebooks":
-		whereClauses = append(whereClauses, "LOWER(wp.file_format) IN "+bookFormats)
-	case "comics":
-		whereClauses = append(whereClauses, "LOWER(wp.file_format) IN "+comicFormats)
-	case "audio":
-		whereClauses = append(whereClauses, "LOWER(wp.file_format) IN "+audioFormats)
+	if cond := shelfCondition(formatGroup, "wp.file_format"); cond != "" {
+		whereClauses = append(whereClauses, cond)
 	}
 	// The page is chosen before the cards are built: counting and ordering run on the cheapest FROM the filters allow
 	// (often only `works`), and only the works of the page get their card (author, progress, counts, tags). Building
