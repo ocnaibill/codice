@@ -433,3 +433,28 @@ describe('CollectionSheet: a list of the person', () => {
     expect(container.textContent).toContain('2 obras');
   });
 });
+
+describe('CollectionSheet: favoriting', () => {
+  it('has a heart in the header, filled when it is a favorite, for a reader too', async () => {
+    await open({ role: 'reader', data: detail(trio, { isFavorite: true }) });
+    const heart = labelled('Remover dos favoritos: Harry Potter');
+    expect(heart.getAttribute('aria-pressed')).toBe('true');
+    await click(heart);
+    expect(api.delete).toHaveBeenCalledWith('/collections/5/favorite');
+  });
+
+  it('favorites with the same heart, and refreshes the page', async () => {
+    await open({ role: 'reader', data: detail(trio, { isFavorite: false }) });
+    const reads = () => api.get.mock.calls.filter(([url]) => url === '/collections/5').length;
+    const before = reads();
+    await click(labelled('Adicionar aos favoritos: Harry Potter'));
+    expect(api.post).toHaveBeenCalledWith('/collections/5/favorite');
+    await flush();
+    expect(reads()).toBeGreaterThan(before);
+  });
+
+  it('has no heart on a retired collection', async () => {
+    await open({ role: 'admin', data: detail([], { retired: true }) });
+    expect(container.querySelector('.library-favorite')).toBeNull();
+  });
+});

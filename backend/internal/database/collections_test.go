@@ -464,3 +464,80 @@ func TestPersonalCollections_TheMigrationKeepsWhatWasThereAndGoesBack(t *testing
 		t.Fatalf("migrating again: %v", err)
 	}
 }
+
+func TestFavoriteCollections_TheMigrationKeepsWhatTheHomeAlreadyShowedAndTheTableFollowsItsOwners(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.MigrateTo(db, 53); err != nil {
+		t.Fatal(err)
+	}
+	var ana, bob string
+	db.QueryRow(`INSERT INTO users (username, email, password_hash) VALUES ('ana', 'ana@example.test', 'x') RETURNING id`).Scan(&ana)
+	db.QueryRow(`INSERT INTO users (username, email, password_hash) VALUES ('bob', 'bob@example.test', 'x') RETURNING id`).Scan(&bob)
+	ins := func(title string, series any) int {
+		var id int
+		if err := db.QueryRow(`INSERT INTO works (original_title, series, series_index) VALUES ($1, $2, 1) RETURNING id`, title, series).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	a1, a2 := ins("Duna", "Duna"), ins("Messias", "Duna")
+	solo := ins("Solto", nil)
+	retiredSeries := ins("Velho", "Antiga")
+	fav := func(user string, work int, ago string) {
+		if _, err := db.Exec(`INSERT INTO favorites (user_id, work_id, created_at) VALUES ($1, $2, now() - $3::interval)`, user, work, ago); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fav(ana, a1, "3 hours")
+	fav(ana, a2, "1 hour")
+	fav(ana, solo, "2 hours")
+	fav(ana, retiredSeries, "1 hour")
+	fav(bob, a1, "5 hours")
+	db.Exec(`UPDATE collections SET retired_at = now() WHERE name = 'Antiga'`)
+	// (a retired collection has no places; the migration must not depend on that)
+	// A list of the person with a favorite work in it is not a series, and makes no favorite collection.
+	var list int
+	db.QueryRow(`INSERT INTO collections (kind, owner_id, name, origin) VALUES ('personal', $1, 'Minha', 'manual') RETURNING id`, ana).Scan(&list)
+	db.Exec(`INSERT INTO collection_works (collection_id, work_id, official) VALUES ($1, $2, FALSE)`, list, solo)
+
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	// Ana had favorited two works of Duna: she has the collection, as of the latest of them. Bob has it too, from his one.
+	// A work with no series makes none, and a retired collection makes none.
+	if c := count(t, db, `SELECT count(*) FROM favorite_collections`); c != 2 {
+		t.Errorf("favorite collections = %d, want 2 (ana's and bob's of Duna)", c)
+	}
+	var at, bt sql.NullTime
+	db.QueryRow(`SELECT created_at FROM favorite_collections WHERE user_id = $1`, ana).Scan(&at)
+	db.QueryRow(`SELECT created_at FROM favorites WHERE user_id = $1 AND work_id = $2`, ana, a2).Scan(&bt)
+	if !at.Valid || !bt.Valid || !at.Time.Equal(bt.Time) {
+		t.Errorf("ana's favorite collection dates from %v, want the latest of her favorites (%v)", at.Time, bt.Time)
+	}
+	if c := count(t, db, `SELECT count(*) FROM favorites`); c != 5 {
+		t.Errorf("favorite works = %d, the migration must leave them", c)
+	}
+
+	// The rows go with the person and with the collection.
+	db.Exec(`DELETE FROM users WHERE id = $1`, bob)
+	if c := count(t, db, `SELECT count(*) FROM favorite_collections`); c != 1 {
+		t.Errorf("after bob left = %d, want 1", c)
+	}
+	db.Exec(`DELETE FROM collections WHERE name = 'Duna'`)
+	if c := count(t, db, `SELECT count(*) FROM favorite_collections`); c != 0 {
+		t.Errorf("after the collection went = %d, want 0", c)
+	}
+	// Going back leaves the favorite works as they were.
+	if err := database.RollbackTo(db, 53); err != nil {
+		t.Fatal(err)
+	}
+	if tableExists(t, db, "favorite_collections") {
+		t.Error("the table stayed after going back")
+	}
+	if c := count(t, db, `SELECT count(*) FROM favorites WHERE user_id = $1`, ana); c != 4 {
+		t.Errorf("ana's favorite works after going back = %d, want 4", c)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("migrating again: %v", err)
+	}
+}

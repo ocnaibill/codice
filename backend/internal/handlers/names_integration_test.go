@@ -125,7 +125,7 @@ func TestNames_EverySurfaceThatShowsAnAuthorFollowsThePreference(t *testing.T) {
 	if l := s.list(ana, ""); !containsAuthor(l.Data, "Herbert, Frank") {
 		t.Errorf("the catalogue: %+v", l.Data)
 	}
-	var fav struct{ Data []FavoriteSeriesItem }
+	var fav struct{ Data []FavoriteItem }
 	json.Unmarshal(s.do(ana, "GET", "/favorites", "").Body.Bytes(), &fav)
 	if len(fav.Data) != 1 || fav.Data[0].Author != "Herbert, Frank" {
 		t.Errorf("favorites: %+v", fav.Data)

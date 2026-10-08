@@ -344,6 +344,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Post("/works/{id}/favorite", favoritesHandler.AddFavorite)
 	r.With(auth).Delete("/works/{id}/favorite", favoritesHandler.RemoveFavorite)
 	r.With(catalog, auth).Get("/favorites", favoritesHandler.GetFavorites)
+	r.With(auth).Post("/collections/{id}/favorite", favoritesHandler.AddCollectionFavorite)
+	r.With(auth).Delete("/collections/{id}/favorite", favoritesHandler.RemoveCollectionFavorite)
 	r.With(auth).Post("/works/{id}/notes", notesHandler.CreateNote)
 	r.With(auth).Get("/notes", notesHandler.ListNotes)
 	r.With(auth).Get("/notes/facets", notesHandler.NoteFacets)

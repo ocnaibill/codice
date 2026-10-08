@@ -630,6 +630,8 @@ var personalCollectionRoutes = []route{
 	{"PUT", "/my/collections/1/works/1"},
 	{"DELETE", "/my/collections/1/entries/1"},
 	{"PUT", "/my/collections/1/order"},
+	{"POST", "/collections/1/favorite"},
+	{"DELETE", "/collections/1/favorite"},
 }
 
 func TestPersonalCollectionRoutes_AnyoneSignedInReachesTheHandlerAndNobodyElse(t *testing.T) {

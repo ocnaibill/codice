@@ -169,6 +169,8 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Post("/works/{id}/favorite", fav.AddFavorite)
 	r.Delete("/works/{id}/favorite", fav.RemoveFavorite)
 	r.Get("/favorites", fav.GetFavorites)
+	r.Post("/collections/{id}/favorite", fav.AddCollectionFavorite)
+	r.Delete("/collections/{id}/favorite", fav.RemoveCollectionFavorite)
 	cols := &CollectionsHandler{DB: db}
 	r.Get("/collections", cols.List)
 	r.Get("/collections/{id}", cols.Get)
@@ -837,40 +839,48 @@ func TestFavoritesAndStats(t *testing.T) {
 	a := s.addWork("Vol 1", "Alan Moore", "v1.cbz", "cbz")
 	b := s.addWork("Vol 2", "Alan Moore", "v2.cbz", "cbz")
 	c := s.addWork("Solo", "Alguém", "solo.epub", "epub")
-	s.exec(`UPDATE works SET series = 'Watchmen' WHERE id IN ($1, $2)`, a, b)
-	s.exec(`UPDATE works SET series_index = 2 WHERE id = $1`, a)
-	s.exec(`UPDATE works SET series_index = 1 WHERE id = $1`, b)
-	s.exec(`UPDATE editions SET cover_url = '/covers/b.jpg' WHERE work_id = $1`, b)
+	s.exec(`UPDATE works SET series = 'Watchmen', series_index = 1 WHERE id = $1`, a)
+	s.exec(`UPDATE works SET series = 'Watchmen', series_index = 2 WHERE id = $1`, b)
+	s.exec(`UPDATE editions SET cover_url = '/covers/a.jpg' WHERE work_id = $1`, a)
+	watchmen := s.collectionID("Watchmen")
 
-	// The newer favorite of the series is the volume numbered 2; the item still stands for the one numbered 1.
-	s.do(ana, "POST", fmt.Sprintf("/works/%d/favorite", b), "")
-	s.exec(`UPDATE favorites SET created_at = now() - interval '2 hours' WHERE work_id = $1`, b)
+	// A favorite work of a series that is not a favorite is a card of its own, as a work: a favorite is never hidden.
 	s.do(ana, "POST", fmt.Sprintf("/works/%d/favorite", a), "")
 	s.do(ana, "POST", fmt.Sprintf("/works/%d/favorite", c), "")
+	s.exec(`UPDATE favorites SET created_at = now() - interval '2 hours' WHERE work_id = $1`, a)
 	s.exec(`UPDATE favorites SET created_at = now() - interval '1 hour' WHERE work_id = $1`, c)
 	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete, completed_at, reading_seconds) VALUES ($1, $2, 'fim', 100, now(), 500)`, idAna, s.primaryFile(b))
 	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete, reading_seconds) VALUES ($1, $2, 'cap-1', 20, 100)`, idAna, s.primaryFile(c))
 
 	var fav struct {
-		Data []FavoriteSeriesItem
+		Data  []FavoriteItem
+		Total int
 	}
 	json.Unmarshal(s.do(ana, "GET", "/favorites", "").Body.Bytes(), &fav)
-	bySeries := map[string]FavoriteSeriesItem{}
-	for _, f := range fav.Data {
-		bySeries[f.SeriesLabel] = f
+	if fav.Total != 2 || len(fav.Data) != 2 {
+		t.Fatalf("two favorite works: %+v", fav)
 	}
-	if len(fav.Data) != 2 {
-		t.Fatalf("two favorites of one series and a loose one must be 2 items, got %+v", fav.Data)
+	if f := fav.Data[0]; f.Kind != "work" || f.WorkID != c || f.Title != "Solo" || f.Author != "Alguém" || f.Completed {
+		t.Errorf("newest first: a work with no collection, not finished: %+v", f)
 	}
-	if w := bySeries["Watchmen"]; w.Kind != "series" || w.Title != "Watchmen" || w.WorkID != b || w.FavoriteCount != 2 ||
-		w.SeriesTotal != 2 || w.SeriesCompleted != 1 || w.Author != "Alan Moore" || w.CoverURL != "/covers/b.jpg" {
-		t.Errorf("series widget = %+v", w)
+	if f := fav.Data[1]; f.Kind != "work" || f.WorkID != a || f.Title != "Vol 1" || f.Completed || f.CoverURL != "/covers/a.jpg" {
+		t.Errorf("a work of a series that is not a favorite stays as a work: %+v", f)
 	}
-	if s := bySeries["Solo"]; s.Kind != "work" || s.Title != "Solo" || s.WorkID != c || s.FavoriteCount != 1 || s.SeriesTotal != 1 || s.SeriesCompleted != 0 {
-		t.Errorf("a work without a series stays loose, as a series of one: %+v", s)
+
+	// Favoriting the collection: one card for it, and its works are not shown apart. The loose work stays.
+	if rec := s.do(ana, "POST", fmt.Sprintf("/collections/%d/favorite", watchmen), ""); rec.Code != 200 {
+		t.Fatalf("favorite collection: %d %s", rec.Code, rec.Body.String())
 	}
-	if fav.Data[0].SeriesLabel != "Watchmen" {
-		t.Errorf("the item of a series takes the place of its newest favorite: %+v", fav.Data)
+	json.Unmarshal(s.do(ana, "GET", "/favorites", "").Body.Bytes(), &fav)
+	if fav.Total != 2 || len(fav.Data) != 2 {
+		t.Fatalf("a collection and a loose work: %+v", fav)
+	}
+	if f := fav.Data[0]; f.Kind != "collection" || f.CollectionID != watchmen || f.CollectionKind != "official" || f.Title != "Watchmen" ||
+		f.WorkCount != 2 || f.CompletedCount != 1 || f.CoverURL != "/covers/a.jpg" {
+		t.Errorf("the collection card (newest): %+v", f)
+	}
+	if f := fav.Data[1]; f.Kind != "work" || f.WorkID != c {
+		t.Errorf("the loose work: %+v", f)
 	}
 
 	var st DashboardStats

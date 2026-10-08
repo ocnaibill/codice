@@ -3,10 +3,12 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
-	"github.com/ocnaibill/codice/backend/internal/people"
 	"log"
 	"net/http"
+	"sort"
+	"time"
+
+	"github.com/ocnaibill/codice/backend/internal/people"
 )
 
 // FavoritesHandler stores the database connection
@@ -55,101 +57,108 @@ func (h *FavoritesHandler) RemoveFavorite(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusOK)
 }
 
-// FavoriteSeriesItem is one row of the "favorite series" dashboard widget:
-// a favorited work plus how many works share its series and how many of
-// those the current user has finished. Works without a series are treated
-// as a series of one (so "read 1 of 1" / "read 0 of 1").
-//
-// The favorites of one series come as a single item (#184): Kind is "series", Title is the name of the series,
-// WorkID and the cover are those of the favorite that comes first in the series, and FavoriteCount says how many of
-// the series are favorites. A favorite with no series stays loose (Kind "work").
-type FavoriteSeriesItem struct {
-	Kind            string `json:"kind"`
-	WorkID          int    `json:"workId"`
-	Title           string `json:"title"`
-	Author          string `json:"author"`
-	CoverURL        string `json:"coverUrl"`
-	SeriesLabel     string `json:"seriesLabel"`
-	SeriesTotal     int    `json:"seriesTotal"`
-	SeriesCompleted int    `json:"seriesCompleted"`
-	FavoriteCount   int    `json:"favoriteCount"`
+// FavoriteItem is one card of the "favorites" widget of the home (#184, #208): a collection the person favorited (an official
+// one, or one of their lists), or a work they favorited that is not already under a collection they favorited. A work in a
+// collection is not shown apart from it, but it is shown when the collection is not a favorite: a favorite is never hidden.
+type FavoriteItem struct {
+	// Kind is "collection" or "work".
+	Kind string `json:"kind"`
+	// WorkID is the work of a "work" card.
+	WorkID int `json:"workId,omitempty"`
+	// CollectionID is the collection of a "collection" card, and CollectionKind says whether it is "official" or "personal".
+	CollectionID   int64  `json:"collectionId,omitempty"`
+	CollectionKind string `json:"collectionKind,omitempty"`
+	Title          string `json:"title"`
+	Author         string `json:"author"`
+	CoverURL       string `json:"coverUrl"`
+	// WorkCount and CompletedCount are of a collection: how many works are in it, and how many the person finished.
+	WorkCount      int `json:"workCount"`
+	CompletedCount int `json:"completedCount"`
+	// Completed is of a work: the person finished it.
+	Completed bool `json:"completed"`
+
+	at time.Time
 }
 
-const (
-	favoriteKindWork   = "work"
-	favoriteKindSeries = "series"
-)
-
-// groupFavoriteSeries folds the favorites of one series into the item of the series. The rows come newest favorite
-// first, and the item of a series takes the place of its newest favorite. Inside a series, the favorite with the
-// lowest number (then the lowest id) stands for it.
-func groupFavoriteSeries(rows []favoriteRow) []FavoriteSeriesItem {
-	items := []FavoriteSeriesItem{}
-	at := map[string]int{}
-	lead := map[string]favoriteRow{}
-	for _, row := range rows {
-		if row.series == "" {
-			row.item.Kind = favoriteKindWork
-			row.item.FavoriteCount = 1
-			items = append(items, row.item)
-			continue
-		}
-		i, seen := at[row.series]
-		if !seen {
-			at[row.series] = len(items)
-			lead[row.series] = row
-			row.item.Kind = favoriteKindSeries
-			row.item.Title = row.series
-			row.item.FavoriteCount = 1
-			items = append(items, row.item)
-			continue
-		}
-		items[i].FavoriteCount++
-		cur := lead[row.series]
-		if row.index < cur.index || (row.index == cur.index && row.item.WorkID < cur.item.WorkID) {
-			lead[row.series] = row
-			items[i].WorkID = row.item.WorkID
-			items[i].CoverURL = row.item.CoverURL
-			items[i].Author = row.item.Author
+// AddCollectionFavorite answers POST /collections/{id}/favorite: the collection is a favorite of the caller. It must be one they can
+// see (an official one that is not retired, or one of their own lists); any other is not found.
+func (h *FavoritesHandler) AddCollectionFavorite(w http.ResponseWriter, r *http.Request) {
+	id, ok := collectionIDParam(r, "id")
+	if !ok {
+		http.Error(w, "Collection not found", http.StatusNotFound)
+		return
+	}
+	res, err := h.DB.Exec(`
+		INSERT INTO favorite_collections (user_id, collection_id)
+		SELECT $1::uuid, c.id FROM collections c
+		WHERE c.id = $2 AND c.retired_at IS NULL AND (c.kind = 'official' OR c.owner_id = $1::uuid)
+		ON CONFLICT DO NOTHING`, currentUserID(r), id)
+	if err != nil {
+		log.Println("Error favoriting a collection:", err)
+		http.Error(w, "Error adding favorite", http.StatusInternalServerError)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// Either it is a favorite already, or it is not theirs to see.
+		var seen bool
+		if err := h.DB.QueryRow(`
+			SELECT EXISTS (SELECT 1 FROM collections c WHERE c.id = $2 AND c.retired_at IS NULL AND (c.kind = 'official' OR c.owner_id = $1::uuid))`,
+			currentUserID(r), id).Scan(&seen); err != nil || !seen {
+			http.Error(w, "Collection not found", http.StatusNotFound)
+			return
 		}
 	}
-	return items
+	w.WriteHeader(http.StatusOK)
 }
 
-// favoriteRow is a favorite as the query reads it, before the series are folded.
-type favoriteRow struct {
-	item   FavoriteSeriesItem
-	series string
-	index  float64
+// RemoveCollectionFavorite answers DELETE /collections/{id}/favorite: the collection is not a favorite of the caller any more.
+// It is always theirs to take away, so it is not an error when it was not one.
+func (h *FavoritesHandler) RemoveCollectionFavorite(w http.ResponseWriter, r *http.Request) {
+	id, ok := collectionIDParam(r, "id")
+	if !ok {
+		http.Error(w, "Collection not found", http.StatusNotFound)
+		return
+	}
+	if _, err := h.DB.Exec(`DELETE FROM favorite_collections WHERE user_id = $1::uuid AND collection_id = $2`, currentUserID(r), id); err != nil {
+		log.Println("Error removing the favorite of a collection:", err)
+		http.Error(w, "Error removing favorite", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
-// GetFavorites returns the current user's favorited works enriched with
-// series-wide completion counts, used by the "Suas séries favoritas" widget.
+// GetFavorites returns what the person favorited, newest first: their favorite collections as one card each, and the favorite works
+// that are not under one of those. Used by the "Seus favoritos" widget.
 func (h *FavoritesHandler) GetFavorites(w http.ResponseWriter, r *http.Request) {
 	userID := currentUserID(r)
+	items := []FavoriteItem{}
 
-	const seriesLabel = `COALESCE(NULLIF(%s.series, ''), %s.original_title::text)`
-	label := func(alias string) string { return fmt.Sprintf(seriesLabel, alias, alias) }
+	rows, err := h.DB.Query(`
+		SELECT c.id, c.kind, c.name, fc.created_at, COALESCE(s.works, 0), COALESCE(s.completed, 0), COALESCE(s.cover, '')
+		FROM favorite_collections fc
+		JOIN collections c ON c.id = fc.collection_id`+collectionStats+`
+		WHERE fc.user_id = $1::uuid AND c.retired_at IS NULL AND (c.kind = 'official' OR c.owner_id = $1::uuid)`, userID)
+	if err != nil {
+		log.Println("Error fetching favorite collections:", err)
+		http.Error(w, "Error fetching favorites", http.StatusInternalServerError)
+		return
+	}
+	for rows.Next() {
+		item := FavoriteItem{Kind: "collection"}
+		if err := rows.Scan(&item.CollectionID, &item.CollectionKind, &item.Title, &item.at, &item.WorkCount, &item.CompletedCount, &item.CoverURL); err != nil {
+			log.Println("Error scanning a favorite collection:", err)
+			continue
+		}
+		if item.CoverURL == "" {
+			item.CoverURL = "/covers/placeholder.svg"
+		}
+		items = append(items, item)
+	}
+	rows.Close()
 
-	query := `
-		SELECT
-			w.id,
-			w.original_title,
-			` + authorLabelFor(people.OrderFor(r.Context(), h.DB, userID).Effective) + `,
-			COALESCE(wp.cover_url, '') as cover_url,
-			` + label("w") + ` as series_label,
-			COALESCE(w.series, '') as series,
-			COALESCE(w.series_index, 0) as series_index,
-			(
-				SELECT COUNT(*) FROM works w2
-				WHERE w2.retired_at IS NULL AND ` + label("w2") + ` = ` + label("w") + `
-			) as series_total,
-			(
-				SELECT COUNT(*) FROM works w3
-				JOIN work_primary wp3 ON wp3.work_id = w3.id
-				JOIN reading_progress rp3 ON rp3.file_id = wp3.file_id AND rp3.user_id = $1 AND rp3.completed_at IS NOT NULL
-				WHERE w3.retired_at IS NULL AND ` + label("w3") + ` = ` + label("w") + `
-			) as series_completed
+	rows, err = h.DB.Query(`
+		SELECT w.id, w.original_title, `+authorLabelFor(people.OrderFor(r.Context(), h.DB, userID).Effective)+`,
+		       COALESCE(wp.cover_url, ''), f.created_at, COALESCE(rp.completed_at IS NOT NULL, FALSE)
 		FROM favorites f
 		JOIN works w ON w.id = f.work_id
 		LEFT JOIN work_primary wp ON wp.work_id = w.id
@@ -160,33 +169,32 @@ func (h *FavoritesHandler) GetFavorites(w http.ResponseWriter, r *http.Request) 
 			FROM work_contributors c JOIN person p ON p.id = c.person_id
 			WHERE c.work_id = w.id AND c.role = 'author'
 		) au ON TRUE
-		WHERE f.user_id = $1 AND w.retired_at IS NULL
-		ORDER BY f.created_at DESC
-	`
-
-	rows, err := h.DB.Query(query, userID)
+		LEFT JOIN reading_progress rp ON rp.file_id = wp.file_id AND rp.user_id = $1::uuid AND rp.completed_at IS NOT NULL
+		WHERE f.user_id = $1::uuid AND w.retired_at IS NULL
+		  AND NOT EXISTS (
+			SELECT 1 FROM collection_works cw
+			JOIN favorite_collections fc ON fc.collection_id = cw.collection_id AND fc.user_id = $1::uuid
+			JOIN collections c ON c.id = cw.collection_id AND c.retired_at IS NULL
+			WHERE cw.work_id = w.id AND cw.official)`, userID)
 	if err != nil {
-		log.Println("Error fetching favorites:", err)
+		log.Println("Error fetching favorite works:", err)
 		http.Error(w, "Error fetching favorites", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
-
-	var favorites []favoriteRow
 	for rows.Next() {
-		var row favoriteRow
-		item := &row.item
-		if err := rows.Scan(&item.WorkID, &item.Title, &item.Author, &item.CoverURL, &item.SeriesLabel, &row.series, &row.index, &item.SeriesTotal, &item.SeriesCompleted); err != nil {
-			log.Println("Error scanning favorite:", err)
+		item := FavoriteItem{Kind: "work"}
+		if err := rows.Scan(&item.WorkID, &item.Title, &item.Author, &item.CoverURL, &item.at, &item.Completed); err != nil {
+			log.Println("Error scanning a favorite work:", err)
 			continue
 		}
 		if item.CoverURL == "" {
 			item.CoverURL = "/covers/placeholder.svg"
 		}
-		favorites = append(favorites, row)
+		items = append(items, item)
 	}
-	items := groupFavoriteSeries(favorites)
+	rows.Close()
 
+	sort.SliceStable(items, func(i, j int) bool { return items[i].at.After(items[j].at) })
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"data":  items,
