@@ -1,6 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="14" fill="#944516"/>
-  <g transform="translate(10 10) scale(1.9167)" fill="none" stroke="#fdf6ec" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+  <style>
+    .tile { fill: #944516; }
+    .book { stroke: #fdf6ec; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #fdf6ec; }
+      .book { stroke: #944516; }
+    }
+  </style>
+  <rect class="tile" width="64" height="64" rx="14"/>
+  <g class="book" transform="translate(10 10) scale(1.9167)" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 5v15M12 5C8 2 3 3 2 4v15c4-2 7-1 10 1 3-2 6-3 10-1V4c-1-1-6-2-10 1Z"/>
   </g>
 </svg>
