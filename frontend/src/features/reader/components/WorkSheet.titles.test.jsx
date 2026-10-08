@@ -24,10 +24,11 @@ let container;
 let root;
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-async function open(titles, contributors, extraMeta) {
+async function open(titles, contributors, extraMeta, series = { collection: null, next: null }) {
   api.get.mockImplementation(async (url) => {
     if (url === '/works/7') return { data: work(titles, contributors, extraMeta) };
     if (url === '/works/7/candidates') return { data: { data: [] } };
+    if (url === '/works/7/series') return { data: series };
     if (url === '/auth/me') return { data: { role: 'reader' } };
     throw new Error(`unexpected GET ${url}`);
   });
@@ -150,3 +151,42 @@ describe('WorkSheet: what a comic or manga work is of its series (#187)', () => 
     expect([...container.querySelectorAll('span')].some((s) => s.textContent === 'Mangá' || s.textContent === 'Quadrinho')).toBe(false);
   });
 });
+
+describe('WorkSheet: the name of the series opens the series (#187)', () => {
+  const inSeries = { collection: { id: 4, name: 'Scythe' }, next: null };
+  const line = () => [...container.querySelectorAll('p')].find((p) => p.textContent.startsWith('Scythe'));
+  const link = () => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Scythe');
+
+  it('makes the name a button when the work is in an official collection, with the number after it as before', async () => {
+    await open([], [], { series: 'Scythe', seriesIndex: 2 }, inSeries);
+    expect(link()).toBeTruthy();
+    expect(link().title).toBe('Ver as outras obras da série');
+    expect(line().textContent).toBe('Scythe · Livro 2');
+  });
+
+  it('opens the collection in the place of the sheet', async () => {
+    await open([], [], { series: 'Scythe', seriesIndex: 2 }, inSeries);
+    useGlobalStore.setState({ collectionSheetId: null });
+    await act(async () => { link().click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ collectionSheetId: 4, sheetWorkId: null });
+  });
+
+  it('keeps the unit of a series of volumes and chapters after the name', async () => {
+    await open([], [], { series: 'Scythe', unit: 'volume', seriesIndex: 3 }, inSeries);
+    expect(link()).toBeTruthy();
+    expect(line().textContent).toBe('Scythe · Vol. 3');
+  });
+
+  it('is only text when the work is in no collection, or the collection is not there to open', async () => {
+    await open([], [], { series: 'Scythe', seriesIndex: 2 });
+    expect(link()).toBeUndefined();
+    expect(line().textContent).toBe('Scythe · Livro 2');
+  });
+
+  it('has no line for the series when the work says none', async () => {
+    await open([], [], {}, inSeries);
+    expect(line()).toBeUndefined();
+    expect(link()).toBeUndefined();
+  });
+});
+

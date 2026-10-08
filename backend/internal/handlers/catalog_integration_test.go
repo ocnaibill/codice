@@ -149,6 +149,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	titles := &WorkTitlesHandler{DB: db}
 	r.Post("/works/{id}/titles", titles.Add)
 	r.Delete("/works/{id}/titles/{titleId}", titles.Remove)
+	r.Patch("/works/{id}/editions/{editionId}", titles.EditEdition)
 	contributors := &WorkContributorsHandler{DB: db}
 	r.Post("/works/{id}/contributors", contributors.Add)
 	r.Put("/works/{id}/contributors/order", contributors.Order)

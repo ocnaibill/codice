@@ -11,7 +11,7 @@ import { WorkSuggestions } from '../../reader/components/WorkSuggestions';
 import { ConfirmDialog } from '../../admin/components/ConfirmDialog';
 import { useDialog } from '../../../lib/useDialog';
 import { languageName } from '../../reader/files';
-import { useAddWorkTitle, useRemoveWorkTitle } from '../../reader/api/useWorkTitles';
+import { useAddWorkTitle, useEditEditionTitle, useRemoveWorkTitle } from '../../reader/api/useWorkTitles';
 import { useAddContributor, useOrderContributors, useRemoveContributor } from '../../reader/api/useWorkContributors';
 import { peopleOf, ROLES } from '../../reader/credits';
 import { COMIC_KINDS, UNITS } from '../../collections/text';
@@ -207,7 +207,82 @@ function EditForm({ work, onClose }) {
   );
 }
 
-const SOURCE_NAMES = { manual: 'Você', edition: 'Edição' };
+const SOURCE_NAMES = { manual: 'Você' };
+
+/**
+ * The title of each edition of a work (#185, DEC-131), which owner and admin write. An edition has the title its file brought (its own
+ * title, or its file name) until someone writes one; the one written is another name of the work, and the name it goes by while that
+ * edition is the one being read. The language of an edition is what the file is, and is not changed here.
+ */
+function EditionTitles({ work }) {
+  const editions = work.editions ?? [];
+  const edit = useEditEditionTitle(work.id);
+  const [editing, setEditing] = useState(null); // the edition whose title is being written
+  const [draft, setDraft] = useState('');
+  const [message, setMessage] = useState('');
+  if (editions.length === 0) return null;
+
+  const begin = (edition) => {
+    setMessage('');
+    setEditing(edition.id);
+    setDraft(edition.title);
+  };
+  const save = (event) => {
+    event.preventDefault();
+    if (!draft.trim()) return;
+    setMessage('');
+    edit.mutate(
+      { editionId: editing, title: draft },
+      { onSuccess: () => setEditing(null), onError: (error) => setMessage(reasonOf(error, 'Não foi possível guardar o título da edição.')) }
+    );
+  };
+  const formats = (edition) => [...new Set((edition.files ?? []).map((file) => file.format?.toUpperCase()).filter(Boolean))].join(' + ');
+
+  return (
+    <section aria-label="Títulos das edições">
+      <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">Títulos das edições</p>
+      <ul className="mt-2 flex flex-col gap-2">
+        {editions.map((edition) => (
+          <li key={edition.id} className="rounded-lg border border-border-hairline bg-white px-3 py-2">
+            {editing === edition.id ? (
+              <form onSubmit={save} className="flex flex-wrap items-end gap-2">
+                <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs font-medium text-ink-soft">
+                  Título da edição
+                  <input className={inputClass} value={draft} maxLength={255} onChange={(e) => setDraft(e.target.value)} disabled={edit.isPending} autoFocus />
+                </label>
+                <button type="submit" disabled={edit.isPending || !draft.trim()} className="min-h-10 rounded-lg bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40">
+                  Guardar
+                </button>
+                <button type="button" onClick={() => setEditing(null)} disabled={edit.isPending} className="min-h-10 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40">
+                  Cancelar
+                </button>
+              </form>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1 text-sm">
+                  <p className="truncate font-semibold text-ink">{edition.title || 'Sem título'}</p>
+                  <p className="truncate text-xs text-ink-soft">
+                    {[edition.language && languageName(edition.language), formats(edition), edition.titleSet ? 'escrito por você' : 'veio do arquivo'].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => begin(edition)}
+                  disabled={edit.isPending}
+                  aria-label={`Editar o título da edição “${edition.title}”`}
+                  className="min-h-10 shrink-0 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40"
+                >
+                  Editar
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      {message && <p role="alert" className="mt-2 text-sm text-danger">{message}</p>}
+    </section>
+  );
+}
 
 /**
  * The other names of a work (#185, DEC-131): the ones kept for it, which owner and admin add and remove, and the titles of its
@@ -215,7 +290,8 @@ const SOURCE_NAMES = { manual: 'Você', edition: 'Edição' };
  * made at once: it does not wait for the "Salvar" of the form.
  */
 function TitlesEditor({ work }) {
-  const alternatives = work.metadata?.alternativeTitles ?? [];
+  // The titles of the editions are written in their own list; here are the ones kept for the work.
+  const alternatives = (work.metadata?.alternativeTitles ?? []).filter((item) => item.source !== 'edition');
   const add = useAddWorkTitle(work.id);
   const remove = useRemoveWorkTitle(work.id);
   const [title, setTitle] = useState('');
@@ -244,12 +320,14 @@ function TitlesEditor({ work }) {
     <div className="flex flex-col gap-5">
       <p className="text-sm text-ink-soft">
         Os outros nomes pelos quais a obra é conhecida (em outros idiomas, ou como saiu em outro lugar). A busca os acha, e a procura de
-        duplicatas os conhece. O título principal se muda na aba Editar.
+        duplicatas os conhece. O título principal se muda na aba Editar; o de cada edição, na lista de baixo, e o que você escrever vira
+        outro nome da obra.
       </p>
       <div>
         <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">Título principal</p>
         <p className="mt-1 font-display text-lg text-ink">{work.title}</p>
       </div>
+      <EditionTitles work={work} />
       <section aria-label="Títulos alternativos">
         <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">Títulos alternativos</p>
         {alternatives.length === 0 ? (
@@ -264,19 +342,15 @@ function TitlesEditor({ work }) {
                     {[item.language && languageName(item.language), SOURCE_NAMES[item.source] ?? item.source].filter(Boolean).join(' · ')}
                   </p>
                 </div>
-                {item.source === 'edition' ? (
-                  <span className="shrink-0 text-xs text-ink-faint" title="É o título de uma edição: some com ela">da edição</span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => take(item)}
-                    disabled={busy}
-                    aria-label={`Tirar o título “${item.title}”`}
-                    className="min-h-10 shrink-0 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40"
-                  >
-                    Tirar
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => take(item)}
+                  disabled={busy}
+                  aria-label={`Tirar o título “${item.title}”`}
+                  className="min-h-10 shrink-0 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40"
+                >
+                  Tirar
+                </button>
               </li>
             ))}
           </ul>

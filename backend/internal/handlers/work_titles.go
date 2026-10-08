@@ -34,10 +34,13 @@ type AlternativeTitle struct {
 	Title    string `json:"title"`
 	Language string `json:"language"`
 	Source   string `json:"source"`
+	// EditionID is the edition a title of source "edition" belongs to.
+	EditionID int64 `json:"editionId,omitempty"`
 }
 
-// loadAlternativeTitles reads the other names of a work: the ones kept for it, and the titles of its editions that are not the
-// main title nor one of those, each once.
+// loadAlternativeTitles reads the other names of a work: the ones kept for it, and the titles of its editions that someone wrote and
+// that are not the main title nor one of those, each once. The title an edition has only because the file brought it (its file name)
+// is not a name to show, though the search still finds the work by it.
 func loadAlternativeTitles(db *sql.DB, workID int) ([]AlternativeTitle, error) {
 	var main string
 	if err := db.QueryRow(`SELECT original_title FROM works WHERE id = $1`, workID).Scan(&main); err != nil {
@@ -59,14 +62,14 @@ func loadAlternativeTitles(db *sql.DB, workID int) ([]AlternativeTitle, error) {
 		out = append(out, t)
 	}
 	rows.Close()
-	rows, err = db.Query(`SELECT e.title, COALESCE(e.language, '') FROM editions e WHERE e.work_id = $1 AND COALESCE(e.title, '') <> '' ORDER BY e.is_primary DESC, e.id`, workID)
+	rows, err = db.Query(`SELECT e.id, e.title, COALESCE(e.language, '') FROM editions e WHERE e.work_id = $1 AND e.title_manual AND COALESCE(e.title, '') <> '' ORDER BY e.is_primary DESC, e.id`, workID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var t AlternativeTitle
-		if err := rows.Scan(&t.Title, &t.Language); err != nil {
+		if err := rows.Scan(&t.EditionID, &t.Title, &t.Language); err != nil {
 			return nil, err
 		}
 		if key := dupes.NormalizeTitle(t.Title); !seen[key] {
@@ -220,4 +223,64 @@ func (h *WorkTitlesHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// maxEditionTitle is the most editions.title holds, in characters.
+const maxEditionTitle = 255
+
+// EditEdition answers PATCH /works/{id}/editions/{editionId} {"title": "..."}: the title of one edition of the work, written by owner or
+// admin. From then on it is the name of the work while that edition is the one being read, and one of the other names the sheet shows.
+// The language of the edition is not changed here: it belongs to what the file is.
+func (h *WorkTitlesHandler) EditEdition(w http.ResponseWriter, r *http.Request) {
+	workID, ok := workIDParam(r)
+	editionID, err := strconv.ParseInt(chi.URLParam(r, "editionId"), 10, 64)
+	if !ok || err != nil || editionID <= 0 {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
+	var req struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+	title := strings.Join(strings.Fields(req.Title), " ")
+	if dupes.NormalizeTitle(title) == "" || utf8.RuneCountInString(title) > maxEditionTitle {
+		http.Error(w, "O título da edição é obrigatório e tem até 255 caracteres.", http.StatusBadRequest)
+		return
+	}
+	tx, err := h.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		http.Error(w, "Error starting database transaction", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	var previous string
+	err = tx.QueryRowContext(r.Context(), `SELECT COALESCE(title, '') FROM editions WHERE id = $1 AND work_id = $2 FOR UPDATE`, editionID, workID).Scan(&previous)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "Edition not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Println("Error reading an edition to write its title:", err)
+		http.Error(w, "Error writing the title", http.StatusInternalServerError)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `UPDATE editions SET title = $1, title_manual = TRUE WHERE id = $2`, title, editionID); err != nil {
+		log.Println("Error writing the title of an edition:", err)
+		http.Error(w, "Error writing the title", http.StatusInternalServerError)
+		return
+	}
+	if err := audit.Record(r.Context(), tx, currentUserID(r), "work.edition_title", "work", strconv.Itoa(workID),
+		map[string]any{"edition": editionID, "title": title, "previous": previous}); err != nil {
+		http.Error(w, "Error recording audit entry", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Error writing the title", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"id": editionID, "title": title, "titleSet": true})
 }

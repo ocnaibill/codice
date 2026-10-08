@@ -89,8 +89,11 @@ type ContinueFile struct {
 // Edition is one publication of a work: its language, publisher and date, and
 // the files (formats) available for it.
 type Edition struct {
-	ID              int        `json:"id"`
-	Title           string     `json:"title"`
+	ID    int    `json:"id"`
+	Title string `json:"title"`
+	// TitleSet: the title was written by owner or admin, and is the name of the work while this edition is the one read. Otherwise it is
+	// what the file brought (its title, or its file name), which is only a name to be found by.
+	TitleSet        bool       `json:"titleSet"`
 	Language        string     `json:"language,omitempty"`
 	Publisher       string     `json:"publisher,omitempty"`
 	PublicationDate string     `json:"publicationDate,omitempty"`
@@ -532,7 +535,7 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 // loadEditions returns every edition of a work with its files, primary first.
 func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, error) {
 	rows, err := h.DB.Query(`
-		SELECT e.id, COALESCE(e.title, ''), COALESCE(e.language, ''), COALESCE(e.publisher, ''),
+		SELECT e.id, COALESCE(e.title, ''), e.title_manual, COALESCE(e.language, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.publication_date, ''), COALESCE(e.isbn, ''), e.is_primary,
 		       f.id, COALESCE(f.format, ''), f.size_bytes, f.availability, l.path, l.mode,
 		       COALESCE(rp.percent_complete, 0), (rp.completed_at IS NOT NULL), COALESCE(`+hasPosition("rp")+`, FALSE),
@@ -577,7 +580,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		var declaredMode string
 		var ocrPages, ocrRead, ocrFailed sql.NullInt64
 		var ocrState sql.NullString
-		if err := rows.Scan(&e.ID, &e.Title, &e.Language, &e.Publisher, &e.PublicationDate, &e.ISBN, &e.IsPrimary,
+		if err := rows.Scan(&e.ID, &e.Title, &e.TitleSet, &e.Language, &e.Publisher, &e.PublicationDate, &e.ISBN, &e.IsPrimary,
 			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &started, &needsOCR, &missing, &textStatus, &textSegments, &declaredMode, &ocrPages, &ocrRead, &ocrFailed, &ocrState); err != nil {
 			return nil, err
 		}

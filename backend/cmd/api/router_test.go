@@ -106,6 +106,7 @@ var staffRoutes = []route{
 	{"PUT", "/works/1"},
 	{"POST", "/works/1/titles"},
 	{"DELETE", "/works/1/titles/1"},
+	{"PATCH", "/works/1/editions/1"},
 	{"POST", "/works/1/contributors"},
 	{"PUT", "/works/1/contributors/order"},
 	{"DELETE", "/works/1/contributors/1/author"},
