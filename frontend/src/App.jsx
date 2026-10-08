@@ -29,6 +29,7 @@ import { AcceptInvite } from './features/auth/components/AcceptInvite';
 import { api, wsUrl, refreshAssetToken, clearAssetToken, UNAUTHORIZED_EVENT } from './lib/api';
 import { refreshLibrary } from './lib/refreshLibrary';
 import { createLibraryEvents } from './lib/libraryEvents';
+import { startRouteSync } from './lib/routeSync';
 import { ToastRegion } from './components/ui/ToastRegion';
 import { useToasts } from './components/ui/toast';
 
@@ -69,6 +70,10 @@ function App() {
   const openAdmin = useGlobalStore((state) => state.openAdmin);
   const { data: me } = useMe(isAuthenticated);
   const staff = isStaff(me);
+
+  // The screens have an address (#182): F5 opens what was open, and the back button of a phone goes back one screen. It starts as the session
+  // does, while the page still says it is initializing, so that what the address says is what is shown first.
+  useEffect(() => (isAuthenticated ? startRouteSync(useGlobalStore) : undefined), [isAuthenticated]);
 
   // Display preferences belong to the account that is signed in, not to the browser.
   useEffect(() => {

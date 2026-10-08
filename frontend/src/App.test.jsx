@@ -27,6 +27,9 @@ vi.mock('./features/library/components/EditBookModal', () => ({
 vi.mock('./features/auth/api/useMe', () => ({ useMe: () => ({ data: null }), isStaff: () => false }));
 vi.mock('./features/reader/preferences', () => ({ setPreferenceOwner: vi.fn() }));
 vi.mock('./lib/refreshLibrary', () => ({ refreshLibrary: vi.fn() }));
+// The addresses of the screens are tested apart (lib/routeSync.test.js): here, only that the app starts them.
+const routeSync = vi.hoisted(() => ({ stop: vi.fn(), start: vi.fn() }));
+vi.mock('./lib/routeSync', () => ({ startRouteSync: (...args) => { routeSync.start(...args); return routeSync.stop; } }));
 vi.mock('./components/layout/AppShell', () => ({ AppShell: ({ children }) => <main>{children}</main> }));
 vi.mock('./pages/HomePage', () => ({ HomePage: () => <div>Acervo</div> }));
 vi.mock('./features/reader/components/Reader', () => ({ Reader: () => null }));
@@ -63,6 +66,20 @@ afterEach(() => {
 });
 
 describe('App startup', () => {
+  it('starts the addresses of the screens with the session, and not before (#182)', async () => {
+    view = await mount(<App />);
+    expect(routeSync.start).not.toHaveBeenCalled();
+    expect(view.text()).toContain('Login');
+    view.unmount();
+    localStorage.setItem('codice_token', 'current-session');
+    view = await mount(<App />);
+    expect(routeSync.start).toHaveBeenCalledTimes(1);
+    expect(routeSync.stop).not.toHaveBeenCalled();
+    view.unmount();
+    view = null;
+    expect(routeSync.stop).toHaveBeenCalledTimes(1);
+  });
+
   it('opens a reset link despite a stored session and clears the token on return to login', async () => {
     window.history.replaceState(null, '', '/?reset=example');
     localStorage.setItem('codice_token', 'old-session');
