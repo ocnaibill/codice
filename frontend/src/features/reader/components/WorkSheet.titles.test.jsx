@@ -14,9 +14,9 @@ import { WorkSheet } from './WorkSheet';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const work = (alternativeTitles, contributors) => ({
+const work = (alternativeTitles, contributors, extraMeta = {}) => ({
   id: 7, title: 'Duna', author: 'Frank Herbert', coverUrl: '/covers/7.jpg', fileId: 10,
-  metadata: { description: 'Uma sinopse.', alternativeTitles, contributors },
+  metadata: { description: 'Uma sinopse.', alternativeTitles, contributors, ...extraMeta },
   editions: [{ id: 1, language: 'pt', isPrimary: true, files: [{ id: 10, format: 'epub', availability: 'available', url: '/file/10', percentComplete: 0, completed: false }] }],
 });
 
@@ -24,9 +24,9 @@ let container;
 let root;
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-async function open(titles, contributors) {
+async function open(titles, contributors, extraMeta) {
   api.get.mockImplementation(async (url) => {
-    if (url === '/works/7') return { data: work(titles, contributors) };
+    if (url === '/works/7') return { data: work(titles, contributors, extraMeta) };
     if (url === '/works/7/candidates') return { data: { data: [] } };
     if (url === '/auth/me') return { data: { role: 'reader' } };
     throw new Error(`unexpected GET ${url}`);
@@ -117,5 +117,36 @@ describe('WorkSheet: the other names of the work (#185)', () => {
   it('says nothing more when only authors are credited', async () => {
     await open([], [{ personId: 1, name: 'Frank Herbert', role: 'author', position: 0 }]);
     expect([...container.querySelectorAll('p')].some((p) => p.textContent.includes('Tradução:') || p.textContent.includes('Narração:'))).toBe(false);
+  });
+});
+
+describe('WorkSheet: what a comic or manga work is of its series (#187)', () => {
+  const seriesLine = () => [...container.querySelectorAll('p')].find((p) => p.textContent.startsWith('One Piece'));
+
+  it('says the unit and the number in the series, and whether it is a manga', async () => {
+    await open([], [], { series: 'One Piece', seriesIndex: 27.5, unit: 'chapter', comicKind: 'manga' });
+    expect(seriesLine().textContent).toBe('One Piece · Cap. 27,5');
+    expect([...container.querySelectorAll('span')].some((s) => s.textContent === 'Mangá')).toBe(true);
+  });
+
+  it('says a volume, and a one-shot with no number', async () => {
+    await open([], [], { series: 'One Piece', seriesIndex: 3, unit: 'volume', comicKind: 'comic' });
+    expect(seriesLine().textContent).toBe('One Piece · Vol. 3');
+    expect([...container.querySelectorAll('span')].some((s) => s.textContent === 'Quadrinho')).toBe(true);
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open([], [], { series: 'One Piece', seriesIndex: 0, unit: 'oneshot' });
+    expect(seriesLine().textContent).toBe('One Piece · Único');
+  });
+
+  it('says a dash for a number that is not there, and not zero', async () => {
+    await open([], [], { series: 'One Piece', seriesIndex: 0, unit: 'volume' });
+    expect(seriesLine().textContent).toBe('One Piece · Vol. —');
+  });
+
+  it('keeps saying "Livro" for a series whose works have no unit', async () => {
+    await open([], [], { series: 'One Piece', seriesIndex: 2 });
+    expect(seriesLine().textContent).toBe('One Piece · Livro 2');
+    expect([...container.querySelectorAll('span')].some((s) => s.textContent === 'Mangá' || s.textContent === 'Quadrinho')).toBe(false);
   });
 });

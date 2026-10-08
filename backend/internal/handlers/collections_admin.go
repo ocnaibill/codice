@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/audit"
 )
 
@@ -307,9 +308,11 @@ func (h *CollectionsAdminHandler) AddWork(w http.ResponseWriter, r *http.Request
 	case req.Position != nil:
 		position = *req.Position
 	case !member:
-		// At the end: after the highest number the collection has.
+		// At the end of its group: after the highest number the collection has for that unit (volumes, chapters and the rest are
+		// numbered each on its own, #187).
 		if err := tx.QueryRowContext(r.Context(), `
-			SELECT COALESCE(max(cw.position), 0) + 1 FROM collection_works cw WHERE cw.collection_id = $1`, id).Scan(&position); err != nil {
+			SELECT COALESCE(max(cw.position), 0) + 1 FROM collection_works cw JOIN works w ON w.id = cw.work_id
+			WHERE cw.collection_id = $1 AND COALESCE(w.unit, '') = $2`, id, cur.Unit).Scan(&position); err != nil {
 			h.fail(w, "add", err)
 			return
 		}
@@ -390,6 +393,9 @@ func (h *CollectionsAdminHandler) Order(w http.ResponseWriter, r *http.Request) 
 	}
 	var req struct {
 		WorkIDs []int `json:"workIds"`
+		// Unit, when it is there, says the list is of one group of the collection (#187): "volume", "chapter", "oneshot", or ""
+		// for the works with no unit. The numbers are only of that group; the rest of the collection is left as it is.
+		Unit *string `json:"unit"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
@@ -409,9 +415,18 @@ func (h *CollectionsAdminHandler) Order(w http.ResponseWriter, r *http.Request) 
 		conflict(w, "A coleção está aposentada: restaure antes de mudar.", id)
 		return
 	}
+	if req.Unit != nil && !validUnit(*req.Unit) {
+		http.Error(w, "A unidade é volume, capítulo ou único.", http.StatusBadRequest)
+		return
+	}
+	// Every work of the collection, or only those of the group that was asked for.
+	group, all := "", req.Unit == nil
+	if !all {
+		group = *req.Unit
+	}
 	rows, err := tx.QueryContext(r.Context(), `
 		SELECT cw.work_id FROM collection_works cw JOIN works w ON w.id = cw.work_id
-		WHERE cw.collection_id = $1 AND w.retired_at IS NULL`, id)
+		WHERE cw.collection_id = $1 AND w.retired_at IS NULL AND ($2 OR COALESCE(w.unit, '') = $3)`, id, all, group)
 	if err != nil {
 		h.fail(w, "order", err)
 		return
@@ -538,4 +553,107 @@ func (h *CollectionsAdminHandler) Restore(w http.ResponseWriter, r *http.Request
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Classify answers PUT /collections/{id}/classification {"unit": "chapter", "comicKind": "manga", "onlyUnset": true}: the works of the
+// collection get the unit and the kind of comic that are given (#187). A field that is not there is left alone; an empty one clears.
+// With onlyUnset the works that already have a value for a field keep it. The works in the trash are left as they are. It says how
+// many works each field changed on.
+func (h *CollectionsAdminHandler) Classify(w http.ResponseWriter, r *http.Request) {
+	id, ok := collectionIDParam(r, "id")
+	if !ok {
+		http.Error(w, "Collection not found", http.StatusNotFound)
+		return
+	}
+	var req struct {
+		Unit      *string `json:"unit"`
+		ComicKind *string `json:"comicKind"`
+		OnlyUnset bool    `json:"onlyUnset"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+	if req.Unit == nil && req.ComicKind == nil {
+		http.Error(w, "Diga a unidade ou o tipo.", http.StatusBadRequest)
+		return
+	}
+	if req.Unit != nil && !validUnit(*req.Unit) {
+		http.Error(w, "A unidade é volume, capítulo ou único.", http.StatusBadRequest)
+		return
+	}
+	if req.ComicKind != nil && !validComicKind(*req.ComicKind) {
+		http.Error(w, "O tipo é quadrinho ou mangá.", http.StatusBadRequest)
+		return
+	}
+	actor := currentUserID(r)
+	tx, ok := h.begin(w, r)
+	if !ok {
+		return
+	}
+	defer tx.Rollback()
+	if _, retired, err := lockOfficial(r.Context(), tx, id); err != nil {
+		h.fail(w, "classify", err)
+		return
+	} else if retired {
+		conflict(w, "A coleção está aposentada: restaure antes de mudar.", id)
+		return
+	}
+	changed := map[string]int{}
+	for _, f := range []struct {
+		field, column string
+		value         *string
+	}{{"unit", "unit", req.Unit}, {"comic_kind", "comic_kind", req.ComicKind}} {
+		if f.value == nil {
+			continue
+		}
+		rows, err := tx.QueryContext(r.Context(), `
+			UPDATE works SET `+f.column+` = NULLIF($2, ''), updated_at = CURRENT_TIMESTAMP
+			WHERE id IN (SELECT cw.work_id FROM collection_works cw WHERE cw.collection_id = $1)
+			  AND retired_at IS NULL AND `+f.column+` IS DISTINCT FROM NULLIF($2, '') AND (NOT $3 OR `+f.column+` IS NULL)
+			RETURNING id`, id, *f.value, req.OnlyUnset)
+		if err != nil {
+			h.fail(w, "classify", err)
+			return
+		}
+		var ids []int64
+		for rows.Next() {
+			var wid int64
+			if err := rows.Scan(&wid); err != nil {
+				rows.Close()
+				h.fail(w, "classify", err)
+				return
+			}
+			ids = append(ids, wid)
+		}
+		rows.Close()
+		changed[f.field] = len(ids)
+		if len(ids) > 0 {
+			if _, err := tx.ExecContext(r.Context(), `
+				INSERT INTO work_field_sources (work_id, field, source, actor_id)
+				SELECT unnest($1::int[]), $2, $3, NULLIF($4, '')::uuid
+				ON CONFLICT (work_id, field) DO UPDATE SET source = EXCLUDED.source, actor_id = EXCLUDED.actor_id, updated_at = now()`,
+				pq.Array(ids), f.field, sourceManual, actor); err != nil {
+				h.fail(w, "classify", err)
+				return
+			}
+		}
+	}
+	details := map[string]any{"changed": changed, "onlyUnset": req.OnlyUnset}
+	if req.Unit != nil {
+		details["unit"] = *req.Unit
+	}
+	if req.ComicKind != nil {
+		details["comicKind"] = *req.ComicKind
+	}
+	if err := audit.Record(r.Context(), tx, actor, "collection.classify", "collection", strconv.FormatInt(id, 10), details); err != nil {
+		h.fail(w, "classify", err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		h.fail(w, "classify", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"changed": changed})
 }

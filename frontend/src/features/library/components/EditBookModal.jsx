@@ -14,6 +14,7 @@ import { languageName } from '../../reader/files';
 import { useAddWorkTitle, useRemoveWorkTitle } from '../../reader/api/useWorkTitles';
 import { useAddContributor, useOrderContributors, useRemoveContributor } from '../../reader/api/useWorkContributors';
 import { peopleOf, ROLES } from '../../reader/credits';
+import { COMIC_KINDS, UNITS } from '../../collections/text';
 
 const LOCKS = [
   ['title', 'Título'], ['author', 'Autor'], ['series', 'Série'], ['cover', 'Capa'], ['isbn', 'ISBN'],
@@ -48,6 +49,9 @@ function EditForm({ work, onClose }) {
   const [author, setAuthor] = useState(firstAuthor);
   const [series, setSeries] = useState(meta.series || '');
   const [seriesIndex, setSeriesIndex] = useState(meta.seriesIndex ? String(meta.seriesIndex) : '');
+  // What a comic or manga work is (#187), said by hand.
+  const [unit, setUnit] = useState(meta.unit || '');
+  const [comicKind, setComicKind] = useState(meta.comicKind || '');
   const [isbn, setIsbn] = useState(meta.isbn || '');
   const [publisher, setPublisher] = useState(meta.publisher || '');
   const [language, setLanguage] = useState(meta.language || '');
@@ -82,6 +86,8 @@ function EditForm({ work, onClose }) {
       ...(author !== firstAuthor ? { author } : {}),
       series,
       series_index: seriesIndex ? parseFloat(seriesIndex) : 0,
+      unit,
+      comic_kind: comicKind,
       isbn,
       publisher,
       language,
@@ -117,6 +123,18 @@ function EditForm({ work, onClose }) {
         </Field>
         <Field label="Número na série">
           <input className={inputClass} type="number" step="0.1" value={seriesIndex} onChange={(e) => setSeriesIndex(e.target.value)} disabled={busy} />
+        </Field>
+        <Field label="Unidade na série">
+          <select className={inputClass} value={unit} onChange={(e) => setUnit(e.target.value)} disabled={busy}>
+            <option value="">Não informada</option>
+            {UNITS.map((u) => <option key={u.key} value={u.key}>{u.one}</option>)}
+          </select>
+        </Field>
+        <Field label="Quadrinho ou mangá">
+          <select className={inputClass} value={comicKind} onChange={(e) => setComicKind(e.target.value)} disabled={busy}>
+            <option value="">Não informado</option>
+            {COMIC_KINDS.map((k) => <option key={k.key} value={k.key}>{k.one}</option>)}
+          </select>
         </Field>
         <Field label="ISBN">
           <input className={inputClass} value={isbn} onChange={(e) => setIsbn(e.target.value)} disabled={busy} />

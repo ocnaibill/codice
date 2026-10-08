@@ -88,8 +88,12 @@ export function useRemoveFromCollection() {
 export function useOrderCollection() {
   const refresh = useRefreshing();
   return useMutation({
-    mutationFn: ({ id, items, kind }) =>
-      api.put(`${base(kind)}/${id}/order`, kind === 'personal' ? { entryIds: items.map((i) => i.entryId) } : { workIds: items.map((i) => i.id) }),
+    // `unit` is for an official collection shown in groups (#187): the numbers are of that group only ("" is the works with no unit).
+    mutationFn: ({ id, items, kind, unit }) =>
+      api.put(
+        `${base(kind)}/${id}/order`,
+        kind === 'personal' ? { entryIds: items.map((i) => i.entryId) } : { workIds: items.map((i) => i.id), ...(unit != null ? { unit } : {}) }
+      ),
     onSuccess: refresh,
   });
 }
@@ -109,6 +113,21 @@ export function useCollectionFavoriteToggle(id) {
   const refresh = useRefreshing();
   return useMutation({
     mutationFn: (favorite) => (favorite ? api.post(`/collections/${id}/favorite`) : api.delete(`/collections/${id}/favorite`)),
+    onSuccess: refresh,
+  });
+}
+
+/** Gives the unit and the kind of comic to the works of an official collection, all at once (#187): the fields that are there, only
+ *  the works that have none when `onlyUnset`. It answers how many works each field changed on. */
+export function useClassifyCollection() {
+  const refresh = useRefreshing();
+  return useMutation({
+    mutationFn: async ({ id, unit, comicKind, onlyUnset }) =>
+      (await api.put(`/collections/${id}/classification`, {
+        ...(unit != null ? { unit } : {}),
+        ...(comicKind != null ? { comicKind } : {}),
+        onlyUnset: !!onlyUnset,
+      })).data,
     onSuccess: refresh,
   });
 }

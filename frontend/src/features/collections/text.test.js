@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectionLine, wordsOf, worksText } from './text';
+import { collectionLine, COMIC_KINDS, groupByUnit, numberText, UNITS, unitLabel, wordsOf, worksText } from './text';
 
 describe('the text of a collection', () => {
   it('counts the works, in the singular too', () => {
@@ -34,5 +34,46 @@ describe('the words of each kind', () => {
   it('have every sentence for both', () => {
     expect(Object.keys(wordsOf('personal')).sort()).toEqual(Object.keys(wordsOf('official')).sort());
     for (const kind of ['personal', 'official']) for (const text of Object.values(wordsOf(kind))) expect(text.length).toBeGreaterThan(3);
+  });
+});
+
+describe('the units of a series (#187)', () => {
+  it('lists the three units and the two kinds, in the order they are shown', () => {
+    expect(UNITS.map((u) => u.key)).toEqual(['volume', 'chapter', 'oneshot']);
+    expect(COMIC_KINDS.map((k) => [k.key, k.one])).toEqual([['manga', 'Mangá'], ['comic', 'Quadrinho']]);
+  });
+
+  it('writes a number the way it is read: a comma for the half, a dash for none', () => {
+    expect(numberText(3)).toBe('3');
+    expect(numberText(27.5)).toBe('27,5');
+    expect(numberText(null)).toBe('—');
+    expect(numberText(undefined)).toBe('—');
+    expect(numberText(0)).toBe('0');
+  });
+
+  it('calls a work by its unit and number', () => {
+    expect(unitLabel('volume', 3)).toBe('Vol. 3');
+    expect(unitLabel('chapter', 27.5)).toBe('Cap. 27,5');
+    expect(unitLabel('chapter', null)).toBe('Cap. —');
+    expect(unitLabel('oneshot', 1)).toBe('Único');
+    expect(unitLabel('', 4)).toBe('4');
+    expect(unitLabel(undefined, null)).toBe('—');
+    expect(unitLabel('arc', 2)).toBe('2');
+  });
+
+  it('groups the works by unit, volumes first and those with no unit last, each keeping its order', () => {
+    const w = (id, unit) => ({ id, unit });
+    const { groups, headings } = groupByUnit([w(1, 'chapter'), w(2, ''), w(3, 'volume'), w(4, 'chapter'), w(5, undefined), w(6, 'oneshot'), w(7, 'volume')]);
+    expect(headings).toBe(true);
+    expect(groups.map((g) => [g.key, g.heading, g.works.map((x) => x.id)])).toEqual([
+      ['volume', 'Volumes', [3, 7]], ['chapter', 'Capítulos', [1, 4]], ['oneshot', 'Únicos', [6]], ['', 'Sem unidade', [2, 5]],
+    ]);
+  });
+
+  it('leaves out the groups with no work, and has no headings when only the works with no unit are there', () => {
+    expect(groupByUnit([{ id: 1 }, { id: 2, unit: '' }])).toEqual({ groups: [{ key: '', heading: 'Sem unidade', works: [{ id: 1 }, { id: 2, unit: '' }] }], headings: false });
+    expect(groupByUnit([]).groups).toEqual([]);
+    expect(groupByUnit([{ id: 1, unit: 'chapter' }]).groups.map((g) => g.key)).toEqual(['chapter']);
+    expect(groupByUnit([{ id: 1, unit: 'chapter' }]).headings).toBe(true);
   });
 });

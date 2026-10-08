@@ -31,6 +31,10 @@ type WorkMetadata struct {
 	Language        string  `json:"language"`
 	PublicationDate string  `json:"publicationDate"`
 	Description     string  `json:"description"`
+	// Unit and ComicKind are chosen by hand (#187): the unit a comic or manga work is of its series, and whether it is a comic or a
+	// manga. Empty when nobody said.
+	Unit      string `json:"unit"`
+	ComicKind string `json:"comicKind"`
 	// FirstAuthor is the name of the work's first author as it is stored, not as an account is shown it
 	// (a work with two authors is shown "A, B", and "Herbert, Frank" is how a surname-first account sees
 	// "Frank Herbert"): what an edit of the author starts from.
@@ -50,12 +54,14 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int, order string) (*W
 	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(e.isbn, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.language, ''), COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(a.name, ''),
+		       COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''),
 		       w.title_lock, w.author_lock, w.series_lock, w.cover_lock,
 		       w.isbn_lock, w.publisher_lock, w.language_lock, w.publication_date_lock, w.description_lock
 		FROM works w LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
 		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1`, workID).Scan(
 		&m.Series, &m.SeriesIndex, &m.ISBN, &m.Publisher, &m.Language, &m.PublicationDate, &m.Description, &m.FirstAuthor,
+		&m.Unit, &m.ComicKind,
 		&titleL, &authorL, &seriesL, &coverL, &isbnL, &pubL, &langL, &dateL, &descL)
 	if err != nil {
 		return nil, err
@@ -98,6 +104,10 @@ type workFields struct {
 	Language        string
 	PublicationDate string
 	Description     string
+	// Unit and ComicKind say what a comic or manga work is (#187): "volume", "chapter" or "oneshot", and "comic" or "manga".
+	// Either may be empty.
+	Unit      string
+	ComicKind string
 }
 
 // fieldChange records one field that actually changed.
@@ -122,13 +132,13 @@ func readWorkFields(tx *sql.Tx, workID int) (workFields, bool, error) {
 	err := tx.QueryRow(`
 		SELECT w.original_title, COALESCE(a.name, 'Unknown Author'), COALESCE(w.series, ''), COALESCE(w.series_index, 0),
 		       COALESCE(e.isbn, ''), COALESCE(e.publisher, ''), COALESCE(e.language, ''),
-		       COALESCE(e.publication_date, ''), COALESCE(w.description, ''), w.retired_at IS NOT NULL
+		       COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.retired_at IS NOT NULL
 		FROM works w
 		LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
 		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1 FOR UPDATE OF w`, workID).Scan(
 		&f.Title, &f.Author, &f.Series, &f.SeriesIndex, &f.ISBN, &f.Publisher, &f.Language,
-		&f.PublicationDate, &f.Description, &retired)
+		&f.PublicationDate, &f.Description, &f.Unit, &f.ComicKind, &retired)
 	return f, retired, err
 }
 
@@ -173,6 +183,16 @@ func applyWorkFields(ctx context.Context, tx *sql.Tx, workID int, actor, source 
 	if next.SeriesIndex != cur.SeriesIndex {
 		add("series_index", next.SeriesIndex)
 		note("series", strconv.FormatFloat(cur.SeriesIndex, 'f', -1, 64), strconv.FormatFloat(next.SeriesIndex, 'f', -1, 64))
+	}
+	// What a comic or manga work is (#187): no lock of its own, since nothing but a person writes them.
+	for _, f := range []struct{ name, from, to string }{
+		{"unit", cur.Unit, next.Unit},
+		{"comic_kind", cur.ComicKind, next.ComicKind},
+	} {
+		if f.to != f.from {
+			add(f.name, sql.NullString{String: f.to, Valid: f.to != ""})
+			note(f.name, f.from, f.to)
+		}
 	}
 	for _, f := range []struct {
 		name, col string
