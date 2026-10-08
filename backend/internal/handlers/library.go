@@ -279,6 +279,7 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	inProgressOnly := r.URL.Query().Get("inProgress") == "true"
 	favoriteOnly := r.URL.Query().Get("favorite") == "true"
 	formatGroup := r.URL.Query().Get("formatGroup") // "ebooks" | "comics" | "audio"
+	person, role := r.URL.Query().Get("person"), r.URL.Query().Get("role")
 	retiredOnly := isStaffRequest(r) && r.URL.Query().Get("retired") == "true"
 
 	if p := r.URL.Query().Get("page"); p != "" {
@@ -308,6 +309,27 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 		whereClauses = append(whereClauses, "("+titleMatches(placeholder)+" OR "+authorMatches(placeholder)+")")
 		args = append(args, catalogSearchPattern(search))
 		argIdx++
+	}
+	if person != "" || role != "" {
+		// The works a person is credited on, with the role if one is asked (#186). What is not a person or a role finds nothing,
+		// rather than everything.
+		id, err := strconv.Atoi(person)
+		if (person != "" && (err != nil || id <= 0)) || (role != "" && !contributorRoles[role]) {
+			whereClauses = append(whereClauses, "FALSE")
+		} else {
+			cond := "EXISTS (SELECT 1 FROM work_contributors wc WHERE wc.work_id = w.id"
+			if person != "" {
+				args = append(args, id)
+				cond += fmt.Sprintf(" AND wc.person_id = $%d", argIdx)
+				argIdx++
+			}
+			if role != "" {
+				args = append(args, role)
+				cond += fmt.Sprintf(" AND wc.role = $%d", argIdx)
+				argIdx++
+			}
+			whereClauses = append(whereClauses, cond+")")
+		}
 	}
 	if inProgressOnly {
 		// In progress is decided by the version that counts, in whatever edition or format: reading
@@ -450,7 +472,7 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta, err := loadMetadata(r.Context(), h.DB, id)
+	meta, err := loadMetadata(r.Context(), h.DB, id, order)
 	if err != nil {
 		log.Println("Error fetching metadata:", err)
 		http.Error(w, "Error fetching book", http.StatusInternalServerError)

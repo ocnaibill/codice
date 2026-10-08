@@ -22,10 +22,12 @@ type WorkContributorsHandler struct{ DB *sql.DB }
 
 // Contributor is one person credited on a work, with the role and the place among those of the same role (0 is the first).
 type Contributor struct {
-	PersonID int    `json:"personId"`
-	Name     string `json:"name"`
-	Role     string `json:"role"`
-	Position int    `json:"position"`
+	PersonID int `json:"personId"`
+	// Name is the name as it is stored; DisplayName is how the account that asks is shown it (surname first or not, #64).
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Role        string `json:"role"`
+	Position    int    `json:"position"`
 }
 
 // roleOrder is the order the roles are listed in.
@@ -34,13 +36,20 @@ var roleOrder = []string{"author", "translator", "narrator", "editor", "illustra
 // maxWorkContributors bounds the people one work can have credited.
 const maxWorkContributors = 50
 
+// displayNameSQL is the name of a person (alias `p`) as an account is shown it: surname first where that is what the account chose and
+// the surname is known, the name as it is stored otherwise. `order` is a placeholder holding the order that applies to the account.
+func displayNameSQL(p, order string) string {
+	return `CASE WHEN ` + order + `::text = 'family_first' AND ` + p + `.family_name IS NOT NULL
+		THEN ` + p + `.family_name || COALESCE(', ' || ` + p + `.given_name, '') ELSE ` + p + `.name END`
+}
+
 // loadContributors reads who is credited on a work, by role and then by place.
-func loadContributors(db *sql.DB, workID int) ([]Contributor, error) {
+func loadContributors(db *sql.DB, workID int, order string) ([]Contributor, error) {
 	rows, err := db.Query(`
-		SELECT p.id, p.name, c.role, c.position
+		SELECT p.id, p.name, `+displayNameSQL("p", "$3")+`, c.role, c.position
 		FROM work_contributors c JOIN person p ON p.id = c.person_id
 		WHERE c.work_id = $1
-		ORDER BY array_position($2::text[], c.role::text), c.position, p.name`, workID, "{"+strings.Join(roleOrder, ",")+"}")
+		ORDER BY array_position($2::text[], c.role::text), c.position, p.name`, workID, "{"+strings.Join(roleOrder, ",")+"}", order)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +57,7 @@ func loadContributors(db *sql.DB, workID int) ([]Contributor, error) {
 	out := []Contributor{}
 	for rows.Next() {
 		var c Contributor
-		if err := rows.Scan(&c.PersonID, &c.Name, &c.Role, &c.Position); err != nil {
+		if err := rows.Scan(&c.PersonID, &c.Name, &c.DisplayName, &c.Role, &c.Position); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

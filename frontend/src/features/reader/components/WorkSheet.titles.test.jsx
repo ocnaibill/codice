@@ -50,6 +50,43 @@ afterEach(() => {
   useGlobalStore.setState({ sheetWorkId: null });
 });
 
+describe('WorkSheet: the people on the work, each opening a page (#186)', () => {
+  const credits = [
+    { personId: 1, name: 'Frank Herbert', displayName: 'Herbert, Frank', role: 'author', position: 0 },
+    { personId: 2, name: 'Brian Herbert', displayName: 'Brian Herbert', role: 'author', position: 1 },
+    { personId: 3, name: 'Maria Tradutora', displayName: 'Maria Tradutora', role: 'translator', position: 0 },
+  ];
+  const named = (text) => [...container.querySelectorAll('button')].find((b) => b.textContent === text);
+
+  it('shows each author by the name the account is shown, and opens the page of the one that is pressed', async () => {
+    await open([], credits);
+    expect(named('Herbert, Frank')).toBeTruthy();
+    expect(named('Brian Herbert')).toBeTruthy();
+    expect(named('Frank Herbert')).toBeUndefined();
+    await act(async () => { named('Brian Herbert').click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ personSheetId: 2, sheetWorkId: null });
+  });
+
+  it('puts a comma between the authors, and opens the page of a translator too', async () => {
+    await open([], credits);
+    const line = [...container.querySelectorAll('p')].find((p) => p.textContent.startsWith('Herbert, Frank'));
+    expect(line.textContent).toBe('Herbert, Frank, Brian Herbert');
+    await act(async () => { named('Maria Tradutora').click(); });
+    expect(useGlobalStore.getState().personSheetId).toBe(3);
+  });
+
+  it('says the author as the card says it when the work has no credits', async () => {
+    await open([], []);
+    expect([...container.querySelectorAll('p')].some((p) => p.textContent === 'Frank Herbert')).toBe(true);
+    expect(named('Frank Herbert')).toBeUndefined();
+  });
+
+  it('falls back to the stored name when there is no name to show', async () => {
+    await open([], [{ personId: 1, name: 'Frank Herbert', role: 'author', position: 0 }]);
+    expect(named('Frank Herbert')).toBeTruthy();
+  });
+});
+
 describe('WorkSheet: the other names of the work (#185)', () => {
   it('says what the work is also known as, with the language of each, for everybody', async () => {
     await open([{ id: 3, title: 'Arrakis', language: '', source: 'manual' }, { id: 0, title: 'Dune', language: 'en', source: 'edition' }]);

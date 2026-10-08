@@ -5,6 +5,7 @@ import { HomePage } from './pages/HomePage';
 import { Reader } from './features/reader/components/Reader';
 import { WorkSheet } from './features/reader/components/WorkSheet';
 import { CollectionSheet } from './features/collections/components/CollectionSheet';
+import { PersonSheet } from './features/people/components/PersonSheet';
 import { NotesPage } from './features/notes/NotesPage';
 import { EditBookModal } from './features/library/components/EditBookModal';
 import { useGlobalStore } from './store/useGlobalStore';
@@ -285,6 +286,7 @@ function App() {
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
       {sessionsOpen && <SessionsModal onClose={() => setSessionsOpen(false)} onOpenApps={() => setAppsOpen(true)} />}
       <CollectionSheet />
+      <PersonSheet />
       <WorkSheet />
       {metadataWorkId && <EditBookModal key={`${metadataWorkId}-${metadataTab}`} workId={metadataWorkId} tab={metadataTab} onClose={closeMetadata} />}
       {activeBookId ? (

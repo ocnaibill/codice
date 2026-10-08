@@ -298,6 +298,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/admin/people/merges/{id}/dismiss", peopleHandler.Dismiss)
 	r.With(staff).Put("/admin/people/{id}/name", peopleHandler.SetName)
 	// How names are shown (#64): each account chooses, the owner sets the library's default.
+	r.With(catalog, auth).Get("/people/{id}", peopleHandler.Page)
 	r.With(auth).Get("/auth/preferences", peopleHandler.GetPreferences)
 	r.With(auth).Put("/auth/preferences", peopleHandler.SetPreferences)
 	r.With(owner).Put("/admin/name-order", peopleHandler.SetLibraryOrder)

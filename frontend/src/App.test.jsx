@@ -31,6 +31,8 @@ vi.mock('./components/layout/AppShell', () => ({ AppShell: ({ children }) => <ma
 vi.mock('./pages/HomePage', () => ({ HomePage: () => <div>Acervo</div> }));
 vi.mock('./features/reader/components/Reader', () => ({ Reader: () => null }));
 vi.mock('./features/reader/components/WorkSheet', () => ({ WorkSheet: () => null }));
+vi.mock('./features/collections/components/CollectionSheet', () => ({ CollectionSheet: () => <div>Página da coleção montada</div> }));
+vi.mock('./features/people/components/PersonSheet', () => ({ PersonSheet: () => <div>Página da pessoa montada</div> }));
 vi.mock('./features/upload/components/UploadModal', () => ({ UploadModal: () => null }));
 vi.mock('./features/auth/components/Auth', () => ({ Auth: () => <div>Login</div> }));
 vi.mock('./features/admin/AdminPage', () => ({ AdminPage: () => null }));
@@ -128,6 +130,13 @@ describe('App startup', () => {
     expect(view.text()).toContain('Metadados 7 edit');
     await view.click(view.buttonMatching(/^Metadados 7/));
     expect(store.closeMetadata).toHaveBeenCalled();
+  });
+
+  it('has the pages of a collection and of a person mounted next to the sheet of a work, to open over the library', async () => {
+    localStorage.setItem('codice_token', 'current-session');
+    view = await mount(<App />);
+    expect(view.text()).toContain('Página da coleção montada');
+    expect(view.text()).toContain('Página da pessoa montada');
   });
 
   it('has no metadata open unless a work asked for it', async () => {

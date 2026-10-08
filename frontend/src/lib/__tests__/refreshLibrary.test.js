@@ -6,6 +6,6 @@ describe('refreshLibrary', () => {
     const client = { invalidateQueries: vi.fn() };
     refreshLibrary(client);
     expect(client.invalidateQueries.mock.calls.map(([arg]) => arg.queryKey[0]).sort())
-      .toEqual(['collection', 'collections', 'favorites', 'stats', 'work', 'works']);
+      .toEqual(['collection', 'collections', 'favorites', 'person', 'stats', 'work', 'works']);
   });
 });
