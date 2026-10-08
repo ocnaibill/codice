@@ -19,7 +19,8 @@ export const useGlobalStore = create((set) => ({
   personSheetId: null,
   openPerson: (id) => set({ personSheetId: id, sheetWorkId: null }),
   closePerson: () => set({ personSheetId: null }),
-  openCollection: (id) => set({ collectionSheetId: id }),
+  // A collection opens in the place of the sheet of a work or of a person that opened it (one change, so that the address sees it as one).
+  openCollection: (id) => set({ collectionSheetId: id, sheetWorkId: null, personSheetId: null }),
   closeCollection: () => set({ collectionSheetId: null }),
   // The work whose metadata and suggestions are open for owner/admin (#70), and which part ('suggestions' or 'edit').
   metadataWorkId: null,

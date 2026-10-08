@@ -3,6 +3,7 @@ import { LoadError } from '../../../components/ui/LoadError';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { authenticatedUrl } from '../../../lib/api';
 import { useWork } from '../api/useWork';
+import { useWorkSeries } from '../api/useWorkSeries';
 import { useSetCompletion, useSetWorkFinished } from '../api/useCompletion';
 import { reasonOf, useSplitEdition } from '../api/useVersions';
 import { isStaff, useMe } from '../../auth/api/useMe';
@@ -216,6 +217,9 @@ export function WorkSheet() {
   const staff = isStaff(useMe().data);
   const pending = useCandidates(workId, { enabled: staff }).data?.length ?? 0;
   const openWork = useGlobalStore((state) => state.openWork);
+  const openCollection = useGlobalStore((state) => state.openCollection);
+  // The official collection of the series the work is in, to open it from the name of the series (#187).
+  const seriesCollection = useWorkSeries(workId).data?.collection ?? null;
   const splitEdition = useSplitEdition();
   const [joining, setJoining] = React.useState(false);
   const [splitting, setSplitting] = React.useState(null); // the edition waiting for a yes
@@ -290,7 +294,19 @@ export function WorkSheet() {
                   <div>
                     {meta?.series && (
                       <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-widest text-brand">
-                        {meta.series}{meta.unit ? ` · ${unitLabel(meta.unit, meta.seriesIndex || null)}` : meta.seriesIndex ? ` · Livro ${meta.seriesIndex}` : ''}
+                        {seriesCollection ? (
+                          <button
+                            type="button"
+                            onClick={() => openCollection(seriesCollection.id)}
+                            title="Ver as outras obras da série"
+                            className="font-semibold uppercase tracking-widest underline decoration-dotted decoration-brand/60 underline-offset-4 hover:decoration-solid"
+                          >
+                            {meta.series}
+                          </button>
+                        ) : (
+                          meta.series
+                        )}
+                        {meta.unit ? ` · ${unitLabel(meta.unit, meta.seriesIndex || null)}` : meta.seriesIndex ? ` · Livro ${meta.seriesIndex}` : ''}
                       </p>
                     )}
                     <h3 className="font-display text-4xl leading-tight text-ink sm:text-5xl">{work.title}</h3>

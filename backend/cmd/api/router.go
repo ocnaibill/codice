@@ -203,6 +203,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Put("/works/{id}", libHandler.UpdateWork)
 	r.With(staff).Post("/works/{id}/titles", workTitles.Add)
 	r.With(staff).Delete("/works/{id}/titles/{titleId}", workTitles.Remove)
+	r.With(staff).Patch("/works/{id}/editions/{editionId}", workTitles.EditEdition)
 	r.With(staff).Post("/works/{id}/contributors", workContributors.Add)
 	r.With(staff).Put("/works/{id}/contributors/order", workContributors.Order)
 	r.With(staff).Delete("/works/{id}/contributors/{personId}/{role}", workContributors.Remove)

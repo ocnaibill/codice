@@ -11,6 +11,15 @@ export function useAddWorkTitle(workId) {
   });
 }
 
+/** The title of one edition of a work, written by owner or admin (#185): from then on it is a name of the work, and the one it goes by while that edition is read. */
+export function useEditEditionTitle(workId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ editionId, title }) => (await api.patch(`/works/${workId}/editions/${editionId}`, { title })).data,
+    onSuccess: () => refreshLibrary(queryClient),
+  });
+}
+
 /** The work stops going by a name that was kept for it. */
 export function useRemoveWorkTitle(workId) {
   const queryClient = useQueryClient();

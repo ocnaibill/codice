@@ -51,3 +51,22 @@ describe('the tab of the administration (#182)', () => {
     expect(store.getState()).toMatchObject({ adminOpen: true, adminTab: 'jobs' });
   });
 });
+
+describe('opening a collection (#187)', () => {
+  it('opens it in the place of the sheet of a work and of a person that opened it, in one change', () => {
+    store.setState({ sheetWorkId: 7, personSheetId: 3, collectionSheetId: null });
+    let changes = 0;
+    const stop = store.subscribe(() => { changes += 1; });
+    store.getState().openCollection(4);
+    stop();
+    expect(store.getState()).toMatchObject({ collectionSheetId: 4, sheetWorkId: null, personSheetId: null });
+    expect(changes).toBe(1);
+  });
+
+  it('is still over what is under it when a sheet opens after it', () => {
+    store.getState().openCollection(4);
+    store.getState().openWork(9);
+    expect(store.getState()).toMatchObject({ collectionSheetId: 4, sheetWorkId: 9 });
+  });
+});
+
