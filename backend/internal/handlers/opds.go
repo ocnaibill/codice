@@ -164,7 +164,7 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(wp.file_format, ''), COALESCE(wp.file_path, ''), w.created_at, wp.file_id, COALESCE(wp.file_mode, '')
 		`+catalogFrom+`
 		WHERE w.retired_at IS NULL
-		  AND (LOWER(w.original_title) LIKE LOWER($1) OR `+authorMatches("$1")+`)
+		  AND (`+titleMatches("$1")+` OR `+authorMatches("$1")+`)
 		ORDER BY w.id DESC LIMIT 50
 	`, catalogSearchPattern(query))
 	if err != nil {

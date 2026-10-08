@@ -40,6 +40,14 @@ func authorLabelFor(order string) string {
 	return authorLabel
 }
 
+// titleMatches reports, for the placeholder given, whether the work goes by a name that matches a LIKE pattern: its main title, an
+// alternative title it keeps, or the title of one of its editions (#185).
+func titleMatches(placeholder string) string {
+	return `(LOWER(w.original_title) LIKE LOWER(` + placeholder + `)
+		OR EXISTS (SELECT 1 FROM work_titles wt WHERE wt.work_id = w.id AND LOWER(wt.title) LIKE LOWER(` + placeholder + `))
+		OR EXISTS (SELECT 1 FROM editions we WHERE we.work_id = w.id AND LOWER(we.title) LIKE LOWER(` + placeholder + `)))`
+}
+
 // authorMatches reports, for the placeholder given, whether any author of the
 // work matches a LIKE pattern.
 func authorMatches(placeholder string) string {

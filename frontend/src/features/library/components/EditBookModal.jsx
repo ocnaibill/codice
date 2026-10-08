@@ -10,6 +10,8 @@ import { reasonOf } from '../../reader/api/useVersions';
 import { WorkSuggestions } from '../../reader/components/WorkSuggestions';
 import { ConfirmDialog } from '../../admin/components/ConfirmDialog';
 import { useDialog } from '../../../lib/useDialog';
+import { languageName } from '../../reader/files';
+import { useAddWorkTitle, useRemoveWorkTitle } from '../../reader/api/useWorkTitles';
 
 const LOCKS = [
   ['title', 'Título'], ['author', 'Autor'], ['series', 'Série'], ['cover', 'Capa'], ['isbn', 'ISBN'],
@@ -185,6 +187,99 @@ function EditForm({ work, onClose }) {
   );
 }
 
+const SOURCE_NAMES = { manual: 'Você', edition: 'Edição' };
+
+/**
+ * The other names of a work (#185, DEC-131): the ones kept for it, which owner and admin add and remove, and the titles of its
+ * editions, which are read from there. The search finds the work by any of them, and the duplicate detection knows them. Each change is
+ * made at once: it does not wait for the "Salvar" of the form.
+ */
+function TitlesEditor({ work }) {
+  const alternatives = work.metadata?.alternativeTitles ?? [];
+  const add = useAddWorkTitle(work.id);
+  const remove = useRemoveWorkTitle(work.id);
+  const [title, setTitle] = useState('');
+  const [language, setLanguage] = useState('');
+  const [message, setMessage] = useState('');
+  const busy = add.isPending || remove.isPending;
+
+  const submit = (event) => {
+    event.preventDefault();
+    if (!title.trim()) return;
+    setMessage('');
+    add.mutate(
+      { title, language: language.trim() },
+      {
+        onSuccess: () => { setTitle(''); setLanguage(''); },
+        onError: (error) => setMessage(reasonOf(error, 'Não foi possível acrescentar o título.')),
+      }
+    );
+  };
+  const take = (item) => {
+    setMessage('');
+    remove.mutate(item.id, { onError: (error) => setMessage(reasonOf(error, 'Não foi possível tirar o título.')) });
+  };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <p className="text-sm text-ink-soft">
+        Os outros nomes pelos quais a obra é conhecida (em outros idiomas, ou como saiu em outro lugar). A busca os acha, e a procura de
+        duplicatas os conhece. O título principal se muda na aba Editar.
+      </p>
+      <div>
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">Título principal</p>
+        <p className="mt-1 font-display text-lg text-ink">{work.title}</p>
+      </div>
+      <section aria-label="Títulos alternativos">
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">Títulos alternativos</p>
+        {alternatives.length === 0 ? (
+          <p className="mt-2 text-sm text-ink-soft">A obra ainda não tem outro título.</p>
+        ) : (
+          <ul className="mt-2 flex flex-col gap-2">
+            {alternatives.map((item) => (
+              <li key={`${item.id}-${item.title}`} className="flex items-center gap-3 rounded-lg border border-border-hairline bg-white px-3 py-2">
+                <div className="min-w-0 flex-1 text-sm">
+                  <p className="truncate font-semibold text-ink">{item.title}</p>
+                  <p className="truncate text-xs text-ink-soft">
+                    {[item.language && languageName(item.language), SOURCE_NAMES[item.source] ?? item.source].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                {item.source === 'edition' ? (
+                  <span className="shrink-0 text-xs text-ink-faint" title="É o título de uma edição: some com ela">da edição</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => take(item)}
+                    disabled={busy}
+                    aria-label={`Tirar o título “${item.title}”`}
+                    className="min-h-10 shrink-0 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40"
+                  >
+                    Tirar
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-3 border-t border-border-hairline pt-4">
+        <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs font-medium text-ink-soft">
+          Outro título
+          <input className={inputClass} value={title} maxLength={512} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
+        </label>
+        <label className="flex w-32 flex-col gap-1 text-xs font-medium text-ink-soft">
+          Idioma (opcional)
+          <input className={inputClass} value={language} maxLength={16} onChange={(e) => setLanguage(e.target.value)} placeholder="en, ja, pt-BR…" disabled={busy} />
+        </label>
+        <button type="submit" disabled={busy || !title.trim()} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40">
+          Acrescentar
+        </button>
+        {message && <p role="alert" className="basis-full text-sm text-danger">{message}</p>}
+      </form>
+    </div>
+  );
+}
+
 /**
  * The metadata of a work, for owner and admin (#70): what the providers suggested, to accept or reject, and
  * the fields, to correct by hand. It is opened from the sheet of the work and from the queue in Administração.
@@ -199,7 +294,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
 
   useDialog(dialogRef, { onEscape: onClose, initialFocus: closeRef });
 
-  const tabs = [['suggestions', pending > 0 ? `Sugestões (${pending})` : 'Sugestões'], ['edit', 'Editar']];
+  const tabs = [['suggestions', pending > 0 ? `Sugestões (${pending})` : 'Sugestões'], ['edit', 'Editar'], ['titles', 'Títulos']];
 
   return (
     <div ref={dialogRef} className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/60 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label="Metadados da obra">
@@ -231,6 +326,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
           {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta obra.</LoadError>}
           {work && tab === 'suggestions' && <WorkSuggestions workId={work.id} emptyText="Nenhuma sugestão esperando decisão." />}
           {work && tab === 'edit' && <EditForm work={work} onClose={onClose} />}
+          {work && tab === 'titles' && <TitlesEditor work={work} />}
         </div>
       </div>
     </div>

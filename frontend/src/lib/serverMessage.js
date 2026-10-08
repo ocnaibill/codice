@@ -107,6 +107,7 @@ const EXACT = {
   // The library
   'Book not found': 'Obra não encontrada.',
   'Collection not found': 'Coleção não encontrada.',
+  'Title not found': 'Esse título não está mais na obra.',
   'Work not found': 'Obra não encontrada.',
   'Book or file not found': 'Obra ou arquivo não encontrado.',
   'Work or edition not found': 'Obra ou edição não encontrada.',
