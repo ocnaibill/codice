@@ -24,6 +24,7 @@ import { toast } from '../../../components/ui/toast';
 import { FinishWorkPrompt } from './FinishWorkPrompt';
 import { NextInSeriesPrompt } from './NextInSeriesPrompt';
 import { stepText } from '../../collections/text';
+import { titleInUse } from '../titles';
 import { EquivalentPositionPrompt } from './EquivalentPositionPrompt';
 import { PlaceNotice } from './PlaceNotice';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
@@ -235,6 +236,8 @@ export function Reader() {
 
   // Determine file format from backend metadata, fallback to file extension
   const format = (file.format || file.url.split('.').pop() || '').toLowerCase();
+  // The name the work goes by while this edition is the one read: the title written for it, if someone wrote one (#185).
+  const shownTitle = titleInUse(book, file.edition);
   const fileUrl = file.url;
   // The saved position of this file, unless the person chose to start over. Older readers
   // understand it as text (a CFI, a page number, seconds): the server keeps that form in sync.
@@ -305,7 +308,7 @@ export function Reader() {
             <p className="truncate font-mono text-[10px] uppercase tracking-widest text-ink-faint">
               {book.author} · {format.toUpperCase()}{file.edition?.language ? ` · ${languageName(file.edition.language)}` : ''}
             </p>
-            <h1 className="truncate font-display text-xl leading-tight text-ink sm:text-2xl">{book.title}</h1>
+            <h1 className="truncate font-display text-xl leading-tight text-ink sm:text-2xl">{shownTitle}</h1>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -400,7 +403,7 @@ export function Reader() {
 
       {nextPrompt && nextStep && !finishPrompt && (
         <NextInSeriesPrompt
-          finished={book.title}
+          finished={shownTitle}
           next={stepText(nextStep)}
           onRead={() => openBook(nextStep.id)}
           onDismiss={() => setNextPrompt(false)}

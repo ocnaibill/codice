@@ -398,3 +398,45 @@ func TestWorkTitles_TheOPDSSearchFindsAWorkByAnyOfItsNames(t *testing.T) {
 		t.Errorf("OPDS search for an alternative title: %s", body)
 	}
 }
+
+func TestWorkTitles_TheCardCarriesTheTitleWrittenForTheEditionBeingRead(t *testing.T) {
+	s := newCatalogStack(t)
+	nuvem := s.addWork("A Nuvem 2", "Neal Shusterman", "nuvem.epub", "epub")
+	pt := s.primaryFile(nuvem)
+	en := s.addEdition(nuvem, "en")
+	enFile := s.addFile(en, "epub", "cloud.epub", "managed")
+	s.exec(`UPDATE editions SET title = 'The Cloud 2', title_manual = TRUE WHERE id = $1`, en)
+	card := func(a actor) Work {
+		l := s.list(a, "")
+		if len(l.Data) != 1 {
+			t.Fatalf("the list = %v", ids(l.Data))
+		}
+		return l.Data[0]
+	}
+	if w := card(ana); w.Continue != nil || w.Title != "A Nuvem 2" {
+		t.Errorf("nobody read: %+v %q", w.Continue, w.Title)
+	}
+	// Reading the English edition: the card says its title; the main title stays what it is.
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete) VALUES ($1, $2, '3', 30)`, idAna, enFile)
+	if w := card(ana); w.Continue == nil || w.Continue.Title != "The Cloud 2" || w.Title != "A Nuvem 2" {
+		t.Errorf("reading the English one: %+v %q", w.Continue, w.Title)
+	}
+	// It is the reader's: another person reading the Portuguese edition, whose title nobody wrote, has none.
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete) VALUES ($1, $2, '3', 30)`, idBob, pt)
+	if w := card(bob); w.Continue == nil || w.Continue.Title != "" || w.Title != "A Nuvem 2" {
+		t.Errorf("bob in the Portuguese edition: %+v %q", w.Continue, w.Title)
+	}
+	if w := card(ana); w.Continue.Title != "The Cloud 2" {
+		t.Errorf("ana keeps hers: %+v", w.Continue)
+	}
+	// A title the file brought is not a name to show: with it only found, the card says none.
+	s.exec(`UPDATE editions SET title_manual = FALSE WHERE id = $1`, en)
+	if w := card(ana); w.Continue.Title != "" {
+		t.Errorf("a title nobody wrote: %q", w.Continue.Title)
+	}
+	// The detail says the same.
+	s.exec(`UPDATE editions SET title_manual = TRUE WHERE id = $1`, en)
+	if w, _ := s.detail(ana, nuvem); w.Continue == nil || w.Continue.Title != "The Cloud 2" {
+		t.Errorf("detail: %+v", w.Continue)
+	}
+}

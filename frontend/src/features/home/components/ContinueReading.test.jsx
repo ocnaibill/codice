@@ -66,3 +66,24 @@ describe('ContinueReading', () => {
     expect(card('Outro').textContent).toContain('X');
   });
 });
+
+describe('ContinueReading: the title of the edition being read (#185)', () => {
+  const english = { ...work, continue: { ...work.continue, title: 'Dune' } };
+
+  it('says the title written for the edition read last, and keeps the main title otherwise', async () => {
+    await render([english, plain, { ...work, id: 9, title: 'Sem título escrito', continue: { ...work.continue, title: '' } }]);
+    const titles = [...container.querySelectorAll('article h3')].map((h) => h.textContent);
+    expect(titles).toEqual(['Dune', 'Outro', 'Sem título escrito']);
+  });
+
+  it('still opens the work and the file it was reading', async () => {
+    await render([english]);
+    await act(async () => { card('Dune').querySelector('button').click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 11 });
+  });
+
+  it('puts the title in the cover when there is none, so that the placeholder says the name read', async () => {
+    await render([{ ...english, coverUrl: '' }]);
+    expect(container.querySelector('article [role="img"]').getAttribute('aria-label')).toBe('Dune');
+  });
+});

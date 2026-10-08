@@ -1,4 +1,5 @@
 import { AuthorLinks } from '../../people/components/AuthorLinks';
+import { cardTitle } from '../../reader/titles';
 import iconPin from '../../../assets/icons/s2-pin.svg';
 import iconChapter from '../../../assets/icons/s2-chapter.svg';
 import iconContinueBtn from '../../../assets/icons/s2-continue-btn.svg';
@@ -20,6 +21,7 @@ function pageLabel(format, progress) {
 }
 
 function InProgressCard({ item, onOpen }) {
+  const title = cardTitle(item); // the name of the edition being read, when someone wrote one for it
   // What to continue is the file read last, which is not always the book's primary one: someone
   // reading the English EPUB of a book whose main file is the Portuguese one continues that.
   const last = item.continue;
@@ -40,7 +42,7 @@ function InProgressCard({ item, onOpen }) {
     <article className="library-reading-card relative flex flex-col justify-between">
       <div className="flex w-full items-start gap-4">
         <div className="relative h-36 w-24 shrink-0 overflow-hidden rounded-sm bg-surface-alt shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]">
-          <WorkCover item={item} className="h-full w-full object-cover" />
+          <WorkCover item={{ ...item, title }} className="h-full w-full object-cover" />
           {(last?.format || item.format) && (
             <span className="absolute left-1 top-1 rounded-sm bg-[rgba(26,28,31,0.85)] px-1.5 py-0.5 font-body text-[10px] font-bold text-white">
               {(last?.format || item.format).toUpperCase()}
@@ -57,7 +59,7 @@ function InProgressCard({ item, onOpen }) {
             )}
             {item.isFavorite && <img src={iconPin} alt="Favorito" className="size-[9px]" />}
           </div>
-          <h3 className="pt-1 font-body text-xl font-bold tracking-[-0.2px] text-ink">{item.title}</h3>
+          <h3 className="pt-1 font-body text-xl font-bold tracking-[-0.2px] text-ink">{title}</h3>
           <p className="font-body text-[13px] tracking-[0.065px] text-ink-soft"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
           {location && (
             <div className="mt-3 flex items-center gap-1 rounded-sm bg-surface px-2 py-1">

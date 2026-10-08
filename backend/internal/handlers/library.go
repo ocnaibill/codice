@@ -77,9 +77,12 @@ type CompletionSummary struct {
 
 // ContinueFile is the file the caller read most recently in a work, with their position in it.
 type ContinueFile struct {
-	FileID          int64   `json:"fileId"`
-	Format          string  `json:"format,omitempty"`
-	Language        string  `json:"language,omitempty"`
+	FileID   int64  `json:"fileId"`
+	Format   string `json:"format,omitempty"`
+	Language string `json:"language,omitempty"`
+	// Title is the title that owner or admin wrote for the edition of this file, which is the name of the work while it is the one
+	// being read; empty when nobody wrote one.
+	Title           string  `json:"title,omitempty"`
 	URL             string  `json:"url,omitempty"`
 	Position        string  `json:"position,omitempty"`
 	PercentComplete float64 `json:"percentComplete"`
@@ -189,7 +192,7 @@ const cardColumns = `
 	COALESCE(wp.file_mode, ''),
 	lastrp.file_id, COALESCE(lastrp.format, ''), lastrp.path, COALESCE(lastrp.mode, ''),
 	COALESCE(lastrp.position, ''), COALESCE(lastrp.percent_complete, 0), (lastrp.completed_at IS NOT NULL),
-	COALESCE(lastrp.language, ''), (wrs.work_id IS NOT NULL),
+	COALESCE(lastrp.language, ''), COALESCE(lastrp.title, ''), (wrs.work_id IS NOT NULL),
 	(SELECT count(*) FROM files fc JOIN editions ec ON ec.id = fc.edition_id
 	  WHERE ec.work_id = w.id AND fc.availability = 'available'),
 	(SELECT count(DISTINCT lower(fc.format)) FROM files fc JOIN editions ec ON ec.id = fc.edition_id
@@ -216,7 +219,8 @@ var cardJoins = `
 var lastReadJoin = `
 	LEFT JOIN work_reading_state wrs ON wrs.work_id = w.id AND wrs.user_id = $1
 	LEFT JOIN LATERAL (
-		SELECT r.file_id, r.position, r.percent_complete, r.completed_at, f2.format, e2.language, l.path, l.mode
+		SELECT r.file_id, r.position, r.percent_complete, r.completed_at, f2.format, e2.language, l.path, l.mode,
+		       CASE WHEN e2.title_manual THEN e2.title END AS title
 		FROM reading_progress r
 		JOIN files f2 ON f2.id = r.file_id
 		JOIN editions e2 ON e2.id = f2.edition_id
@@ -250,7 +254,7 @@ func scanWork(row rowScanner) (Work, error) {
 		&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
 		&fileID, &work.Retired, &mode,
 		&lastFile, &last.Format, &lastPath, &lastMode, &last.Position, &last.PercentComplete, &last.Completed,
-		&last.Language, &finished, &work.FileCount, &work.FormatCount, &authorIDs, &authorNames,
+		&last.Language, &last.Title, &finished, &work.FileCount, &work.FormatCount, &authorIDs, &authorNames,
 	)
 	if err != nil {
 		return work, err

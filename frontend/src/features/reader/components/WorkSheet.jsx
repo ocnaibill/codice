@@ -16,7 +16,32 @@ import { sheetNote } from '../../../lib/ocr';
 import { fileTextState } from '../../../lib/processing';
 import { peopleOf, ROLES } from '../credits';
 import { COMIC_KINDS, unitLabel } from '../../collections/text';
+import { otherTitles, titleInUse } from '../titles';
 import { AuthorLinks } from '../../people/components/AuthorLinks';
+
+/**
+ * The other names of the work, under the one it goes by (#185): smaller than it, each on a line, with its language when it has one.
+ * Three show; the rest are one press away.
+ */
+function OtherTitles({ titles }) {
+  const [all, setAll] = React.useState(false);
+  const shown = all ? titles : titles.slice(0, 3);
+  return (
+    <div aria-label="Outros títulos" className="mt-1.5 flex flex-col">
+      {shown.map((t) => (
+        <p key={t.title} className="font-display text-xl leading-snug text-ink-soft sm:text-2xl">
+          {t.title}
+          {t.language && <span className="ml-2 align-middle font-body text-xs text-ink-faint">{languageName(t.language)}</span>}
+        </p>
+      ))}
+      {titles.length > 3 && (
+        <button type="button" onClick={() => setAll(!all)} aria-expanded={all} className="mt-1 self-start text-xs text-ink-soft underline decoration-dotted underline-offset-4 hover:text-ink">
+          {all ? 'Mostrar menos' : `Mais ${titles.length - 3}`}
+        </button>
+      )}
+    </div>
+  );
+}
 
 const NOTE_TONE = { ok: 'text-success', warn: 'text-warning', plain: 'text-ink-soft' };
 
@@ -243,7 +268,6 @@ export function WorkSheet() {
   if (!workId) return null;
 
   const meta = work?.metadata;
-  const alternatives = meta?.alternativeTitles ?? [];
   const authors = peopleOf(meta?.contributors, 'author');
   const otherRoles = ROLES.filter((r) => r.key !== 'author').map((r) => ({ ...r, people: peopleOf(meta?.contributors, r.key) })).filter((r) => r.people.length > 0);
   const editions = work?.editions ?? [];
@@ -254,6 +278,9 @@ export function WorkSheet() {
     ?? files.find(canRead);
   const canContinue = work?.inProgress && leadFile?.id === work?.continue?.fileId;
   const leadEdition = editions.find((edition) => edition.files.some((file) => file.id === leadFile?.id));
+  // The work goes by the title written for the edition in focus, if there is one; its other names go under it.
+  const shownTitle = work ? titleInUse(work, leadEdition) : '';
+  const others = work ? otherTitles(work, shownTitle) : [];
   const leadDetails = [
     COMIC_KINDS.find((k) => k.key === meta?.comicKind)?.one,
     leadEdition && languageName(leadEdition.language),
@@ -268,7 +295,7 @@ export function WorkSheet() {
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border-hairline bg-[#faf8f4] px-4 py-3 sm:px-6">
           <div className="min-w-0">
             <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">Biblioteca / Ficha da obra</p>
-            <h2 className="truncate font-display text-2xl text-ink sm:text-3xl">{work?.title ?? 'Carregando…'}</h2>
+            <h2 className="truncate font-display text-2xl text-ink sm:text-3xl">{shownTitle || 'Carregando…'}</h2>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {staff && work && <WorkMenu workId={work.id} pending={pending} />}
@@ -309,7 +336,8 @@ export function WorkSheet() {
                         {meta.unit ? ` · ${unitLabel(meta.unit, meta.seriesIndex || null)}` : meta.seriesIndex ? ` · Livro ${meta.seriesIndex}` : ''}
                       </p>
                     )}
-                    <h3 className="font-display text-4xl leading-tight text-ink sm:text-5xl">{work.title}</h3>
+                    <h3 className="font-display text-4xl leading-tight text-ink sm:text-5xl">{shownTitle}</h3>
+                    {others.length > 0 && <OtherTitles key={work.id} titles={others} />}
                     <p className="mt-1 font-body text-sm font-semibold text-brand sm:text-base">
                       {authors.length > 0 ? <PeopleLinks people={authors} /> : work.author}
                     </p>
@@ -319,18 +347,6 @@ export function WorkSheet() {
                           <React.Fragment key={r.key}>
                             {i > 0 && ' · '}
                             {r.heading}: <PeopleLinks people={r.people} />
-                          </React.Fragment>
-                        ))}
-                      </p>
-                    )}
-                    {alternatives.length > 0 && (
-                      <p className="mt-1 text-xs text-ink-soft sm:text-sm">
-                        Também conhecida como{' '}
-                        {alternatives.map((t, i) => (
-                          <React.Fragment key={`${t.id}-${t.title}`}>
-                            {i > 0 && ' · '}
-                            <span className="text-ink">{t.title}</span>
-                            {t.language && <span className="text-ink-faint"> ({languageName(t.language)})</span>}
                           </React.Fragment>
                         ))}
                       </p>

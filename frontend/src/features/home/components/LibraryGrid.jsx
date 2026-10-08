@@ -10,6 +10,7 @@ import { authenticatedUrl } from '../../../lib/api';
 import { readLabel, readTarget } from '../../reader/readTarget';
 import { formatBadge, formatCount } from '../utils/format';
 import { goOnText, newText, seriesCounts } from '../../collections/text';
+import { cardTitle } from '../../reader/titles';
 
 const STATUS_LABEL = {
   READY: 'Pronto para ler',
@@ -39,6 +40,7 @@ function FavoriteButton({ item }) {
 }
 
 function BookCard({ item, onOpen, onSheet }) {
+  const title = cardTitle(item); // the name of the edition being read, when someone wrote one for it
   const isReady = item.mediaStatus === 'READY' || !item.mediaStatus;
   return (
     <article className="library-book">
@@ -48,7 +50,7 @@ function BookCard({ item, onOpen, onSheet }) {
           title="Ver edições e arquivos"
           className="library-book-cover"
         >
-          <WorkCover item={item} />
+          <WorkCover item={{ ...item, title }} />
           {item.format && (
             <span className="absolute left-1.5 top-1.5 rounded-sm bg-ink/90 px-1.5 py-1 font-mono text-[9px] text-white">
               {formatBadge(item)}
@@ -64,7 +66,7 @@ function BookCard({ item, onOpen, onSheet }) {
               item.mediaStatus ??
               'Pronto para ler'}
           </p>
-          <h3 title={item.title}>{item.title}</h3>
+          <h3 title={title}>{title}</h3>
           <p className="library-author"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
           {item.tags?.length > 0 && (
             <p className="library-book-tags">{item.tags.join(' · ')}</p>
@@ -79,7 +81,7 @@ function BookCard({ item, onOpen, onSheet }) {
             else onOpen(item.id, target.fileId);
           }}
           title={readLabel(item)}
-          aria-label={`${readLabel(item)}: ${item.title}`}
+          aria-label={`${readLabel(item)}: ${title}`}
         >
           <img src={iconActionRead} alt="" className="h-4 w-5" />
         </button>
@@ -88,7 +90,7 @@ function BookCard({ item, onOpen, onSheet }) {
           <a
             href={authenticatedUrl(item.fileUrl)}
             title="Baixar"
-            aria-label={`Baixar: ${item.title}`}
+            aria-label={`Baixar: ${title}`}
           >
             <img src={iconActionDownload} alt="" className="size-4" />
           </a>
