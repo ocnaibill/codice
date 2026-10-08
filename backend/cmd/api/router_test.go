@@ -235,6 +235,7 @@ func TestAuthRoutes_RequireASession(t *testing.T) {
 		{"GET", "/auth/app-tokens"},
 		{"DELETE", "/auth/app-tokens/" + someUUID},
 		{"GET", "/works"},
+		{"GET", "/works/1/series"},
 		{"GET", "/notes"},
 		{"GET", "/notes/facets"},
 		{"GET", "/graph/types"},

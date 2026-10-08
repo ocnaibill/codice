@@ -633,3 +633,50 @@ describe('CollectionSheet: classifying the works of a collection (#187)', () => 
     expect(form()).toBeNull();
   });
 });
+
+describe('CollectionSheet: where to go on in a series (#187)', () => {
+  const step = (over = {}) => ({ id: 2, title: 'Câmara Secreta', unit: 'chapter', position: 2, started: false, begun: true, ...over });
+  const goOnButton = () => [...container.querySelectorAll('button')].find((b) => /^(Continuar|Próximo|Começar):/.test(b.textContent.trim()));
+
+  it('offers to begin, to go on with what was begun, or to read the next, and opens the reader on it', async () => {
+    for (const [over, text] of [
+      [{ begun: false }, 'Começar: Cap. 2'],
+      [{ begun: true }, 'Próximo: Cap. 2'],
+      [{ begun: true, started: true }, 'Continuar: Cap. 2'],
+    ]) {
+      await open({ data: { ...detail(trio), continue: step(over) } });
+      expect(goOnButton().textContent.trim()).toBe(text);
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+    await open({ data: { ...detail(trio), continue: step() } });
+    useGlobalStore.setState({ activeBookId: null });
+    await click(goOnButton());
+    expect(useGlobalStore.getState().activeBookId).toBe(2);
+    expect(useGlobalStore.getState().collectionSheetId).toBeNull();
+  });
+
+  it('names a work with no number by its title', async () => {
+    await open({ data: { ...detail(trio), continue: step({ unit: '', position: null, title: 'Contos' }) } });
+    expect(goOnButton().textContent.trim()).toBe('Próximo: Contos');
+  });
+
+  it('offers nothing when there is nothing left to read, for a retired collection, or when the server says nothing', async () => {
+    await open({ data: { ...detail(trio), continue: null } });
+    expect(goOnButton()).toBeUndefined();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ data: detail(trio) });
+    expect(goOnButton()).toBeUndefined();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ data: { ...detail(trio, { retired: true }), continue: step() } });
+    expect(goOnButton()).toBeUndefined();
+  });
+
+  it('is there for a reader too, who manages nothing', async () => {
+    await open({ role: 'reader', data: { ...detail(trio), continue: step() } });
+    expect(goOnButton()).toBeDefined();
+    expect(button('Renomear')).toBeUndefined();
+  });
+});

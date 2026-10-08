@@ -354,3 +354,189 @@ func TestComicShelves_TheKindDecidesTheShelfAndTheFormatOnlyWhenThereIsNone(t *t
 		t.Errorf("after clearing the kind of a manga in PDF (it is a book again): %+v", got)
 	}
 }
+
+type seriesAnswer struct {
+	Collection *struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	} `json:"collection"`
+	Next *SeriesStep `json:"next"`
+}
+
+func (s *catalogStack) seriesOfWork(a actor, work int) (seriesAnswer, int) {
+	s.t.Helper()
+	var out seriesAnswer
+	rec := s.do(a, "GET", fmt.Sprintf("/works/%d/series", work), "")
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	return out, rec.Code
+}
+
+func (s *catalogStack) read(user string, work int, completed bool) {
+	s.t.Helper()
+	if completed {
+		s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete, completed_at) VALUES ($1, $2, 'fim', 100, now())`, user, s.primaryFile(work))
+		return
+	}
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete) VALUES ($1, $2, '3', 30)`, user, s.primaryFile(work))
+}
+
+func TestSeries_TheReaderIsToldTheNextWorkOfTheSameUnit(t *testing.T) {
+	s := newCatalogStack(t)
+	_, ids := s.seriesOf("Naruto", "volume", "chapter", "volume", "chapter", "chapter")
+	// Each group is numbered on its own: the order of the collection is the order inside the group.
+	for i, n := range map[int]int{0: 1, 2: 2, 1: 1, 3: 2, 4: 3} {
+		s.exec(`UPDATE collection_works SET position = $2 WHERE work_id = $1`, ids[i], n)
+	}
+	v1, c1, v2, c2, c3 := ids[0], ids[1], ids[2], ids[3], ids[4]
+	next := func(work int) int {
+		got, code := s.seriesOfWork(ana, work)
+		if code != 200 || got.Collection == nil || got.Collection.Name != "Naruto" {
+			t.Fatalf("series of %d: %d %+v", work, code, got)
+		}
+		if got.Next == nil {
+			return 0
+		}
+		return got.Next.ID
+	}
+	if next(v1) != v2 || next(c1) != c2 || next(c2) != c3 {
+		t.Errorf("next: v1 %d c1 %d c2 %d", next(v1), next(c1), next(c2))
+	}
+	if next(v2) != 0 || next(c3) != 0 {
+		t.Errorf("the last of a group has no next: v2 %d c3 %d", next(v2), next(c3))
+	}
+	// What the step says.
+	got, _ := s.seriesOfWork(ana, c1)
+	if got.Next.Title != "Naruto 4" || got.Next.Unit != "chapter" || got.Next.Position == nil || *got.Next.Position != 2 || got.Next.Started {
+		t.Errorf("step = %+v", got.Next)
+	}
+	// A next that is begun says so; one in the trash is skipped; one with no file is not a step.
+	s.read(idAna, c3, false)
+	if got, _ := s.seriesOfWork(ana, c2); got.Next == nil || got.Next.ID != c3 || !got.Next.Started {
+		t.Errorf("a begun next: %+v", got.Next)
+	}
+	s.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, c2)
+	if next(c1) != c3 {
+		t.Errorf("the next skips what is in the trash: %d", next(c1))
+	}
+	// A work with no file to open is not a step: the last one that can be read has no next.
+	s.exec(`INSERT INTO works (original_title, series, series_index, unit) VALUES ('Sem arquivo', 'Naruto', 9, 'chapter')`)
+	if s.scalar(`SELECT COUNT(*) FROM collection_works cw JOIN works w ON w.id = cw.work_id WHERE w.original_title = 'Sem arquivo'`) != "1" {
+		t.Fatal("the work with no file is in the collection")
+	}
+	if next(c3) != 0 {
+		t.Errorf("a work with no file was offered: %d", next(c3))
+	}
+	// Nor is one whose file went missing from the disk.
+	s.exec(`UPDATE files SET availability = 'missing' WHERE id = $1`, s.primaryFile(c3))
+	if next(c1) != 0 {
+		t.Errorf("a missing file was offered: %d", next(c1))
+	}
+	s.exec(`UPDATE files SET availability = 'available' WHERE id = $1`, s.primaryFile(c3))
+	// Another person's reading does not change the next.
+	if got, code := s.seriesOfWork(bob, c1); code != 200 || got.Next == nil || got.Next.ID != c3 || got.Next.Started {
+		t.Errorf("bob: %d %+v", code, got.Next)
+	}
+}
+
+func TestSeries_AWorkWithNoSeriesHasNothingToGoOnWith(t *testing.T) {
+	s := newCatalogStack(t)
+	alone := s.addWork("Solto", "Autor", "solto.epub", "epub")
+	got, code := s.seriesOfWork(ana, alone)
+	if code != 200 || got.Collection != nil || got.Next != nil {
+		t.Errorf("a work in no collection: %d %+v", code, got)
+	}
+	if _, code := s.seriesOfWork(ana, 99999); code != 200 {
+		t.Errorf("a work that does not exist is also nothing, not an error: %d", code)
+	}
+	if rec := s.do(ana, "GET", "/works/abc/series", ""); rec.Code != 404 {
+		t.Errorf("a bad id: %d", rec.Code)
+	}
+	// A retired collection is not read on.
+	col, ids := s.seriesOf("Velha", "chapter", "chapter")
+	s.exec(`UPDATE collections SET retired_at = now() WHERE id = $1`, col)
+	if got, _ := s.seriesOfWork(ana, ids[0]); got.Collection != nil || got.Next != nil {
+		t.Errorf("retired collection: %+v", got)
+	}
+	// Nor is a personal list a series: the work is in it too, and the series is still the official one.
+	col2, ids2 := s.seriesOf("Nova", "chapter", "chapter")
+	list := s.makeList(ana, "Para depois")
+	s.exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, FALSE, 1)`, list, ids2[1])
+	if got, _ := s.seriesOfWork(ana, ids2[0]); got.Collection == nil || got.Collection.ID != col2 || got.Next == nil || got.Next.ID != ids2[1] {
+		t.Errorf("personal list: %+v", got)
+	}
+}
+
+func TestSeries_TheCollectionPageSaysWhereToGoOn(t *testing.T) {
+	s := newCatalogStack(t)
+	col, ids := s.seriesOf("Bleach", "chapter", "chapter", "chapter")
+	goOn := func(a actor) *SeriesStep {
+		d, code := s.collection(a, col)
+		if code != 200 {
+			t.Fatalf("collection: %d", code)
+		}
+		return d.Continue
+	}
+	// Nothing read: the first, to begin.
+	if got := goOn(ana); got == nil || got.ID != ids[0] || got.Begun || got.Started {
+		t.Errorf("to begin: %+v", got)
+	}
+	// One finished: the next one, and it says the series was begun.
+	s.read(idAna, ids[0], true)
+	if got := goOn(ana); got == nil || got.ID != ids[1] || !got.Begun || got.Started {
+		t.Errorf("after the first: %+v", got)
+	}
+	// Another person starts at the first.
+	if got := goOn(bob); got == nil || got.ID != ids[0] || got.Begun {
+		t.Errorf("bob: %+v", got)
+	}
+	// One begun is the one to go on with, even with an earlier one never read.
+	s.read(idAna, ids[2], false)
+	if got := goOn(ana); got == nil || got.ID != ids[2] || !got.Started {
+		t.Errorf("begun: %+v", got)
+	}
+	// Marking a whole work as finished counts as finishing it.
+	s.exec(`INSERT INTO work_reading_state (user_id, work_id) VALUES ($1, $2)`, idAna, ids[2])
+	if got := goOn(ana); got == nil || got.ID != ids[1] || got.Started {
+		t.Errorf("a work marked as finished: %+v", got)
+	}
+	// A work marked as finished is not "begun", though a version of it is still open.
+	if got, _ := s.seriesOfWork(ana, ids[1]); got.Next == nil || got.Next.ID != ids[2] || got.Next.Started {
+		t.Errorf("the next, marked as finished: %+v", got.Next)
+	}
+	// Reading on a file that went missing counts for nothing: it is not where to go on.
+	s.read(idAna, ids[1], false)
+	lost := s.primaryFile(ids[1])
+	s.addFile(int(mustInt(s, `SELECT edition_id FROM work_primary WHERE work_id = $1`, ids[1])), "cbz", "outra.cbz", "managed")
+	s.exec(`UPDATE files SET availability = 'missing' WHERE id = $1`, lost)
+	if got := goOn(ana); got == nil || got.ID != ids[1] || got.Started {
+		t.Errorf("progress on a missing file: %+v", got)
+	}
+	s.exec(`DELETE FROM reading_progress WHERE file_id = $1`, lost)
+	s.exec(`UPDATE files SET availability = 'available' WHERE id = $1`, lost)
+	s.read(idAna, ids[1], true)
+	if got := goOn(ana); got != nil {
+		t.Errorf("everything finished: %+v", got)
+	}
+	// A work in the trash is not offered.
+	s.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, ids[0])
+	if got := goOn(bob); got == nil || got.ID != ids[1] {
+		t.Errorf("a work in the trash: %+v", got)
+	}
+}
+
+func TestSeries_TheCollectionPageOfAListOrARetiredOneHasNothingToGoOnWith(t *testing.T) {
+	s := newCatalogStack(t)
+	col, _ := s.seriesOf("Retirada", "chapter", "chapter")
+	s.exec(`UPDATE collections SET retired_at = now() WHERE id = $1`, col)
+	d, code := s.collection(admin, col)
+	if code != 200 || d.Continue != nil {
+		t.Errorf("retired: %d %+v", code, d.Continue)
+	}
+	list := s.makeList(ana, "Lista")
+	_, ids := s.seriesOf("Outra", "chapter")
+	s.exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, FALSE, 1)`, list, ids[0])
+	d, code = s.collection(ana, list)
+	if code != 200 || d.Continue != nil || len(d.Works) != 1 {
+		t.Errorf("personal list: %d %+v %d works", code, d.Continue, len(d.Works))
+	}
+}
