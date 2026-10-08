@@ -57,6 +57,9 @@ type work struct {
 	title  string
 	author string
 	isbns  []string
+	// titles are the other names the work goes by, besides the main title: the alternative ones kept for it, and the titles
+	// of its editions (#185). Another work with the same author and a name in common is a hint.
+	titles []string
 }
 
 // loadWorks reads the works that can be compared: active ones, with their first
@@ -69,7 +72,9 @@ func loadWorks(ctx context.Context, db *sql.DB) ([]work, error) {
 		       COALESCE((SELECT array_agg(v) FROM (
 		           SELECT e.isbn AS v FROM editions e WHERE e.work_id = w.id AND e.isbn IS NOT NULL
 		           UNION SELECT wi.identifier_value FROM work_identifiers wi WHERE wi.work_id = w.id AND wi.identifier_type = 'isbn'
-		       ) x), '{}')
+		       ) x), '{}'),
+		       ARRAY(SELECT t.title FROM work_titles t WHERE t.work_id = w.id
+		             UNION SELECT e.title FROM editions e WHERE e.work_id = w.id AND COALESCE(e.title, '') <> '')
 		FROM works w WHERE w.retired_at IS NULL ORDER BY w.id`)
 	if err != nil {
 		return nil, err
@@ -79,9 +84,11 @@ func loadWorks(ctx context.Context, db *sql.DB) ([]work, error) {
 	for rows.Next() {
 		var w work
 		var raw sql.RawBytes
-		if err := rows.Scan(&w.id, &w.title, &w.author, &raw); err != nil {
+		var titles pq.StringArray
+		if err := rows.Scan(&w.id, &w.title, &w.author, &raw, &titles); err != nil {
 			return nil, err
 		}
+		w.titles = titles
 		w.isbns = parseTextArray(string(raw))
 		out = append(out, w)
 	}
@@ -115,13 +122,28 @@ func related(a, b work) string {
 	}
 	// A title alone is too weak a hint (many books share one); it needs an author
 	// as well, and an unknown author never counts.
-	ta, tb := NormalizeTitle(a.title), NormalizeTitle(b.title)
 	aa, ab := NormalizeTitle(a.author), NormalizeTitle(b.author)
 	// The same author, whichever way the name was written ("Herbert, Frank" and "Frank Herbert").
-	if ta != "" && ta == tb && aa != "" && (aa == ab || people.SameName(a.author, b.author)) {
+	if aa != "" && (aa == ab || people.SameName(a.author, b.author)) && shareTitle(a, b) {
 		return "title_author"
 	}
 	return ""
+}
+
+// shareTitle says whether the two works go by a name in common, whichever of their names it is.
+func shareTitle(a, b work) bool {
+	names := map[string]bool{}
+	for _, t := range append([]string{a.title}, a.titles...) {
+		if k := NormalizeTitle(t); k != "" {
+			names[k] = true
+		}
+	}
+	for _, t := range append([]string{b.title}, b.titles...) {
+		if k := NormalizeTitle(t); k != "" && names[k] {
+			return true
+		}
+	}
+	return false
 }
 
 func insertPair(ctx context.Context, db *sql.DB, a, b work, reason string) (bool, error) {

@@ -231,6 +231,7 @@ export function WorkSheet() {
   if (!workId) return null;
 
   const meta = work?.metadata;
+  const alternatives = meta?.alternativeTitles ?? [];
   const editions = work?.editions ?? [];
   const files = editions.flatMap((edition) => edition.files);
   const canRead = (file) => file?.availability === 'available' && !!file.url;
@@ -283,6 +284,18 @@ export function WorkSheet() {
                     )}
                     <h3 className="font-display text-4xl leading-tight text-ink sm:text-5xl">{work.title}</h3>
                     <p className="mt-1 font-body text-sm font-semibold text-brand sm:text-base">{work.author}</p>
+                    {alternatives.length > 0 && (
+                      <p className="mt-1 text-xs text-ink-soft sm:text-sm">
+                        Também conhecida como{' '}
+                        {alternatives.map((t, i) => (
+                          <React.Fragment key={`${t.id}-${t.title}`}>
+                            {i > 0 && ' · '}
+                            <span className="text-ink">{t.title}</span>
+                            {t.language && <span className="text-ink-faint"> ({languageName(t.language)})</span>}
+                          </React.Fragment>
+                        ))}
+                      </p>
+                    )}
                   </div>
                   {leadDetails.length > 0 && (
                     <div className="flex flex-wrap gap-2" aria-label="Dados da edição em foco">

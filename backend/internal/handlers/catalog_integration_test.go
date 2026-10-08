@@ -146,6 +146,9 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/works", lib.GetWorks)
 	r.Get("/works/{id}", lib.GetWorkByID)
 	r.Put("/works/{id}", lib.UpdateWork)
+	titles := &WorkTitlesHandler{DB: db}
+	r.Post("/works/{id}/titles", titles.Add)
+	r.Delete("/works/{id}/titles/{titleId}", titles.Remove)
 	r.Delete("/works/{id}", lib.DeleteWork)
 	r.Post("/works/{id}/restore", lib.RestoreWork)
 	r.Get("/admin/suggestions", lib.SuggestionQueue)

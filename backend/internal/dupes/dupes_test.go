@@ -360,3 +360,76 @@ func TestListPending_DescribesAWorkWithSeveralFormatsAndNoFile(t *testing.T) {
 		t.Errorf("b = %+v", got)
 	}
 }
+
+// A work goes by more names than its main title (#185): the ones kept for it, and the titles of its editions. Two works by the
+// same author that share a name, whichever it is, are a hint.
+func TestDetect_AnyNameOfAWorkCounts(t *testing.T) {
+	e := newEnv(t)
+	duna := e.work("Duna", "Frank Herbert", "", "epub", "a.epub")
+	dune := e.work("Dune", "Frank Herbert", "", "epub", "b.epub") // the English title, a work of its own
+	e.work("Dune", "Outro Autor", "", "epub", "c.epub")           // the same name by another author: not a hint
+	e.work("Dune", "", "", "epub", "d.epub")                      // author unknown: not a hint
+	e.work("Neuromancer", "William Gibson", "", "epub", "f.epub") // nothing in common
+
+	if n, _ := dupes.DetectAll(ctx, e.db); n != 0 {
+		t.Fatalf("found %d with the titles as they are, want 0", n)
+	}
+	// Duna goes by Dune too: kept for the work.
+	e.exec(`INSERT INTO work_titles (work_id, title, language, title_key) VALUES ($1, 'Dune', 'en', $2)`, duna, dupes.NormalizeTitle("Dune"))
+	n, err := dupes.DetectAll(ctx, e.db)
+	if err != nil || n != 1 {
+		t.Fatalf("found %d (%v) with an alternative title, want 1", n, err)
+	}
+	if got, want := e.pairs(), itoa(duna)+"-"+itoa(dune)+":title_author:pending"; got != want {
+		t.Errorf("pairs = %s, want %s", got, want)
+	}
+	// The same through the title of an edition, found by the one work alone.
+	e.exec(`DELETE FROM duplicate_candidates`)
+	e.exec(`DELETE FROM work_titles`)
+	e.exec(`UPDATE editions SET title = 'DUNE (edição de bolso)' WHERE work_id = $1`, duna)
+	if n, _ := dupes.Detect(ctx, e.db, duna); n != 1 {
+		t.Errorf("an edition title found %d, want 1", n)
+	}
+	// And the other way: the name is on the other work.
+	e.exec(`DELETE FROM duplicate_candidates`)
+	e.exec(`UPDATE editions SET title = 'Duna' WHERE work_id = $1`, duna)
+	e.exec(`INSERT INTO work_titles (work_id, title, title_key) VALUES ($1, 'Duna', $2)`, dune, dupes.NormalizeTitle("Duna"))
+	if n, _ := dupes.Detect(ctx, e.db, dune); n != 1 {
+		t.Errorf("the name kept on the other work found %d, want 1", n)
+	}
+	// Titles with commas are read whole.
+	e.exec(`DELETE FROM duplicate_candidates`)
+	e.exec(`DELETE FROM work_titles`)
+	e.exec(`UPDATE editions SET title = ''`)
+	e.exec(`INSERT INTO work_titles (work_id, title, title_key) VALUES ($1, 'Duna, ou o planeta dos "vermes"', $2), ($3, 'Duna, ou o planeta dos "vermes"', $2)`,
+		duna, dupes.NormalizeTitle(`Duna, ou o planeta dos "vermes"`), dune)
+	if n, _ := dupes.Detect(ctx, e.db, duna); n != 1 {
+		t.Errorf("a title with commas and quotes found %d, want 1", n)
+	}
+	// What is retired is not compared, with whatever names it has.
+	e.exec(`DELETE FROM duplicate_candidates`)
+	e.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, dune)
+	if n, _ := dupes.DetectAll(ctx, e.db); n != 0 {
+		t.Errorf("a retired work found %d", n)
+	}
+}
+
+// The main title counts by itself, whatever the title of the edition says.
+func TestDetect_TheMainTitleCountsWhateverTheEditionsSay(t *testing.T) {
+	e := newEnv(t)
+	duna := e.work("Duna", "Frank Herbert", "", "epub", "a.epub")
+	dune := e.work("Dune", "Frank Herbert", "", "epub", "b.epub")
+	e.exec(`UPDATE editions SET title = 'Edição A' WHERE work_id = $1`, duna)
+	e.exec(`UPDATE editions SET title = 'Edição B' WHERE work_id = $1`, dune)
+	e.exec(`INSERT INTO work_titles (work_id, title, title_key) VALUES ($1, 'Dune', $2)`, duna, dupes.NormalizeTitle("Dune"))
+	// The alternative title of one is the main title of the other, from either side.
+	if n, _ := dupes.DetectAll(ctx, e.db); n != 1 {
+		t.Fatalf("found %d, want 1", n)
+	}
+	e.exec(`DELETE FROM duplicate_candidates`)
+	e.exec(`DELETE FROM work_titles`)
+	e.exec(`INSERT INTO work_titles (work_id, title, title_key) VALUES ($1, 'Duna', $2)`, dune, dupes.NormalizeTitle("Duna"))
+	if n, _ := dupes.DetectAll(ctx, e.db); n != 1 {
+		t.Errorf("found %d from the other side, want 1", n)
+	}
+}

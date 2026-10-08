@@ -34,14 +34,16 @@ type WorkMetadata struct {
 	// FirstAuthor is the name of the work's first author as it is stored, not as an account is shown it
 	// (a work with two authors is shown "A, B", and "Herbert, Frank" is how a surname-first account sees
 	// "Frank Herbert"): what an edit of the author starts from.
-	FirstAuthor string            `json:"firstAuthor"`
-	Locks       map[string]bool   `json:"locks"`
-	Sources     map[string]string `json:"sources"`
+	FirstAuthor string `json:"firstAuthor"`
+	// AlternativeTitles are the other names of the work (#185): the ones kept for it, and the titles of its editions.
+	AlternativeTitles []AlternativeTitle `json:"alternativeTitles"`
+	Locks             map[string]bool    `json:"locks"`
+	Sources           map[string]string  `json:"sources"`
 }
 
 // loadMetadata reads the metadata block shown by GET /works/{id}.
 func loadMetadata(ctx context.Context, db *sql.DB, workID int) (*WorkMetadata, error) {
-	m := &WorkMetadata{Locks: map[string]bool{}, Sources: map[string]string{}}
+	m := &WorkMetadata{Locks: map[string]bool{}, Sources: map[string]string{}, AlternativeTitles: []AlternativeTitle{}}
 	var titleL, authorL, seriesL, coverL, isbnL, pubL, langL, dateL, descL bool
 	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(e.isbn, ''), COALESCE(e.publisher, ''),
@@ -59,6 +61,9 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int) (*WorkMetadata, e
 	m.Locks = map[string]bool{
 		"title": titleL, "author": authorL, "series": seriesL, "cover": coverL,
 		"isbn": isbnL, "publisher": pubL, "language": langL, "publication_date": dateL, "description": descL,
+	}
+	if m.AlternativeTitles, err = loadAlternativeTitles(db, workID); err != nil {
+		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, `SELECT field, source FROM work_field_sources WHERE work_id = $1`, workID)
 	if err != nil {

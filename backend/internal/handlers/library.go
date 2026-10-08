@@ -305,7 +305,7 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	if search != "" {
 		placeholder := fmt.Sprintf("$%d", argIdx)
-		whereClauses = append(whereClauses, "(LOWER(w.original_title) LIKE LOWER("+placeholder+") OR "+authorMatches(placeholder)+")")
+		whereClauses = append(whereClauses, "("+titleMatches(placeholder)+" OR "+authorMatches(placeholder)+")")
 		args = append(args, catalogSearchPattern(search))
 		argIdx++
 	}
