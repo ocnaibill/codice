@@ -66,6 +66,7 @@ function HomeDashboard() {
   });
   const favorites = useFavorites();
   const collections = useCollections({ limit: 1 });
+  const lists = useCollections({ limit: 1, kind: 'personal' });
   const notes = useNotes({ limit: 3 });
   const totalPages = grid.data?.totalPages ?? 1;
   const changePage = (next) => {
@@ -108,12 +109,13 @@ function HomeDashboard() {
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           sort={sort}
-          onSortChange={view === 'collections' ? undefined : setSort}
+          onSortChange={view === 'collections' || view === 'lists' ? undefined : setSort}
           collectionsTotal={collections.data?.total ?? 0}
           canManageCollections={isStaff(me)}
+          listsTotal={lists.data?.total}
         />
-        {view === 'collections' ? (
-          <CollectionsGrid viewMode={viewMode} />
+        {view === 'collections' || view === 'lists' ? (
+          <CollectionsGrid viewMode={viewMode} kind={view === 'lists' ? 'personal' : 'official'} />
         ) : grid.isError ? (
           <QueryError onRetry={() => grid.refetch()}>
             Não foi possível carregar o acervo.

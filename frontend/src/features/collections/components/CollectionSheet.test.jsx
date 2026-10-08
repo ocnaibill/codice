@@ -14,7 +14,7 @@ import { CollectionSheet } from './CollectionSheet';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const work = (id, title, position, completed = false) => ({ id, title, author: 'J. K. Rowling', coverUrl: `/c/${id}.jpg`, position, completed });
+const work = (id, title, position, completed = false) => ({ entryId: id * 10, id, title, author: 'J. K. Rowling', coverUrl: `/c/${id}.jpg`, position, completed, available: true });
 const detail = (works, extra = {}) => ({
   collection: { id: 5, kind: 'official', name: 'Harry Potter', workCount: works.length, completedCount: works.filter((w) => w.completed).length, coverUrl: '/c/1.jpg', ...extra },
   works,
@@ -306,5 +306,130 @@ describe('CollectionSheet: what owner and admin do', () => {
     api.put.mockRejectedValueOnce(Object.assign(new Error('x'), { response: { status: 400, data: 'A lista deve ter cada obra da coleção uma vez, e só elas.' } }));
     await click(labelled('Descer “Pedra Filosofal”'));
     expect(container.querySelector('[role="alert"]').textContent).toContain('A lista deve ter cada obra da coleção uma vez');
+  });
+});
+
+describe('CollectionSheet: a list of the person', () => {
+  const entry = (entryId, id, title, extra = {}) => ({ entryId, id, title, author: 'x', coverUrl: '/c/1.jpg', position: entryId, completed: false, available: true, ...extra });
+  const gone = entry(30, 0, 'Obra que saiu', { available: false, coverUrl: '/covers/placeholder.svg' });
+  const list = (works, extra = {}) => ({
+    collection: { id: 7, kind: 'personal', name: 'Para ler', workCount: works.filter((w) => w.available).length, completedCount: 0, coverUrl: '/c/1.jpg', ...extra },
+    works,
+  });
+
+  async function openList({ role = 'reader', data = list([entry(10, 1, 'Duna'), entry(20, 2, 'Fundação'), gone]) } = {}) {
+    reply = data;
+    api.get.mockImplementation(async (url, options) => {
+      if (url === '/collections/7') return { data: reply };
+      if (url === '/auth/me') return { data: { role } };
+      if (url === '/works') return { data: { data: options?.params?.search ? [found, same] : [] } };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    api.put.mockResolvedValue({});
+    api.post.mockResolvedValue({});
+    api.patch.mockResolvedValue({ data: {} });
+    api.delete.mockResolvedValue({});
+    useGlobalStore.setState({ collectionSheetId: 7, sheetWorkId: null });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionSheet /></QueryClientProvider>); });
+    await flush();
+    await flush();
+  }
+
+  it('tells apart the places of two works that are gone, which have no work to tell them by', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await openList({ data: list([entry(10, 1, 'Duna'), gone, { ...gone, entryId: 31, title: 'Outra que saiu' }]) });
+    expect([...container.querySelectorAll('ol li')]).toHaveLength(3);
+    expect(error).not.toHaveBeenCalled(); // React complains of two items with the same key
+    error.mockRestore();
+  });
+
+  it('is managed by the person who reads it: no staff needed', async () => {
+    await openList({ role: 'reader' });
+    expect(container.querySelector('[role="dialog"]').getAttribute('aria-label')).toBe('Lista');
+    expect(container.textContent).toContain('Biblioteca / Lista');
+    for (const text of ['Renomear', 'Acrescentar obra', 'Aposentar']) expect(button(text)).toBeTruthy();
+    expect(labelled('Obras da lista').tagName).toBe('OL');
+  });
+
+  it('shows a work that left the library with what the list kept of it, and no way to open it', async () => {
+    await openList();
+    const row = [...container.querySelectorAll('ol li')][2];
+    expect(row.textContent).toContain('Obra que saiu');
+    expect(row.textContent).toContain('Fora do acervo');
+    expect(row.querySelector('button[aria-label^="Abrir a obra"]')).toBeNull();
+    expect(row.querySelector('button').disabled).toBe(true);
+    // the others open as always
+    await click(labelled('Abrir a obra Duna'));
+    expect(useGlobalStore.getState().sheetWorkId).toBe(1);
+  });
+
+  it('moves a place by sending the places in the new order, through the route of the person', async () => {
+    await openList();
+    await click(labelled('Descer “Duna”'));
+    expect(api.put).toHaveBeenCalledWith('/my/collections/7/order', { entryIds: [20, 10, 30] });
+    await click(labelled('Subir “Obra que saiu”'));
+    expect(api.put).toHaveBeenLastCalledWith('/my/collections/7/order', { entryIds: [10, 30, 20] });
+  });
+
+  it('takes a place out by its own number, even of a work that is gone, and says the work stays', async () => {
+    await openList();
+    await click(labelled('Tirar “Obra que saiu” da lista'));
+    expect(container.textContent).toContain('A obra continua no acervo: só sai da lista.');
+    expect(container.textContent).not.toContain('A série da obra é limpa');
+    await click(button('Tirar da lista'));
+    expect(api.delete).toHaveBeenCalledWith('/my/collections/7/entries/30');
+    await click(labelled('Tirar “Duna” da lista'));
+    await click(button('Tirar da lista'));
+    expect(api.delete).toHaveBeenLastCalledWith('/my/collections/7/entries/10');
+  });
+
+  it('renames through its own route, and says only the name changes', async () => {
+    await openList();
+    await click(button('Renomear'));
+    expect(container.textContent).toContain('Só o nome da lista muda: as obras continuam como estão.');
+    await type(container.querySelector('input'), 'Verão');
+    await click(button('Salvar'));
+    expect(api.patch).toHaveBeenCalledWith('/my/collections/7', { name: 'Verão' });
+  });
+
+  it('puts works in through its own route, warns of nothing, and leaves out the ones that are in', async () => {
+    await openList();
+    await click(button('Acrescentar obra'));
+    await type(container.querySelector('input'), 'fantá');
+    expect(container.textContent).toContain('Animais Fantásticos');
+    expect(container.textContent).not.toContain('sairá de'); // a list takes the work out of nowhere
+    await click(labelled('Acrescentar “Animais Fantásticos”'));
+    expect(api.put).toHaveBeenCalledWith('/my/collections/7/works/9', {});
+    expect(container.textContent).toContain('“Animais Fantásticos” foi para o fim da lista.');
+  });
+
+  it('puts a list away only after asking, and says the works stay in the library', async () => {
+    await openList();
+    await click(button('Aposentar'));
+    expect(container.textContent).toContain('As obras continuam no acervo: a lista só sai do menu');
+    expect(api.delete).not.toHaveBeenCalled();
+    await click(container.querySelector('[role="alertdialog"] button'));
+    expect(api.delete).toHaveBeenCalledWith('/my/collections/7');
+    expect(useGlobalStore.getState().collectionSheetId).toBeNull();
+  });
+
+  it('restores a list that was put away', async () => {
+    await openList({ data: list([], { retired: true }) });
+    expect(container.textContent).toContain('Lista aposentada.');
+    expect(container.textContent).toContain('As obras voltam quando a lista for restaurada.');
+    for (const text of ['Renomear', 'Acrescentar obra', 'Aposentar']) expect(button(text)).toBeUndefined();
+    await click(button('Restaurar a lista'));
+    expect(api.post).toHaveBeenCalledWith('/my/collections/7/restore');
+  });
+
+  it('says what an empty list is', async () => {
+    await openList({ data: list([]) });
+    expect(container.textContent).toContain('Esta lista ainda não tem obras.');
+  });
+
+  it('counts only the works that are there', async () => {
+    await openList();
+    expect(container.textContent).toContain('2 obras');
   });
 });

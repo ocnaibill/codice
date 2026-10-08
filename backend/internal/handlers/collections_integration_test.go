@@ -145,15 +145,20 @@ func TestCollections_APersonalOneIsItsOwnersAlone(t *testing.T) {
 	}
 	s.exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, FALSE, 1)`, id, a)
 
-	if l := s.collections(ana, ""); l.Total != 1 || l.Data[0].Kind != "personal" || l.Data[0].WorkCount != 1 {
+	if l := s.collections(ana, "?kind=personal"); l.Total != 1 || l.Data[0].Kind != "personal" || l.Data[0].WorkCount != 1 {
 		t.Errorf("ana's list = %+v", l)
+	}
+	if l := s.collections(ana, ""); l.Total != 0 {
+		t.Errorf("a personal collection in the list of the official ones: %+v", l)
 	}
 	if d, code := s.collection(ana, id); code != 200 || len(d.Works) != 1 {
 		t.Errorf("ana's detail = %d %+v", code, d)
 	}
 	for _, who := range []actor{bob, admin} {
-		if l := s.collections(who, ""); l.Total != 0 {
-			t.Errorf("%s sees ana's collection in the list: %+v", who.role, l)
+		for _, q := range []string{"", "?kind=personal", "?kind=personal&retired=true", "?retired=true"} {
+			if l := s.collections(who, q); l.Total != 0 {
+				t.Errorf("%s sees ana's collection in the list%s: %+v", who.role, q, l)
+			}
 		}
 		if _, code := s.collection(who, id); code != 404 {
 			t.Errorf("%s got ana's collection: %d, want 404", who.role, code)

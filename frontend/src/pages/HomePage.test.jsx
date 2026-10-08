@@ -222,3 +222,30 @@ describe('library hub: collections', () => {
   });
 });
 
+describe('library hub: the lists of the person', () => {
+  const serve = (role = 'reader') => api.get.mockImplementation(async (url, options) => {
+    if (url === '/auth/me') return { data: { id: 1, username: 'ana', role } };
+    if (url === '/stats') return { data: { worksTotal: 25, libraryBreakdown: { livros: 25, mangas: 0, audio: 0 } } };
+    if (url === '/collections') {
+      return options?.params?.kind === 'personal'
+        ? { data: { data: [{ id: 3, kind: 'personal', name: 'Para ler', workCount: 1, completedCount: 0, coverUrl: '/c.jpg' }], total: 1, totalPages: 1, page: 1 } }
+        : { data: { data: [], total: 0, totalPages: 0, page: 1 } };
+    }
+    if (url.startsWith('/works?')) return { data: { data: [work], total: 25, totalPages: 1, page: 1 } };
+    return { data: { data: [], total: 0 } };
+  });
+
+  it('offers the shelf to a reader, and shows the lists of the caller, with no sort to choose', async () => {
+    serve('reader');
+    view = await mount(<HomePage />);
+    await flush();
+    expect(view.buttonMatching(/^Minhas listas/).textContent).toBe('Minhas listas[01]');
+    await view.click(view.buttonMatching(/^Minhas listas/));
+    expect(useGlobalStore.getState().libraryView).toBe('lists');
+    expect(document.body.querySelector('[aria-label="Abrir a lista Para ler"]')).not.toBeNull();
+    expect(document.body.querySelector('select[aria-label="Ordenar o acervo"]')).toBeNull();
+    expect(view.text()).not.toContain('Adicionados recentemente');
+    expect(api.get).toHaveBeenCalledWith('/collections', { params: { page: 1, limit: 24, kind: 'personal' } });
+  });
+});
+

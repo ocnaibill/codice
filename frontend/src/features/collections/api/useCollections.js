@@ -3,12 +3,19 @@ import { api } from '../../../lib/api';
 import { refreshLibrary } from '../../../lib/refreshLibrary';
 import { serverMessage } from '../../../lib/serverMessage';
 
-/** The collections the person sees, by name (#184). With `retired`, the retired ones, which only owner and admin are given. */
-export function useCollections({ page = 1, limit = 24, retired = false } = {}) {
+/** Where the management of a kind of collection lives: the official ones are the staff's, the lists are each person's (#207). */
+const base = (kind) => (kind === 'personal' ? '/my/collections' : '/collections');
+
+/**
+ * The collections the person sees, by name (#184): the official ones, or with kind "personal" their own lists (#207). With
+ * `retired`, the retired ones: owner and admin are given the official ones, and anybody the lists they put away.
+ */
+export function useCollections({ page = 1, limit = 24, retired = false, kind = 'official' } = {}) {
   return useQuery({
-    queryKey: ['collections', { page, limit, retired }],
+    queryKey: ['collections', { page, limit, retired, kind }],
     queryFn: async () => {
       const params = { page, limit };
+      if (kind === 'personal') params.kind = 'personal';
       if (retired) params.retired = 'true';
       return (await api.get('/collections', { params })).data; // { data, total, page, limit, totalPages }
     },
@@ -38,10 +45,12 @@ function useRefreshing() {
   return () => refreshLibrary(queryClient);
 }
 
+// Every change takes the `kind` of the collection, since the lists of a person and the official ones are managed in other places.
+
 export function useCreateCollection() {
   const refresh = useRefreshing();
   return useMutation({
-    mutationFn: async (name) => (await api.post('/collections', { name })).data, // { id, name }
+    mutationFn: async ({ name, kind }) => (await api.post(base(kind), { name })).data, // { id, name }
     onSuccess: refresh,
   });
 }
@@ -49,44 +58,48 @@ export function useCreateCollection() {
 export function useRenameCollection() {
   const refresh = useRefreshing();
   return useMutation({
-    mutationFn: async ({ id, name }) => (await api.patch(`/collections/${id}`, { name })).data,
+    mutationFn: async ({ id, name, kind }) => (await api.patch(`${base(kind)}/${id}`, { name })).data,
     onSuccess: refresh,
   });
 }
 
-/** The work joins the collection (at the end, or at `position`); one that was in another official collection leaves it. */
+/** The work joins the collection (at the end, or at `position`); an official one that was in another collection leaves it. */
 export function useAddToCollection() {
   const refresh = useRefreshing();
   return useMutation({
-    mutationFn: ({ id, workId, position }) =>
-      api.put(`/collections/${id}/works/${workId}`, position == null ? {} : { position }),
+    mutationFn: ({ id, workId, position, kind }) =>
+      api.put(`${base(kind)}/${id}/works/${workId}`, position == null ? {} : { position }),
     onSuccess: refresh,
   });
 }
 
+/** `work` is the place as the page of the collection gives it: an official collection names the work, a list names the place,
+ *  since the work of a place may be gone. */
 export function useRemoveFromCollection() {
   const refresh = useRefreshing();
   return useMutation({
-    mutationFn: ({ id, workId }) => api.delete(`/collections/${id}/works/${workId}`),
+    mutationFn: ({ id, work, kind }) =>
+      api.delete(kind === 'personal' ? `/my/collections/${id}/entries/${work.entryId}` : `/collections/${id}/works/${work.id}`),
     onSuccess: refresh,
   });
 }
 
-/** The works get the numbers 1, 2, 3… in the order of `workIds`, which must be all the works of the collection. */
+/** The works (the places of a list) get the numbers 1, 2, 3… in the order of `items`, which must be all of them. */
 export function useOrderCollection() {
   const refresh = useRefreshing();
   return useMutation({
-    mutationFn: ({ id, workIds }) => api.put(`/collections/${id}/order`, { workIds }),
+    mutationFn: ({ id, items, kind }) =>
+      api.put(`${base(kind)}/${id}/order`, kind === 'personal' ? { entryIds: items.map((i) => i.entryId) } : { workIds: items.map((i) => i.id) }),
     onSuccess: refresh,
   });
 }
 
 export function useRetireCollection() {
   const refresh = useRefreshing();
-  return useMutation({ mutationFn: (id) => api.delete(`/collections/${id}`), onSuccess: refresh });
+  return useMutation({ mutationFn: ({ id, kind }) => api.delete(`${base(kind)}/${id}`), onSuccess: refresh });
 }
 
 export function useRestoreCollection() {
   const refresh = useRefreshing();
-  return useMutation({ mutationFn: (id) => api.post(`/collections/${id}/restore`), onSuccess: refresh });
+  return useMutation({ mutationFn: ({ id, kind }) => api.post(`${base(kind)}/${id}/restore`), onSuccess: refresh });
 }

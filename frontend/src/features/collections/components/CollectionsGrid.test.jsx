@@ -24,7 +24,7 @@ const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0))
 const button = (text) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
 const click = (el) => act(async () => { el.click(); });
 
-async function open({ role = 'reader', list = page([col(1, 'Duna'), col(2, 'Fundação')]), retired = page([]) } = {}) {
+async function open({ role = 'reader', list = page([col(1, 'Duna'), col(2, 'Fundação')]), retired = page([]), kind } = {}) {
   asked = [];
   api.get.mockImplementation(async (url, options) => {
     if (url === '/auth/me') return { data: { role } };
@@ -34,9 +34,9 @@ async function open({ role = 'reader', list = page([col(1, 'Duna'), col(2, 'Fund
     }
     throw new Error(`unexpected GET ${url}`);
   });
-  api.post.mockImplementation(async (url, body) => (url === '/collections' ? { data: { id: 77, name: body.name } } : {}));
+  api.post.mockImplementation(async (url, body) => (url === '/collections' || url === '/my/collections' ? { data: { id: 77, name: body.name } } : {}));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await act(async () => { root.render(<QueryClientProvider client={client}><CollectionsGrid /></QueryClientProvider>); });
+  await act(async () => { root.render(<QueryClientProvider client={client}><CollectionsGrid kind={kind} /></QueryClientProvider>); });
   await flush();
   await flush();
 }
@@ -182,5 +182,64 @@ describe('CollectionsGrid', () => {
     await click(button('Aposentadas'));
     await flush();
     expect(container.textContent).toContain('Nenhuma coleção aposentada.');
+  });
+});
+
+describe('CollectionsGrid: the lists of the person', () => {
+  const mine = (id, name, extra = {}) => ({ id, kind: 'personal', name, workCount: 2, completedCount: 0, coverUrl: '/c.jpg', ...extra });
+
+  it('asks for the lists of the caller, and says so', async () => {
+    await open({ kind: 'personal', list: page([mine(3, 'Para ler')]) });
+    expect(asked[0]).toEqual({ page: 1, limit: 24, kind: 'personal' });
+    expect(container.querySelector('h2').textContent).toBe('Minhas listas');
+    expect(container.textContent).toContain('[ 1 lista ]');
+    const card = container.querySelector('article');
+    expect(card.textContent).toContain('Lista');
+    expect(card.textContent).toContain('2 obras');
+    expect(container.querySelector('[aria-label="Abrir a lista Para ler"]')).not.toBeNull();
+    expect(container.querySelector('nav[aria-label]')).toBeNull();
+  });
+
+  it('counts them in the plural', async () => {
+    await open({ kind: 'personal', list: page([mine(3, 'A'), mine(4, 'B')]) });
+    expect(container.textContent).toContain('[ 2 listas ]');
+  });
+
+  it('gives a reader the way to make one, to look at the ones put away, and to restore them', async () => {
+    await open({ role: 'reader', kind: 'personal', list: page([mine(3, 'Para ler')]), retired: page([mine(9, 'Antiga', { retired: true })]) });
+    expect(button('Nova lista')).toBeTruthy();
+    expect(button('Aposentadas')).toBeTruthy();
+    await click(button('Aposentadas'));
+    await flush();
+    expect(asked.at(-1)).toEqual({ page: 1, limit: 24, kind: 'personal', retired: 'true' });
+    expect(container.querySelector('h2').textContent).toBe('Listas aposentadas');
+    expect(container.textContent).toContain('Lista aposentada');
+    await click(container.querySelector('[aria-label="Restaurar a lista Antiga"]'));
+    expect(api.post).toHaveBeenCalledWith('/my/collections/9/restore');
+  });
+
+  it('makes a list through the route of the person, and opens it to fill it', async () => {
+    await open({ role: 'reader', kind: 'personal', list: page([]) });
+    expect(container.textContent).toContain('Você ainda não tem listas. Crie uma e acrescente as obras que quer reunir.');
+    await click(button('Nova lista'));
+    expect(container.textContent).toContain('Nome da lista');
+    await type(container.querySelector('input'), 'Verão');
+    await click(button('Criar'));
+    expect(api.post).toHaveBeenCalledWith('/my/collections', { name: 'Verão' });
+    expect(useGlobalStore.getState().collectionSheetId).toBe(77);
+  });
+
+  it('says there is no list put away, in its own words', async () => {
+    await open({ kind: 'personal', list: page([]) });
+    await click(button('Aposentadas'));
+    await flush();
+    expect(container.textContent).toContain('Nenhuma lista aposentada.');
+  });
+
+  it('leaves the official ones to the staff: the ones of the library still ask for their own route', async () => {
+    await open({ role: 'reader' });
+    expect(asked[0]).toEqual({ page: 1, limit: 24 });
+    expect(button('Nova coleção')).toBeUndefined();
+    expect(button('Nova lista')).toBeUndefined();
   });
 });

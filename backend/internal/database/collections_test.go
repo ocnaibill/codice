@@ -328,3 +328,139 @@ func TestCollections_AWriterWaitsForTheOneThatIsMakingTheCollection(t *testing.T
 		t.Errorf("memberships = %d, want 2", n)
 	}
 }
+
+func TestPersonalCollections_AWorkDeletedForGoodLeavesItsLabelInTheListsOfThePeopleAndGoesFromTheOfficialOne(t *testing.T) {
+	db := migrated(t)
+	var ana string
+	if err := db.QueryRow(`INSERT INTO users (username, email, password_hash) VALUES ('ana', 'ana@example.test', 'x') RETURNING id`).Scan(&ana); err != nil {
+		t.Fatal(err)
+	}
+	var author int
+	db.QueryRow(`INSERT INTO person (name) VALUES ('Frank Herbert') RETURNING id`).Scan(&author)
+	w := addSeries(t, db, "Duna", "Duna", 1)
+	other := addSeries(t, db, "Messias de Duna", "Duna", 2)
+	if _, err := db.Exec(`INSERT INTO work_contributors (work_id, person_id, role, position) VALUES ($1, $2, 'author', 0)`, w, author); err != nil {
+		t.Fatal(err)
+	}
+	var list1, list2 int
+	db.QueryRow(`INSERT INTO collections (kind, owner_id, name, origin) VALUES ('personal', $1, 'Um', 'manual') RETURNING id`, ana).Scan(&list1)
+	db.QueryRow(`INSERT INTO collections (kind, owner_id, name, origin) VALUES ('personal', $1, 'Dois', 'manual') RETURNING id`, ana).Scan(&list2)
+	for _, l := range []int{list1, list2} {
+		if _, err := db.Exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, FALSE, 1)`, l, w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	official := officialOf(t, db, w)
+
+	if _, err := db.Exec(`DELETE FROM works WHERE id = $1`, w); err != nil {
+		t.Fatal(err)
+	}
+	// The places in the lists stay, pointing at nothing, with what the person saw.
+	rows, err := db.Query(`SELECT collection_id, label, author_label FROM collection_works WHERE work_id IS NULL ORDER BY collection_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var c int
+		var label, authors sql.NullString
+		rows.Scan(&c, &label, &authors)
+		if label.String != "Duna" || authors.String != "Frank Herbert" {
+			t.Errorf("place in list %d = %q by %q", c, label.String, authors.String)
+		}
+		n++
+	}
+	if n != 2 {
+		t.Errorf("places left = %d, want 2", n)
+	}
+	// The official membership went with the work, and the other work stayed in the collection.
+	if c := count(t, db, `SELECT count(*) FROM collection_works WHERE collection_id = $1`, official); c != 1 {
+		t.Errorf("official collection has %d places, want only the other work", c)
+	}
+	if officialOf(t, db, other) != official {
+		t.Error("the other work left the official collection")
+	}
+	// A work with no author leaves with no author.
+	bare := addSeries(t, db, "Sem autor", nil, 0)
+	db.Exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, FALSE, 2)`, list1, bare)
+	db.Exec(`DELETE FROM works WHERE id = $1`, bare)
+	if c := count(t, db, `SELECT count(*) FROM collection_works WHERE label = 'Sem autor' AND author_label IS NULL`); c != 1 {
+		t.Errorf("a work with no author: %d places with a label and no author, want 1", c)
+	}
+}
+
+func TestPersonalCollections_TheRulesOfThePlaces(t *testing.T) {
+	db := migrated(t)
+	var ana string
+	db.QueryRow(`INSERT INTO users (username, email, password_hash) VALUES ('ana', 'ana@example.test', 'x') RETURNING id`).Scan(&ana)
+	w := addSeries(t, db, "Obra", "Saga", 1)
+	var list, list2, official int
+	db.QueryRow(`INSERT INTO collections (kind, owner_id, name, origin) VALUES ('personal', $1, 'Um', 'manual') RETURNING id`, ana).Scan(&list)
+	db.QueryRow(`INSERT INTO collections (kind, owner_id, name, origin) VALUES ('personal', $1, 'Dois', 'manual') RETURNING id`, ana).Scan(&list2)
+	official = officialOf(t, db, w)
+
+	// A work is in a list once, and in as many lists as the person wants.
+	if _, err := db.Exec(`INSERT INTO collection_works (collection_id, work_id, official) VALUES ($1, $2, FALSE)`, list, w); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO collection_works (collection_id, work_id, official) VALUES ($1, $2, FALSE)`, list, w); err == nil {
+		t.Error("a work got into the same list twice")
+	}
+	if _, err := db.Exec(`INSERT INTO collection_works (collection_id, work_id, official) VALUES ($1, $2, FALSE)`, list2, w); err != nil {
+		t.Errorf("a work in two lists: %v", err)
+	}
+	// Places of works that are gone are many, and each is its own.
+	for i := 0; i < 3; i++ {
+		if _, err := db.Exec(`INSERT INTO collection_works (collection_id, work_id, official, label) VALUES ($1, NULL, FALSE, 'x')`, list); err != nil {
+			t.Errorf("a place with no work: %v", err)
+		}
+	}
+	// An official membership cannot outlive its work.
+	if _, err := db.Exec(`INSERT INTO collection_works (collection_id, work_id, official) VALUES ($1, NULL, TRUE)`, official); err == nil {
+		t.Error("an official place with no work was accepted")
+	}
+	// The sync of the series leaves the places of the lists alone, and its own go on working.
+	db.Exec(`UPDATE works SET series = 'Outra' WHERE id = $1`, w)
+	if c := count(t, db, `SELECT count(*) FROM collection_works WHERE work_id = $1 AND NOT official`, w); c != 2 {
+		t.Errorf("the series touched the lists: %d places, want 2", c)
+	}
+	if officialOf(t, db, w) == official || officialOf(t, db, w) == 0 {
+		t.Error("the series did not move the work to the new official collection")
+	}
+}
+
+func TestPersonalCollections_TheMigrationKeepsWhatWasThereAndGoesBack(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.MigrateTo(db, 52); err != nil {
+		t.Fatal(err)
+	}
+	var w int
+	db.QueryRow(`INSERT INTO works (original_title, series, series_index) VALUES ('Duna', 'Duna', 1) RETURNING id`).Scan(&w)
+	var ana string
+	db.QueryRow(`INSERT INTO users (username, email, password_hash) VALUES ('ana', 'ana@example.test', 'x') RETURNING id`).Scan(&ana)
+	var list int
+	db.QueryRow(`INSERT INTO collections (kind, owner_id, name, origin) VALUES ('personal', $1, 'Minha', 'manual') RETURNING id`, ana).Scan(&list)
+	db.Exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, FALSE, 4)`, list, w)
+
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if c := count(t, db, `SELECT count(*) FROM collection_works WHERE work_id = $1 AND id IS NOT NULL`, w); c != 2 {
+		t.Errorf("places after migrating = %d, want the official and the personal", c)
+	}
+	// Going back drops the places that no longer have a work, and keeps the rest.
+	db.Exec(`INSERT INTO collection_works (collection_id, work_id, official, label) VALUES ($1, NULL, FALSE, 'sem obra')`, list)
+	if err := database.RollbackTo(db, 52); err != nil {
+		t.Fatal(err)
+	}
+	if c := count(t, db, `SELECT count(*) FROM collection_works`); c != 2 {
+		t.Errorf("places after going back = %d, want 2", c)
+	}
+	if _, err := db.Exec(`INSERT INTO collection_works (collection_id, work_id, official) VALUES ($1, $2, FALSE)`, list, w); err == nil {
+		t.Error("the key of the old shape (list, work) was not back")
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("migrating again: %v", err)
+	}
+}

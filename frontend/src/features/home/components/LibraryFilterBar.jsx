@@ -13,6 +13,7 @@ export function LibraryFilterBar({
   onSortChange,
   collectionsTotal = 0,
   canManageCollections = false,
+  listsTotal,
 }) {
   // "Todos" is always there. A kind of work is there only when the library has at least one of it, and none is
   // offered before the counts are known.
@@ -23,7 +24,9 @@ export function LibraryFilterBar({
   ];
   // Collections come after the kinds: when there is one, or for the staff, who make the first.
   const collections = collectionsTotal > 0 || canManageCollections ? [{ key: 'collections', label: 'Coleções', count: collectionsTotal }] : [];
-  const filters = [{ key: 'all', label: 'Todos', count: worksTotal }, ...kinds.filter((kind) => kind.count > 0), ...collections];
+  // The lists of the person, once their number is known (anybody can keep them).
+  const lists = listsTotal == null ? [] : [{ key: 'lists', label: 'Minhas listas', count: listsTotal }];
+  const filters = [{ key: 'all', label: 'Todos', count: worksTotal }, ...kinds.filter((kind) => kind.count > 0), ...collections, ...lists];
   // The kind on screen has no work left (the last one went away): back to all of them, not to an empty shelf.
   const gone = breakdown && kinds.some((kind) => kind.key === activeFilter && !(kind.count > 0));
   useEffect(() => {
