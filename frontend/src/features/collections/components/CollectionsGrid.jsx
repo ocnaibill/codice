@@ -5,6 +5,7 @@ import { useGlobalStore } from '../../../store/useGlobalStore';
 import { isStaff, useMe } from '../../auth/api/useMe';
 import { formatCount } from '../../home/utils/format';
 import { collectionReason, useCollections, useCreateCollection, useRestoreCollection } from '../api/useCollections';
+import { CollectionFavoriteButton } from './CollectionFavoriteButton';
 import { collectionLine, wordsOf } from '../text';
 
 function NewCollectionForm({ kind, onDone }) {
@@ -64,6 +65,11 @@ function CollectionCard({ item, onOpen, canRestore, kind }) {
           <p className="library-author">{collectionLine(item)}</p>
         </div>
       </div>
+      {!item.retired && (
+        <div className="library-book-actions">
+          <CollectionFavoriteButton collection={item} />
+        </div>
+      )}
       {canRestore && item.retired && (
         <div className="library-book-actions">
           <button

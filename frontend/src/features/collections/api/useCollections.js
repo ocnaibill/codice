@@ -103,3 +103,12 @@ export function useRestoreCollection() {
   const refresh = useRefreshing();
   return useMutation({ mutationFn: ({ id, kind }) => api.post(`${base(kind)}/${id}/restore`), onSuccess: refresh });
 }
+
+/** Favoriting a collection (an official one, or a list of the person's) and taking it away (#208). */
+export function useCollectionFavoriteToggle(id) {
+  const refresh = useRefreshing();
+  return useMutation({
+    mutationFn: (favorite) => (favorite ? api.post(`/collections/${id}/favorite`) : api.delete(`/collections/${id}/favorite`)),
+    onSuccess: refresh,
+  });
+}

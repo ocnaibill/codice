@@ -25,6 +25,7 @@ type Collection struct {
 	CompletedCount int    `json:"completedCount"`
 	CoverURL       string `json:"coverUrl"`
 	Retired        bool   `json:"retired,omitempty"`
+	IsFavorite     bool   `json:"isFavorite"`
 }
 
 // CollectionWork is one place of a collection, in its order. A work that is not available (in the trash, or deleted for good,
@@ -48,6 +49,24 @@ const visibleCollection = `((c.kind = 'official' AND c.retired_at IS NULL) OR c.
 // made it theirs (renamed or made it by hand), or while it has works in it.
 const shownCollection = `(c.origin = 'manual' OR c.edited_at IS NOT NULL OR EXISTS (
 	SELECT 1 FROM collection_works cw JOIN works w ON w.id = cw.work_id WHERE cw.collection_id = c.id AND w.retired_at IS NULL))`
+
+// collectionStats is what a collection (alias c) says of itself to the caller ($1): how many works are in it, how many of those
+// they finished, and the cover of the first that has one (the lateral join is `s`).
+const collectionStats = `
+	LEFT JOIN LATERAL (
+		SELECT count(*) AS works,
+		       count(*) FILTER (WHERE rp.completed_at IS NOT NULL) AS completed,
+		       (array_agg(wp.cover_url ORDER BY cw.position NULLS LAST, w.original_title, w.id)
+		         FILTER (WHERE wp.cover_url IS NOT NULL AND wp.cover_url <> ''))[1] AS cover
+		FROM collection_works cw
+		JOIN works w ON w.id = cw.work_id AND w.retired_at IS NULL
+		LEFT JOIN work_primary wp ON wp.work_id = w.id
+		LEFT JOIN reading_progress rp ON rp.file_id = wp.file_id AND rp.user_id = $1::uuid
+		WHERE cw.collection_id = c.id
+	) s ON TRUE`
+
+// isFavoriteCollection is the condition for a collection (alias c) to be a favorite of the caller ($1).
+const isFavoriteCollection = `EXISTS (SELECT 1 FROM favorite_collections fc WHERE fc.collection_id = c.id AND fc.user_id = $1::uuid)`
 
 // List answers GET /collections?page=&limit=&kind=: the official collections, by name, or with kind=personal the caller's own.
 func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -81,19 +100,8 @@ func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := h.DB.Query(`
 		SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL,
-		       COALESCE(s.works, 0), COALESCE(s.completed, 0), COALESCE(s.cover, '')
-		FROM collections c
-		LEFT JOIN LATERAL (
-			SELECT count(*) AS works,
-			       count(*) FILTER (WHERE rp.completed_at IS NOT NULL) AS completed,
-			       (array_agg(wp.cover_url ORDER BY cw.position NULLS LAST, w.original_title, w.id)
-			         FILTER (WHERE wp.cover_url IS NOT NULL AND wp.cover_url <> ''))[1] AS cover
-			FROM collection_works cw
-			JOIN works w ON w.id = cw.work_id AND w.retired_at IS NULL
-			LEFT JOIN work_primary wp ON wp.work_id = w.id
-			LEFT JOIN reading_progress rp ON rp.file_id = wp.file_id AND rp.user_id = $1::uuid
-			WHERE cw.collection_id = c.id
-		) s ON TRUE
+		       COALESCE(s.works, 0), COALESCE(s.completed, 0), COALESCE(s.cover, ''), `+isFavoriteCollection+`
+		FROM collections c`+collectionStats+`
 		WHERE `+where+`
 		ORDER BY lower(c.name), c.id
 		LIMIT $2 OFFSET $3`, userID, limit, (page-1)*limit)
@@ -106,7 +114,7 @@ func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	items := []Collection{}
 	for rows.Next() {
 		var c Collection
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.WorkCount, &c.CompletedCount, &c.CoverURL); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.WorkCount, &c.CompletedCount, &c.CoverURL, &c.IsFavorite); err != nil {
 			log.Println("Error scanning collection:", err)
 			continue
 		}
@@ -137,8 +145,8 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		visible = `(c.kind = 'official' OR c.owner_id = $1::uuid)`
 	}
 	var c Collection
-	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
-		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired)
+	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL, `+isFavoriteCollection+` FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
+		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Collection not found", http.StatusNotFound)
 		return

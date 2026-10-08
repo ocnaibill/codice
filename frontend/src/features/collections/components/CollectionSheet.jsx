@@ -16,6 +16,7 @@ import {
   useRetireCollection,
 } from '../api/useCollections';
 import { collectionLine, wordsOf } from '../text';
+import { CollectionFavoriteButton } from './CollectionFavoriteButton';
 
 const BUTTON = 'min-h-10 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40';
 const PRIMARY = 'min-h-10 rounded-lg bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40';
@@ -204,7 +205,15 @@ export function CollectionSheet() {
             <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">{words.eyebrow}</p>
             <h2 className="truncate font-display text-2xl text-ink sm:text-3xl">{collection?.name ?? 'Carregando…'}</h2>
           </div>
-          <button ref={closeRef} onClick={close} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-xl text-ink-soft hover:bg-surface-alt hover:text-brand" aria-label="Fechar">✕</button>
+          <div className="flex shrink-0 items-center gap-1">
+            {collection && !collection.retired && (
+              <CollectionFavoriteButton
+                collection={collection}
+                className="library-favorite flex min-h-11 min-w-11 items-center justify-center rounded-lg text-ink-soft hover:bg-surface-alt hover:text-brand"
+              />
+            )}
+            <button ref={closeRef} onClick={close} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-xl text-ink-soft hover:bg-surface-alt hover:text-brand" aria-label="Fechar">✕</button>
+          </div>
         </div>
 
         <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">

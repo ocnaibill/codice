@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../lib/api', () => ({
-  api: { get: vi.fn(), post: vi.fn() },
+  api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
   authenticatedUrl: (u) => u,
 }));
 
@@ -34,6 +34,7 @@ async function open({ role = 'reader', list = page([col(1, 'Duna'), col(2, 'Fund
     }
     throw new Error(`unexpected GET ${url}`);
   });
+  api.delete.mockResolvedValue({});
   api.post.mockImplementation(async (url, body) => (url === '/collections' || url === '/my/collections' ? { data: { id: 77, name: body.name } } : {}));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => { root.render(<QueryClientProvider client={client}><CollectionsGrid kind={kind} /></QueryClientProvider>); });
@@ -241,5 +242,33 @@ describe('CollectionsGrid: the lists of the person', () => {
     expect(asked[0]).toEqual({ page: 1, limit: 24 });
     expect(button('Nova coleção')).toBeUndefined();
     expect(button('Nova lista')).toBeUndefined();
+  });
+});
+
+describe('CollectionsGrid: favoriting a collection', () => {
+  it('has a heart on each card, filled when the collection is a favorite, and toggles it', async () => {
+    await open({ list: page([col(1, 'Duna', { isFavorite: true }), col(2, 'Fundação', { isFavorite: false })]) });
+    const hearts = [...container.querySelectorAll('.library-favorite')];
+    expect(hearts.map((h) => h.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
+    expect(hearts[0].getAttribute('aria-label')).toBe('Remover dos favoritos: Duna');
+    expect(hearts[1].getAttribute('aria-label')).toBe('Adicionar aos favoritos: Fundação');
+    await click(hearts[1]);
+    expect(api.post).toHaveBeenCalledWith('/collections/2/favorite');
+    await click(hearts[0]);
+    expect(api.delete).toHaveBeenCalledWith('/collections/1/favorite');
+  });
+
+  it('has the heart for a list too, and for a reader', async () => {
+    await open({ role: 'reader', kind: 'personal', list: page([col(3, 'Para ler', { kind: 'personal', isFavorite: false })]) });
+    await click(container.querySelector('[aria-label="Adicionar aos favoritos: Para ler"]'));
+    expect(api.post).toHaveBeenCalledWith('/collections/3/favorite');
+  });
+
+  it('has no heart on a retired one, which is to be restored, not favorited', async () => {
+    await open({ role: 'admin', retired: page([col(4, 'Antiga', { retired: true })]) });
+    await click(button('Aposentadas'));
+    await flush();
+    expect(container.querySelector('.library-favorite')).toBeNull();
+    expect(container.querySelector('[aria-label="Restaurar a coleção Antiga"]')).not.toBeNull();
   });
 });
