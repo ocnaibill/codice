@@ -215,3 +215,26 @@ describe('a series in the grid (#187)', () => {
   });
 });
 
+describe('the title of the edition being read on a card (#185)', () => {
+  const reading = (over = {}) => card({ id: 3, title: 'A Nuvem 2', continue: { fileId: 22, format: 'epub', title: 'The Cloud 2', completed: false }, inProgress: true, ...over });
+  const heading = () => container.querySelector('article h3');
+
+  it('says the title written for that edition, in the heading, its hint and the names of the buttons', async () => {
+    await render([reading()]);
+    expect(heading().textContent).toBe('The Cloud 2');
+    expect(heading().title).toBe('The Cloud 2');
+    expect(container.querySelector('[aria-label^="Continuar"]').getAttribute('aria-label')).toContain('The Cloud 2');
+    expect(container.querySelector('[aria-label^="Baixar"]').getAttribute('aria-label')).toBe('Baixar: The Cloud 2');
+    expect(container.querySelector('[aria-label^="Adicionar aos favoritos"]').getAttribute('aria-label')).toContain('A Nuvem 2'); // the heart is of the work
+  });
+
+  it('keeps the main title when nobody wrote one for the edition, or nothing was read', async () => {
+    await render([reading({ continue: { fileId: 22, format: 'epub', completed: false } }), card({ id: 4, title: 'Duna', continue: null })]);
+    expect([...container.querySelectorAll('article h3')].map((h) => h.textContent)).toEqual(['A Nuvem 2', 'Duna']);
+  });
+
+  it('puts the title in the cover when there is none', async () => {
+    await render([reading({ coverUrl: '' })]);
+    expect(container.querySelector('article [role="img"]').getAttribute('aria-label')).toBe('The Cloud 2');
+  });
+});

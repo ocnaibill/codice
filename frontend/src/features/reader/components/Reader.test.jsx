@@ -236,3 +236,27 @@ describe('Reader: offering an equivalent position in another version (RF-042)', 
     expect(equivalentDialog()).toBeNull();
   });
 });
+
+describe('Reader: the name of the work is the one of the edition being read (#185)', () => {
+  const editions = (portuguese) => [
+    { id: 1, title: 'Duna', titleSet: false, language: 'pt', files: [{ id: 10, format: 'pdf', availability: 'available', started: true, completed: true, url: '/f/10' }], ...portuguese },
+    { id: 2, title: 'Dune', titleSet: true, language: 'en', files: [otherInProgress] },
+  ];
+  const heading = () => container.querySelector('header h1').textContent;
+
+  it('says the title written for the edition of the file that is open', async () => {
+    await open({ work: detail({ editions: editions({ title: 'A Duna', titleSet: true }) }) });
+    expect(heading()).toBe('A Duna');
+  });
+
+  it('says the main title when nobody wrote one for that edition, though another edition has one', async () => {
+    await open({ work: detail({ editions: editions({}) }) });
+    expect(heading()).toBe('Duna');
+  });
+
+  it('says the main title for a work whose file has no edition to speak of', async () => {
+    await open({ work: detail({ editions: [] }) });
+    expect(heading()).toBe('Duna');
+  });
+});
+

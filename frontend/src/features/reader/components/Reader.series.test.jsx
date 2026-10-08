@@ -116,6 +116,16 @@ describe('Reader: the next of a series (#187)', () => {
     expect(nextButton()).not.toBeNull(); // still one tap away
   });
 
+  it('says the title written for the edition that was read, in the offer and in the header', async () => {
+    const work = detail({
+      editions: [{ id: 1, title: 'One Piece, capítulo 2', titleSet: true, language: 'pt', files: [{ id: 10, format: 'pdf', availability: 'available', started: true, completed: false, url: '/f/10' }] }],
+    });
+    await open({ work });
+    expect(container.querySelector('header h1').textContent).toBe('One Piece, capítulo 2');
+    await reachTheEnd();
+    expect(prompt().textContent).toContain('Você terminou One Piece, capítulo 2.');
+  });
+
   it('opens the next from the offer', async () => {
     await open();
     await reachTheEnd();
