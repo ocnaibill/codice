@@ -13,6 +13,7 @@ import { completionText, formatSize, languageName, whereYouAre } from '../files'
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { sheetNote } from '../../../lib/ocr';
 import { fileTextState } from '../../../lib/processing';
+import { creditsLine } from '../credits';
 
 const NOTE_TONE = { ok: 'text-success', warn: 'text-warning', plain: 'text-ink-soft' };
 
@@ -232,6 +233,7 @@ export function WorkSheet() {
 
   const meta = work?.metadata;
   const alternatives = meta?.alternativeTitles ?? [];
+  const credits = creditsLine(meta?.contributors);
   const editions = work?.editions ?? [];
   const files = editions.flatMap((edition) => edition.files);
   const canRead = (file) => file?.availability === 'available' && !!file.url;
@@ -284,6 +286,7 @@ export function WorkSheet() {
                     )}
                     <h3 className="font-display text-4xl leading-tight text-ink sm:text-5xl">{work.title}</h3>
                     <p className="mt-1 font-body text-sm font-semibold text-brand sm:text-base">{work.author}</p>
+                    {credits && <p className="mt-1 text-xs text-ink-soft sm:text-sm">{credits}</p>}
                     {alternatives.length > 0 && (
                       <p className="mt-1 text-xs text-ink-soft sm:text-sm">
                         Também conhecida como{' '}

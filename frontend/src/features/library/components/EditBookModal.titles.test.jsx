@@ -65,8 +65,8 @@ describe('EditBookModal: the titles of a work (#185)', () => {
   it('is a tab of its own, shown the way it was asked for', async () => {
     await open();
     const tabs = [...container.querySelectorAll('[role="tab"]')].map((t) => t.textContent);
-    expect(tabs).toEqual(['Sugestões', 'Editar', 'Títulos']);
-    expect(container.querySelector('[role="tab"][aria-selected="true"]').textContent).toBe('Títulos');
+    expect(tabs).toEqual(['Sugestões', 'Editar', 'Títulos e autores']);
+    expect(container.querySelector('[role="tab"][aria-selected="true"]').textContent).toBe('Títulos e autores');
   });
 
   it('shows the main title, and each other name with its language and where it came from', async () => {
