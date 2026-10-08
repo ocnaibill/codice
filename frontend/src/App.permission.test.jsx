@@ -12,7 +12,7 @@ vi.mock('./lib/api', () => ({
 }));
 vi.mock('./store/useGlobalStore', () => {
   const get = () => ({
-    activeBookId: null, closeBook: state.closeBook, setSearchQuery: vi.fn(), adminOpen: state.adminOpen, openAdmin: vi.fn(),
+    activeBookId: null, closeBook: state.closeBook, setSearchQuery: vi.fn(), adminOpen: state.adminOpen, openAdmin: vi.fn(), accountDialogs: [], openAccountDialog: vi.fn(), closeAccountDialog: vi.fn(),
     notesOpen: false, searchQuery: '', metadataWorkId: null, metadataTab: 'suggestions', closeMetadata: vi.fn(),
   });
   const useGlobalStore = (selector) => selector(get());

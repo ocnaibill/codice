@@ -9,7 +9,7 @@ vi.mock('./lib/api', () => ({
   clearAssetToken: vi.fn(),
   UNAUTHORIZED_EVENT: 'codice:unauthorized',
 }));
-const store = vi.hoisted(() => ({ metadataWorkId: null, metadataTab: 'suggestions', closeMetadata: vi.fn(), notesOpen: false, searchQuery: '' }));
+const store = vi.hoisted(() => ({ metadataWorkId: null, metadataTab: 'suggestions', closeMetadata: vi.fn(), notesOpen: false, searchQuery: '', openAccountDialog: vi.fn(), closeAccountDialog: vi.fn() }));
 vi.mock('./store/useGlobalStore', () => ({
   useGlobalStore: (selector) => selector({
     activeBookId: null,
@@ -17,6 +17,7 @@ vi.mock('./store/useGlobalStore', () => ({
     setSearchQuery: vi.fn(),
     adminOpen: false,
     openAdmin: vi.fn(),
+    accountDialogs: [],
     ...store,
   }),
 }));
@@ -30,7 +31,18 @@ vi.mock('./lib/refreshLibrary', () => ({ refreshLibrary: vi.fn() }));
 // The addresses of the screens are tested apart (lib/routeSync.test.js): here, only that the app starts them.
 const routeSync = vi.hoisted(() => ({ stop: vi.fn(), start: vi.fn() }));
 vi.mock('./lib/routeSync', () => ({ startRouteSync: (...args) => { routeSync.start(...args); return routeSync.stop; } }));
-vi.mock('./components/layout/AppShell', () => ({ AppShell: ({ children }) => <main>{children}</main> }));
+vi.mock('./components/layout/AppShell', () => ({
+  AppShell: ({ children, onChangePassword, onOpenPreferences, onOpenApps, onOpenAbout, onOpenSessions }) => (
+    <main>
+      <button onClick={onChangePassword}>menu senha</button>
+      <button onClick={onOpenPreferences}>menu preferências</button>
+      <button onClick={onOpenApps}>menu aplicativos</button>
+      <button onClick={onOpenAbout}>menu sobre</button>
+      <button onClick={onOpenSessions}>menu sessões</button>
+      {children}
+    </main>
+  ),
+}));
 vi.mock('./pages/HomePage', () => ({ HomePage: () => <div>Acervo</div> }));
 vi.mock('./features/reader/components/Reader', () => ({ Reader: () => null }));
 vi.mock('./features/reader/components/WorkSheet', () => ({ WorkSheet: () => null }));
@@ -41,7 +53,18 @@ vi.mock('./features/auth/components/Auth', () => ({ Auth: () => <div>Login</div>
 vi.mock('./features/admin/AdminPage', () => ({ AdminPage: () => null }));
 vi.mock('./features/auth/components/FirstRunSetup', () => ({ FirstRunSetup: () => null }));
 vi.mock('./features/ownership/OwnershipBanner', () => ({ OwnershipBanner: () => null }));
-vi.mock('./components/layout/ChangePasswordModal', () => ({ ChangePasswordModal: () => null }));
+vi.mock('./components/layout/ChangePasswordModal', () => ({ ChangePasswordModal: ({ onClose }) => <button onClick={onClose}>diálogo senha</button> }));
+vi.mock('./components/layout/PreferencesModal', () => ({ PreferencesModal: ({ onClose }) => <button onClick={onClose}>diálogo preferências</button> }));
+vi.mock('./components/layout/AppsModal', () => ({ AppsModal: ({ onClose }) => <button onClick={onClose}>diálogo aplicativos</button> }));
+vi.mock('./components/layout/AboutModal', () => ({ AboutModal: ({ onClose }) => <button onClick={onClose}>diálogo sobre</button> }));
+vi.mock('./components/layout/SessionsModal', () => ({
+  SessionsModal: ({ onClose, onOpenApps }) => (
+    <div>
+      <button onClick={onClose}>diálogo sessões</button>
+      <button onClick={onOpenApps}>sessões abrem aplicativos</button>
+    </div>
+  ),
+}));
 vi.mock('./features/auth/components/ResetPassword', () => ({ ResetPassword: ({ onDone }) => <button onClick={onDone}>Ir para o login</button> }));
 vi.mock('./features/auth/components/AcceptInvite', () => ({ AcceptInvite: () => null }));
 
@@ -55,6 +78,7 @@ beforeEach(() => {
   store.metadataWorkId = null;
   store.notesOpen = false;
   store.searchQuery = '';
+  store.accountDialogs = [];
   api.get.mockResolvedValue({ data: { isFirstRun: false } });
 });
 afterEach(() => {
@@ -63,6 +87,55 @@ afterEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   window.history.replaceState(null, '', '/');
+});
+
+describe('App: the dialogs of the account are in the store (#182)', () => {
+  beforeEach(() => localStorage.setItem('codice_token', 'current-session'));
+
+  it('opens each dialog by its name from the menu of the account, and over the sessions the one of the apps', async () => {
+    view = await mount(<App />);
+    for (const [button, name] of [
+      ['menu senha', 'senha'], ['menu preferências', 'preferencias'], ['menu aplicativos', 'aplicativos'], ['menu sobre', 'sobre'], ['menu sessões', 'sessoes'],
+    ]) {
+      store.openAccountDialog.mockClear();
+      await view.click(view.button(button));
+      expect(store.openAccountDialog, button).toHaveBeenCalledTimes(1);
+      expect(store.openAccountDialog, button).toHaveBeenCalledWith(name);
+    }
+    store.accountDialogs = ['sessoes'];
+    view.unmount();
+    view = await mount(<App />);
+    store.openAccountDialog.mockClear();
+    await view.click(view.button('sessões abrem aplicativos'));
+    expect(store.openAccountDialog).toHaveBeenCalledWith('aplicativos');
+  });
+
+  it('shows the dialogs the store says are open, and each one closes itself in the store', async () => {
+    for (const [name, text] of [['senha', 'diálogo senha'], ['preferencias', 'diálogo preferências'], ['aplicativos', 'diálogo aplicativos'], ['sobre', 'diálogo sobre'], ['sessoes', 'diálogo sessões']]) {
+      store.accountDialogs = [name];
+      store.closeAccountDialog.mockClear();
+      view = await mount(<App />);
+      for (const other of ['senha', 'preferências', 'aplicativos', 'sobre', 'sessões']) {
+        if (`diálogo ${other}` !== text) expect(view.text(), `${name} / ${other}`).not.toContain(`diálogo ${other}`);
+      }
+      await view.click(view.button(text));
+      expect(store.closeAccountDialog, name).toHaveBeenCalledWith(name);
+      view.unmount();
+      view = null;
+    }
+  });
+
+  it('shows two dialogs together when the store says so, the last over the first', async () => {
+    store.accountDialogs = ['sessoes', 'aplicativos'];
+    view = await mount(<App />);
+    expect(view.text()).toContain('diálogo sessões');
+    expect(view.text()).toContain('diálogo aplicativos');
+  });
+
+  it('shows none when the store says none', async () => {
+    view = await mount(<App />);
+    expect(view.text()).not.toContain('diálogo');
+  });
 });
 
 describe('App startup', () => {

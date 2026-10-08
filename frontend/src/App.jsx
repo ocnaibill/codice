@@ -38,11 +38,6 @@ function App() {
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [assetsReady, setAssetsReady] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
-  const [preferencesOpen, setPreferencesOpen] = useState(false);
-  const [appsOpen, setAppsOpen] = useState(false);
-  const [aboutOpen, setAboutOpen] = useState(false);
-  const [sessionsOpen, setSessionsOpen] = useState(false);
   // A link like /?invite=<secret> opens the sign-up page for that invitation.
   const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset'));
@@ -68,6 +63,11 @@ function App() {
   const metadataTab = useGlobalStore((state) => state.metadataTab);
   const closeMetadata = useGlobalStore((state) => state.closeMetadata);
   const openAdmin = useGlobalStore((state) => state.openAdmin);
+  // The dialogs of the account are in the store, because the address says them and the back button closes them (#182).
+  const accountDialogs = useGlobalStore((state) => state.accountDialogs);
+  const openAccountDialog = useGlobalStore((state) => state.openAccountDialog);
+  const closeAccountDialog = useGlobalStore((state) => state.closeAccountDialog);
+  const dialogOpen = (name) => accountDialogs.includes(name);
   const { data: me } = useMe(isAuthenticated);
   const staff = isStaff(me);
 
@@ -285,11 +285,11 @@ function App() {
       <OwnershipBanner me={me} />
       <AskDisplayName me={me} />
       <ReadingPreferencesSync key={me?.id ?? "none"} userId={me?.id} />
-      {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
-      {preferencesOpen && <PreferencesModal onClose={() => setPreferencesOpen(false)} />}
-      {appsOpen && <AppsModal onClose={() => setAppsOpen(false)} />}
-      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
-      {sessionsOpen && <SessionsModal onClose={() => setSessionsOpen(false)} onOpenApps={() => setAppsOpen(true)} />}
+      {dialogOpen('senha') && <ChangePasswordModal onClose={() => closeAccountDialog('senha')} />}
+      {dialogOpen('preferencias') && <PreferencesModal onClose={() => closeAccountDialog('preferencias')} />}
+      {dialogOpen('aplicativos') && <AppsModal onClose={() => closeAccountDialog('aplicativos')} />}
+      {dialogOpen('sobre') && <AboutModal onClose={() => closeAccountDialog('sobre')} />}
+      {dialogOpen('sessoes') && <SessionsModal onClose={() => closeAccountDialog('sessoes')} onOpenApps={() => openAccountDialog('aplicativos')} />}
       <CollectionSheet />
       <PersonSheet />
       <WorkSheet />
@@ -302,11 +302,11 @@ function App() {
           onSearchChange={setSearchQuery}
           onGoHome={closeBook}
           onLogout={handleLogout}
-          onChangePassword={() => setChangingPassword(true)}
-          onOpenPreferences={() => setPreferencesOpen(true)}
-          onOpenApps={() => setAppsOpen(true)}
-          onOpenAbout={() => setAboutOpen(true)}
-          onOpenSessions={() => setSessionsOpen(true)}
+          onChangePassword={() => openAccountDialog('senha')}
+          onOpenPreferences={() => openAccountDialog('preferencias')}
+          onOpenApps={() => openAccountDialog('aplicativos')}
+          onOpenAbout={() => openAccountDialog('sobre')}
+          onOpenSessions={() => openAccountDialog('sessoes')}
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >

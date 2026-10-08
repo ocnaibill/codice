@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useGlobalStore } from '../../store/useGlobalStore';
+import { ADMIN_TABS, FIRST_ADMIN_TAB, OWNER_TABS } from './tabs';
 import { JobsTab } from './components/JobsTab';
 import { StorageTab } from './components/StorageTab';
 import { SystemTab } from './components/SystemTab';
@@ -14,23 +15,14 @@ import { OcrTab } from './components/OcrTab';
 import { DictionariesTab } from './components/DictionariesTab';
 import { useSuggestionQueue } from './api/admin';
 
-const TABS = [
-  ['jobs', 'Trabalhos'],
-  ['storage', 'Armazenamento'],
-  ['system', 'Sistema'],
-  ['trash', 'Lixeira'],
-  ['suggestions', 'Sugestões'],
-  ['providers', 'Provedores'],
-  ['duplicates', 'Duplicatas'],
-  ['ocr', 'OCR'],
-  ['dictionaries', 'Dicionários'],
-  ['accounts', 'Contas'],
-  ['logins', 'Entradas'],
-];
-
 /** The administration area. Owner and admin see it; some actions are the owner's alone. */
 export function AdminPage({ isOwner, onClose }) {
-  const [tab, setTab] = useState('jobs');
+  // The tab is in the store, because the address says it (#182); one the account does not have (the owner's, for an admin who
+  // got the address) is the first.
+  const asked = useGlobalStore((state) => state.adminTab);
+  const setTab = useGlobalStore((state) => state.setAdminTab);
+  const tabs = [...ADMIN_TABS, ...(isOwner ? OWNER_TABS : [])];
+  const tab = tabs.some(([key]) => key === asked) ? asked : FIRST_ADMIN_TAB;
   const waiting = useSuggestionQueue().data?.total ?? 0;
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
@@ -43,7 +35,7 @@ export function AdminPage({ isOwner, onClose }) {
         )}
       </div>
       <div role="tablist" className="mt-4 flex flex-wrap gap-1 border-b border-border-hairline">
-        {[...TABS, ...(isOwner ? [['embeddings', 'IA local'], ['ldap', 'Login externo']] : [])].map(([key, label]) => (
+        {tabs.map(([key, label]) => (
           <button
             key={key}
             role="tab"

@@ -1,3 +1,5 @@
+import { ADMIN_TAB_KEYS, FIRST_ADMIN_TAB } from '../features/admin/tabs';
+
 // The address of a screen (#182, DEC-135): what is open, written after the `#` of the page, so that F5 opens it again and the back
 // button of a phone goes back one screen instead of leaving the app. It is a hash, not a path, because the server of the
 // container sends every path but "/" to the API: a hash never reaches it, and works behind any proxy the person puts in front.
@@ -22,6 +24,12 @@ const WORD_VIEWS = Object.fromEntries(Object.entries(VIEW_WORDS).map(([view, wor
 
 const SORTS = ['title', 'author'];
 
+// The dialogs of the account, by the name they have in the address (the store keeps these names).
+const ACCOUNT_DIALOGS = ['senha', 'preferencias', 'aplicativos', 'sobre', 'sessoes'];
+
+// What the search says is at most this long (the page cuts it there too).
+const SEARCH_LENGTH = 200;
+
 // What opens over a screen, by the name it has in the address: the sheet of a work, a collection, a person, and the reader.
 const OVERLAYS = [
   ['obra', 'sheetWorkId'],
@@ -32,13 +40,22 @@ const OVERLAYS = [
 ];
 
 /** The default place: the whole library, first page, newest first, nothing open. */
-export const HOME = Object.freeze({ area: 'library', view: 'all', page: 1, sort: 'added', obra: null, colecao: null, pessoa: null, leitor: null, arquivo: null });
+export const HOME = Object.freeze({
+  area: 'library', view: 'all', page: 1, sort: 'added', tab: FIRST_ADMIN_TAB, q: '', conta: [],
+  obra: null, colecao: null, pessoa: null, leitor: null, arquivo: null,
+});
 
 /** What the store says is on screen, as a route. */
 export function routeFromState(state) {
   const route = { ...HOME };
+  const q = searchOf(state.searchQuery);
+  // What is on screen wins in this order: the administration, a search (which closes the notes), the notes.
   if (state.adminOpen) route.area = 'admin';
+  else if (q) route.area = 'search';
   else if (state.notesOpen) route.area = 'notes';
+  if (route.area === 'admin' && ADMIN_TAB_KEYS.includes(state.adminTab)) route.tab = state.adminTab;
+  if (route.area === 'search') route.q = q;
+  route.conta = dialogsOf(state.accountDialogs);
   route.view = VIEW_WORDS[state.libraryView] ? state.libraryView : 'all';
   route.page = Number.isInteger(state.libraryPage) && state.libraryPage > 1 ? state.libraryPage : 1;
   route.sort = SORTS.includes(state.librarySort) ? state.librarySort : 'added';
@@ -48,15 +65,20 @@ export function routeFromState(state) {
   return route;
 }
 
-/** The hash of a route: "#/acervo", "#/mangas?p=2&ordem=title&obra=12", "#/notas", "#/admin". */
+/** The hash of a route: "#/acervo", "#/mangas?p=2&ordem=title&obra=12", "#/busca?q=duna", "#/notas", "#/admin/storage". */
 export function hashFromRoute(route) {
-  const word = route.area === 'admin' ? 'admin' : route.area === 'notes' ? 'notas' : VIEW_WORDS[route.view] ?? 'acervo';
+  let word = VIEW_WORDS[route.view] ?? 'acervo';
+  if (route.area === 'admin') word = route.tab !== FIRST_ADMIN_TAB ? `admin/${route.tab}` : 'admin';
+  else if (route.area === 'search') word = 'busca';
+  else if (route.area === 'notes') word = 'notas';
   const params = new URLSearchParams();
   if (route.area === 'library') {
     if (route.page > 1) params.set('p', String(route.page));
     if (SORTS.includes(route.sort)) params.set('ordem', route.sort);
   }
+  if (route.area === 'search') params.set('q', route.q);
   for (const [name] of OVERLAYS) if (route[name]) params.set(name, String(route[name]));
+  if (route.conta.length > 0) params.set('conta', route.conta.join(','));
   const query = params.toString();
   return `#/${word}${query ? `?${query}` : ''}`;
 }
@@ -66,11 +88,17 @@ export function routeFromHash(hash) {
   const route = { ...HOME };
   const text = String(hash ?? '').replace(/^#\/?/, '');
   const [path, query = ''] = text.split('?');
-  const word = path.split('/')[0].toLowerCase();
-  if (word === 'admin') route.area = 'admin';
-  else if (word === 'notas') route.area = 'notes';
-  else if (WORD_VIEWS[word]) route.view = WORD_VIEWS[word];
+  const [word, sub = ''] = path.toLowerCase().split('/');
   const params = new URLSearchParams(query);
+  if (word === 'admin') {
+    route.area = 'admin';
+    if (ADMIN_TAB_KEYS.includes(sub)) route.tab = sub;
+  } else if (word === 'busca') {
+    // A search that says nothing is not a search.
+    const q = searchOf(params.get('q'));
+    if (q) Object.assign(route, { area: 'search', q });
+  } else if (word === 'notas') route.area = 'notes';
+  else if (WORD_VIEWS[word]) route.view = WORD_VIEWS[word];
   if (route.area === 'library') {
     const page = Number(params.get('p'));
     if (Number.isInteger(page) && page > 1) route.page = page;
@@ -78,6 +106,7 @@ export function routeFromHash(hash) {
   }
   for (const [name] of OVERLAYS) route[name] = positive(params.get(name));
   if (!route.leitor) route.arquivo = null;
+  route.conta = dialogsOf(String(params.get('conta') ?? '').split(','));
   return route;
 }
 
@@ -89,6 +118,9 @@ export function stateFromRoute(route) {
     libraryView: route.view,
     libraryPage: route.page,
     librarySort: route.sort,
+    adminTab: route.tab,
+    searchQuery: route.q,
+    accountDialogs: route.conta,
     sheetWorkId: route.obra,
     collectionSheetId: route.colecao,
     personSheetId: route.pessoa,
@@ -107,7 +139,18 @@ export function stateFromRoute(route) {
  */
 export function isNewPlace(from, to) {
   if (from.area !== to.area) return true;
+  if (from.conta.join() !== to.conta.join()) return true;
   return OVERLAYS.some(([name]) => from[name] !== to[name]);
+}
+
+// The dialogs of the account that an address or the store may say, each once, in the order they were opened.
+function dialogsOf(names) {
+  return [...new Set(names)].filter((name) => ACCOUNT_DIALOGS.includes(name));
+}
+
+// What was typed in the search, as the search takes it: without the spaces at the ends and cut at its length.
+function searchOf(text) {
+  return String(text ?? '').trim().slice(0, SEARCH_LENGTH);
 }
 
 function positive(value) {
