@@ -16,7 +16,7 @@ import {
   useRestoreCollection,
   useRetireCollection,
 } from '../api/useCollections';
-import { collectionLine, COMIC_KINDS, groupByUnit, numberText, stepText, UNITS, unitLabel, wordsOf } from '../text';
+import { collectionLine, COMIC_KINDS, groupByUnit, numberText, goOnText, UNITS, unitLabel, wordsOf } from '../text';
 import { CollectionFavoriteButton } from './CollectionFavoriteButton';
 
 const BUTTON = 'min-h-10 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40';
@@ -344,7 +344,7 @@ export function CollectionSheet() {
               {goOn && !collection.retired && (
                 <div>
                   <button onClick={() => openBook(goOn.id)} className={PRIMARY} title={goOn.title}>
-                    {goOn.started ? 'Continuar' : goOn.begun ? 'Próximo' : 'Começar'}: {stepText(goOn)}
+                    {goOnText(goOn)}
                   </button>
                 </div>
               )}

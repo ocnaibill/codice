@@ -64,6 +64,8 @@ function HomeDashboard() {
     inProgress: view === 'reading',
     favorite: view === 'favorites',
     sort,
+    // A series is one card in the shelves of the library; the other views list the works (#187).
+    series: ['all', 'ebooks', 'comics', 'mangas', 'audio'].includes(view) ? 'collapse' : undefined,
   });
   const favorites = useFavorites();
   const collections = useCollections({ limit: 1 });
@@ -130,6 +132,7 @@ function HomeDashboard() {
               title={(view === 'all' && SORTED_TITLES[sort]) || GRID_TITLES[view]}
               viewMode={viewMode}
               total={grid.data?.total}
+              countWord={grid.data?.series ? 'itens' : 'obras'}
             />
             {totalPages > 1 && (
               <nav

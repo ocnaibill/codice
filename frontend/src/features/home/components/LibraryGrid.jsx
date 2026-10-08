@@ -9,6 +9,7 @@ import { AuthorLinks } from '../../people/components/AuthorLinks';
 import { authenticatedUrl } from '../../../lib/api';
 import { readLabel, readTarget } from '../../reader/readTarget';
 import { formatBadge, formatCount } from '../utils/format';
+import { goOnText, seriesCounts } from '../../collections/text';
 
 const STATUS_LABEL = {
   READY: 'Pronto para ler',
@@ -101,6 +102,45 @@ function BookCard({ item, onOpen, onSheet }) {
   );
 }
 
+/**
+ * A series in the grid of the library (#187): one card for the whole of it, in the place of its newest work. The cover and the name
+ * open the collection; the button goes on with the series, where the page of the collection would.
+ */
+function SeriesBookCard({ item, onCollection, onOpen }) {
+  const series = item.collapsed;
+  const go = series.continue;
+  return (
+    <article className="library-book" data-series="true">
+      <div className="library-book-body">
+        <button
+          onClick={() => onCollection(series.collectionId)}
+          title="Ver as obras da série"
+          aria-label={`Abrir a série ${series.name}`}
+          className="library-book-cover"
+        >
+          <WorkCover item={{ ...item, title: series.name }} />
+          <span className="absolute left-1.5 top-1.5 rounded-sm bg-brand px-1.5 py-1 font-mono text-[9px] text-white">SÉRIE</span>
+        </button>
+        <div className="library-book-meta">
+          <p className="library-book-status">Série</p>
+          <h3 title={series.name}>{series.name}</h3>
+          <p className="library-author"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
+          <p className="library-book-tags">{seriesCounts(series)}</p>
+        </div>
+      </div>
+      <div className="library-book-actions">
+        {go ? (
+          <button className="library-series-go" onClick={() => onOpen(go.id)} title={go.title}>
+            {goOnText(go)}
+          </button>
+        ) : (
+          <span className="library-series-done">Tudo lido</span>
+        )}
+      </div>
+    </article>
+  );
+}
+
 export function LibraryGrid({
   items,
   isLoading,
@@ -108,16 +148,18 @@ export function LibraryGrid({
   title = 'Adicionados recentemente',
   viewMode = 'grid',
   total,
+  countWord = 'obras',
 }) {
   const openBook = useGlobalStore((state) => state.openBook);
   const openWork = useGlobalStore((state) => state.openWork);
+  const openCollection = useGlobalStore((state) => state.openCollection);
   return (
     <section aria-busy={!!(isLoading || isFetching)}>
       <div className="library-section-heading">
         <h2>{title}</h2>
         {total != null && (
           <span className="library-eyebrow">
-            [ {formatCount(total)} obras ]
+            [ {formatCount(total)} {countWord} ]
           </span>
         )}
       </div>
@@ -136,14 +178,13 @@ export function LibraryGrid({
         <EmptyState>Nenhuma obra encontrada nessa categoria ainda.</EmptyState>
       ) : (
         <div className="library-books" data-view={viewMode}>
-          {items.map((item) => (
-            <BookCard
-              key={item.id}
-              item={item}
-              onOpen={openBook}
-              onSheet={openWork}
-            />
-          ))}
+          {items.map((item) =>
+            item.collapsed ? (
+              <SeriesBookCard key={item.id} item={item} onCollection={openCollection} onOpen={openBook} />
+            ) : (
+              <BookCard key={item.id} item={item} onOpen={openBook} onSheet={openWork} />
+            )
+          )}
         </div>
       )}
     </section>

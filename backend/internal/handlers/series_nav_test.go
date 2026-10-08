@@ -33,10 +33,10 @@ func TestSeriesSteps_NextIsTheNextOfTheSameUnit(t *testing.T) {
 		entry(5, "chapter", "", 0), entry(6, "", "", 0), entry(7, "", "", 0), entry(8, "oneshot", "", 0),
 	}
 	for id, want := range map[int]int{
-		1: 2, // volume to volume
-		2: 4, // a chapter between them is not a volume
-		3: 5, // chapter to chapter
-		6: 7, // the works with no unit follow one another
+		1: 2,                       // volume to volume
+		2: 4,                       // a chapter between them is not a volume
+		3: 5,                       // chapter to chapter
+		6: 7,                       // the works with no unit follow one another
 		4: -1, 5: -1, 7: -1, 8: -1, // the last of a group has none
 		99: -1, // a work that is not in the list
 	} {
