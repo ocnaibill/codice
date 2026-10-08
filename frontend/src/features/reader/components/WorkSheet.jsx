@@ -14,6 +14,7 @@ import { WorkCover } from '../../../components/ui/WorkCover';
 import { sheetNote } from '../../../lib/ocr';
 import { fileTextState } from '../../../lib/processing';
 import { peopleOf, ROLES } from '../credits';
+import { COMIC_KINDS, unitLabel } from '../../collections/text';
 import { AuthorLinks } from '../../people/components/AuthorLinks';
 
 const NOTE_TONE = { ok: 'text-success', warn: 'text-warning', plain: 'text-ink-soft' };
@@ -250,6 +251,7 @@ export function WorkSheet() {
   const canContinue = work?.inProgress && leadFile?.id === work?.continue?.fileId;
   const leadEdition = editions.find((edition) => edition.files.some((file) => file.id === leadFile?.id));
   const leadDetails = [
+    COMIC_KINDS.find((k) => k.key === meta?.comicKind)?.one,
     leadEdition && languageName(leadEdition.language),
     leadEdition?.publisher,
     leadEdition?.publicationDate,
@@ -288,7 +290,7 @@ export function WorkSheet() {
                   <div>
                     {meta?.series && (
                       <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-widest text-brand">
-                        {meta.series}{meta.seriesIndex ? ` · Livro ${meta.seriesIndex}` : ''}
+                        {meta.series}{meta.unit ? ` · ${unitLabel(meta.unit, meta.seriesIndex || null)}` : meta.seriesIndex ? ` · Livro ${meta.seriesIndex}` : ''}
                       </p>
                     )}
                     <h3 className="font-display text-4xl leading-tight text-ink sm:text-5xl">{work.title}</h3>

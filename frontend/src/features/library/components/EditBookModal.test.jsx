@@ -221,4 +221,30 @@ describe('EditBookModal: the metadata of a work (#70)', () => {
     await flush();
     expect(container.textContent).toContain('Não foi possível abrir esta obra.');
   });
+
+  it('says what a comic or manga work is, by hand, and saves it with the rest (#187)', async () => {
+    await render({ tab: 'edit' });
+    const unit = [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith('Unidade na série')).querySelector('select');
+    const kind = [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith('Quadrinho ou mangá')).querySelector('select');
+    expect([...unit.options].map((o) => [o.value, o.textContent])).toEqual([['', 'Não informada'], ['volume', 'Volume'], ['chapter', 'Capítulo'], ['oneshot', 'Único']]);
+    expect([...kind.options].map((o) => [o.value, o.textContent])).toEqual([['', 'Não informado'], ['manga', 'Mangá'], ['comic', 'Quadrinho']]);
+    expect(unit.value).toBe('');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(unit, 'chapter');
+      unit.dispatchEvent(new Event('change', { bubbles: true }));
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(kind, 'manga');
+      kind.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await click(button('Salvar'));
+    expect(api.put).toHaveBeenCalledWith('/works/7', expect.objectContaining({ unit: 'chapter', comic_kind: 'manga' }));
+  });
+
+  it('starts from what the work already is', async () => {
+    await render({ tab: 'edit', work: { ...record, metadata: { ...record.metadata, unit: 'volume', comicKind: 'comic' } } });
+    const select = (label) => [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith(label)).querySelector('select');
+    expect(select('Unidade na série').value).toBe('volume');
+    expect(select('Quadrinho ou mangá').value).toBe('comic');
+    await click(button('Salvar'));
+    expect(api.put).toHaveBeenCalledWith('/works/7', expect.objectContaining({ unit: 'volume', comic_kind: 'comic' }));
+  });
 });

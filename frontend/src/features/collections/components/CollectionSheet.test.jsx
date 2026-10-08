@@ -458,3 +458,178 @@ describe('CollectionSheet: favoriting', () => {
     expect(container.querySelector('.library-favorite')).toBeNull();
   });
 });
+
+describe('CollectionSheet: the works in groups by unit (#187)', () => {
+  const w = (id, title, position, unit, extra = {}) => ({ ...work(id, title, position), unit, comicKind: '', ...extra });
+  const mixed = [
+    w(1, 'Vol 1', 1, 'volume'), w(2, 'Vol 2', 2, 'volume'),
+    w(3, 'Cap 1', 1, 'chapter'), w(4, 'Cap 27,5', 27.5, 'chapter'),
+    w(5, 'Livro de um só', null, 'oneshot'), w(6, 'Sem unidade', 9, ''),
+  ];
+
+  it('shows the volumes, the chapters, the one-shots and the rest each in a group of its own, with how many', async () => {
+    await open({ role: 'reader', data: detail(mixed) });
+    const headings = [...container.querySelectorAll('section h3')].map((h) => h.textContent);
+    expect(headings).toEqual(['Volumes (2)', 'Capítulos (2)', 'Únicos (1)', 'Sem unidade (1)']);
+    expect(labelled('Volumes da coleção').querySelectorAll('li')).toHaveLength(2);
+    expect(labelled('Capítulos da coleção').querySelectorAll('li')).toHaveLength(2);
+  });
+
+  it('calls each work by its unit and number', async () => {
+    await open({ role: 'reader', data: detail(mixed) });
+    const labels = [...container.querySelectorAll('ol li > div > span:first-child')].map((n) => n.textContent);
+    expect(labels).toEqual(['Vol. 1', 'Vol. 2', 'Cap. 1', 'Cap. 27,5', 'Único', '9']);
+  });
+
+  it('numbers a group on its own when a work is moved: the order sent is of that group, with its unit', async () => {
+    await open({ data: detail(mixed) });
+    await click(labelled('Descer “Cap 1”'));
+    expect(api.put).toHaveBeenCalledWith('/collections/5/order', { workIds: [4, 3], unit: 'chapter' });
+    await click(labelled('Subir “Vol 2”'));
+    expect(api.put).toHaveBeenLastCalledWith('/collections/5/order', { workIds: [2, 1], unit: 'volume' });
+  });
+
+  it('sends the unit of the works with none as an empty one', async () => {
+    const group = [w(1, 'A', 1, 'volume'), w(2, 'B', 1, ''), w(3, 'C', 2, '')];
+    await open({ data: detail(group) });
+    await click(labelled('Descer “B”'));
+    expect(api.put).toHaveBeenCalledWith('/collections/5/order', { workIds: [3, 2], unit: '' });
+  });
+
+  it('keeps the order of the whole collection when no work has a unit, as before', async () => {
+    await open({ data: detail([w(1, 'A', 1, ''), w(2, 'B', 2, '')]) });
+    expect(container.querySelector('section h3')).toBeNull();
+    await click(labelled('Descer “A”'));
+    expect(api.put).toHaveBeenCalledWith('/collections/5/order', { workIds: [2, 1] });
+  });
+
+  it('shows the first fifty of a group and the rest when asked, fifty at a time', async () => {
+    const many = Array.from({ length: 120 }, (_, i) => w(100 + i, `Cap ${i + 1}`, i + 1, 'chapter'));
+    await open({ role: 'reader', data: detail(many) });
+    expect(container.querySelectorAll('ol li')).toHaveLength(50);
+    expect(container.querySelector('section h3').textContent).toBe('Capítulos (120)');
+    await click(button('Mostrar mais 50 de 70'));
+    expect(container.querySelectorAll('ol li')).toHaveLength(100);
+    await click(button('Mostrar mais 20 de 20'));
+    expect(container.querySelectorAll('ol li')).toHaveLength(120);
+    expect(button('Mostrar mais', container)).toBeUndefined();
+  });
+
+  it('shows every work when there are fifty or fewer, with no button', async () => {
+    await open({ role: 'reader', data: detail(Array.from({ length: 50 }, (_, i) => w(100 + i, `Cap ${i + 1}`, i + 1, 'chapter'))) });
+    expect(container.querySelectorAll('ol li')).toHaveLength(50);
+    expect([...container.querySelectorAll('button')].some((b) => b.textContent.startsWith('Mostrar mais'))).toBe(false);
+  });
+
+  it('does not group a list of the person: it is places in a row', async () => {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/collections/7') return { data: { collection: { id: 7, kind: 'personal', name: 'Minha', workCount: 2, completedCount: 0, coverUrl: '/c' }, works: [w(1, 'A', 1, 'volume', { entryId: 10 }), w(2, 'B', 2, 'chapter', { entryId: 20 })] } };
+      if (url === '/auth/me') return { data: { role: 'reader' } };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    useGlobalStore.setState({ collectionSheetId: 7 });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionSheet /></QueryClientProvider>); });
+    await flush();
+    await flush();
+    expect(container.querySelector('section h3')).toBeNull();
+    expect([...container.querySelectorAll('ol li > div > span:first-child')].map((n) => n.textContent)).toEqual(['1', '2']);
+  });
+});
+
+describe('CollectionSheet: classifying the works of a collection (#187)', () => {
+  const select = (label) => [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith(label)).querySelector('select');
+  const choose = (el, value) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, value);
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  const form = () => container.querySelector('form[aria-label="Classificar as obras"]');
+  const apply = () => [...form().querySelectorAll('button')].find((b) => b.textContent === 'Aplicar');
+
+  it('is offered to the staff only, and not for a list of the person', async () => {
+    await open({ role: 'reader' });
+    expect(button('Classificar obras')).toBeUndefined();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ role: 'admin' });
+    expect(button('Classificar obras')).toBeTruthy();
+  });
+
+  it('is not offered on a list of the person, which has no units', async () => {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/collections/7') return { data: { collection: { id: 7, kind: 'personal', name: 'Minha', workCount: 0, completedCount: 0, coverUrl: '/c' }, works: [] } };
+      if (url === '/auth/me') return { data: { role: 'admin' } };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    useGlobalStore.setState({ collectionSheetId: 7 });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionSheet /></QueryClientProvider>); });
+    await flush();
+    await flush();
+    expect(button('Renomear')).toBeTruthy();
+    expect(button('Classificar obras')).toBeUndefined();
+  });
+
+  it('sends nothing when neither the kind nor the unit was chosen, not even by sending the form', async () => {
+    await open();
+    await click(button('Classificar obras'));
+    await act(async () => { form().dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it('sends the kind and the unit that were chosen, for the works that have none by default', async () => {
+    await open();
+    api.put.mockResolvedValue({ data: { changed: { unit: 3, comic_kind: 3 } } });
+    await click(button('Classificar obras'));
+    expect(apply().disabled).toBe(true);
+    await choose(select('Quadrinho ou mangá'), 'manga');
+    await choose(select('Unidade'), 'chapter');
+    expect(form().querySelector('input[type="checkbox"]').checked).toBe(true);
+    await click(apply());
+    expect(api.put).toHaveBeenCalledWith('/collections/5/classification', { unit: 'chapter', comicKind: 'manga', onlyUnset: true });
+    expect(form().textContent).toContain('Mudei a unidade de 3 e o tipo de 3 obras.');
+  });
+
+  it('sends only what was chosen, and all the works when the box is cleared', async () => {
+    await open();
+    api.put.mockResolvedValue({ data: { changed: { comic_kind: 1 } } });
+    await click(button('Classificar obras'));
+    await choose(select('Quadrinho ou mangá'), 'comic');
+    await click(form().querySelector('input[type="checkbox"]'));
+    await click(apply());
+    expect(api.put).toHaveBeenCalledWith('/collections/5/classification', { comicKind: 'comic', onlyUnset: false });
+    expect(form().textContent).toContain('Mudei o tipo de 1 obra.');
+  });
+
+  it('takes the value away when "none" is chosen', async () => {
+    await open();
+    api.put.mockResolvedValue({ data: { changed: { unit: 2 } } });
+    await click(button('Classificar obras'));
+    await choose(select('Unidade'), 'none');
+    await click(apply());
+    expect(api.put).toHaveBeenCalledWith('/collections/5/classification', { unit: '', onlyUnset: true });
+  });
+
+  it('says what the server refused', async () => {
+    await open();
+    api.put.mockRejectedValueOnce(Object.assign(new Error('x'), { response: { status: 409, data: { error: 'A coleção está aposentada: restaure antes de mudar.' } } }));
+    await click(button('Classificar obras'));
+    await choose(select('Unidade'), 'volume');
+    await click(apply());
+    expect(form().textContent).toContain('A coleção está aposentada: restaure antes de mudar.');
+  });
+
+  it('closes, and refreshes the page after it changed the works', async () => {
+    await open();
+    api.put.mockResolvedValue({ data: { changed: { unit: 1 } } });
+    const reads = () => api.get.mock.calls.filter(([url]) => url === '/collections/5').length;
+    await click(button('Classificar obras'));
+    await choose(select('Unidade'), 'volume');
+    const before = reads();
+    await click(apply());
+    await flush();
+    expect(reads()).toBeGreaterThan(before);
+    await click([...form().querySelectorAll('button')].find((b) => b.textContent === 'Fechar'));
+    expect(form()).toBeNull();
+  });
+});

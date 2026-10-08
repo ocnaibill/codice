@@ -39,6 +39,10 @@ type CollectionWork struct {
 	Position  *float64 `json:"position"`
 	Completed bool     `json:"completed"`
 	Available bool     `json:"available"`
+	// Unit and ComicKind are what the work is of a series (#187): "volume", "chapter" or "oneshot", and "comic" or "manga"; empty when
+	// nobody said.
+	Unit      string `json:"unit"`
+	ComicKind string `json:"comicKind"`
 }
 
 // visibleCollection is the condition for a collection (alias c) the caller ($1) may see: an official one that is not
@@ -168,7 +172,7 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		SELECT cw.id, COALESCE(w.id, 0), COALESCE(w.original_title, cw.label, ''),
 		       COALESCE(`+authorNames+`, cw.author_label, 'Unknown Author'),
 		       COALESCE(wp.cover_url, ''), cw.position, (rp.completed_at IS NOT NULL),
-		       (w.id IS NOT NULL AND w.retired_at IS NULL)
+		       (w.id IS NOT NULL AND w.retired_at IS NULL), COALESCE(w.unit, ''), COALESCE(w.comic_kind, '')
 		FROM collection_works cw
 		LEFT JOIN works w ON w.id = cw.work_id
 		LEFT JOIN work_primary wp ON wp.work_id = w.id
@@ -191,7 +195,7 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	works := []CollectionWork{}
 	for rows.Next() {
 		var cw CollectionWork
-		if err := rows.Scan(&cw.EntryID, &cw.ID, &cw.Title, &cw.Author, &cw.CoverURL, &cw.Position, &cw.Completed, &cw.Available); err != nil {
+		if err := rows.Scan(&cw.EntryID, &cw.ID, &cw.Title, &cw.Author, &cw.CoverURL, &cw.Position, &cw.Completed, &cw.Available, &cw.Unit, &cw.ComicKind); err != nil {
 			log.Println("Error scanning a work of a collection:", err)
 			continue
 		}

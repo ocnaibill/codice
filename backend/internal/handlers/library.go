@@ -590,6 +590,9 @@ type UpdateWorkRequest struct {
 	Language        *string  `json:"language"`
 	PublicationDate *string  `json:"publication_date"`
 	Description     *string  `json:"description"`
+	// Unit and ComicKind (#187): "volume", "chapter" or "oneshot", and "comic" or "manga"; an empty one clears, an absent one leaves.
+	Unit      *string `json:"unit"`
+	ComicKind *string `json:"comic_kind"`
 
 	TitleLock           *bool `json:"title_lock"`
 	AuthorLock          *bool `json:"author_lock"`
@@ -601,6 +604,10 @@ type UpdateWorkRequest struct {
 	PublicationDateLock *bool `json:"publication_date_lock"`
 	DescriptionLock     *bool `json:"description_lock"`
 }
+
+// validUnit and validComicKind say what the two fields of a comic or manga work (#187) can hold; empty is none.
+func validUnit(s string) bool      { return s == "" || s == "volume" || s == "chapter" || s == "oneshot" }
+func validComicKind(s string) bool { return s == "" || s == "comic" || s == "manga" }
 
 // UpdateWork edits a work's descriptive metadata and tags in one transaction. A
 // field the admin actually changes becomes confirmed (RN-008): it is locked
@@ -670,6 +677,20 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Description != nil {
 		next.Description = strings.TrimSpace(*req.Description)
+	}
+	if req.Unit != nil {
+		next.Unit = strings.TrimSpace(*req.Unit)
+		if !validUnit(next.Unit) {
+			http.Error(w, "A unidade é volume, capítulo ou único.", http.StatusBadRequest)
+			return
+		}
+	}
+	if req.ComicKind != nil {
+		next.ComicKind = strings.TrimSpace(*req.ComicKind)
+		if !validComicKind(next.ComicKind) {
+			http.Error(w, "O tipo é quadrinho ou mangá.", http.StatusBadRequest)
+			return
+		}
 	}
 
 	locks := map[string]*bool{
