@@ -30,7 +30,13 @@ type seriesEntry struct {
 	SeriesStep
 	Done   bool
 	LastAt *time.Time
+	// New: the work arrived in the library within seriesNewDays days.
+	New bool
 }
+
+// seriesNewDays is how long a work is new to a series: the card of the series counts the works that came in the last days and that
+// the caller has not finished (#187).
+const seriesNewDays = 7
 
 // unitOrder is the order the groups of a collection are shown in, and so the order "go on" tries them when the caller has not
 // read anything yet: volumes, chapters, one-shots, and the works with no unit last.
@@ -42,7 +48,8 @@ var unitOrder = []string{"volume", "chapter", "oneshot", ""}
 func loadSeries(db *sql.DB, collectionID int64, userID string) ([]seriesEntry, error) {
 	rows, err := db.Query(`
 		SELECT w.id, COALESCE(w.original_title, ''), COALESCE(w.unit, ''), cw.position,
-		       (wrs.work_id IS NOT NULL OR (rp.n > 0 AND NOT rp.open)), (rp.n > 0 AND rp.open AND wrs.work_id IS NULL), rp.last_at
+		       (wrs.work_id IS NOT NULL OR (rp.n > 0 AND NOT rp.open)), (rp.n > 0 AND rp.open AND wrs.work_id IS NULL), rp.last_at,
+		       COALESCE(w.created_at > now() - make_interval(days => $3), FALSE)
 		FROM collection_works cw
 		JOIN works w ON w.id = cw.work_id AND w.retired_at IS NULL
 		LEFT JOIN work_reading_state wrs ON wrs.work_id = w.id AND wrs.user_id = $1::uuid
@@ -56,7 +63,7 @@ func loadSeries(db *sql.DB, collectionID int64, userID string) ([]seriesEntry, e
 		) rp ON TRUE
 		WHERE cw.collection_id = $2 AND cw.official
 		  AND EXISTS (SELECT 1 FROM files f JOIN editions e ON e.id = f.edition_id WHERE e.work_id = w.id AND f.availability = 'available')
-		ORDER BY cw.position NULLS LAST, COALESCE(w.original_title, cw.label), cw.id`, userID, collectionID)
+		ORDER BY cw.position NULLS LAST, COALESCE(w.original_title, cw.label), cw.id`, userID, collectionID, seriesNewDays)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +72,7 @@ func loadSeries(db *sql.DB, collectionID int64, userID string) ([]seriesEntry, e
 	for rows.Next() {
 		var e seriesEntry
 		var lastAt sql.NullTime
-		if err := rows.Scan(&e.ID, &e.Title, &e.Unit, &e.Position, &e.Done, &e.Started, &lastAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.Title, &e.Unit, &e.Position, &e.Done, &e.Started, &lastAt, &e.New); err != nil {
 			return nil, err
 		}
 		if lastAt.Valid {

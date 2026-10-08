@@ -83,6 +83,9 @@ export function goOnText(step) {
   return `${step.started ? 'Continuar' : step.begun ? 'Próximo' : 'Começar'}: ${stepText(step)}`;
 }
 
+/** The new ones of a series, as the badge of its card says it (#187): "1 novo", "3 novos". */
+export const newText = (n) => `${n} ${n === 1 ? 'novo' : 'novos'}`;
+
 /** What a series has, by unit: "30 volumes · 121 capítulos"; a unit with none is left out. */
 export function seriesCounts({ volumes = 0, chapters = 0, oneShots = 0 }) {
   return [

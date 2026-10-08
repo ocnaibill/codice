@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, numberText, seriesCounts, stepText, UNITS, unitLabel, wordsOf, worksText } from './text';
+import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, newText, numberText, seriesCounts, stepText, UNITS, unitLabel, wordsOf, worksText } from './text';
 
 describe('the text of a collection', () => {
   it('counts the works, in the singular too', () => {
@@ -104,5 +104,13 @@ describe('goOnText and seriesCounts, a series on a card (#187)', () => {
     expect(seriesCounts({ volumes: 1, chapters: 1, oneShots: 1 })).toBe('1 volume · 1 capítulo · 1 único');
     expect(seriesCounts({ volumes: 0, chapters: 3, oneShots: 0 })).toBe('3 capítulos');
     expect(seriesCounts({})).toBe('');
+  });
+});
+
+describe('newText, the new ones of a series (#187)', () => {
+  it('says them in the singular and in the plural', () => {
+    expect(newText(1)).toBe('1 novo');
+    expect(newText(2)).toBe('2 novos');
+    expect(newText(121)).toBe('121 novos');
   });
 });
