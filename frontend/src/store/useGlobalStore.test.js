@@ -58,3 +58,31 @@ describe('the page of a collection', () => {
     expect(useGlobalStore.getState().collectionSheetId).toBeNull();
   });
 });
+
+describe('the page of a person', () => {
+  beforeEach(() => {
+    reset();
+    useGlobalStore.getState().closePerson();
+  });
+
+  it('opens in place of the sheet of the work it came from, and the sheet of a work opens over it', () => {
+    useGlobalStore.getState().openWork(7);
+    useGlobalStore.getState().openPerson(3);
+    expect(useGlobalStore.getState()).toMatchObject({ personSheetId: 3, sheetWorkId: null });
+    useGlobalStore.getState().openWork(8);
+    expect(useGlobalStore.getState()).toMatchObject({ personSheetId: 3, sheetWorkId: 8 });
+    useGlobalStore.getState().closeSheet();
+    expect(useGlobalStore.getState().personSheetId).toBe(3);
+    useGlobalStore.getState().closePerson();
+    expect(useGlobalStore.getState().personSheetId).toBeNull();
+  });
+
+  it('is left behind by changing the shelf and by opening a book', () => {
+    useGlobalStore.getState().openPerson(3);
+    useGlobalStore.getState().setLibraryView('audio');
+    expect(useGlobalStore.getState().personSheetId).toBeNull();
+    useGlobalStore.getState().openPerson(3);
+    useGlobalStore.getState().openBook(7, 20);
+    expect(useGlobalStore.getState().personSheetId).toBeNull();
+  });
+});

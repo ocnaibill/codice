@@ -12,17 +12,3 @@ export const ROLES = [
 export function peopleOf(contributors, role) {
   return (contributors ?? []).filter((c) => c.role === role).sort((a, b) => a.position - b.position);
 }
-
-/**
- * What the sheet says besides the authors, which it already shows: "Tradução: A, B · Narração: C". Nothing when nobody else is
- * credited.
- */
-export function creditsLine(contributors) {
-  return ROLES.filter((r) => r.key !== 'author')
-    .map((r) => {
-      const names = peopleOf(contributors, r.key).map((c) => c.name);
-      return names.length ? `${r.heading}: ${names.join(', ')}` : null;
-    })
-    .filter(Boolean)
-    .join(' · ');
-}

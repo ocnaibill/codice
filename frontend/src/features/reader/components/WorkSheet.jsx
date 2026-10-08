@@ -13,7 +13,7 @@ import { completionText, formatSize, languageName, whereYouAre } from '../files'
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { sheetNote } from '../../../lib/ocr';
 import { fileTextState } from '../../../lib/processing';
-import { creditsLine } from '../credits';
+import { peopleOf, ROLES } from '../credits';
 
 const NOTE_TONE = { ok: 'text-success', warn: 'text-warning', plain: 'text-ink-soft' };
 
@@ -191,6 +191,18 @@ function WorkMenu({ workId, pending }) {
   );
 }
 
+/** The names of some people, each opening the page of that person (#186), with a comma between them. */
+function PeopleLinks({ people, onOpen }) {
+  return people.map((c, i) => (
+    <React.Fragment key={`${c.personId}-${c.role}`}>
+      {i > 0 && ', '}
+      <button onClick={() => onOpen(c.personId)} className="rounded-sm text-left underline-offset-2 hover:underline focus-visible:underline">
+        {c.displayName || c.name}
+      </button>
+    </React.Fragment>
+  ));
+}
+
 /**
  * The sheet of a work (RF-041, DEC-028): its editions, their languages and the files of each,
  * with the reader's own position in every file, before the reader opens. Each file keeps its
@@ -209,6 +221,7 @@ export function WorkSheet() {
   const staff = isStaff(useMe().data);
   const pending = useCandidates(workId, { enabled: staff }).data?.length ?? 0;
   const openWork = useGlobalStore((state) => state.openWork);
+  const openPerson = useGlobalStore((state) => state.openPerson);
   const splitEdition = useSplitEdition();
   const [joining, setJoining] = React.useState(false);
   const [splitting, setSplitting] = React.useState(null); // the edition waiting for a yes
@@ -233,7 +246,8 @@ export function WorkSheet() {
 
   const meta = work?.metadata;
   const alternatives = meta?.alternativeTitles ?? [];
-  const credits = creditsLine(meta?.contributors);
+  const authors = peopleOf(meta?.contributors, 'author');
+  const otherRoles = ROLES.filter((r) => r.key !== 'author').map((r) => ({ ...r, people: peopleOf(meta?.contributors, r.key) })).filter((r) => r.people.length > 0);
   const editions = work?.editions ?? [];
   const files = editions.flatMap((edition) => edition.files);
   const canRead = (file) => file?.availability === 'available' && !!file.url;
@@ -285,8 +299,19 @@ export function WorkSheet() {
                       </p>
                     )}
                     <h3 className="font-display text-4xl leading-tight text-ink sm:text-5xl">{work.title}</h3>
-                    <p className="mt-1 font-body text-sm font-semibold text-brand sm:text-base">{work.author}</p>
-                    {credits && <p className="mt-1 text-xs text-ink-soft sm:text-sm">{credits}</p>}
+                    <p className="mt-1 font-body text-sm font-semibold text-brand sm:text-base">
+                      {authors.length > 0 ? <PeopleLinks people={authors} onOpen={openPerson} /> : work.author}
+                    </p>
+                    {otherRoles.length > 0 && (
+                      <p className="mt-1 text-xs text-ink-soft sm:text-sm">
+                        {otherRoles.map((r, i) => (
+                          <React.Fragment key={r.key}>
+                            {i > 0 && ' · '}
+                            {r.heading}: <PeopleLinks people={r.people} onOpen={openPerson} />
+                          </React.Fragment>
+                        ))}
+                      </p>
+                    )}
                     {alternatives.length > 0 && (
                       <p className="mt-1 text-xs text-ink-soft sm:text-sm">
                         Também conhecida como{' '}

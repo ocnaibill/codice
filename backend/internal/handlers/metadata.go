@@ -44,7 +44,7 @@ type WorkMetadata struct {
 }
 
 // loadMetadata reads the metadata block shown by GET /works/{id}.
-func loadMetadata(ctx context.Context, db *sql.DB, workID int) (*WorkMetadata, error) {
+func loadMetadata(ctx context.Context, db *sql.DB, workID int, order string) (*WorkMetadata, error) {
 	m := &WorkMetadata{Locks: map[string]bool{}, Sources: map[string]string{}, AlternativeTitles: []AlternativeTitle{}, Contributors: []Contributor{}}
 	var titleL, authorL, seriesL, coverL, isbnL, pubL, langL, dateL, descL bool
 	err := db.QueryRowContext(ctx, `
@@ -67,7 +67,7 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int) (*WorkMetadata, e
 	if m.AlternativeTitles, err = loadAlternativeTitles(db, workID); err != nil {
 		return nil, err
 	}
-	if m.Contributors, err = loadContributors(db, workID); err != nil {
+	if m.Contributors, err = loadContributors(db, workID, order); err != nil {
 		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, `SELECT field, source FROM work_field_sources WHERE work_id = $1`, workID)

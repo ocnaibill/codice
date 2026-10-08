@@ -7,7 +7,7 @@ export const useGlobalStore = create((set) => ({
   libraryPage: 1,
   librarySort: 'added', // 'added' (newest first), 'title' or 'author' (as the account shows names, #64)
   libraryViewMode: 'grid',
-  setLibraryView: (libraryView) => set({ libraryView, libraryPage: 1, searchQuery: '', adminOpen: false, notesOpen: false, activeBookId: null, activeFileId: null, sheetWorkId: null, collectionSheetId: null }),
+  setLibraryView: (libraryView) => set({ libraryView, libraryPage: 1, searchQuery: '', adminOpen: false, notesOpen: false, activeBookId: null, activeFileId: null, sheetWorkId: null, collectionSheetId: null, personSheetId: null }),
   setLibraryPage: (libraryPage) => set({ libraryPage }),
   setLibrarySort: (librarySort) => set({ librarySort, libraryPage: 1 }),
   setLibraryViewMode: (libraryViewMode) => set({ libraryViewMode }),
@@ -15,6 +15,10 @@ export const useGlobalStore = create((set) => ({
   sheetWorkId: null,
   // The collection whose page is open, if any (#206). The sheet of a work opens over it, and closing that one comes back here.
   collectionSheetId: null,
+  // The person whose page is open, if any (#186). It opens from the sheet of a work, which it replaces; the sheet of a work opens over it.
+  personSheetId: null,
+  openPerson: (id) => set({ personSheetId: id, sheetWorkId: null }),
+  closePerson: () => set({ personSheetId: null }),
   openCollection: (id) => set({ collectionSheetId: id }),
   closeCollection: () => set({ collectionSheetId: null }),
   // The work whose metadata and suggestions are open for owner/admin (#70), and which part ('suggestions' or 'edit').
@@ -49,6 +53,7 @@ export const useGlobalStore = create((set) => ({
       seek: locator ? { locator, context, n: (state.seek?.n ?? 0) + 1 } : null,
       sheetWorkId: null,
       collectionSheetId: null,
+      personSheetId: null,
     })),
   // The place asked for could not be opened: open at the saved position instead.
   clearSeek: () => set({ seek: null }),
