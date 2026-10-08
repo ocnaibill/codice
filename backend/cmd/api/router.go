@@ -187,6 +187,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Delete("/my/collections/{id}/entries/{entryId}", personalCollections.RemoveEntry)
 	r.With(auth).Put("/my/collections/{id}/order", personalCollections.Order)
 	r.With(auth).Get("/works/{id}", libHandler.GetWorkByID)
+	r.With(auth).Get("/works/{id}/series", collectionsHandler.WorkSeries)
 	r.With(catalog, auth).Get("/search", searchHandler.Search)
 	r.With(auth).Patch("/works/{id}/progress", libHandler.UpdateProgress)
 	r.With(auth).Get("/progress/files/{id}", progressHandler.Get)

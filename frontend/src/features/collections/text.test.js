@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectionLine, COMIC_KINDS, groupByUnit, numberText, UNITS, unitLabel, wordsOf, worksText } from './text';
+import { collectionLine, COMIC_KINDS, groupByUnit, numberText, stepText, UNITS, unitLabel, wordsOf, worksText } from './text';
 
 describe('the text of a collection', () => {
   it('counts the works, in the singular too', () => {
@@ -75,5 +75,16 @@ describe('the units of a series (#187)', () => {
     expect(groupByUnit([]).groups).toEqual([]);
     expect(groupByUnit([{ id: 1, unit: 'chapter' }]).groups.map((g) => g.key)).toEqual(['chapter']);
     expect(groupByUnit([{ id: 1, unit: 'chapter' }]).headings).toBe(true);
+  });
+});
+
+describe('stepText, a step of a series on a button (#187)', () => {
+  it('says the unit and the number, and the title when there is no number to say', () => {
+    expect(stepText({ unit: 'chapter', position: 27.5, title: 'Capítulo' })).toBe('Cap. 27,5');
+    expect(stepText({ unit: 'volume', position: 3, title: 'x' })).toBe('Vol. 3');
+    expect(stepText({ unit: 'oneshot', position: null, title: 'Especial' })).toBe('Único');
+    expect(stepText({ unit: 'chapter', position: null, title: 'Extra' })).toBe('Extra');
+    expect(stepText({ unit: '', position: 4, title: 'Sem unidade' })).toBe('Sem unidade');
+    expect(stepText({ unit: 'sideways', position: 4, title: 'Estranho' })).toBe('Estranho');
   });
 });

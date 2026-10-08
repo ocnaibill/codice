@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { useWork } from '../api/useWork';
+import { useWorkSeries } from '../api/useWorkSeries';
 import { useReadingHeartbeat } from '../api/useReadingHeartbeat';
 import { useFavoriteToggle } from '../api/useFavoriteToggle';
 import { useFileProgress } from '../api/useFileProgress';
@@ -21,6 +22,8 @@ import { copyText } from '../copyText';
 import { reason as noteReason } from '../noteText';
 import { toast } from '../../../components/ui/toast';
 import { FinishWorkPrompt } from './FinishWorkPrompt';
+import { NextInSeriesPrompt } from './NextInSeriesPrompt';
+import { stepText } from '../../collections/text';
 import { EquivalentPositionPrompt } from './EquivalentPositionPrompt';
 import { PlaceNotice } from './PlaceNotice';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
@@ -42,6 +45,12 @@ export function Reader() {
   const fromStart = useGlobalStore((state) => state.fromStart);
 
   const { data: book, isLoading, isError } = useWork(activeBookId);
+  // The work that follows this one in its series, when it is in one (#187): a button in the header, and what is offered when
+  // this one is finished.
+  const nextStep = useWorkSeries(activeBookId).data?.next ?? null;
+  const nextRef = useRef(null);
+  nextRef.current = nextStep;
+  const [nextPrompt, setNextPrompt] = useState(false);
   // The file being read: the one chosen on the sheet, or the work's primary. Its position,
   // its format and its reading time are its own.
   const file = useMemo(() => findFile(book, activeFileId), [book, activeFileId]);
@@ -110,6 +119,7 @@ export function Reader() {
     [clearSeek]
   );
   useEffect(() => setPlaceNotice(null), [file?.id]);
+  useEffect(() => setNextPrompt(false), [file?.id]);
 
   // When this version is finished and another is still in progress, ask once whether the whole
   // work is finished (DEC-080). It is asked when the file goes from not finished to finished, not
@@ -149,7 +159,10 @@ export function Reader() {
       const saved = saveProgress(locator, extras);
       saved?.then?.((state) => {
         if (!state) return;
-        if (state.completed && !wasCompleted.current) askIfWorkIsFinished();
+        if (state.completed && !wasCompleted.current) {
+          askIfWorkIsFinished();
+          if (nextRef.current) setNextPrompt(true);
+        }
         wasCompleted.current = !!state.completed;
       });
       return saved;
@@ -296,6 +309,17 @@ export function Reader() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {nextStep && (
+            <button
+              onClick={() => openBook(nextStep.id)}
+              className="flex min-h-11 items-center gap-1.5 rounded-lg bg-surface-alt px-3 text-sm text-ink-soft transition-all hover:bg-border-hairline hover:text-ink"
+              aria-label={`Ler o próximo da série: ${stepText(nextStep)}`}
+              title={`Próximo da série: ${stepText(nextStep)}${nextStep.title && stepText(nextStep) !== nextStep.title ? ` (${nextStep.title})` : ''}`}
+            >
+              <span aria-hidden="true">→</span>
+              <span className="hidden sm:inline">{stepText(nextStep)}</span>
+            </button>
+          )}
           <button
             onClick={() => favoriteToggle.mutate(!book.isFavorite)}
             disabled={favoriteToggle.isPending}
@@ -371,6 +395,15 @@ export function Reader() {
             setPlaceNotice(null);
             openBook(workId, fileId, { fromStart: true });
           }}
+        />
+      )}
+
+      {nextPrompt && nextStep && !finishPrompt && (
+        <NextInSeriesPrompt
+          finished={book.title}
+          next={stepText(nextStep)}
+          onRead={() => openBook(nextStep.id)}
+          onDismiss={() => setNextPrompt(false)}
         />
       )}
 

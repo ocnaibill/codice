@@ -183,6 +183,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	cols := &CollectionsHandler{DB: db}
 	r.Get("/collections", cols.List)
 	r.Get("/collections/{id}", cols.Get)
+	r.Get("/works/{id}/series", cols.WorkSeries)
 	colsAdmin := &CollectionsAdminHandler{DB: db}
 	r.Post("/collections", colsAdmin.Create)
 	r.Patch("/collections/{id}", colsAdmin.Rename)

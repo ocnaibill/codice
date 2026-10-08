@@ -70,6 +70,15 @@ export function unitLabel(unit, position) {
 }
 
 /**
+ * What a step of a series is called on a button (#187): "Vol. 3" or "Cap. 27,5" when the work has a unit and a number, "Único" for
+ * a one-shot, and the title when it has neither.
+ */
+export function stepText(step) {
+  const numbered = UNITS.some((u) => u.key === step.unit) && (step.unit === 'oneshot' || step.position != null);
+  return numbered ? unitLabel(step.unit, step.position) : step.title;
+}
+
+/**
  * The works of a collection in groups by unit (#187): volumes, chapters, one-shots, and those with no unit last. Each keeps its order. A
  * group with no work is left out, and the headings are for when there is more than the works with no unit.
  */

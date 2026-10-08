@@ -16,7 +16,7 @@ import {
   useRestoreCollection,
   useRetireCollection,
 } from '../api/useCollections';
-import { collectionLine, COMIC_KINDS, groupByUnit, numberText, UNITS, unitLabel, wordsOf } from '../text';
+import { collectionLine, COMIC_KINDS, groupByUnit, numberText, stepText, UNITS, unitLabel, wordsOf } from '../text';
 import { CollectionFavoriteButton } from './CollectionFavoriteButton';
 
 const BUTTON = 'min-h-10 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40';
@@ -249,6 +249,7 @@ export function CollectionSheet() {
   const id = useGlobalStore((state) => state.collectionSheetId);
   const close = useGlobalStore((state) => state.closeCollection);
   const openWork = useGlobalStore((state) => state.openWork);
+  const openBook = useGlobalStore((state) => state.openBook);
   const staffMember = isStaff(useMe().data);
   const dialogRef = React.useRef(null);
   const closeRef = React.useRef(null);
@@ -277,6 +278,7 @@ export function CollectionSheet() {
   // The staff manages the official collections; a person manages their own lists, and no one else's.
   const staff = kind === 'personal' || staffMember;
   const works = data?.works ?? [];
+  const goOn = data?.continue ?? null; // where to go on in a series: only an official collection says it (#187)
   const busy = order.isPending || remove.isPending || retire.isPending || restore.isPending;
   const fail = (fallback) => (err) => setMessage(collectionReason(err, fallback));
   // An official collection shows its works in groups by unit (#187); a list of the person is one row of places.
@@ -338,6 +340,14 @@ export function CollectionSheet() {
                   <button onClick={() => restore.mutate({ id, kind }, { onError: fail('Não foi possível restaurar.') })} disabled={busy} className={PRIMARY}>Restaurar a {words.thing}</button>
                 )}
               </div>
+
+              {goOn && !collection.retired && (
+                <div>
+                  <button onClick={() => openBook(goOn.id)} className={PRIMARY} title={goOn.title}>
+                    {goOn.started ? 'Continuar' : goOn.begun ? 'Próximo' : 'Começar'}: {stepText(goOn)}
+                  </button>
+                </div>
+              )}
 
               {staff && mode === 'rename' && <RenameForm collection={collection} onDone={() => setMode(null)} />}
               {staff && mode === 'add' && <AddWorkPanel collection={collection} members={works} onDone={() => setMode(null)} />}

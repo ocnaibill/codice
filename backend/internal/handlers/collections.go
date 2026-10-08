@@ -220,6 +220,18 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	// Where to go on in a series (#187), for the page of an official collection that is not retired: a personal list is not a
+	// series, and a retired collection is not read on.
+	var goOn *SeriesStep
+	if c.Kind == "official" && !c.Retired {
+		entries, err := loadSeries(h.DB, c.ID, userID)
+		if err != nil {
+			log.Println("Error reading the series of a collection:", err)
+			http.Error(w, "Error fetching the collection", http.StatusInternalServerError)
+			return
+		}
+		goOn = continueSeries(entries)
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"collection": c, "works": works})
+	json.NewEncoder(w).Encode(map[string]any{"collection": c, "works": works, "continue": goOn})
 }
