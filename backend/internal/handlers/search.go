@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/people"
 	"log"
 	"net/http"
@@ -54,11 +55,13 @@ type SearchHit struct {
 	WorkID     int    `json:"workId"`
 	WorkTitle  string `json:"workTitle"`
 	WorkAuthor string `json:"workAuthor"`
-	FileID     int64  `json:"fileId"`
-	Format     string `json:"format,omitempty"`
-	Language   string `json:"language,omitempty"`
-	Section    string `json:"section,omitempty"`
-	Origin     string `json:"origin"`
+	// WorkAuthors are the authors one by one, to link each to the page of the person (#186).
+	WorkAuthors []WorkAuthor `json:"workAuthors"`
+	FileID      int64        `json:"fileId"`
+	Format      string       `json:"format,omitempty"`
+	Language    string       `json:"language,omitempty"`
+	Section     string       `json:"section,omitempty"`
+	Origin      string       `json:"origin"`
 	// Snippet is a piece of the text as it was extracted, accents and all; Matches are the
 	// [start, end) positions of the words found in it, counted in characters, for the client to mark.
 	Snippet        string          `json:"snippet"`
@@ -146,6 +149,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	if !exact {
 		matching = stemHits + " UNION ALL " + exactHits
 	}
+	order := people.OrderFor(r.Context(), h.DB, currentUserID(r)).Effective
 	rows, err := h.DB.QueryContext(r.Context(), `
 		WITH q AS (
 			SELECT c.oid::regconfig AS cfg, websearch_to_tsquery(c.oid::regconfig, $1) AS tsq
@@ -161,7 +165,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 			ORDER BY b.rank DESC, b.work_id, b.file_id, b.sequence
 			LIMIT `+limitArg+` OFFSET `+offsetArg+`
 		)
-		SELECT s.id, w.id, w.original_title, `+authorLabelFor(people.OrderFor(r.Context(), h.DB, currentUserID(r)).Effective)+`, f.id,
+		SELECT s.id, w.id, w.original_title, `+authorLabelFor(order)+`, COALESCE(au.ids, '{}'), COALESCE(`+personNamesFor(order)+`, '{}'), f.id,
 		       COALESCE(f.format, ''), COALESCE(e.language, ''), COALESCE(s.section, ''), s.origin,
 		       ts_headline(page.cfg, s.text, websearch_to_tsquery(page.cfg, $1),
 		         'StartSel=' || chr(2) || ', StopSel=' || chr(3) || ', MaxFragments=1, MaxWords=40, MinWords=18, ShortWord=2'),
@@ -171,13 +175,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		JOIN files f ON f.id = page.file_id
 		JOIN editions e ON e.id = f.edition_id
 		JOIN works w ON w.id = page.work_id
-		LEFT JOIN LATERAL (
-			SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name) AS names,
-			       string_agg(CASE WHEN p.family_name IS NULL THEN p.name ELSE p.family_name || COALESCE(', ' || p.given_name, '') END,
-			                  '; ' ORDER BY c.position, p.name) AS names_family
-			FROM work_contributors c JOIN person p ON p.id = c.person_id
-			WHERE c.work_id = w.id AND c.role = 'author'
-		) au ON TRUE
+		`+authorLateral+`
 		ORDER BY page.rank DESC, page.work_id, page.file_id, page.sequence`, args...)
 	if err != nil {
 		log.Println("Error searching:", err)
@@ -191,12 +189,15 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		var h SearchHit
 		var marked string
 		var locator []byte
-		if err := rows.Scan(&h.SegmentID, &h.WorkID, &h.WorkTitle, &h.WorkAuthor, &h.FileID, &h.Format, &h.Language,
+		var authorIDs pq.Int64Array
+		var authorNames pq.StringArray
+		if err := rows.Scan(&h.SegmentID, &h.WorkID, &h.WorkTitle, &h.WorkAuthor, &authorIDs, &authorNames, &h.FileID, &h.Format, &h.Language,
 			&h.Section, &h.Origin, &marked, &locator, &h.LocatorVersion, &h.Rank); err != nil {
 			log.Println("Error reading a search hit:", err)
 			http.Error(w, "Error searching", http.StatusInternalServerError)
 			return
 		}
+		h.WorkAuthors = workAuthorsOf(authorIDs, authorNames)
 		h.Locator = json.RawMessage(locator)
 		h.Snippet, h.Matches = unmark(marked)
 		hits = append(hits, h)

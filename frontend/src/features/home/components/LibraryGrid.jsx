@@ -5,6 +5,7 @@ import { WorkCover } from '../../../components/ui/WorkCover';
 import { LibraryIcon } from '../../../components/ui/LibraryIcon';
 import { useFavoriteToggle } from '../../reader/api/useFavoriteToggle';
 import { useGlobalStore } from '../../../store/useGlobalStore';
+import { AuthorLinks } from '../../people/components/AuthorLinks';
 import { authenticatedUrl } from '../../../lib/api';
 import { readLabel, readTarget } from '../../reader/readTarget';
 import { formatBadge, formatCount } from '../utils/format';
@@ -63,7 +64,7 @@ function BookCard({ item, onOpen, onSheet }) {
               'Pronto para ler'}
           </p>
           <h3 title={item.title}>{item.title}</h3>
-          <p className="library-author">{item.author}</p>
+          <p className="library-author"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
           {item.tags?.length > 0 && (
             <p className="library-book-tags">{item.tags.join(' · ')}</p>
           )}

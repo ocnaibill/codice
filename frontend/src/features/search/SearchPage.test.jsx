@@ -17,7 +17,7 @@ let client;
 const flush = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
 const button = (label) => [...container.querySelectorAll('button')].find((item) => item.textContent.trim() === label);
 
-const work = { id: 7, title: 'Duna', author: 'Frank Herbert', editions: [
+const work = { id: 7, title: 'Duna', author: 'Frank Herbert', authors: [{ id: 3, name: 'Frank Herbert' }], editions: [
   { files: [{ id: 10, format: 'epub', textStatus: 'ready', textSegments: 35 },
     { id: 11, format: 'pdf', textStatus: 'empty', needsOcr: true },
     { id: 12, format: 'txt', textStatus: 'failed' }] },
@@ -34,7 +34,7 @@ beforeEach(() => {
   api.get.mockImplementation(async (url) => {
     if (url.startsWith('/works?')) return { data: { data: [work], totalPages: 1 } };
     if (url === '/works/7') return { data: work };
-    if (url === '/search') return { data: { data: [{ segmentId: 5, workId: 7, fileId: 10, workTitle: 'Duna', workAuthor: 'Frank Herbert', format: 'epub', language: 'pt', section: 'Capítulo 2', origin: 'native', snippet: 'O 💫 universo <script>!', matches: [[2, 3]], locator }], hasMore: false } };
+    if (url === '/search') return { data: { data: [{ segmentId: 5, workId: 7, fileId: 10, workTitle: 'Duna', workAuthor: 'Frank Herbert', workAuthors: [{ id: 3, name: 'Frank Herbert' }], format: 'epub', language: 'pt', section: 'Capítulo 2', origin: 'native', snippet: 'O 💫 universo <script>!', matches: [[2, 3]], locator }], hasMore: false } };
     if (url === '/notes') return { data: { data: [{ id: 1, workId: 7, fileId: 10, sourceAvailable: true, fileAvailable: true, workTitle: 'Duna', workAuthor: 'Frank Herbert', quote: 'universo', body: '<script>não executar</script>', tags: [], locator }], total: 1 } };
     throw new Error(url);
   });
@@ -54,7 +54,7 @@ it('renders catalog, passage and personal notes safely, and opens the exact file
   expect(container.querySelector('script')).toBeNull();
   expect(container.querySelector('[aria-label="Anotações"]').textContent).toContain('<script>não executar</script>');
   const passage = container.querySelector('[aria-label="Passagens"]');
-  await act(async () => passage.querySelector('button').click());
+  await act(async () => [...passage.querySelectorAll('button')].find((b) => b.textContent === 'Abrir neste ponto').click());
   expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 10, seek: { locator, context: { kind: 'search', quote: 'O 💫 universo <script>!' } } });
 });
 
@@ -210,4 +210,30 @@ it('says what became of the scan that has no text yet, as far as reading it has 
     await flush();
     expect(container.textContent, JSON.stringify(ocr)).toContain(expected);
   }
+});
+
+it('links the author of a work and of a passage to the page of the person (#186)', async () => {
+  await act(async () => root.render(<QueryClientProvider client={client}><SearchPage query="universo" /></QueryClientProvider>));
+  await flush();
+  const inWorks = container.querySelector('[aria-label="Obras"]');
+  const inPassages = container.querySelector('[aria-label="Passagens"]');
+  await act(async () => { [...inWorks.querySelectorAll('button')].find((b) => b.textContent === 'Frank Herbert').click(); });
+  expect(useGlobalStore.getState().personSheetId).toBe(3);
+  useGlobalStore.setState({ personSheetId: null });
+  await act(async () => { [...inPassages.querySelectorAll('button')].find((b) => b.textContent === 'Frank Herbert').click(); });
+  expect(useGlobalStore.getState().personSheetId).toBe(3);
+});
+
+it('says the author as text when the server does not give the authors one by one (#186)', async () => {
+  api.get.mockImplementation(async (url) => {
+    if (url.startsWith('/works?')) return { data: { data: [{ ...work, authors: [] }], totalPages: 1 } };
+    if (url === '/search') return { data: { data: [{ segmentId: 5, workId: 7, fileId: 10, workTitle: 'Duna', workAuthor: 'Frank Herbert', format: 'epub', language: 'pt', section: '', origin: 'native', snippet: 'universo', matches: [], locator }], hasMore: false } };
+    if (url === '/notes') return { data: { data: [], total: 0 } };
+    throw new Error(url);
+  });
+  await act(async () => root.render(<QueryClientProvider client={client}><SearchPage query="universo" /></QueryClientProvider>));
+  await flush();
+  expect(container.querySelector('[aria-label="Obras"]').textContent).toContain('Frank Herbert');
+  expect(container.querySelector('[aria-label="Passagens"]').textContent).toContain('· Frank Herbert');
+  expect([...container.querySelectorAll('button')].some((b) => b.textContent === 'Frank Herbert')).toBe(false);
 });

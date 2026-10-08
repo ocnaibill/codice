@@ -1,3 +1,4 @@
+import { AuthorLinks } from '../../people/components/AuthorLinks';
 import iconPin from '../../../assets/icons/s2-pin.svg';
 import iconChapter from '../../../assets/icons/s2-chapter.svg';
 import iconContinueBtn from '../../../assets/icons/s2-continue-btn.svg';
@@ -57,7 +58,7 @@ function InProgressCard({ item, onOpen }) {
             {item.isFavorite && <img src={iconPin} alt="Favorito" className="size-[9px]" />}
           </div>
           <h3 className="pt-1 font-body text-xl font-bold tracking-[-0.2px] text-ink">{item.title}</h3>
-          <p className="font-body text-[13px] tracking-[0.065px] text-ink-soft">{item.author}</p>
+          <p className="font-body text-[13px] tracking-[0.065px] text-ink-soft"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
           {location && (
             <div className="mt-3 flex items-center gap-1 rounded-sm bg-surface px-2 py-1">
               <img src={isAudio ? iconPage : iconChapter} alt="" className="size-[11px]" />
