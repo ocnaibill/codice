@@ -28,6 +28,8 @@ export function Sidebar({ onGoHome, onNavigate, canAdmin, onOpenAdmin }) {
   const { data: stats } = useStats();
   // Collections are offered once there is one; the staff always has them, to make the first (#206).
   const collections = useCollections({ limit: 1 }).data?.total ?? 0;
+  // The lists of the person are always there: anybody can keep them (#207).
+  const lists = useCollections({ limit: 1, kind: 'personal' }).data?.total;
   const navigate = (key) => {
     setView(key);
     onNavigate?.();
@@ -70,6 +72,7 @@ export function Sidebar({ onGoHome, onNavigate, canAdmin, onOpenAdmin }) {
         {(collections > 0 || canAdmin) && navItem({ key: 'collections', label: 'Coleções', icon: 'grid', count: () => collections })}
         <p className="library-eyebrow library-nav-group">Sua coleção</p>
         {COLLECTION.map(navItem)}
+        {navItem({ key: 'lists', label: 'Minhas listas', icon: 'list', count: () => lists })}
         <button
           className="library-nav-item"
           aria-current={notesOpen && !search ? 'page' : undefined}

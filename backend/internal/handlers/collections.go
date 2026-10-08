@@ -27,14 +27,17 @@ type Collection struct {
 	Retired        bool   `json:"retired,omitempty"`
 }
 
-// CollectionWork is one work of a collection, in the order of the collection.
+// CollectionWork is one place of a collection, in its order. A work that is not available (in the trash, or deleted for good,
+// which only a personal list still shows) has no ID to open, and says what it was by the label it kept.
 type CollectionWork struct {
+	EntryID   int64    `json:"entryId"`
 	ID        int      `json:"id"`
 	Title     string   `json:"title"`
 	Author    string   `json:"author"`
 	CoverURL  string   `json:"coverUrl"`
 	Position  *float64 `json:"position"`
 	Completed bool     `json:"completed"`
+	Available bool     `json:"available"`
 }
 
 // visibleCollection is the condition for a collection (alias c) the caller ($1) may see: an official one that is not
@@ -46,7 +49,7 @@ const visibleCollection = `((c.kind = 'official' AND c.retired_at IS NULL) OR c.
 const shownCollection = `(c.origin = 'manual' OR c.edited_at IS NOT NULL OR EXISTS (
 	SELECT 1 FROM collection_works cw JOIN works w ON w.id = cw.work_id WHERE cw.collection_id = c.id AND w.retired_at IS NULL))`
 
-// List answers GET /collections?page=&limit=: the collections the caller sees, by name.
+// List answers GET /collections?page=&limit=&kind=: the official collections, by name, or with kind=personal the caller's own.
 func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID := currentUserID(r)
 	page, limit := 1, 50
@@ -57,9 +60,16 @@ func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		limit = v
 	}
 
-	// The staff can list the retired collections, to restore them: all of them, empty or not.
-	where := visibleCollection + ` AND ` + shownCollection
-	if isStaffRequest(r) && r.URL.Query().Get("retired") == "true" {
+	// The official ones, unless the person asks for their own (what the kind says otherwise is not a kind, and gets the official
+	// ones). The retired ones are listed apart, to restore them: the staff's for the official, the person's for their own.
+	retired := r.URL.Query().Get("retired") == "true"
+	where := `c.kind = 'official' AND c.retired_at IS NULL AND ` + shownCollection + ` AND $1::text IS NOT NULL`
+	switch {
+	case r.URL.Query().Get("kind") == "personal" && retired:
+		where = `c.kind = 'personal' AND c.owner_id = $1::uuid AND c.retired_at IS NOT NULL`
+	case r.URL.Query().Get("kind") == "personal":
+		where = `c.kind = 'personal' AND c.owner_id = $1::uuid AND c.retired_at IS NULL`
+	case retired && isStaffRequest(r):
 		where = `c.kind = 'official' AND c.retired_at IS NOT NULL AND $1::text IS NOT NULL`
 	}
 
@@ -140,13 +150,30 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	order := people.OrderFor(r.Context(), h.DB, userID).Effective
+	authorNames := "au.names"
+	if order == people.FamilyFirst {
+		authorNames = "au.names_family"
+	}
+	// Every place of the collection. An official one shows the works that are available; a personal one also shows the places
+	// of works that went to the trash or were deleted for good, with what the list kept of them.
 	rows, err := h.DB.Query(`
-		SELECT w.id, w.original_title, `+authorLabelFor(order)+`, COALESCE(wp.cover_url, ''), cw.position,
-		       (rp.completed_at IS NOT NULL)`+catalogFrom+`
-		JOIN collection_works cw ON cw.work_id = w.id AND cw.collection_id = $2
+		SELECT cw.id, COALESCE(w.id, 0), COALESCE(w.original_title, cw.label, ''),
+		       COALESCE(`+authorNames+`, cw.author_label, 'Unknown Author'),
+		       COALESCE(wp.cover_url, ''), cw.position, (rp.completed_at IS NOT NULL),
+		       (w.id IS NOT NULL AND w.retired_at IS NULL)
+		FROM collection_works cw
+		LEFT JOIN works w ON w.id = cw.work_id
+		LEFT JOIN work_primary wp ON wp.work_id = w.id
+		LEFT JOIN LATERAL (
+			SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name) AS names,
+			       string_agg(CASE WHEN p.family_name IS NULL THEN p.name ELSE p.family_name || COALESCE(', ' || p.given_name, '') END,
+			                  '; ' ORDER BY c.position, p.name) AS names_family
+			FROM work_contributors c JOIN person p ON p.id = c.person_id
+			WHERE c.work_id = w.id AND c.role = 'author'
+		) au ON TRUE
 		LEFT JOIN reading_progress rp ON rp.file_id = wp.file_id AND rp.user_id = $1::uuid
-		WHERE w.retired_at IS NULL
-		ORDER BY cw.position NULLS LAST, w.original_title, w.id`, userID, id)
+		WHERE cw.collection_id = $2 AND (NOT cw.official OR w.retired_at IS NULL)
+		ORDER BY cw.position NULLS LAST, COALESCE(w.original_title, cw.label), cw.id`, userID, id)
 	if err != nil {
 		log.Println("Error fetching the works of a collection:", err)
 		http.Error(w, "Error fetching the collection", http.StatusInternalServerError)
@@ -156,7 +183,7 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	works := []CollectionWork{}
 	for rows.Next() {
 		var cw CollectionWork
-		if err := rows.Scan(&cw.ID, &cw.Title, &cw.Author, &cw.CoverURL, &cw.Position, &cw.Completed); err != nil {
+		if err := rows.Scan(&cw.EntryID, &cw.ID, &cw.Title, &cw.Author, &cw.CoverURL, &cw.Position, &cw.Completed, &cw.Available); err != nil {
 			log.Println("Error scanning a work of a collection:", err)
 			continue
 		}
@@ -165,8 +192,10 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 		works = append(works, cw)
 	}
-	c.WorkCount = len(works)
 	for _, cw := range works {
+		if cw.Available {
+			c.WorkCount++
+		}
 		if cw.Completed {
 			c.CompletedCount++
 		}
@@ -174,7 +203,7 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// The cover of the collection is the first one a work of it has.
 	c.CoverURL = "/covers/placeholder.svg"
 	for _, cw := range works {
-		if cw.CoverURL != "/covers/placeholder.svg" {
+		if cw.Available && cw.CoverURL != "/covers/placeholder.svg" {
 			c.CoverURL = cw.CoverURL
 			break
 		}

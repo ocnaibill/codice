@@ -86,6 +86,7 @@ func newRouter(d routerDeps) http.Handler {
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
 	collectionsHandler := &handlers.CollectionsHandler{DB: db}
 	collectionsAdmin := &handlers.CollectionsAdminHandler{DB: db}
+	personalCollections := &handlers.PersonalCollectionsHandler{DB: db}
 	progressHandler := &handlers.ProgressHandler{DB: db}
 	searchHandler := &handlers.SearchHandler{DB: db}
 	equivalenceHandler := &handlers.EquivalenceHandler{DB: db}
@@ -174,6 +175,14 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Put("/collections/{id}/works/{workId}", collectionsAdmin.AddWork)
 	r.With(staff).Delete("/collections/{id}/works/{workId}", collectionsAdmin.RemoveWork)
 	r.With(staff).Put("/collections/{id}/order", collectionsAdmin.Order)
+	// The lists of a person: anyone signed in keeps their own (RN-006), and nobody reaches another person's.
+	r.With(auth).Post("/my/collections", personalCollections.Create)
+	r.With(auth).Patch("/my/collections/{id}", personalCollections.Rename)
+	r.With(auth).Delete("/my/collections/{id}", personalCollections.Retire)
+	r.With(auth).Post("/my/collections/{id}/restore", personalCollections.Restore)
+	r.With(auth).Put("/my/collections/{id}/works/{workId}", personalCollections.AddWork)
+	r.With(auth).Delete("/my/collections/{id}/entries/{entryId}", personalCollections.RemoveEntry)
+	r.With(auth).Put("/my/collections/{id}/order", personalCollections.Order)
 	r.With(auth).Get("/works/{id}", libHandler.GetWorkByID)
 	r.With(catalog, auth).Get("/search", searchHandler.Search)
 	r.With(auth).Patch("/works/{id}/progress", libHandler.UpdateProgress)

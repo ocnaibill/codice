@@ -5,9 +5,10 @@ import { useGlobalStore } from '../../../store/useGlobalStore';
 import { isStaff, useMe } from '../../auth/api/useMe';
 import { formatCount } from '../../home/utils/format';
 import { collectionReason, useCollections, useCreateCollection, useRestoreCollection } from '../api/useCollections';
-import { collectionLine } from '../text';
+import { collectionLine, wordsOf } from '../text';
 
-function NewCollectionForm({ onDone }) {
+function NewCollectionForm({ kind, onDone }) {
+  const words = wordsOf(kind);
   const [name, setName] = React.useState('');
   const [message, setMessage] = React.useState('');
   const open = useGlobalStore((state) => state.openCollection);
@@ -16,18 +17,18 @@ function NewCollectionForm({ onDone }) {
     event.preventDefault();
     if (!name.trim()) return;
     setMessage('');
-    create.mutate(name, {
+    create.mutate({ name, kind }, {
       onSuccess: (made) => {
         onDone();
         open(made.id); // empty: the next thing is putting works in it
       },
-      onError: (error) => setMessage(collectionReason(error, 'Não foi possível criar a coleção.')),
+      onError: (error) => setMessage(collectionReason(error, `Não foi possível criar a ${words.thing}.`)),
     });
   };
   return (
     <form onSubmit={submit} className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
       <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-sm text-ink-soft">
-        Nome da coleção
+        Nome da {words.thing}
         <input
           autoFocus
           value={name}
@@ -47,17 +48,18 @@ function NewCollectionForm({ onDone }) {
   );
 }
 
-function CollectionCard({ item, onOpen, canRestore }) {
+function CollectionCard({ item, onOpen, canRestore, kind }) {
+  const words = wordsOf(kind);
   const restore = useRestoreCollection();
   const [message, setMessage] = React.useState('');
   return (
     <article className="library-book">
       <div className="library-book-body">
-        <button onClick={() => onOpen(item.id)} title="Ver as obras da coleção" aria-label={`Abrir a coleção ${item.name}`} className="library-book-cover">
+        <button onClick={() => onOpen(item.id)} title={`Ver as obras da ${words.thing}`} aria-label={`Abrir a ${words.thing} ${item.name}`} className="library-book-cover">
           <WorkCover item={{ coverUrl: item.coverUrl, title: item.name, author: '' }} />
         </button>
         <div className="library-book-meta">
-          <p className="library-book-status">{item.retired ? 'Coleção aposentada' : item.kind === 'personal' ? 'Coleção pessoal' : 'Coleção'}</p>
+          <p className="library-book-status">{item.retired ? words.retired : words.dialog}</p>
           <h3 title={item.name}>{item.name}</h3>
           <p className="library-author">{collectionLine(item)}</p>
         </div>
@@ -65,10 +67,10 @@ function CollectionCard({ item, onOpen, canRestore }) {
       {canRestore && item.retired && (
         <div className="library-book-actions">
           <button
-            onClick={() => restore.mutate(item.id, { onError: (error) => setMessage(collectionReason(error, 'Não foi possível restaurar.')) })}
+            onClick={() => restore.mutate({ id: item.id, kind }, { onError: (error) => setMessage(collectionReason(error, 'Não foi possível restaurar.')) })}
             disabled={restore.isPending}
             className="text-xs font-semibold text-brand"
-            aria-label={`Restaurar a coleção ${item.name}`}
+            aria-label={`Restaurar a ${words.thing} ${item.name}`}
           >
             Restaurar
           </button>
@@ -83,23 +85,26 @@ function CollectionCard({ item, onOpen, canRestore }) {
  * The collections of the library (#184, DEC-130), as cards: what the series of the works made, and the ones owner and admin
  * made by hand. Owner and admin also make a new one here and see the retired ones, to restore them.
  */
-export function CollectionsGrid({ viewMode = 'grid' }) {
+export function CollectionsGrid({ viewMode = 'grid', kind = 'official' }) {
+  const words = wordsOf(kind);
+  // The official collections are managed by the staff; a person manages their own lists.
   const staff = isStaff(useMe().data);
+  const manage = kind === 'personal' || staff;
   const open = useGlobalStore((state) => state.openCollection);
   const [page, setPage] = React.useState(1);
   const [retired, setRetired] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
-  const { data, isLoading, isFetching, isError, refetch } = useCollections({ page, retired: staff && retired });
+  const { data, isLoading, isFetching, isError, refetch } = useCollections({ page, retired: manage && retired, kind });
   const items = data?.data ?? [];
   const totalPages = data?.totalPages ?? 1;
 
   return (
-    <section aria-busy={!!(isLoading || isFetching)} aria-label="Coleções">
+    <section aria-busy={!!(isLoading || isFetching)} aria-label={kind === 'personal' ? 'Minhas listas' : 'Coleções'}>
       <div className="library-section-heading">
-        <h2>{retired ? 'Coleções aposentadas' : 'Coleções'}</h2>
+        <h2>{retired ? words.retiredOnes : kind === 'personal' ? 'Minhas listas' : 'Coleções'}</h2>
         <div className="flex flex-wrap items-center gap-2">
-          {data?.total != null && <span className="library-eyebrow">[ {formatCount(data.total)} {data.total === 1 ? 'coleção' : 'coleções'} ]</span>}
-          {staff && (
+          {data?.total != null && <span className="library-eyebrow">[ {formatCount(data.total)} {data.total === 1 ? words.thing : kind === 'personal' ? 'listas' : 'coleções'} ]</span>}
+          {manage && (
             <>
               <button
                 onClick={() => { setRetired((v) => !v); setPage(1); setCreating(false); }}
@@ -110,14 +115,14 @@ export function CollectionsGrid({ viewMode = 'grid' }) {
               </button>
               {!retired && (
                 <button onClick={() => setCreating(true)} className="min-h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-light">
-                  Nova coleção
+                  Nova {words.thing}
                 </button>
               )}
             </>
           )}
         </div>
       </div>
-      {creating && !retired && <NewCollectionForm onDone={() => setCreating(false)} />}
+      {creating && !retired && <NewCollectionForm kind={kind} onDone={() => setCreating(false)} />}
       {isError ? (
         <div role="alert" className="library-error">
           <p>Não foi possível carregar as coleções.</p>
@@ -130,18 +135,20 @@ export function CollectionsGrid({ viewMode = 'grid' }) {
       ) : items.length === 0 ? (
         <EmptyState>
           {retired
-            ? 'Nenhuma coleção aposentada.'
-            : staff
-              ? 'Ainda não há coleções. Elas nascem do nome da série no metadado das obras, ou você cria uma e acrescenta as obras.'
-              : 'Ainda não há coleções. Elas aparecem quando as obras de uma série entram no acervo.'}
+            ? `Nenhuma ${words.thing} aposentada.`
+            : kind === 'personal'
+              ? 'Você ainda não tem listas. Crie uma e acrescente as obras que quer reunir.'
+              : manage
+                ? 'Ainda não há coleções. Elas nascem do nome da série no metadado das obras, ou você cria uma e acrescenta as obras.'
+                : 'Ainda não há coleções. Elas aparecem quando as obras de uma série entram no acervo.'}
         </EmptyState>
       ) : (
         <div className="library-books" data-view={viewMode}>
-          {items.map((item) => <CollectionCard key={item.id} item={item} onOpen={open} canRestore={staff} />)}
+          {items.map((item) => <CollectionCard key={item.id} item={item} onOpen={open} canRestore={manage} kind={kind} />)}
         </div>
       )}
       {totalPages > 1 && (
-        <nav className="library-pagination" aria-label="Páginas das coleções">
+        <nav className="library-pagination" aria-label={`Páginas das ${kind === 'personal' ? 'listas' : 'coleções'}`}>
           <button className="library-button" disabled={page <= 1 || isFetching} onClick={() => setPage(page - 1)}>Anterior</button>
           <span aria-live="polite">{page} de {totalPages}</span>
           <button className="library-button" disabled={page >= totalPages || isFetching} onClick={() => setPage(page + 1)}>Próxima</button>

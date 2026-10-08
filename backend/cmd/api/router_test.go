@@ -619,3 +619,30 @@ func TestCatalogGate_AbsentMeansNoLimit(t *testing.T) {
 		t.Errorf("GET /stats without a gate and without a session = %d, want 401", rec.Code)
 	}
 }
+
+// The lists of a person are for anyone signed in, the staff or not (#207): a reader reaches the handlers, and nobody who is
+// not signed in does.
+var personalCollectionRoutes = []route{
+	{"POST", "/my/collections"},
+	{"PATCH", "/my/collections/1"},
+	{"DELETE", "/my/collections/1"},
+	{"POST", "/my/collections/1/restore"},
+	{"PUT", "/my/collections/1/works/1"},
+	{"DELETE", "/my/collections/1/entries/1"},
+	{"PUT", "/my/collections/1/order"},
+}
+
+func TestPersonalCollectionRoutes_AnyoneSignedInReachesTheHandlerAndNobodyElse(t *testing.T) {
+	h := testRouter(t)
+	for _, rt := range personalCollectionRoutes {
+		if rec := do(h, rt.method, rt.path, "", ""); rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s without token: got %d, want 401", rt.method, rt.path, rec.Code)
+		}
+		for _, role := range []string{"reader", "admin", "owner"} {
+			// Past the middleware the handler answers for itself (the body is empty, or the list is not there), never 401 or 403.
+			if rec := do(h, rt.method, rt.path, tokenFor(t, role), ""); rec.Code == http.StatusUnauthorized || rec.Code == http.StatusForbidden {
+				t.Errorf("%s %s as %s: got %d, want the handler to answer", rt.method, rt.path, role, rec.Code)
+			}
+		}
+	}
+}

@@ -23,8 +23,8 @@ async function audit(element) {
 }
 
 const works = [
-  { id: 1, title: 'Pedra Filosofal', author: 'J. K. Rowling', coverUrl: '/c/1.jpg', position: 1, completed: true },
-  { id: 2, title: 'Câmara Secreta', author: 'J. K. Rowling', coverUrl: '/c/2.jpg', position: 2, completed: false },
+  { entryId: 10, id: 1, title: 'Pedra Filosofal', author: 'J. K. Rowling', coverUrl: '/c/1.jpg', position: 1, completed: true, available: true },
+  { entryId: 20, id: 2, title: 'Câmara Secreta', author: 'J. K. Rowling', coverUrl: '/c/2.jpg', position: 2, completed: false, available: true },
 ];
 let view;
 afterEach(() => {
@@ -65,6 +65,44 @@ describe('what axe finds on the collections', () => {
     await flush();
     expect(await audit(document.body)).toEqual([]);
     await view.click(view.button('Nova coleção'));
+    expect(await audit(document.body)).toEqual([]);
+  });
+
+  it('on the page of a list of the person, with a work that left the library, the forms and the questions', async () => {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/auth/me') return { data: { role: 'reader' } };
+      if (url === '/collections/7') {
+        return { data: { collection: { id: 7, kind: 'personal', name: 'Para ler', workCount: 1, completedCount: 0, coverUrl: '/c/1.jpg' }, works: [
+          { entryId: 10, id: 1, title: 'Duna', author: 'Frank Herbert', coverUrl: '/c/1.jpg', position: 1, completed: false, available: true },
+          { entryId: 20, id: 0, title: 'Obra que saiu', author: 'x', coverUrl: '/covers/placeholder.svg', position: 2, completed: false, available: false },
+        ] } };
+      }
+      if (url === '/works') return { data: { data: [] } };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    useGlobalStore.setState({ collectionSheetId: 7 });
+    view = await mount(<CollectionSheet />);
+    await flush();
+    expect(await audit(document.body)).toEqual([]);
+    await view.click(view.button('Renomear'));
+    expect(await audit(document.body)).toEqual([]);
+    await view.click(view.button('Renomear'));
+    await view.click(document.body.querySelector('[aria-label="Tirar “Obra que saiu” da lista"]'));
+    expect(await audit(document.body)).toEqual([]);
+    await view.click(view.button('Cancelar'));
+    await view.click(view.button('Aposentar'));
+    expect(await audit(document.body)).toEqual([]);
+  });
+
+  it('on the grid of the lists of the person, with the form of a new one', async () => {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/auth/me') return { data: { role: 'reader' } };
+      return { data: { data: [{ id: 3, kind: 'personal', name: 'Para ler', workCount: 1, completedCount: 0, coverUrl: '/c.jpg' }], total: 1, totalPages: 1 } };
+    });
+    view = await mount(<CollectionsGrid kind="personal" />);
+    await flush();
+    expect(await audit(document.body)).toEqual([]);
+    await view.click(view.button('Nova lista'));
     expect(await audit(document.body)).toEqual([]);
   });
 });
