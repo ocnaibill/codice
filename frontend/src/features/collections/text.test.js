@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectionLine, COMIC_KINDS, groupByUnit, numberText, stepText, UNITS, unitLabel, wordsOf, worksText } from './text';
+import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, numberText, seriesCounts, stepText, UNITS, unitLabel, wordsOf, worksText } from './text';
 
 describe('the text of a collection', () => {
   it('counts the works, in the singular too', () => {
@@ -86,5 +86,23 @@ describe('stepText, a step of a series on a button (#187)', () => {
     expect(stepText({ unit: 'chapter', position: null, title: 'Extra' })).toBe('Extra');
     expect(stepText({ unit: '', position: 4, title: 'Sem unidade' })).toBe('Sem unidade');
     expect(stepText({ unit: 'sideways', position: 4, title: 'Estranho' })).toBe('Estranho');
+  });
+});
+
+describe('goOnText and seriesCounts, a series on a card (#187)', () => {
+  const step = { unit: 'chapter', position: 28, title: 'x' };
+  it('says whether it begins, goes on with a begun one, or reads the next', () => {
+    expect(goOnText({ ...step, started: true, begun: true })).toBe('Continuar: Cap. 28');
+    expect(goOnText({ ...step, started: false, begun: true })).toBe('Próximo: Cap. 28');
+    expect(goOnText({ ...step, started: false, begun: false })).toBe('Começar: Cap. 28');
+    expect(goOnText({ ...step, started: true, begun: false })).toBe('Continuar: Cap. 28');
+    expect(goOnText({ unit: '', position: null, title: 'Extra' })).toBe('Começar: Extra');
+  });
+
+  it('counts what the series has by unit, in the singular too, and leaves out what it has none of', () => {
+    expect(seriesCounts({ volumes: 30, chapters: 121, oneShots: 2 })).toBe('30 volumes · 121 capítulos · 2 únicos');
+    expect(seriesCounts({ volumes: 1, chapters: 1, oneShots: 1 })).toBe('1 volume · 1 capítulo · 1 único');
+    expect(seriesCounts({ volumes: 0, chapters: 3, oneShots: 0 })).toBe('3 capítulos');
+    expect(seriesCounts({})).toBe('');
   });
 });

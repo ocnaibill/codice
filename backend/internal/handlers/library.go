@@ -32,8 +32,10 @@ type Work struct {
 	Author string `json:"author"`
 	// Authors are the authors one by one (the id of the person and the name as the account is shown it), for the card to link each to
 	// the page of the person; Author is the same names in one text.
-	Authors         []WorkAuthor  `json:"authors"`
-	CoverURL        string        `json:"coverUrl"`
+	Authors  []WorkAuthor `json:"authors"`
+	CoverURL string       `json:"coverUrl"`
+	// Collapsed: this work stands for its whole series in a grid (#187): the work is the newest of the series, and the card is the series'.
+	Collapsed       *SeriesCard   `json:"collapsed,omitempty"`
 	FileURL         string        `json:"fileUrl,omitempty"`
 	FileID          *int64        `json:"fileId,omitempty"`
 	Format          string        `json:"format,omitempty"`
@@ -285,7 +287,8 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	search := r.URL.Query().Get("search")
 	inProgressOnly := r.URL.Query().Get("inProgress") == "true"
 	favoriteOnly := r.URL.Query().Get("favorite") == "true"
-	formatGroup := r.URL.Query().Get("formatGroup") // "ebooks" | "comics" | "mangas" | "audio"
+	formatGroup := r.URL.Query().Get("formatGroup")             // "ebooks" | "comics" | "mangas" | "audio"
+	collapseSeries := r.URL.Query().Get("series") == "collapse" // the grid of the library, which shows a series as one card (#187)
 	person, role := r.URL.Query().Get("person"), r.URL.Query().Get("role")
 	retiredOnly := isStaffRequest(r) && r.URL.Query().Get("retired") == "true"
 
@@ -350,6 +353,12 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	if cond := shelfCondition(formatGroup, "wp.file_format"); cond != "" {
 		whereClauses = append(whereClauses, cond)
 	}
+	// A series is one card only in the plain grid: a search, a person, the reading in progress, the favorites and the trash
+	// show the works, each by itself. With no work that has a unit there is nothing to put together.
+	collapseSeries = collapseSeries && search == "" && person == "" && role == "" && !inProgressOnly && !favoriteOnly && !retiredOnly && hasSeriesWorks(h.DB)
+	if collapseSeries {
+		whereClauses = append(whereClauses, seriesRepresentative(formatGroup))
+	}
 	// The page is chosen before the cards are built: counting and ordering run on the cheapest FROM the filters allow
 	// (often only `works`), and only the works of the page get their card (author, progress, counts, tags). Building
 	// the card first made every request pay for all the works before the offset: with 10 000 works the last page
@@ -363,6 +372,9 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 		// parameter whose type it cannot tell.
 		whereClauses = append(whereClauses, "$1::text IS NOT NULL")
 	}
+	if collapseSeries {
+		pageFrom += seriesLateral
+	}
 	whereSQL := " WHERE " + strings.Join(whereClauses, " AND ")
 
 	var totalCount int
@@ -374,23 +386,32 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 
 	order := people.OrderFor(r.Context(), h.DB, userID).Effective
 	pageArgs := append(append([]interface{}{}, args...), limit, offset)
-	idRows, err := h.DB.Query("SELECT w.id"+pageFrom+whereSQL+
-		fmt.Sprintf(" ORDER BY %s LIMIT $%d OFFSET $%d", catalogOrderBy(sortKey, order), argIdx, argIdx+1), pageArgs...)
+	idColumns, titleExpr := "w.id, 0", "w.original_title"
+	if collapseSeries {
+		idColumns, titleExpr = "w.id, COALESCE(sc.collection_id, 0)", "COALESCE(sc.name, w.original_title)"
+	}
+	idRows, err := h.DB.Query("SELECT "+idColumns+pageFrom+whereSQL+
+		fmt.Sprintf(" ORDER BY %s LIMIT $%d OFFSET $%d", catalogOrderByTitled(sortKey, order, titleExpr), argIdx, argIdx+1), pageArgs...)
 	if err != nil {
 		log.Println("Error choosing the page of works:", err)
 		http.Error(w, "Error fetching works", http.StatusInternalServerError)
 		return
 	}
 	var pageIDs []int
+	seriesOf := map[int]int64{} // the work of the page that stands for a series -> the collection
 	for idRows.Next() {
 		var id int
-		if err := idRows.Scan(&id); err != nil {
+		var series int64
+		if err := idRows.Scan(&id, &series); err != nil {
 			idRows.Close()
 			log.Println("Error scanning the page of works:", err)
 			http.Error(w, "Error fetching works", http.StatusInternalServerError)
 			return
 		}
 		pageIDs = append(pageIDs, id)
+		if series != 0 {
+			seriesOf[id] = series
+		}
 	}
 	idRows.Close()
 	if err := idRows.Err(); err != nil {
@@ -425,10 +446,32 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if len(seriesOf) > 0 {
+		var collections []int64
+		for _, id := range seriesOf {
+			collections = append(collections, id)
+		}
+		cards, err := loadSeriesCards(h.DB, collections, userID)
+		if err != nil {
+			log.Println("Error reading the series of the page:", err)
+			http.Error(w, "Error fetching works", http.StatusInternalServerError)
+			return
+		}
+		for i := range works {
+			if card := cards[seriesOf[works[i].ID]]; card != nil {
+				works[i].Collapsed = card
+				if card.CoverURL != "" {
+					works[i].CoverURL = card.CoverURL
+				}
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"data":       works,
 		"total":      totalCount,
+		"series":     collapseSeries, // the total counts cards, a series being one
 		"page":       page,
 		"limit":      limit,
 		"totalPages": (totalCount + limit - 1) / limit,

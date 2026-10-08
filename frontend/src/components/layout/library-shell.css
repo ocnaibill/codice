@@ -569,6 +569,18 @@
   min-height: 38px;
   border-radius: 4px;
 }
+.library-series-go {
+  flex: 1;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-brand);
+}
+.library-series-done {
+  flex: 1;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+}
 .library-book-actions button:hover,
 .library-book-actions a:hover {
   background: var(--color-surface-alt);

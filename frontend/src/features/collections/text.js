@@ -78,6 +78,22 @@ export function stepText(step) {
   return numbered ? unitLabel(step.unit, step.position) : step.title;
 }
 
+/** What a button says to go on with a series (#187): "Continuar: Cap. 27" (begun), "Próximo: Cap. 28" (read some) or "Começar: Vol. 1". */
+export function goOnText(step) {
+  return `${step.started ? 'Continuar' : step.begun ? 'Próximo' : 'Começar'}: ${stepText(step)}`;
+}
+
+/** What a series has, by unit: "30 volumes · 121 capítulos"; a unit with none is left out. */
+export function seriesCounts({ volumes = 0, chapters = 0, oneShots = 0 }) {
+  return [
+    volumes > 0 && `${volumes} ${volumes === 1 ? 'volume' : 'volumes'}`,
+    chapters > 0 && `${chapters} ${chapters === 1 ? 'capítulo' : 'capítulos'}`,
+    oneShots > 0 && `${oneShots} ${oneShots === 1 ? 'único' : 'únicos'}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /**
  * The works of a collection in groups by unit (#187): volumes, chapters, one-shots, and those with no unit last. Each keeps its order. A
  * group with no work is left out, and the headings are for when there is more than the works with no unit.

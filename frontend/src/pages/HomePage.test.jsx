@@ -63,25 +63,57 @@ describe('library hub', () => {
       select.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await flush();
-    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&sort=author');
+    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&sort=author&series=collapse');
     expect(view.text()).toContain('Todas as obras, por autor');
     expect(view.text()).not.toContain('Adicionados recentemente');
     expect(useGlobalStore.getState().librarySort).toBe('author');
     await view.click(view.buttonMatching(/^Quadrinhos/));
-    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&formatGroup=comics&sort=author');
+    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&formatGroup=comics&sort=author&series=collapse');
     expect(view.text()).toContain('Quadrinhos'); // a category is named by what it holds
+  });
+
+  it('counts the items of the grid when the series are put together, and the works when they are not (#187)', async () => {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/auth/me') return { data: { id: 1, username: 'ana', role: 'reader' } };
+      if (url === '/stats') return { data: { worksTotal: 25, libraryBreakdown: { livros: 20, quadrinhos: 4, mangas: 3, audio: 1 } } };
+      if (url.startsWith('/works?')) return { data: { data: [work], total: 5, totalPages: 1, page: 1, series: url.includes('series=collapse') } };
+      return { data: { data: [], total: 0 } };
+    });
+    view = await mount(<HomePage />);
+    await flush();
+    expect(view.text()).toContain('[ 5 itens ]');
+    await act(async () => useGlobalStore.getState().setLibraryView('favorites'));
+    await flush();
+    expect(view.text()).toContain('[ 5 obras ]');
+  });
+
+  it('puts the series together in every shelf of the library, and in no other view (#187)', async () => {
+    view = await mount(<HomePage />);
+    await flush();
+    for (const [shelf, url] of [
+      ['all', '/works?page=1&limit=12&series=collapse'],
+      ['ebooks', '/works?page=1&limit=12&formatGroup=ebooks&series=collapse'],
+      ['audio', '/works?page=1&limit=12&formatGroup=audio&series=collapse'],
+    ]) {
+      await act(async () => useGlobalStore.getState().setLibraryView(shelf));
+      await flush();
+      expect(api.get, shelf).toHaveBeenCalledWith(url);
+    }
+    await act(async () => useGlobalStore.getState().setLibraryView('favorites'));
+    await flush();
+    expect(api.get).not.toHaveBeenCalledWith('/works?page=1&limit=12&favorite=true&series=collapse');
   });
 
   it('shows the mangas apart from the comics, each shelf named by what it holds (#187)', async () => {
     view = await mount(<HomePage />);
     await flush();
     await view.click(view.buttonMatching(/^Mangás/));
-    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&formatGroup=mangas');
+    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&formatGroup=mangas&series=collapse');
     expect(useGlobalStore.getState().libraryView).toBe('mangas');
     const headings = () => [...view.container.querySelectorAll('h2')].map((h) => h.textContent);
     expect(headings()).toContain('Mangás');
     await view.click(view.buttonMatching(/^Quadrinhos/));
-    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&formatGroup=comics');
+    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&formatGroup=comics&series=collapse');
     expect(headings()).toContain('Quadrinhos');
     expect(headings()).not.toContain('Mangás');
   });
@@ -90,10 +122,10 @@ describe('library hub', () => {
     view = await mount(<HomePage />);
     await flush();
     await view.click(view.button('Próxima'));
-    expect(api.get).toHaveBeenCalledWith('/works?page=2&limit=12');
+    expect(api.get).toHaveBeenCalledWith('/works?page=2&limit=12&series=collapse');
     await view.click(view.buttonMatching(/^Quadrinhos/));
     expect(api.get).toHaveBeenCalledWith(
-      '/works?page=1&limit=12&formatGroup=comics'
+      '/works?page=1&limit=12&formatGroup=comics&series=collapse'
     );
     expect(useGlobalStore.getState().libraryPage).toBe(1);
   });

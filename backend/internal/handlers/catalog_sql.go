@@ -162,12 +162,18 @@ func catalogNeedsJoins(sort string, inProgress, favorite bool, formatGroup strin
 // are compared without accents or case, works with no author come last, and every sort ends in the same way so
 // that a page never repeats or skips a work.
 func catalogOrderBy(sort, order string) string {
+	return catalogOrderByTitled(sort, order, "w.original_title")
+}
+
+// catalogOrderByTitled is catalogOrderBy for a list in which some rows stand for a whole series (#187) and are sorted by the
+// name of the series: title is the expression that names a row.
+func catalogOrderByTitled(sort, order, title string) string {
 	key := func(expr string) string { return "unaccent(lower(" + expr + "))" }
 	switch sort {
 	case "title":
-		return key("w.original_title") + ", w.id DESC"
+		return key(title) + ", w.id DESC"
 	case "author":
-		return "(au.names IS NULL), " + key(authorLabelFor(order)) + ", " + key("w.original_title") + ", w.id DESC"
+		return "(au.names IS NULL), " + key(authorLabelFor(order)) + ", " + key(title) + ", w.id DESC"
 	}
 	return "w.id DESC"
 }

@@ -146,3 +146,59 @@ describe('the heart of a card (#179)', () => {
     expect(second.querySelector('button')).toBeNull();
   });
 });
+
+describe('a series in the grid (#187)', () => {
+  const series = (over = {}) => ({
+    collectionId: 4, name: 'One Piece', volumes: 3, chapters: 121, oneShots: 0, coverUrl: '/s.jpg',
+    continue: { id: 9, title: 'One Piece 28', unit: 'chapter', position: 28, started: false, begun: true }, ...over,
+  });
+  const seriesCard = (over = {}, extra = {}) => card({ id: 9, title: 'One Piece 121', coverUrl: '/s.jpg', collapsed: series(over), ...extra });
+  const article = () => container.querySelector('article[data-series="true"]');
+  const text = () => article().textContent;
+
+  it('is one card with the name of the series, what it has by unit, and a mark that it is a series', async () => {
+    await render([seriesCard()]);
+    expect(article().querySelector('h3').textContent).toBe('One Piece');
+    expect(text()).toContain('3 volumes · 121 capítulos');
+    expect(text()).toContain('SÉRIE');
+    expect(article().querySelector('img').getAttribute('alt')).toBe('One Piece');
+  });
+
+  it('opens the collection from the cover, and does not open the sheet of the work that carries it', async () => {
+    await render([seriesCard()]);
+    useGlobalStore.setState({ collectionSheetId: null, sheetWorkId: null });
+    await act(async () => { article().querySelector('[aria-label="Abrir a série One Piece"]').click(); });
+    expect(state().collectionSheetId).toBe(4);
+    expect(state().sheetWorkId).toBeNull();
+  });
+
+  it('goes on with the series from the button, in the reader', async () => {
+    await render([seriesCard()]);
+    const go = article().querySelector('.library-series-go');
+    expect(go.textContent).toBe('Próximo: Cap. 28');
+    await act(async () => { go.click(); });
+    expect(state().activeBookId).toBe(9);
+    expect(state().collectionSheetId).toBeNull();
+  });
+
+  it('says it all was read when there is nothing to go on with, and has no button', async () => {
+    await render([seriesCard({ continue: null })]);
+    expect(article().querySelector('.library-series-go')).toBeNull();
+    expect(text()).toContain('Tudo lido');
+  });
+
+  it('leaves a card of a work as it was, next to a series', async () => {
+    await render([card({ id: 1, title: 'Duna' }), seriesCard()]);
+    expect(container.querySelectorAll('article')).toHaveLength(2);
+    expect(container.querySelectorAll('article[data-series="true"]')).toHaveLength(1);
+    expect(container.querySelector('article:not([data-series]) h3').textContent).toBe('Duna');
+  });
+
+  it('counts items, not works, when told to', async () => {
+    await act(async () => {
+      root.render(<QueryClientProvider client={queryClient}><LibraryGrid items={[seriesCard()]} total={5} countWord="itens" /></QueryClientProvider>);
+    });
+    expect(container.textContent).toContain('[ 5 itens ]');
+  });
+});
+

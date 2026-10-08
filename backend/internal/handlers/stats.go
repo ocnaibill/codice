@@ -43,16 +43,22 @@ const audioFormats = "('mp3','m4a','m4b','ogg','wav','flac')"
 // expression of the format being counted; the work is `w`. A work with a kind is on the shelf of the kind and on no
 // other; one with no kind is on the shelf of its format. An unknown shelf has no condition.
 func shelfCondition(shelf, formatExpr string) string {
+	return shelfConditionOf("w", shelf, formatExpr)
+}
+
+// shelfConditionOf is shelfCondition for a work that goes by another alias.
+func shelfConditionOf(work, shelf, formatExpr string) string {
 	format := "LOWER(" + formatExpr + ")"
+	kind := work + ".comic_kind"
 	switch shelf {
 	case "ebooks":
-		return "(w.comic_kind IS NULL AND " + format + " IN " + bookFormats + ")"
+		return "(" + kind + " IS NULL AND " + format + " IN " + bookFormats + ")"
 	case "comics":
-		return "(w.comic_kind = 'comic' OR (w.comic_kind IS NULL AND " + format + " IN " + comicFormats + "))"
+		return "(" + kind + " = 'comic' OR (" + kind + " IS NULL AND " + format + " IN " + comicFormats + "))"
 	case "mangas":
-		return "w.comic_kind = 'manga'"
+		return kind + " = 'manga'"
 	case "audio":
-		return "(w.comic_kind IS NULL AND " + format + " IN " + audioFormats + ")"
+		return "(" + kind + " IS NULL AND " + format + " IN " + audioFormats + ")"
 	}
 	return ""
 }
