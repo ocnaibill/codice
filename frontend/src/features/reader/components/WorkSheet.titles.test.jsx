@@ -14,9 +14,9 @@ import { WorkSheet } from './WorkSheet';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const work = (alternativeTitles) => ({
+const work = (alternativeTitles, contributors) => ({
   id: 7, title: 'Duna', author: 'Frank Herbert', coverUrl: '/covers/7.jpg', fileId: 10,
-  metadata: { description: 'Uma sinopse.', alternativeTitles },
+  metadata: { description: 'Uma sinopse.', alternativeTitles, contributors },
   editions: [{ id: 1, language: 'pt', isPrimary: true, files: [{ id: 10, format: 'epub', availability: 'available', url: '/file/10', percentComplete: 0, completed: false }] }],
 });
 
@@ -24,9 +24,9 @@ let container;
 let root;
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-async function open(titles) {
+async function open(titles, contributors) {
   api.get.mockImplementation(async (url) => {
-    if (url === '/works/7') return { data: work(titles) };
+    if (url === '/works/7') return { data: work(titles, contributors) };
     if (url === '/works/7/candidates') return { data: { data: [] } };
     if (url === '/auth/me') return { data: { role: 'reader' } };
     throw new Error(`unexpected GET ${url}`);
@@ -65,5 +65,20 @@ describe('WorkSheet: the other names of the work (#185)', () => {
   it('says nothing when the server says nothing of it', async () => {
     await open(undefined);
     expect(container.textContent).not.toContain('Também conhecida como');
+  });
+
+  it('says who else is credited besides the authors, by role', async () => {
+    await open([], [
+      { personId: 1, name: 'Frank Herbert', role: 'author', position: 0 },
+      { personId: 2, name: 'Tradutora', role: 'translator', position: 0 },
+      { personId: 3, name: 'Narrador', role: 'narrator', position: 0 },
+    ]);
+    const line = [...container.querySelectorAll('p')].find((p) => p.textContent.startsWith('Tradução:'));
+    expect(line.textContent).toBe('Tradução: Tradutora · Narração: Narrador');
+  });
+
+  it('says nothing more when only authors are credited', async () => {
+    await open([], [{ personId: 1, name: 'Frank Herbert', role: 'author', position: 0 }]);
+    expect([...container.querySelectorAll('p')].some((p) => p.textContent.includes('Tradução:') || p.textContent.includes('Narração:'))).toBe(false);
   });
 });

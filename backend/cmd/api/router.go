@@ -88,6 +88,7 @@ func newRouter(d routerDeps) http.Handler {
 	collectionsAdmin := &handlers.CollectionsAdminHandler{DB: db}
 	personalCollections := &handlers.PersonalCollectionsHandler{DB: db}
 	workTitles := &handlers.WorkTitlesHandler{DB: db}
+	workContributors := &handlers.WorkContributorsHandler{DB: db}
 	progressHandler := &handlers.ProgressHandler{DB: db}
 	searchHandler := &handlers.SearchHandler{DB: db}
 	equivalenceHandler := &handlers.EquivalenceHandler{DB: db}
@@ -200,6 +201,9 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Put("/works/{id}", libHandler.UpdateWork)
 	r.With(staff).Post("/works/{id}/titles", workTitles.Add)
 	r.With(staff).Delete("/works/{id}/titles/{titleId}", workTitles.Remove)
+	r.With(staff).Post("/works/{id}/contributors", workContributors.Add)
+	r.With(staff).Put("/works/{id}/contributors/order", workContributors.Order)
+	r.With(staff).Delete("/works/{id}/contributors/{personId}/{role}", workContributors.Remove)
 	r.With(staff).Delete("/works/{id}", libHandler.DeleteWork)
 	r.With(staff).Post("/works/{id}/restore", libHandler.RestoreWork)
 	r.With(staff).Get("/admin/suggestions", libHandler.SuggestionQueue)

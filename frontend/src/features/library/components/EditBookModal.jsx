@@ -12,6 +12,8 @@ import { ConfirmDialog } from '../../admin/components/ConfirmDialog';
 import { useDialog } from '../../../lib/useDialog';
 import { languageName } from '../../reader/files';
 import { useAddWorkTitle, useRemoveWorkTitle } from '../../reader/api/useWorkTitles';
+import { useAddContributor, useOrderContributors, useRemoveContributor } from '../../reader/api/useWorkContributors';
+import { peopleOf, ROLES } from '../../reader/credits';
 
 const LOCKS = [
   ['title', 'Título'], ['author', 'Autor'], ['series', 'Série'], ['cover', 'Capa'], ['isbn', 'ISBN'],
@@ -281,6 +283,110 @@ function TitlesEditor({ work }) {
 }
 
 /**
+ * The people credited on a work (#185, DEC-132): the authors, the first being the main one, and the translators, narrators, editors and
+ * illustrators. Owner and admin add a person with a role, take one away and put the people of a role in order. Each change is made at
+ * once. A name the library knows is that person; the one it does not know is made.
+ */
+function PeopleEditor({ work }) {
+  const contributors = work.metadata?.contributors ?? [];
+  const add = useAddContributor(work.id);
+  const remove = useRemoveContributor(work.id);
+  const order = useOrderContributors(work.id);
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('author');
+  const [message, setMessage] = useState('');
+  const busy = add.isPending || remove.isPending || order.isPending;
+  const fail = (fallback) => (error) => setMessage(reasonOf(error, fallback));
+
+  const submit = (event) => {
+    event.preventDefault();
+    if (!name.trim()) return;
+    setMessage('');
+    add.mutate({ name, role }, { onSuccess: () => setName(''), onError: fail('Não foi possível acrescentar a pessoa.') });
+  };
+  const move = (key, people, index, delta) => {
+    const ids = people.map((c) => c.personId);
+    [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
+    setMessage('');
+    order.mutate({ role: key, personIds: ids }, { onError: fail('Não foi possível mudar a ordem.') });
+  };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <p className="text-sm text-ink-soft">
+        Quem assina a obra: o primeiro autor é o principal, e os outros (coautores, tradução, narração, edição, ilustração) ficam depois.
+        Um nome que a biblioteca já conhece é a mesma pessoa.
+      </p>
+      {ROLES.map(({ key, heading }) => {
+        const people = peopleOf(contributors, key);
+        if (people.length === 0) return null;
+        return (
+          <section key={key} aria-label={heading}>
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">{heading}</p>
+            <ul className="mt-2 flex flex-col gap-2">
+              {people.map((c, index) => (
+                <li key={`${c.personId}-${c.role}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-border-hairline bg-white px-3 py-2">
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-ink">
+                    {c.name}
+                    {key === 'author' && index === 0 && <span className="ml-2 font-mono text-[10px] font-normal text-ink-faint">principal</span>}
+                  </span>
+                  {people.length > 1 && (
+                    <>
+                      <button type="button" onClick={() => move(key, people, index, -1)} disabled={busy || index === 0} aria-label={`Subir ${c.name}`}
+                        className="min-h-10 min-w-10 rounded-lg border border-border-hairline bg-surface text-xs text-ink hover:bg-surface-alt disabled:opacity-40">↑</button>
+                      <button type="button" onClick={() => move(key, people, index, 1)} disabled={busy || index === people.length - 1} aria-label={`Descer ${c.name}`}
+                        className="min-h-10 min-w-10 rounded-lg border border-border-hairline bg-surface text-xs text-ink hover:bg-surface-alt disabled:opacity-40">↓</button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setMessage(''); remove.mutate({ personId: c.personId, role: c.role }, { onError: fail('Não foi possível tirar a pessoa.') }); }}
+                    disabled={busy}
+                    aria-label={`Tirar ${c.name} de ${heading.toLowerCase()}`}
+                    className="min-h-10 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40"
+                  >
+                    Tirar
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-3 border-t border-border-hairline pt-4">
+        <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs font-medium text-ink-soft">
+          Nome da pessoa
+          <input className={inputClass} value={name} maxLength={200} onChange={(e) => setName(e.target.value)} disabled={busy} />
+        </label>
+        <label className="flex w-40 flex-col gap-1 text-xs font-medium text-ink-soft">
+          Função
+          <select className={inputClass} value={role} onChange={(e) => setRole(e.target.value)} disabled={busy}>
+            {ROLES.map((r) => <option key={r.key} value={r.key}>{r.one}</option>)}
+          </select>
+        </label>
+        <button type="submit" disabled={busy || !name.trim()} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40">
+          Creditar
+        </button>
+        {message && <p role="alert" className="basis-full text-sm text-danger">{message}</p>}
+      </form>
+    </div>
+  );
+}
+
+/** The names of a work, and the people on it: one tab, since the two are corrected together. */
+function TitlesAndPeople({ work }) {
+  return (
+    <div className="flex flex-col gap-8">
+      <TitlesEditor work={work} />
+      <div className="border-t border-border-hairline pt-6">
+        <h3 className="mb-3 font-display text-xl text-ink">Autores e outras funções</h3>
+        <PeopleEditor work={work} />
+      </div>
+    </div>
+  );
+}
+
+/**
  * The metadata of a work, for owner and admin (#70): what the providers suggested, to accept or reject, and
  * the fields, to correct by hand. It is opened from the sheet of the work and from the queue in Administração.
  */
@@ -294,7 +400,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
 
   useDialog(dialogRef, { onEscape: onClose, initialFocus: closeRef });
 
-  const tabs = [['suggestions', pending > 0 ? `Sugestões (${pending})` : 'Sugestões'], ['edit', 'Editar'], ['titles', 'Títulos']];
+  const tabs = [['suggestions', pending > 0 ? `Sugestões (${pending})` : 'Sugestões'], ['edit', 'Editar'], ['titles', 'Títulos e autores']];
 
   return (
     <div ref={dialogRef} className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/60 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label="Metadados da obra">
@@ -326,7 +432,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
           {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta obra.</LoadError>}
           {work && tab === 'suggestions' && <WorkSuggestions workId={work.id} emptyText="Nenhuma sugestão esperando decisão." />}
           {work && tab === 'edit' && <EditForm work={work} onClose={onClose} />}
-          {work && tab === 'titles' && <TitlesEditor work={work} />}
+          {work && tab === 'titles' && <TitlesAndPeople work={work} />}
         </div>
       </div>
     </div>
