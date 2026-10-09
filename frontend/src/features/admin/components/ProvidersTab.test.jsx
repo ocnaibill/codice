@@ -57,6 +57,20 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
     expect(confirmDialog().textContent).toContain('o título da obra');
   });
 
+  it('says Wikidata translates and identifies the work, that Wikipedia needs it, and that only the title of a page goes to Wikipedia', async () => {
+    const wikipedia = { ...provider('wikipedia', 'Wikipedia', false), sends: ['page_title'] };
+    await open({ isOwner: true }, [...providers, provider('wikidata', 'Wikidata', false), wikipedia]);
+    const text = view.text();
+    expect(text).toContain('Recebe: o título da obra. Endereço: www.wikidata.org (Wikimedia).');
+    expect(text).toContain('traduz um título que os outros não conhecem');
+    expect(text).toContain('Recebe: só o título da página da obra na Wikipédia, que o Wikidata informou (nunca o título do arquivo). Endereço: *.wikipedia.org (Wikimedia).');
+    expect(text).toContain('Só funciona com o Wikidata ligado');
+    expect(text).toContain('CC BY-SA 4.0');
+    await view.click(box('Wikipedia'));
+    expect(api.put).not.toHaveBeenCalled();
+    expect(confirmDialog().textContent).toContain('é enviado a *.wikipedia.org (Wikimedia): só o título da página');
+  });
+
   it('turns one on only after saying what is sent, and not at all if the owner backs out', async () => {
     await open();
     await view.click(box('Google Books'));

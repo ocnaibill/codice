@@ -94,12 +94,22 @@ class TestPipeline:
     def test_the_ids_a_provider_knows_the_work_by_travel_as_evidence(self):
         import json
         db = FakeDB()
-        run(db, meta(), FakeProviders(record(raw={'anilist_id': 30002, 'mangadex_id': 'abc-1', 'openlibrary_id': 'OL1W', 'other': 'x'})))
+        run(db, meta(), FakeProviders(record(raw={'anilist_id': 30002, 'mangadex_id': 'abc-1', 'openlibrary_id': 'OL1W', 'wikidata_id': 'Q190192', 'translated_from': 'Duna', 'other': 'x'})))
         rows = db.matching("INSERT INTO metadata_candidates")
         assert rows
         for q, p in rows:
             evidence = json.loads(p[-1])
             assert (evidence['anilist_id'], evidence['mangadex_id'], evidence['openlibrary_id']) == (30002, 'abc-1', 'OL1W') and 'other' not in evidence
+            assert (evidence['wikidata_id'], evidence['translated_from']) == ('Q190192', 'Duna')
+
+    def test_the_origin_of_a_suggestion_never_overflows_the_column(self):
+        db = FakeDB()
+        run(db, meta(), FakeProviders(record(source='x' * 100)))
+        rows = db.matching("INSERT INTO metadata_candidates")
+        assert rows and all(len(p[3]) == 64 for q, p in rows)
+        db = FakeDB()
+        run(db, meta(), FakeProviders(record(source='OpenLibrary + Wikidata + Wikipedia')))
+        assert all(p[3] == 'OpenLibrary + Wikidata + Wikipedia' for q, p in db.matching("INSERT INTO metadata_candidates"))
 
     def test_an_answer_that_was_not_judged_carries_no_match(self):
         import json

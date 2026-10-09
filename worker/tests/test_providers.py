@@ -278,7 +278,7 @@ class TestNothingIsAskedUnlessTheOwnerTurnedItOn:
         assert a.asked == []
 
     def test_the_real_providers_have_the_ids_the_owner_chooses_by(self):
-        assert [p.id for p in ProviderRegistry()._providers['default']] == ['google_books', 'openlibrary']
+        assert [p.id for p in ProviderRegistry()._providers['default']] == ['google_books', 'openlibrary', 'wikidata', 'wikipedia']
         assert [p.id for p in ProviderRegistry()._providers['cbz']] == ['comicvine', 'anilist', 'mangadex', 'google_books', 'openlibrary']
         assert [p.id for p in ProviderRegistry()._providers['cbr']] == ['comicvine', 'anilist', 'mangadex', 'google_books', 'openlibrary']
 
