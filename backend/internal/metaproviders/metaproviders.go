@@ -33,7 +33,7 @@ type Info struct {
 
 // Known are the providers the worker can ask, in the order it asks them.
 var Known = []Info{
-	{ID: "google_books", Name: "Google Books", Sends: []string{"title"}, Key: "optional"},
+	{ID: "google_books", Name: "Google Books", Sends: []string{"title"}, Key: "required"},
 	{ID: "openlibrary", Name: "Open Library", Sends: []string{"title", "author_key"}},
 	{ID: "comicvine", Name: "ComicVine", Sends: []string{"title"}, Key: "required"},
 	{ID: "anilist", Name: "AniList", Sends: []string{"title"}},

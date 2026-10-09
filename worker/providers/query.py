@@ -19,6 +19,11 @@ def _clean(title):
     return re.sub(r'\s+', ' ', re.sub(r'\([^)]*\)|\[[^\]]*\]', ' ', title or '')).strip()
 
 
+# What is written in parentheses after a title and says nothing about the book: the quality or the origin of the file.
+_FILE_NOISE = frozenset({'digital', 'retail', 'scan', 'scanned', 'ocr', 'epub', 'pdf', 'mobi', 'azw3', 'ebook', 'hq', 'web', 'zlib', 'repack', 'completo', 'complete'})
+_PARENTHESES = re.compile(r'\(([^()]*)\)')
+
+
 _ARTICLES = frozenset({'the', 'of', 'and', 'a', 'o', 'de', 'do', 'da', 'e', 'em', 'in', 'on'})
 
 
@@ -60,6 +65,22 @@ def author_closeness(wanted, credits):
     return best
 
 
+def parenthetical(title, author=None):
+    """The words in parentheses after a title that say something about the book ("A nuvem (Scythe)": the series, or the original title), which a
+    search finds the book by. Not a year, not what is said of the file ("(Digital)"), and not a person: the author is never sent (DEC-097)."""
+    for group in _PARENTHESES.findall(title or ''):
+        text = re.sub(r'\s+', ' ', group).strip()
+        words = text.split()
+        if len(words) > 4 or not any(ch.isalpha() for ch in text) or any(ch.isdigit() for ch in text):
+            continue
+        if any(w.lower().strip('.,') in _FILE_NOISE for w in words) or _looks_like_a_name(text):
+            continue
+        if author and author_closeness(author, [text]) >= 0.5:
+            continue
+        return text
+    return ''
+
+
 @dataclass
 class FileQuery:
     """The title of a file, read. `author` is what the file's own metadata says (it can veto an answer); `hint` is what the title seems to say
@@ -71,6 +92,7 @@ class FileQuery:
     format: str = 'default'
     left: str = ''       # the title without the part after the dash
     stripped: str = ''   # ... and without the number
+    extra: str = ''      # what the title says in parentheses about the book ("Scythe" in "A nuvem (Scythe)")
 
     @property
     def serial(self):
@@ -80,6 +102,12 @@ class FileQuery:
     def search_title(self):
         """The one thing that is sent to a provider. The number of an issue or a volume is not part of the title of its series."""
         return (self.stripped if self.serial else self.left) or self.title
+
+    @property
+    def search_extra(self):
+        """The title with what it says in parentheses, for a provider whose search finds the book by it; empty when there is nothing to add.
+        Not for the files of a series: there the parentheses are the year, the group, the quality."""
+        return f'{self.search_title} {self.extra}' if self.extra and not self.serial and self.search_title else ''
 
     def variants(self) -> List[Tuple[str, Optional[str]]]:
         """The ways the title can be read, each with the author an answer to it has to have (or None): the whole text as written; without the
@@ -106,4 +134,5 @@ def read_file_title(title, author=None, format='default') -> FileQuery:
     rest = left[:match.start()].strip(' -:,') if match else ''
     if rest:   # what is left of the title once the number is gone: a title that is only a number ("1984") has none
         number, stripped = int(match.group(1)), rest
-    return FileQuery(title=clean, author=author, number=number, hint=hint, format=format or 'default', left=left, stripped=stripped)
+    return FileQuery(title=clean, author=author, number=number, hint=hint, format=format or 'default', left=left, stripped=stripped,
+                     extra=parenthetical(title, author))

@@ -85,7 +85,7 @@ def _ingest_with_network_spies(tmp_path, monkeypatch, allowed):
         asked.append(url)
         return Reply()
 
-    with patch('providers.http.requests.get', spy), patch('providers.google_books.requests.get', spy):
+    with patch('providers.http.requests.get', spy):
         load_main().build_runner(db, None).run_one()
     return asked
 

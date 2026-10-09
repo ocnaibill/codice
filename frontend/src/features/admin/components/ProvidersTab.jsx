@@ -7,9 +7,9 @@ import { PermissionNote } from '../../../components/ui/PermissionNote';
 
 // What each provider is, where it lives, and what asking it hands over: the owner decides knowing (DEC-045).
 const ABOUT = {
-  google_books: { host: 'googleapis.com (Google)', keyEnv: 'GOOGLE_BOOKS_API_KEY' },
+  google_books: { host: 'googleapis.com (Google)', keyEnv: 'GOOGLE_BOOKS_API_KEY', note: 'Só funciona com uma chave de API sua: sem ela o Google divide uma cota diária com todo mundo, e ela quase sempre já acabou. Responde com até 20 livros por título, e o Códice escolhe o certo pelo autor do arquivo, que não é enviado.' },
   openlibrary: { host: 'openlibrary.org (Internet Archive)', note: 'Também é a fonte das chaves de autoridade dos autores.' },
-  comicvine: { host: 'comicvine.gamespot.com', keyEnv: 'COMICVINE_API_KEY' },
+  comicvine: { host: 'comicvine.gamespot.com', keyEnv: 'COMICVINE_API_KEY', note: 'Para quadrinhos: acha a série e depois a edição com o número do arquivo (editora, data, capa, sinopse e quem escreveu e desenhou).' },
   anilist: { host: 'graphql.anilist.co (AniList)', note: 'Para mangá: autores, gêneros, ano, sinopse e capa da série. Uso gratuito não comercial; não guardamos mais do que você aceita.' },
   mangadex: { host: 'api.mangadex.org (MangaDex)', note: 'Para mangá: autores, gêneros, público (seinen, shounen…), sinopse e capa da série. Política de uso: não comercial.' },
   wikidata: { host: 'www.wikidata.org (Wikimedia)', note: 'Diz que obra é: traduz um título que os outros não conhecem (“A Nuvem” é Thunderhead), e acrescenta o identificador, a série e os gêneros em português. Dados em domínio público (CC0).' },
@@ -26,15 +26,9 @@ const SENDS = {
 function keyNote(provider) {
   const env = ABOUT[provider.id]?.keyEnv;
   if (!provider.key || !env) return null;
-  if (provider.keyConfigured === true) {
-    return provider.key === 'optional' ? 'Chave de API configurada: o limite de uso é maior.' : 'Chave de API configurada.';
-  }
-  if (provider.keyConfigured === false) {
-    return provider.key === 'optional'
-      ? `Sem chave de API: funciona, com limite de uso menor. Para aumentar, defina ${env} no ambiente do worker.`
-      : `Falta a chave de API: sem ela o ${provider.name} não funciona. Defina ${env} no ambiente do worker e reinicie-o.`;
-  }
-  return provider.key === 'required' ? 'O worker ainda não informou se a chave de API existe.' : null;
+  if (provider.keyConfigured === true) return 'Chave de API configurada.';
+  if (provider.keyConfigured === false) return `Falta a chave de API: sem ela o ${provider.name} não funciona. Defina ${env} no ambiente do worker e reinicie-o.`;
+  return 'O worker ainda não informou se a chave de API existe.';
 }
 
 // A provider that cannot work without a key the worker does not have is not turned on to find out later.

@@ -8,7 +8,7 @@ import { ProvidersTab } from './ProvidersTab';
 
 const provider = (id, name, enabled, over = {}) => ({ id, name, enabled, sends: ['title'], key: '', keyConfigured: null, ...over });
 const providers = [
-  provider('google_books', 'Google Books', false, { key: 'optional' }),
+  provider('google_books', 'Google Books', false, { key: 'required' }),
   provider('openlibrary', 'Open Library', true, { sends: ['title', 'author_key'] }),
   provider('comicvine', 'ComicVine', false, { key: 'required', keyConfigured: true }),
 ];
@@ -143,35 +143,36 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
 
   describe('the API keys, which are set in the environment of the worker', () => {
     const withKeys = (google, comic) => [
-      provider('google_books', 'Google Books', false, { key: 'optional', keyConfigured: google }),
+      provider('google_books', 'Google Books', false, { key: 'required', keyConfigured: google }),
       provider('openlibrary', 'Open Library', false),
       provider('comicvine', 'ComicVine', false, { key: 'required', keyConfigured: comic }),
     ];
 
     it('says a key is configured, and that it goes along when the provider is turned on', async () => {
       await open({ isOwner: true }, withKeys(true, true));
-      expect(view.text()).toContain('Chave de API configurada: o limite de uso é maior.');
-      expect(view.text()).toContain('Chave de API configurada.');
+      expect(view.text().split('Chave de API configurada.')).toHaveLength(3); // twice: Google Books and ComicVine
       await view.click(box('ComicVine'));
       expect(confirmDialog().textContent).toContain('A chave de API configurada no worker vai junto.');
     });
 
-    it('says a key that can be done without is missing, and still lets the provider be turned on', async () => {
-      await open({ isOwner: true }, withKeys(false, true));
-      expect(view.text()).toContain('Sem chave de API: funciona, com limite de uso menor. Para aumentar, defina GOOGLE_BOOKS_API_KEY no ambiente do worker.');
-      expect(box('Google Books').disabled).toBe(false);
-      await view.click(box('Google Books'));
-      expect(confirmDialog().textContent).not.toContain('chave de API configurada no worker vai junto');
-    });
-
     it('does not let a provider that cannot work without a key be turned on, and says what to do', async () => {
-      await open({ isOwner: true }, withKeys(true, false));
+      await open({ isOwner: true }, withKeys(false, false));
       expect(view.text()).toContain('Falta a chave de API: sem ela o ComicVine não funciona. Defina COMICVINE_API_KEY no ambiente do worker e reinicie-o.');
+      expect(view.text()).toContain('Falta a chave de API: sem ela o Google Books não funciona. Defina GOOGLE_BOOKS_API_KEY no ambiente do worker e reinicie-o.');
       expect(box('ComicVine').disabled).toBe(true);
-      expect(box('Google Books').disabled).toBe(false);
+      expect(box('Google Books').disabled).toBe(true);
+      expect(box('Open Library').disabled).toBe(false);
       const noteOf = (text) => [...document.body.querySelectorAll('li p')].find((p) => p.textContent.includes(text));
       expect(noteOf('Falta a chave de API').className).toContain('text-danger');
-      expect(noteOf('Chave de API configurada').className).not.toContain('text-danger');
+    });
+
+    it('lets Google Books be turned on once its key is there, and says why it needs one', async () => {
+      await open({ isOwner: true }, withKeys(true, false));
+      expect(view.text()).toContain('Só funciona com uma chave de API sua');
+      expect(box('Google Books').disabled).toBe(false);
+      expect(box('ComicVine').disabled).toBe(true);
+      const note = [...document.body.querySelectorAll('li p')].find((p) => p.textContent.includes('Chave de API configurada'));
+      expect(note.className).not.toContain('text-danger');
     });
 
     it('still lets one that is on be turned off when its key is gone', async () => {
@@ -181,11 +182,11 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
       expect(api.put).toHaveBeenCalledWith('/admin/metadata-providers/comicvine', { enabled: false });
     });
 
-    it('says the worker has not said yet when it is a key that is needed, and nothing when it can be done without', async () => {
+    it('says the worker has not said yet when the key is needed', async () => {
       await open({ isOwner: true }, withKeys(null, null));
-      expect(view.text().split('O worker ainda não informou se a chave de API existe.')).toHaveLength(2); // once: ComicVine only
-      expect(view.text()).not.toContain('Sem chave de API');
+      expect(view.text().split('O worker ainda não informou se a chave de API existe.')).toHaveLength(3); // twice: Google Books and ComicVine
       expect(box('ComicVine').disabled).toBe(false);
+      expect(box('Google Books').disabled).toBe(false);
     });
 
     it('says nothing about keys for a provider that has none', async () => {
