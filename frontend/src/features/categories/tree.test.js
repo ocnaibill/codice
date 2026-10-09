@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MAX_DEPTH, inOrder, descendantsOf, heightOf, placesFor, pathOf } from './tree';
+import { MAX_DEPTH, inOrder, descendantsOf, heightOf, placesFor, pathOf, ancestorsOf } from './tree';
 
 // As the server sends it: flat, sorted by name.
 const flat = [
@@ -79,5 +79,16 @@ describe('pathOf', () => {
   });
   it('is empty for one that is not there', () => {
     expect(pathOf(flat, 99)).toBe('');
+  });
+});
+
+describe('ancestorsOf', () => {
+  it('is the categories above one, from the top down, and not the category itself', () => {
+    expect(ancestorsOf(flat, 5).map((c) => c.name)).toEqual(['Mangá', 'Seinen']);
+    expect(ancestorsOf(flat, 3).map((c) => c.name)).toEqual(['Mangá']);
+  });
+  it('is empty for one at the top and for one that is not there', () => {
+    expect(ancestorsOf(flat, 1)).toEqual([]);
+    expect(ancestorsOf(flat, 99)).toEqual([]);
   });
 });

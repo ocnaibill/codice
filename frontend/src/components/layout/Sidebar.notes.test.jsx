@@ -5,7 +5,7 @@ import { useGlobalStore } from '../../store/useGlobalStore';
 
 let view;
 const current = () => [...document.body.querySelectorAll('[aria-current="page"]')].map((b) => b.textContent.trim());
-beforeEach(() => useGlobalStore.setState({ notesOpen: false, adminOpen: false, searchQuery: '', libraryView: 'all' }));
+beforeEach(() => useGlobalStore.setState({ notesOpen: false, adminOpen: false, searchQuery: '', libraryView: 'all', categoryPageId: null }));
 afterEach(() => view.unmount());
 
 describe('the Anotações item of the menu (#13)', () => {
@@ -28,6 +28,12 @@ describe('the Anotações item of the menu (#13)', () => {
 
   it('is not the current page while a search is on screen', async () => {
     useGlobalStore.setState({ notesOpen: true, searchQuery: 'duna' });
+    view = await mount(<Sidebar />);
+    expect(current()).toEqual([]);
+  });
+
+  it('has no shelf as the current page while the page of a category is open', async () => {
+    useGlobalStore.setState({ categoryPageId: 7 });
     view = await mount(<Sidebar />);
     expect(current()).toEqual([]);
   });

@@ -51,6 +51,63 @@ beforeEach(() => {
 });
 afterEach(() => view?.unmount());
 
+describe('the categories on the home (DEC-140)', () => {
+  const tree = [
+    { id: 1, parentId: null, name: 'Ficção científica', works: 3, own: 3, covers: [] },
+    { id: 2, parentId: null, name: 'Mangá', works: 7, own: 1, covers: [] },
+  ];
+  const withCategories = () => {
+    const before = api.get.getMockImplementation();
+    api.get.mockImplementation(async (url, config) => (url === '/categories' ? { data: { data: tree } } : before(url, config)));
+  };
+  beforeEach(() => useGlobalStore.setState({ categoryPageId: null, libraryPage: 1 }));
+
+  it('puts a row of them under the shelf of the library, and opens a page from it', async () => {
+    withCategories();
+    view = await mount(<HomePage />);
+    await flush();
+    const text = view.text();
+    expect(text).toContain('Explorar por categoria');
+    expect(text.indexOf('Adicionados recentemente')).toBeLessThan(text.indexOf('Explorar por categoria'));
+    const card = [...document.body.querySelectorAll('section[aria-label="Explorar por categoria"] button')].find((b) => b.textContent.includes('Mangá'));
+    await view.click(card);
+    expect(useGlobalStore.getState().categoryPageId).toBe(2);
+  });
+
+  it('has no row while there are no categories with works', async () => {
+    view = await mount(<HomePage />);
+    await flush();
+    expect(view.text()).not.toContain('Explorar por categoria');
+  });
+
+  it('has the row only in the main shelf, not in the others', async () => {
+    withCategories();
+    view = await mount(<HomePage />);
+    await flush();
+    await view.click(view.buttonMatching(/^Quadrinhos/));
+    expect(view.text()).not.toContain('Explorar por categoria');
+  });
+
+  it('shows the page of the category in the place of the shelves when one is open', async () => {
+    withCategories();
+    useGlobalStore.setState({ categoryPageId: 2 });
+    view = await mount(<HomePage />);
+    await flush();
+    expect(document.body.querySelector('nav[aria-label="Onde você está"]')).not.toBeNull();
+    expect(view.text()).not.toContain('Adicionados recentemente');
+    expect(view.text()).not.toContain('Explorar por categoria');
+    expect(api.get.mock.calls.some(([url]) => url.includes('category=2'))).toBe(true);
+  });
+
+  it('shows the search, not the page of the category, while something is searched', async () => {
+    withCategories();
+    useGlobalStore.setState({ categoryPageId: 2 });
+    view = await mount(<HomePage searchQuery="duna" />);
+    await flush();
+    expect(document.body.querySelector('nav[aria-label="Onde você está"]')).toBeNull();
+  });
+});
+
 describe('library hub', () => {
   it('sorts the catalog by the author when asked, from the first page, and keeps the sort across categories', async () => {
     view = await mount(<HomePage />);

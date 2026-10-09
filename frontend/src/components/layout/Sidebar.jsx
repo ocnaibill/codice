@@ -24,6 +24,7 @@ export function Sidebar({ onGoHome, onNavigate, canAdmin, onOpenAdmin }) {
   const search = useGlobalStore((state) => state.searchQuery);
   const adminOpen = useGlobalStore((state) => state.adminOpen);
   const notesOpen = useGlobalStore((state) => state.notesOpen);
+  const categoryOpen = useGlobalStore((state) => state.categoryPageId != null);
   const openNotes = useGlobalStore((state) => state.openNotes);
   const setView = useGlobalStore((state) => state.setLibraryView);
   const { data: stats } = useStats();
@@ -41,7 +42,7 @@ export function Sidebar({ onGoHome, onNavigate, canAdmin, onOpenAdmin }) {
       key={item.key}
       onClick={() => navigate(item.key)}
       aria-current={
-        !search && !adminOpen && !notesOpen && view === item.key ? 'page' : undefined
+        !search && !adminOpen && !notesOpen && !categoryOpen && view === item.key ? 'page' : undefined
       }
       className="library-nav-item"
     >

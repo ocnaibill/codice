@@ -86,3 +86,45 @@ describe('the page of a person', () => {
     expect(useGlobalStore.getState().personSheetId).toBeNull();
   });
 });
+
+describe('the page of a category (DEC-140)', () => {
+  beforeEach(() => useGlobalStore.setState({ categoryPageId: null, libraryPage: 1, libraryView: 'all', adminOpen: false, notesOpen: false, searchQuery: '', sheetWorkId: null }));
+
+  it('opens from the first page, and closes back to the library', () => {
+    useGlobalStore.setState({ libraryPage: 4 });
+    useGlobalStore.getState().openCategory(7);
+    expect(useGlobalStore.getState()).toMatchObject({ categoryPageId: 7, libraryPage: 1 });
+    useGlobalStore.setState({ libraryPage: 3 });
+    useGlobalStore.getState().closeCategory();
+    expect(useGlobalStore.getState()).toMatchObject({ categoryPageId: null, libraryPage: 1 });
+  });
+
+  it('takes the place of what was open: a search, the administration, the notes, a sheet, the reader', () => {
+    useGlobalStore.setState({ searchQuery: 'duna', adminOpen: true, notesOpen: true, sheetWorkId: 3, activeBookId: 4, activeFileId: 5, collectionSheetId: 6, personSheetId: 7 });
+    useGlobalStore.getState().openCategory(7);
+    expect(useGlobalStore.getState()).toMatchObject({
+      categoryPageId: 7, searchQuery: '', adminOpen: false, notesOpen: false, sheetWorkId: null, activeBookId: null, activeFileId: null, collectionSheetId: null, personSheetId: null,
+    });
+  });
+
+  it('is closed by choosing a shelf, opening the administration or the notes, and searching', () => {
+    for (const leave of [
+      (s) => s.setLibraryView('ebooks'),
+      (s) => s.openAdmin(),
+      (s) => s.openNotes(),
+      (s) => s.setSearchQuery('duna'),
+    ]) {
+      useGlobalStore.getState().openCategory(7);
+      leave(useGlobalStore.getState());
+      expect(useGlobalStore.getState().categoryPageId).toBeNull();
+    }
+  });
+
+  it('stays open when the search is emptied, and when a sheet opens over it', () => {
+    useGlobalStore.getState().openCategory(7);
+    useGlobalStore.getState().setSearchQuery('');
+    useGlobalStore.getState().setSearchQuery('   ');
+    useGlobalStore.getState().openWork(12);
+    expect(useGlobalStore.getState()).toMatchObject({ categoryPageId: 7, sheetWorkId: 12 });
+  });
+});

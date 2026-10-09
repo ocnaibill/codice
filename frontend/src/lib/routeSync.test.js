@@ -10,12 +10,12 @@ const pick = () => {
   return {
     view: s.libraryView, page: s.libraryPage, sort: s.librarySort, sheet: s.sheetWorkId, collection: s.collectionSheetId,
     person: s.personSheetId, book: s.activeBookId, file: s.activeFileId, notes: s.notesOpen, admin: s.adminOpen,
-    tab: s.adminTab, search: s.searchQuery, dialogs: s.accountDialogs,
+    tab: s.adminTab, search: s.searchQuery, dialogs: s.accountDialogs, category: s.categoryPageId,
   };
 };
 const blank = {
   view: 'all', page: 1, sort: 'added', sheet: null, collection: null, person: null, book: null, file: null, notes: false, admin: false,
-  tab: 'jobs', search: '', dialogs: [],
+  tab: 'jobs', search: '', dialogs: [], category: null,
 };
 
 let stop;
@@ -28,7 +28,7 @@ beforeEach(() => {
   store.setState({
     libraryView: 'all', libraryPage: 1, librarySort: 'added', sheetWorkId: null, collectionSheetId: null, personSheetId: null,
     activeBookId: null, activeFileId: null, notesOpen: false, adminOpen: false, adminTab: 'jobs', accountDialogs: [], fromStart: false,
-    seek: null, searchQuery: '',
+    seek: null, searchQuery: '', categoryPageId: null,
   });
 });
 afterEach(() => {
@@ -453,5 +453,43 @@ describe('startRouteSync: while the browser has not answered', () => {
     expect(fake.calls.filter(([kind]) => kind === 'replace').at(-1)[1]).toEqual({ codiceAt: 2 });
     store.getState().openWork(5);
     expect(fake.calls.filter(([kind]) => kind === 'push').at(-1)[1]).toEqual({ codiceAt: 3 });
+  });
+});
+
+describe('startRouteSync: the page of a category (DEC-140)', () => {
+  it('puts the category on screen from the address', async () => {
+    window.history.replaceState(null, '', '/#/categorias/7?p=2');
+    start();
+    expect(pick()).toEqual({ ...blank, category: 7, page: 2 });
+    expect(hash()).toBe('#/categorias/7?p=2');
+  });
+
+  it('writes the address when a category opens, and the back button leaves it', async () => {
+    start();
+    store.getState().openCategory(7);
+    await settle();
+    expect(hash()).toBe('#/categorias/7');
+    store.getState().openCategory(8);
+    await settle();
+    expect(hash()).toBe('#/categorias/8');
+    window.history.back();
+    await settle();
+    expect(hash()).toBe('#/categorias/7');
+    expect(pick().category).toBe(7);
+    window.history.back();
+    await settle();
+    expect(pick()).toEqual(blank);
+  });
+
+  it('turns its pages without piling up places in the history', async () => {
+    start();
+    store.getState().openCategory(7);
+    await settle();
+    store.getState().setLibraryPage(2);
+    await settle();
+    expect(hash()).toBe('#/categorias/7?p=2');
+    window.history.back();
+    await settle();
+    expect(pick()).toEqual(blank);
   });
 });

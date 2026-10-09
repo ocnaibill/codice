@@ -3,7 +3,7 @@ import { api } from '../../../lib/api';
 
 // Fetcher function with pagination, search, and filter support
 const fetchWorks = async ({ queryKey }) => {
-  const [_key, { page, limit, search, inProgress, favorite, formatGroup, sort, person, role, series }] = queryKey;
+  const [_key, { page, limit, search, inProgress, favorite, formatGroup, sort, person, role, series, category }] = queryKey;
   const params = new URLSearchParams();
   if (page) params.set('page', page);
   if (limit) params.set('limit', limit);
@@ -15,6 +15,7 @@ const fetchWorks = async ({ queryKey }) => {
   if (person) params.set('person', person);
   if (role) params.set('role', role);
   if (series) params.set('series', series);
+  if (category) params.set('category', String(category));
   const { data } = await api.get(`/works?${params.toString()}`);
   return data; // Returns { data: [...], total, page, limit, totalPages }
 };
@@ -31,10 +32,11 @@ export const useWorks = ({
   person,
   role,
   series, // 'collapse': a series is one card, in the grid of the library (#187)
+  category, // the works in a category and under it (DEC-140)
   enabled = true,
 } = {}) => {
   return useQuery({
-    queryKey: ['works', { page, limit, search, inProgress, favorite, formatGroup, sort, person, role, series }],
+    queryKey: ['works', { page, limit, search, inProgress, favorite, formatGroup, sort, person, role, series, category }],
     queryFn: fetchWorks,
     enabled,
     // Redis/WebSocket notifications are best effort. Pending work must still

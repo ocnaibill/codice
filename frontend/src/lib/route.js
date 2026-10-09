@@ -43,6 +43,8 @@ const OVERLAYS = [
 export const HOME = Object.freeze({
   area: 'library', view: 'all', page: 1, sort: 'added', tab: FIRST_ADMIN_TAB, q: '', conta: [],
   obra: null, colecao: null, pessoa: null, leitor: null, arquivo: null,
+  // The category whose page is open (DEC-140): a page of the library, in the place of its shelves.
+  categoria: null,
 });
 
 /** What the store says is on screen, as a route. */
@@ -56,6 +58,7 @@ export function routeFromState(state) {
   if (route.area === 'admin' && ADMIN_TAB_KEYS.includes(state.adminTab)) route.tab = state.adminTab;
   if (route.area === 'search') route.q = q;
   route.conta = dialogsOf(state.accountDialogs);
+  if (route.area === 'library') route.categoria = positive(state.categoryPageId);
   route.view = VIEW_WORDS[state.libraryView] ? state.libraryView : 'all';
   route.page = Number.isInteger(state.libraryPage) && state.libraryPage > 1 ? state.libraryPage : 1;
   route.sort = SORTS.includes(state.librarySort) ? state.librarySort : 'added';
@@ -65,12 +68,13 @@ export function routeFromState(state) {
   return route;
 }
 
-/** The hash of a route: "#/acervo", "#/mangas?p=2&ordem=title&obra=12", "#/busca?q=duna", "#/notas", "#/admin/storage". */
+/** The hash of a route: "#/acervo", "#/categorias/7", "#/mangas?p=2&ordem=title&obra=12", "#/busca?q=duna", "#/notas", "#/admin/storage". */
 export function hashFromRoute(route) {
   let word = VIEW_WORDS[route.view] ?? 'acervo';
   if (route.area === 'admin') word = route.tab !== FIRST_ADMIN_TAB ? `admin/${route.tab}` : 'admin';
   else if (route.area === 'search') word = 'busca';
   else if (route.area === 'notes') word = 'notas';
+  else if (route.categoria) word = `categorias/${route.categoria}`;
   const params = new URLSearchParams();
   if (route.area === 'library') {
     if (route.page > 1) params.set('p', String(route.page));
@@ -98,6 +102,7 @@ export function routeFromHash(hash) {
     const q = searchOf(params.get('q'));
     if (q) Object.assign(route, { area: 'search', q });
   } else if (word === 'notas') route.area = 'notes';
+  else if (word === 'categorias') route.categoria = positive(sub);
   else if (WORD_VIEWS[word]) route.view = WORD_VIEWS[word];
   if (route.area === 'library') {
     const page = Number(params.get('p'));
@@ -123,6 +128,7 @@ export function stateFromRoute(route) {
     accountDialogs: route.conta,
     sheetWorkId: route.obra,
     collectionSheetId: route.colecao,
+    categoryPageId: route.categoria,
     personSheetId: route.pessoa,
     activeBookId: route.leitor,
     activeFileId: route.arquivo,
@@ -140,6 +146,7 @@ export function stateFromRoute(route) {
 export function isNewPlace(from, to) {
   if (from.area !== to.area) return true;
   if (from.conta.join() !== to.conta.join()) return true;
+  if (from.categoria !== to.categoria) return true;
   return OVERLAYS.some(([name]) => from[name] !== to[name]);
 }
 
