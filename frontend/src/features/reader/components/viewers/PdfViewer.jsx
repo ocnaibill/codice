@@ -3,6 +3,7 @@ import { useDialog } from '../../../../lib/useDialog';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { authenticatedUrl } from '../../../../lib/api';
 import { Skeleton } from '../../../../components/ui/Skeleton';
+import { PdfPassword } from './PdfPassword';
 import { completionFor } from '../../progressRules';
 import { pdfPlaceProblem } from '../../placeCheck';
 import { loadOutline } from '../../pdfOutline';
@@ -35,7 +36,12 @@ const control =
  * a tap on the left or the right of the page turns it, a tap in the middle hides or shows the controls, and a swipe
  * turns it too; on a keyboard the arrows, Page Up and Page Down, Home and End do, and + and - zoom.
  */
-export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlaceFailed, immersive = false, onImmersiveChange, onSelection }) {
+// What the PDF reader says when it asks for the password again: the one given was not the right one (pdf.js: PasswordResponses).
+const INCORRECT_PASSWORD = 2;
+
+export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlaceFailed, immersive = false, onImmersiveChange, onSelection, onCancelPassword }) {
+  // The reader of the PDF asks for a password: what it asks with, and whether the last answer was wrong.
+  const [asking, setAsking] = useState(null);
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(initialProgress ? parseInt(initialProgress, 10) || 1 : 1);
   const [outline, setOutline] = useState([]);
@@ -230,12 +236,28 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlac
         <Document
           file={authenticatedUrl(fileUrl)}
           onLoadSuccess={onDocumentLoadSuccess}
+          onPassword={(callback, reason) => setAsking({ callback, wrong: reason === INCORRECT_PASSWORD })}
           loading={<Skeleton label="Carregando o PDF" className="h-[70vh] w-[min(100vw-1.5rem,56rem)] rounded-none" />}
           error={<p role="alert" className="p-10 text-sm font-medium text-danger">Não foi possível ler este PDF.</p>}
         >
           <Page pageNumber={pageNumber} renderTextLayer={true} renderAnnotationLayer={false} width={pageWidth} />
         </Document>
       </div>
+
+      {asking && (
+        <PdfPassword
+          wrong={asking.wrong}
+          onSubmit={(password) => {
+            const { callback } = asking;
+            setAsking(null);
+            callback(password);
+          }}
+          onCancel={() => {
+            setAsking(null);
+            onCancelPassword?.();
+          }}
+        />
+      )}
 
       {/* The controls, at the bottom. Hidden, they leave a small mark of the page so that the place is not lost. */}
       <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-30 mt-4 flex w-full justify-center">

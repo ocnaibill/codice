@@ -34,6 +34,8 @@ class ExtractedMetadata:
     cover_path: str = ""  # Relative path to extracted cover image
     format: str = ""       # pdf, epub, cbz, txt, etc.
     raw: dict = field(default_factory=dict)  # Original metadata dict for debugging
+    # The file asks for a password to be opened (a PDF): nothing else could be read from it, and it is kept as it is.
+    protected: bool = False
 
 
 class BaseExtractor(ABC):

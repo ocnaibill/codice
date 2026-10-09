@@ -61,6 +61,15 @@ def connect_redis():
         return client
 
 
+def work_ready_event(work_id, metadata) -> dict:
+    """What is said when a work was analysed: it is ready, and with a file that asks for a password it also says so, because
+    nothing of it could be read (no text, no cover) and the person should be told, not shown the work as if all were well."""
+    event = {"type": "WORK_READY", "work_id": work_id, "title": metadata.title}
+    if getattr(metadata, 'protected', False):
+        event["protected"] = True
+    return event
+
+
 def publish(client, event: dict):
     """Broadcast a UI event. Failing to do so never affects a job."""
     if client is None:
@@ -181,7 +190,7 @@ def build_runner(db, client, heartbeat=None):
             print(f"✅ Text job {job['id']} completed.")
             return
         analyzer.update_status(job['work_id'], MediaStatus.READY)
-        publish(client, {"type": "WORK_READY", "work_id": job['work_id'], "title": metadata.title})
+        publish(client, work_ready_event(job['work_id'], metadata))
         print(f"✅ Job {job['id']} completed.")
 
     def on_failure(job, kind, message):

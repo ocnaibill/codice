@@ -202,6 +202,63 @@ class TestPdfExtractor:
             assert meta.format == "pdf"
 
 
+def protected_pdf(tmpdir, user_pw="segredo", owner_pw="dono", name="trancado.pdf", title="Título escondido"):
+    path = os.path.join(tmpdir, name)
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Texto que ninguém lê sem a senha")
+    doc.set_metadata({"title": title, "author": "Autora Secreta"})
+    doc.save(path, encryption=fitz.PDF_ENCRYPT_AES_256, user_pw=user_pw, owner_pw=owner_pw)
+    doc.close()
+    return path
+
+
+class TestPdfWithAPassword:
+    """A PDF that asks for a password to open is not an error: it is kept, and said to be protected (#89)."""
+
+    def setup_method(self):
+        self.extractor = PdfExtractor()
+
+    def extract(self, tmp, path):
+        covers = os.path.join(tmp, "covers")
+        os.makedirs(covers, exist_ok=True)
+        return self.extractor.extract(path, covers), covers
+
+    def test_is_kept_as_protected_with_its_name_as_title_and_nothing_else(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            meta, covers = self.extract(tmp, protected_pdf(tmp, name="meu_livro_trancado.pdf"))
+            assert meta.protected is True
+            assert meta.format == "pdf"
+            assert meta.title == "meu livro trancado"  # the title inside is closed, and is not guessed
+            assert meta.author == "Unknown Author"
+            assert meta.page_count == 0 and meta.cover_path == ""
+            assert os.listdir(covers) == []
+
+    def test_does_not_raise_the_error_of_the_library(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.extract(tmp, protected_pdf(tmp))  # "document closed or encrypted" was what the person saw
+
+    def test_one_that_only_forbids_copying_opens_and_is_read_as_usual(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "so_dono.pdf")
+            doc = fitz.open()
+            doc.new_page().insert_text((72, 72), "Pode ler")
+            doc.set_metadata({"title": "Aberto", "author": "Autor"})
+            doc.save(path, encryption=fitz.PDF_ENCRYPT_AES_256, user_pw="", owner_pw="dono", permissions=0)
+            doc.close()
+            meta, _ = self.extract(tmp, path)
+            assert meta.protected is False
+            assert meta.title == "Aberto" and meta.author == "Autor" and meta.page_count == 1
+
+    def test_a_plain_pdf_is_not_protected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            meta, _ = self.extract(tmp, pdf_with_page_size(tmp, 595, 842))
+            assert meta.protected is False
+
+    def test_the_metadata_of_any_extractor_says_it_is_not_protected_by_default(self):
+        assert ExtractedMetadata().protected is False
+
+
 def pdf_with_page_size(tmpdir, width, height, name="page.pdf"):
     path = os.path.join(tmpdir, name)
     doc = fitz.open()

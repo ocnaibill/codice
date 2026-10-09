@@ -10,6 +10,17 @@ const clip = (text) => (text.length > MAX_DETAIL ? `${text.slice(0, MAX_DETAIL -
  * (a work that is only being analysed is not news). `openWork` lets the notice offer to open the work.
  */
 export function noticeForWorkEvent(event, openWork) {
+  // A PDF that asks for a password is kept and ready to be opened with it, but nothing of it could be read: it is said as it is, and
+  // not as the news that its metadata were updated.
+  if (event?.type === 'WORK_READY' && event.protected) {
+    return {
+      tone: 'warning',
+      title: 'Este PDF tem senha',
+      message: `${event.title ? `“${clip(String(event.title))}” foi guardado` : 'O arquivo foi guardado'}, mas o Códice não consegue ler o texto nem fazer a capa, então a busca não o acha. Ele abre no leitor, com a senha.`,
+      key: `work-${event.work_id}`,
+      action: event.work_id ? { label: 'Ver obra', onClick: () => openWork(event.work_id) } : undefined,
+    };
+  }
   if (event?.type === 'WORK_READY') {
     return {
       tone: 'success',

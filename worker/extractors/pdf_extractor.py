@@ -20,6 +20,13 @@ class PdfExtractor(BaseExtractor):
         meta = ExtractedMetadata(format='pdf')
         doc = fitz.open(file_path)
         try:
+            if doc.needs_pass:
+                # A password to open it: the metadata and the first page are closed to us. The file is kept, its title is its
+                # name, and the reader asks the person for the password; the work is not an error.
+                meta.title = self._fallback_title(file_path)
+                meta.author = 'Unknown Author'
+                meta.protected = True
+                return meta
             pdf_meta = doc.metadata or {}
             meta.title = pdf_meta.get('title', '') or self._fallback_title(file_path)
             meta.author = pdf_meta.get('author', '') or 'Unknown Author'

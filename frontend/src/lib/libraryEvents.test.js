@@ -231,3 +231,40 @@ describe('dispose', () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('a PDF that asks for a password in the messages of the channel (#89)', () => {
+  const locked = (id) => ({ type: 'WORK_READY', work_id: id, title: `trancado ${id}`, protected: true });
+
+  it('is said by itself, as a warning, and not as one of the works that became ready', () => {
+    make().handle(locked(1));
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify.mock.calls[0][0]).toMatchObject({ tone: 'warning', title: 'Este PDF tem senha', key: 'work-1' });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('is said one by one however many come in a burst, while the others are counted', async () => {
+    const e = make();
+    e.handle(locked(1));
+    notify.mockClear();
+    for (const id of [2, 3, 4]) e.handle(locked(id));
+    for (const id of [5, 6, 7]) e.handle(ready(id));
+    await vi.advanceTimersByTimeAsync(refreshWindowMs);
+    const titles = notify.mock.calls.map(([n]) => `${n.tone}:${n.title}`);
+    expect(titles.filter((t) => t === 'warning:Este PDF tem senha')).toHaveLength(3);
+    expect(titles.filter((t) => t === 'success:Metadados atualizados')).toHaveLength(1); // the three ready, as one that counts
+    expect(notify.mock.calls.find(([n]) => n.tone === 'success')[0].message).toBe('3 obras ficaram prontas.');
+  });
+
+  it('is said when the tab is seen again, not while it is hidden, and refreshes the library', async () => {
+    hidden = true;
+    const e = make();
+    e.handle(locked(1));
+    await vi.advanceTimersByTimeAsync(refreshWindowMs);
+    expect(notify).not.toHaveBeenCalled();
+    hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(refreshWindowMs);
+    expect(notify.mock.calls.map(([n]) => n.title)).toEqual(['Este PDF tem senha']);
+    expect(refresh).toHaveBeenCalled();
+  });
+});
