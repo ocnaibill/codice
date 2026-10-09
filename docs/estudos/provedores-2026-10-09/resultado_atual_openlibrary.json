@@ -1,0 +1,266 @@
+{
+ "dune": {
+  "title": "Dune",
+  "author": "Frank Herbert",
+  "credits": [
+   "Frank Herbert"
+  ],
+  "publisher": null,
+  "date": 1965,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Dune"
+ },
+ "neuromancer": {
+  "title": "Neuromancer",
+  "author": "William Gibson",
+  "credits": [
+   "William Gibson"
+  ],
+  "publisher": null,
+  "date": 1984,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Neuromancer"
+ },
+ "pragprog": {
+  "title": "The Pragmatic Programmer",
+  "author": "Andy Hunt",
+  "credits": [
+   "Andy Hunt",
+   "Dave Thomas"
+  ],
+  "publisher": null,
+  "date": 1999,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "The Pragmatic Programmer"
+ },
+ "modernos": {
+  "title": "Modern Operating Systems",
+  "author": "Andrew S. Tanenbaum",
+  "credits": [
+   "Andrew S. Tanenbaum",
+   "Herbert Bos"
+  ],
+  "publisher": null,
+  "date": 1992,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Modern Operating Systems"
+ },
+ "cleancode": {
+  "title": "Clean Code",
+  "author": "Robert C. Martin",
+  "credits": [
+   "Robert C. Martin"
+  ],
+  "publisher": null,
+  "date": 2008,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Clean Code"
+ },
+ "sicp": {
+  "title": "Structure and Interpretation of Computer Programs (SICP)",
+  "author": "Harold Abelson",
+  "credits": [
+   "Harold Abelson",
+   "Gerald Jay Sussman",
+   "Julie Sussman"
+  ],
+  "publisher": null,
+  "date": 1985,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Structure and Interpretation of Computer Programs"
+ },
+ "1984": null,
+ "hobbit": {
+  "title": "The Hobbit",
+  "author": "J.R.R. Tolkien",
+  "credits": [
+   "J.R.R. Tolkien"
+  ],
+  "publisher": null,
+  "date": 1937,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "The Hobbit"
+ },
+ "duna_pt": {
+  "title": "Sisterhood of Dune",
+  "author": "Brian Herbert",
+  "credits": [
+   "Brian Herbert",
+   "Kevin J. Anderson"
+  ],
+  "publisher": null,
+  "date": 2012,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Duna"
+ },
+ "casmurro": {
+  "title": "Dom Casmurro",
+  "author": "Machado de Assis",
+  "credits": [
+   "Machado de Assis"
+  ],
+  "publisher": null,
+  "date": 1900,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Dom Casmurro"
+ },
+ "alquimista": {
+  "title": "O Alquimista",
+  "author": "Paulo Coelho",
+  "credits": [
+   "Paulo Coelho"
+  ],
+  "publisher": null,
+  "date": 1988,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "O Alquimista"
+ },
+ "sapiens": {
+  "title": "Sapiens",
+  "author": "Yuval Noah Harari",
+  "credits": [
+   "Yuval Noah Harari"
+  ],
+  "publisher": null,
+  "date": 2011,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Sapiens: Uma breve história da humanidade"
+ },
+ "lusiadas": {
+  "title": "Os Lusíadas",
+  "author": "Luís de Camões",
+  "credits": [
+   "Luís de Camões",
+   "Souza Botelho"
+  ],
+  "publisher": null,
+  "date": 1572,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Os Lusíadas"
+ },
+ "hp_pt": {
+  "title": "Harry Potter and the Philosopher's Stone",
+  "author": "J. K. Rowling",
+  "credits": [
+   "J. K. Rowling"
+  ],
+  "publisher": null,
+  "date": 1997,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Harry Potter e a Pedra Filosofal"
+ },
+ "nuvem": null,
+ "scythe_pt": null,
+ "absbatman6": null,
+ "saga1": {
+  "title": "The Fork, the Witch, and the Worm",
+  "author": "Christopher Paolini",
+  "credits": [
+   "Christopher Paolini",
+   "Angela Paolini"
+  ],
+  "publisher": null,
+  "date": 2018,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Saga 001"
+ },
+ "watchmen1": {
+  "title": "WATCHMEN 01 EL COMANDANTE",
+  "author": null,
+  "credits": [],
+  "publisher": null,
+  "date": null,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Watchmen 01"
+ },
+ "sandman1": null,
+ "berserk1": null,
+ "vagabond1": {
+  "title": "バガボンド(1)",
+  "author": "井上雄彦 (Takehiko Inoue)",
+  "credits": [
+   "井上雄彦 (Takehiko Inoue)"
+  ],
+  "publisher": null,
+  "date": 1999,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Vagabond 01"
+ },
+ "naruto1": null,
+ "onepiece1": {
+  "title": "100 deadly skills",
+  "author": "Clint Emerson",
+  "credits": [
+   "Clint Emerson"
+  ],
+  "publisher": null,
+  "date": 2015,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "One Piece 001"
+ },
+ "chainsaw1": {
+  "title": "Chainsaw Man, Vol. 1",
+  "author": "Tatsuki Fujimoto",
+  "credits": [
+   "Tatsuki Fujimoto"
+  ],
+  "publisher": null,
+  "date": 2019,
+  "isbn": null,
+  "cover": true,
+  "desc": false,
+  "tags": [],
+  "query": "Chainsaw Man 01"
+ }
+}

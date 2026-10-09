@@ -1,0 +1,4584 @@
+{
+ "absbatman6": {
+  "parsed": [
+   "Absolute Batman",
+   6
+  ],
+  "ol_volume": null
+ },
+ "saga1": {
+  "parsed": [
+   "Saga",
+   1
+  ],
+  "ol_volume": {
+   "author_name": [
+    "Rikdo Koshi"
+   ],
+   "cover_i": 813967,
+   "edition_count": 1,
+   "first_publish_year": 2003,
+   "isbn": [
+    "9781569319888",
+    "156931988X"
+   ],
+   "key": "/works/OL8214856W",
+   "publisher": [
+    "VIZ Media LLC"
+   ],
+   "title": "Excel Saga, Volume 1"
+  }
+ },
+ "watchmen1": {
+  "parsed": [
+   "Watchmen",
+   1
+  ],
+  "ol_volume": null
+ },
+ "sandman1": {
+  "parsed": [
+   "The Sandman",
+   1
+  ],
+  "ol_volume": null
+ },
+ "berserk1": {
+  "parsed": [
+   "Berserk",
+   1
+  ],
+  "anilist": {
+   "id": 30002,
+   "siteUrl": "https://anilist.co/manga/30002",
+   "format": "MANGA",
+   "status": "RELEASING",
+   "countryOfOrigin": "JP",
+   "volumes": null,
+   "chapters": null,
+   "startDate": {
+    "year": 1989
+   },
+   "title": {
+    "romaji": "Berserk",
+    "english": "Berserk",
+    "native": "ベルセルク"
+   },
+   "genres": [
+    "Action",
+    "Adventure",
+    "Drama",
+    "Fantasy",
+    "Horror",
+    "Psychological"
+   ],
+   "tags": [
+    {
+     "name": "Tragedy",
+     "rank": 97
+    },
+    {
+     "name": "Seinen",
+     "rank": 95
+    },
+    {
+     "name": "Revenge",
+     "rank": 94
+    },
+    {
+     "name": "Male Protagonist",
+     "rank": 94
+    },
+    {
+     "name": "Demons",
+     "rank": 92
+    },
+    {
+     "name": "Cosmic Horror",
+     "rank": 90
+    },
+    {
+     "name": "Gore",
+     "rank": 88
+    },
+    {
+     "name": "Philosophy",
+     "rank": 86
+    },
+    {
+     "name": "Found Family",
+     "rank": 85
+    },
+    {
+     "name": "Mythology",
+     "rank": 83
+    },
+    {
+     "name": "Anti-Hero",
+     "rank": 83
+    },
+    {
+     "name": "Rehabilitation",
+     "rank": 83
+    },
+    {
+     "name": "Travel",
+     "rank": 83
+    },
+    {
+     "name": "Swordplay",
+     "rank": 82
+    },
+    {
+     "name": "Survival",
+     "rank": 82
+    },
+    {
+     "name": "Rape",
+     "rank": 82
+    },
+    {
+     "name": "War",
+     "rank": 81
+    },
+    {
+     "name": "Magic",
+     "rank": 81
+    },
+    {
+     "name": "Body Horror",
+     "rank": 80
+    },
+    {
+     "name": "Foreign",
+     "rank": 78
+    },
+    {
+     "name": "Gods",
+     "rank": 77
+    },
+    {
+     "name": "Religion",
+     "rank": 77
+    },
+    {
+     "name": "Curses",
+     "rank": 75
+    },
+    {
+     "name": "Primarily Adult Cast",
+     "rank": 75
+    },
+    {
+     "name": "Fairy",
+     "rank": 74
+    },
+    {
+     "name": "Nudity",
+     "rank": 73
+    },
+    {
+     "name": "Politics",
+     "rank": 72
+    },
+    {
+     "name": "Military",
+     "rank": 72
+    },
+    {
+     "name": "Disability",
+     "rank": 72
+    },
+    {
+     "name": "Time Skip",
+     "rank": 71
+    },
+    {
+     "name": "Amnesia",
+     "rank": 70
+    },
+    {
+     "name": "Torture",
+     "rank": 69
+    },
+    {
+     "name": "Elf",
+     "rank": 69
+    },
+    {
+     "name": "Sadism",
+     "rank": 68
+    },
+    {
+     "name": "Witch",
+     "rank": 68
+    },
+    {
+     "name": "Coming of Age",
+     "rank": 68
+    },
+    {
+     "name": "Dystopian",
+     "rank": 68
+    },
+    {
+     "name": "Heterosexual",
+     "rank": 67
+    },
+    {
+     "name": "Ensemble Cast",
+     "rank": 66
+    },
+    {
+     "name": "Kaiju",
+     "rank": 66
+    },
+    {
+     "name": "Skeleton",
+     "rank": 64
+    },
+    {
+     "name": "Achronological Order",
+     "rank": 63
+    },
+    {
+     "name": "Cult",
+     "rank": 62
+    },
+    {
+     "name": "Age Regression",
+     "rank": 61
+    },
+    {
+     "name": "Medieval",
+     "rank": 60
+    },
+    {
+     "name": "Tomboy",
+     "rank": 60
+    },
+    {
+     "name": "Adoption",
+     "rank": 58
+    },
+    {
+     "name": "Dungeon",
+     "rank": 57
+    },
+    {
+     "name": "Kingdom Management",
+     "rank": 56
+    },
+    {
+     "name": "Super Power",
+     "rank": 56
+    },
+    {
+     "name": "Prostitution",
+     "rank": 55
+    },
+    {
+     "name": "Pregnancy",
+     "rank": 55
+    },
+    {
+     "name": "Cannibalism",
+     "rank": 55
+    },
+    {
+     "name": "Slavery",
+     "rank": 55
+    },
+    {
+     "name": "Group Sex",
+     "rank": 54
+    },
+    {
+     "name": "Dragons",
+     "rank": 53
+    },
+    {
+     "name": "Incest",
+     "rank": 50
+    },
+    {
+     "name": "Monster Girl",
+     "rank": 50
+    },
+    {
+     "name": "LGBTQ+ Themes",
+     "rank": 49
+    },
+    {
+     "name": "Ships",
+     "rank": 48
+    },
+    {
+     "name": "Vore",
+     "rank": 47
+    },
+    {
+     "name": "Monster Boy",
+     "rank": 43
+    },
+    {
+     "name": "Mermaid",
+     "rank": 43
+    },
+    {
+     "name": "Masturbation",
+     "rank": 38
+    },
+    {
+     "name": "Fellatio",
+     "rank": 35
+    },
+    {
+     "name": "Meta",
+     "rank": 10
+    }
+   ],
+   "averageScore": 92,
+   "coverImage": {
+    "extraLarge": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30002-Cul4OeN7bYtn.jpg"
+   },
+   "staff": {
+    "edges": [
+     {
+      "role": "Story & Art (vols 1-41)",
+      "node": {
+       "name": {
+        "full": "Kentarou Miura"
+       }
+      }
+     },
+     {
+      "role": "Supervisor (vols 41- )",
+      "node": {
+       "name": {
+        "full": "Kouji Mori"
+       }
+      }
+     },
+     {
+      "role": "Story & Art (vols 41- )",
+      "node": {
+       "name": {
+        "full": "Studio Gaga"
+       }
+      }
+     },
+     {
+      "role": "Translator (Spanish)",
+      "node": {
+       "name": {
+        "full": "Marc Bernabé"
+       }
+      }
+     },
+     {
+      "role": "Translator (Polish)",
+      "node": {
+       "name": {
+        "full": "Paweł Dybała"
+       }
+      }
+     },
+     {
+      "role": "Translator (Portuguese)",
+      "node": {
+       "name": {
+        "full": "Drik Sada"
+       }
+      }
+     }
+    ]
+   }
+  },
+  "mangadex": {
+   "id": "801513ba-a712-498c-8f57-cae55b38cc92",
+   "type": "manga",
+   "attributes": {
+    "title": {
+     "ja-ro": "Berserk"
+    },
+    "altTitles": [
+     {
+      "ja": "ベルセルク"
+     },
+     {
+      "ko": "베르세르크"
+     },
+     {
+      "zh": "烙印勇士"
+     },
+     {
+      "zh-hk": "劍風傳奇"
+     },
+     {
+      "ar": "برسرك"
+     },
+     {
+      "ar": "بيرسيرك"
+     },
+     {
+      "be": "Бярсерк"
+     },
+     {
+      "de": "Berserk"
+     },
+     {
+      "he": "ברזרק"
+     },
+     {
+      "ne": "बर्सर्क"
+     },
+     {
+      "fa": "برزرک"
+     },
+     {
+      "ru": "Берсерк"
+     },
+     {
+      "th": "เบอร์เซิร์ก"
+     },
+     {
+      "th": "เทพมรณะ"
+     },
+     {
+      "uk": "Берсерк"
+     },
+     {
+      "bg": "Берсерк"
+     },
+     {
+      "bn": "রণোন্মত্ত"
+     },
+     {
+      "en": "Berserk"
+     },
+     {
+      "id": "Berserk"
+     }
+    ],
+    "isLocked": false,
+    "links": {
+     "al": "30002",
+     "ap": "berserk",
+     "bl": "181526",
+     "bw": "series/16664/list",
+     "kt": "8",
+     "mu": "njeqwry",
+     "amz": "https://www.amazon.co.jp/-/en/dp/B074C597F1",
+     "cdj": "https://www.cdjapan.co.jp/product/NEOBK-3115032",
+     "ebj": "https://ebookjapan.yahoo.co.jp/books/127562/",
+     "mal": "2",
+     "raw": "https://younganimal.com/series/f68f676b354d4/",
+     "engtl": "https://www.darkhorsedirect.com/products/berserk-multi-volume-books"
+    },
+    "officialLinks": null,
+    "originalLanguage": "ja",
+    "lastVolume": "",
+    "lastChapter": "",
+    "publicationDemographic": "seinen",
+    "status": "ongoing",
+    "year": 1989,
+    "contentRating": "erotica",
+    "tags": [
+     {
+      "id": "0a39b5a1-b235-4886-a747-1d05d216532d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Award Winning"
+       },
+       "group": "format",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "36fd93ea-e8b8-445e-b836-358f02b3d33d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Monsters"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "391b0423-d847-456f-aff0-8b0cfc03066b",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Action"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "39730448-9a5f-48a2-85b0-a70db87b1233",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Demons"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "3b60b75c-a2d7-4860-ab56-05f391bb889c",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Psychological"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "5fff9cde-849c-4d78-aab0-0d52b2ee1d25",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Survival"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "87cc87cd-a395-47af-b27a-93258283bbc6",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Adventure"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "97893a4c-12af-4dac-b6be-0dffb353568e",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Sexual Violence"
+       },
+       "group": "content",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "a1f53773-c69a-4ce5-8cab-fffcd90b1565",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Magic"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "ac72833b-c4e9-4878-b9db-6c8a4a99444a",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Military"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "b1e97889-25b4-4258-b28b-cd7f4d28ea9b",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Philosophical"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "b29d6a3d-1569-4e7a-8caf-7557bc92cd5d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Gore"
+       },
+       "group": "content",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "b9af3a63-f058-46de-a9a0-e0c13906197a",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Drama"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "cdad7e68-1419-41dd-bdce-27753074a640",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Horror"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "cdc58593-87dd-415e-bbc0-2ec27bf404cc",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Fantasy"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "f8f62932-27da-4fe4-8ee1-6779a8c5edba",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Tragedy"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     }
+    ],
+    "state": "published",
+    "chapterNumbersResetOnNewVolume": false,
+    "createdAt": "2018-01-30T13:50:05+00:00",
+    "updatedAt": "2026-09-03T17:00:25+00:00",
+    "version": 125,
+    "availableTranslatedLanguages": [
+     "fr",
+     "pt-br",
+     "es-la",
+     "es",
+     "ar",
+     "uk",
+     "en",
+     "id",
+     "ru",
+     "tr",
+     "zh-hk",
+     "it",
+     "ro",
+     "hu",
+     "pl",
+     "fa",
+     "zh",
+     "bg",
+     "el",
+     "hi"
+    ],
+    "latestUploadedChapter": "88d18567-d54a-4c76-8e4e-d419291ce38b"
+   },
+   "relationships": [
+    {
+     "id": "5863578d-4e4f-4b57-b64d-1dd45a893cb0",
+     "type": "author",
+     "attributes": {
+      "name": "Miura Kentarou",
+      "imageUrl": null,
+      "biography": {
+       "en": "**Name In Native Language:** 三浦建太郎\n\nMiura Kentarou (July 11, 1966 – May 6, 2021) was born in Chiba City, Chiba Prefecture, Japan. He was left-handed. In 1976, at the early age of 10, Miura made his first manga, titled Miuranger, which was published for his classmates in a school publication; the manga ended up spanning 40 volumes. In 1977, Miura created his second manga titled Ken e No Michi (The Way to the Sword), using Indian ink for the first time. \n\nIn 1988, Miura bounced back with a 48-page manga known as Berserk Prototype, as an introduction to the current Berserk fantasy world.\n\nIn 1989, as a collaboration with writer [Buronson](https://mangadex.org/author/9be55a5a-2512-447b-9847-16169e44aeaf) and illustrated by Miura, Ourou was published in the Monthly Animal House magazine. In the following year, a sequel titled Ourouden was published in the same magazine. In the same year 1989, the 6th issue of the Monthly Animal House, the first issue of the solo project Berserk was released with relatively limited success. Miura again collaborated with Buronson on a manga titled Japan that was published in Young Animal from the 1st issue to the 8th of 1992, and was later released as a stand-alone tankoubon. Miura's fame grew after Berserk was serialized in Young Animal in 1992 with the release of \"The Golden Age\" story arc of Berserk, and the huge success of his masterpiece made him one of the most prominent contemporary mangaka. At this time, Miura dedicated himself solely to work on Berserk. He indicated, however, that he intended to publish more manga in the future.\n\nMiura provided the designs for the Vocaloid Kamui Gakupo, whose voice is taken from the Japanese singer and actor, Gackt.\n\nMiura Kentarou died on May 6, 2021 due to an acute aortic dissection at 54 years old."
+      },
+      "twitter": null,
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2025-06-12T20:52:08+00:00",
+      "version": 5
+     }
+    },
+    {
+     "id": "e4dc18d8-1b8d-48e6-9b70-0f93a5af35ca",
+     "type": "author",
+     "attributes": {
+      "name": "Mori Kouji",
+      "imageUrl": null,
+      "biography": {
+       "en": "**Name In Native Language:** 森恒二\n\nMori Kouji was born in Tokyo, November 28, 1966. Because of his strong physique, he entered the Junior Baseball League at the recommendation of his parents when he was a child. From primary school to junior middle school, he buried himself in baseball games. His team even entered the national competition. Unfortunately, He don't have much interest in baseball. He enjoy drawing at home more than playing baseball. In the first grade of middle school, after reading [Koyama Yuu](https://mangadex.org/author/d986fd84-1d97-4bde-b3ec-15a06a858ebc/koyama-yuu)'s *Ganbare Genki*, he decided to become a manga artist, so he took this as his goal in the future.\n\nDuring his senior high school years, [Miura Kentarou](https://mangadex.org/author/5863578d-4e4f-4b57-b64d-1dd45a893cb0) was his best friend.\n\nHe married [Akkiu](https://mangadex.org/author/842b8f3e-f7ee-4603-822d-198c92fd19e7), a female manga artist.\n\nAfter Miura Kentarou died, Mori attended the private ceremony held by Miura's family.\n\n\n\n\n\n\n"
+      },
+      "twitter": "https://twitter.com/taigaofgenesis",
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2025-06-12T20:53:54+00:00",
+      "version": 5
+     }
+    },
+    {
+     "id": "5863578d-4e4f-4b57-b64d-1dd45a893cb0",
+     "type": "artist",
+     "attributes": {
+      "name": "Miura Kentarou",
+      "imageUrl": null,
+      "biography": {
+       "en": "**Name In Native Language:** 三浦建太郎\n\nMiura Kentarou (July 11, 1966 – May 6, 2021) was born in Chiba City, Chiba Prefecture, Japan. He was left-handed. In 1976, at the early age of 10, Miura made his first manga, titled Miuranger, which was published for his classmates in a school publication; the manga ended up spanning 40 volumes. In 1977, Miura created his second manga titled Ken e No Michi (The Way to the Sword), using Indian ink for the first time. \n\nIn 1988, Miura bounced back with a 48-page manga known as Berserk Prototype, as an introduction to the current Berserk fantasy world.\n\nIn 1989, as a collaboration with writer [Buronson](https://mangadex.org/author/9be55a5a-2512-447b-9847-16169e44aeaf) and illustrated by Miura, Ourou was published in the Monthly Animal House magazine. In the following year, a sequel titled Ourouden was published in the same magazine. In the same year 1989, the 6th issue of the Monthly Animal House, the first issue of the solo project Berserk was released with relatively limited success. Miura again collaborated with Buronson on a manga titled Japan that was published in Young Animal from the 1st issue to the 8th of 1992, and was later released as a stand-alone tankoubon. Miura's fame grew after Berserk was serialized in Young Animal in 1992 with the release of \"The Golden Age\" story arc of Berserk, and the huge success of his masterpiece made him one of the most prominent contemporary mangaka. At this time, Miura dedicated himself solely to work on Berserk. He indicated, however, that he intended to publish more manga in the future.\n\nMiura provided the designs for the Vocaloid Kamui Gakupo, whose voice is taken from the Japanese singer and actor, Gackt.\n\nMiura Kentarou died on May 6, 2021 due to an acute aortic dissection at 54 years old."
+      },
+      "twitter": null,
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2025-06-12T20:52:08+00:00",
+      "version": 5
+     }
+    },
+    {
+     "id": "8d88f37d-bd1e-4974-a309-7dfce13f9c56",
+     "type": "artist",
+     "attributes": {
+      "name": "Studio Gaga",
+      "imageUrl": null,
+      "biography": {
+       "en": "Studio Gaga (スタジオ我画) is a Japanese manga production studio founded by [Kentarou Miura](https://mangadex.org/author/5863578d-4e4f-4b57-b64d-1dd45a893cb0/kentaro-miura). A primary motivation for Miura creating the studio was so that his assistants could be included in his works under an official collective name.\n\nCurrently led by:\nYoshimitsu Kurosaki (黒崎 能光)\n"
+      },
+      "twitter": null,
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2023-10-05T08:53:09+00:00",
+      "version": 3
+     }
+    },
+    {
+     "id": "bab715d9-1b6a-4f50-8fea-ac5628ebfd8e",
+     "type": "cover_art",
+     "attributes": {
+      "volume": "43",
+      "fileName": "81e1c82d-6672-400c-8c58-4ff9bfb89031.jpg",
+      "locale": "ja",
+      "createdAt": "2025-08-22T11:23:23+00:00",
+      "updatedAt": "2025-08-22T11:23:23+00:00",
+      "version": 1
+     }
+    },
+    {
+     "id": "4a5d677d-e3ac-4c23-a6bf-bb92c984fee4",
+     "type": "manga",
+     "related": "preserialization"
+    },
+    {
+     "id": "5a143603-d575-4062-9528-12c2ddb83af3",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "77994aef-fe9a-418b-97a8-12b306a8dbdc",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "d9e2f26e-c762-41a6-bb71-b6ae18cadde2",
+     "type": "manga",
+     "related": "colored"
+    },
+    {
+     "id": "fab932f0-385e-46c2-b67a-f7e68ad85208",
+     "type": "manga",
+     "related": "doujinshi"
+    }
+   ]
+  },
+  "ol_volume": {
+   "author_name": [
+    "三浦建太郎",
+    "Jason DeAngelis"
+   ],
+   "cover_i": 8746964,
+   "edition_count": 1,
+   "first_publish_year": 2019,
+   "isbn": [
+    "1506711987",
+    "9781506711980"
+   ],
+   "key": "/works/OL20066940W",
+   "publisher": [
+    "Dark Horse Manga"
+   ],
+   "title": "Berserk Deluxe Volume 1"
+  }
+ },
+ "vagabond1": {
+  "parsed": [
+   "Vagabond",
+   1
+  ],
+  "anilist": {
+   "id": 30656,
+   "siteUrl": "https://anilist.co/manga/30656",
+   "format": "MANGA",
+   "status": "RELEASING",
+   "countryOfOrigin": "JP",
+   "volumes": null,
+   "chapters": null,
+   "startDate": {
+    "year": 1998
+   },
+   "title": {
+    "romaji": "Vagabond",
+    "english": "Vagabond",
+    "native": "バガボンド"
+   },
+   "genres": [
+    "Action",
+    "Adventure",
+    "Drama"
+   ],
+   "tags": [
+    {
+     "name": "Samurai",
+     "rank": 96
+    },
+    {
+     "name": "Seinen",
+     "rank": 95
+    },
+    {
+     "name": "Swordplay",
+     "rank": 95
+    },
+    {
+     "name": "Historical",
+     "rank": 94
+    },
+    {
+     "name": "Philosophy",
+     "rank": 93
+    },
+    {
+     "name": "Travel",
+     "rank": 90
+    },
+    {
+     "name": "Coming of Age",
+     "rank": 88
+    },
+    {
+     "name": "Male Protagonist",
+     "rank": 87
+    },
+    {
+     "name": "Martial Arts",
+     "rank": 82
+    },
+    {
+     "name": "Rehabilitation",
+     "rank": 79
+    },
+    {
+     "name": "Tragedy",
+     "rank": 77
+    },
+    {
+     "name": "Survival",
+     "rank": 76
+    },
+    {
+     "name": "Disability",
+     "rank": 75
+    },
+    {
+     "name": "Cultivation",
+     "rank": 74
+    },
+    {
+     "name": "Biographical",
+     "rank": 71
+    },
+    {
+     "name": "Gore",
+     "rank": 68
+    },
+    {
+     "name": "Rural",
+     "rank": 67
+    },
+    {
+     "name": "War",
+     "rank": 64
+    },
+    {
+     "name": "Ghost",
+     "rank": 61
+    },
+    {
+     "name": "Agriculture",
+     "rank": 61
+    },
+    {
+     "name": "Outdoor Activities",
+     "rank": 61
+    },
+    {
+     "name": "Classic Literature",
+     "rank": 60
+    },
+    {
+     "name": "Orphan",
+     "rank": 60
+    },
+    {
+     "name": "Adoption",
+     "rank": 60
+    },
+    {
+     "name": "Language Barrier",
+     "rank": 55
+    },
+    {
+     "name": "Fugitive",
+     "rank": 55
+    },
+    {
+     "name": "Heterosexual",
+     "rank": 53
+    },
+    {
+     "name": "Nudity",
+     "rank": 46
+    },
+    {
+     "name": "Afterlife",
+     "rank": 37
+    },
+    {
+     "name": "Rape",
+     "rank": 30
+    }
+   ],
+   "averageScore": 91,
+   "coverImage": {
+    "extraLarge": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30656-9mW113O7rDnA.png"
+   },
+   "staff": {
+    "edges": [
+     {
+      "role": "Story & Art",
+      "node": {
+       "name": {
+        "full": "Takehiko Inoue"
+       }
+      }
+     },
+     {
+      "role": "Story",
+      "node": {
+       "name": {
+        "full": "Eiji Yoshikawa"
+       }
+      }
+     },
+     {
+      "role": "Assistant (Background)",
+      "node": {
+       "name": {
+        "full": "Yasuhisa Hara"
+       }
+      }
+     },
+     {
+      "role": "Assistant (Former)",
+      "node": {
+       "name": {
+        "full": "Katsumi Tatsuzawa"
+       }
+      }
+     },
+     {
+      "role": "Touch-up Art & Lettering (English)",
+      "node": {
+       "name": {
+        "full": "Steve Dutro"
+       }
+      }
+     },
+     {
+      "role": "Translator (English)",
+      "node": {
+       "name": {
+        "full": "Yuji Oniki"
+       }
+      }
+     }
+    ]
+   }
+  },
+  "mangadex": {
+   "id": "d1a9fdeb-f713-407f-960c-8326b586e6fd",
+   "type": "manga",
+   "attributes": {
+    "title": {
+     "ja-ro": "Vagabond"
+    },
+    "altTitles": [
+     {
+      "fr": "Avare"
+     },
+     {
+      "vi": "Lãng Khách"
+     },
+     {
+      "ru": "Бродяга"
+     },
+     {
+      "ar": "المتشرد"
+     },
+     {
+      "th": "วากาบอนด์"
+     },
+     {
+      "ja": "バガボンド"
+     },
+     {
+      "zh": "浪客行"
+     },
+     {
+      "ko": "베가본드"
+     },
+     {
+      "es-la": "Vagabundo"
+     },
+     {
+      "es": "Vagabundo"
+     },
+     {
+      "tr": "Avare"
+     },
+     {
+      "tr": "Serseri"
+     },
+     {
+      "en": "Vagabond"
+     }
+    ],
+    "isLocked": true,
+    "links": {
+     "al": "30656",
+     "ap": "vagabond",
+     "kt": "1482",
+     "mu": "su6blie",
+     "mal": "656",
+     "engtl": "https://www.viz.com/vagabond"
+    },
+    "officialLinks": null,
+    "originalLanguage": "ja",
+    "lastVolume": "",
+    "lastChapter": "",
+    "publicationDemographic": "seinen",
+    "status": "hiatus",
+    "year": 1999,
+    "contentRating": "erotica",
+    "tags": [
+     {
+      "id": "0a39b5a1-b235-4886-a747-1d05d216532d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Award Winning"
+       },
+       "group": "format",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "33771934-028e-4cb3-8744-691e866a923e",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Historical"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "391b0423-d847-456f-aff0-8b0cfc03066b",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Action"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "3b60b75c-a2d7-4860-ab56-05f391bb889c",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Psychological"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "799c202e-7daa-44eb-9cf7-8a3c0441531e",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Martial Arts"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "87cc87cd-a395-47af-b27a-93258283bbc6",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Adventure"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "97893a4c-12af-4dac-b6be-0dffb353568e",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Sexual Violence"
+       },
+       "group": "content",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "b29d6a3d-1569-4e7a-8caf-7557bc92cd5d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Gore"
+       },
+       "group": "content",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "b9af3a63-f058-46de-a9a0-e0c13906197a",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Drama"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "f8f62932-27da-4fe4-8ee1-6779a8c5edba",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Tragedy"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     }
+    ],
+    "state": "published",
+    "chapterNumbersResetOnNewVolume": false,
+    "createdAt": "2018-02-09T05:29:14+00:00",
+    "updatedAt": "2026-09-21T20:08:47+00:00",
+    "version": 24,
+    "availableTranslatedLanguages": [
+     "it",
+     "pt-br",
+     "es-la",
+     "en",
+     "pl",
+     "hu",
+     "el",
+     "ar",
+     "ka",
+     "uk",
+     "id",
+     "tr",
+     "kk",
+     "ru"
+    ],
+    "latestUploadedChapter": "023bc6b0-392b-48b0-b2c7-78a36564e380"
+   },
+   "relationships": [
+    {
+     "id": "0b59098f-13c0-41cb-a110-9cbcec72dc0c",
+     "type": "author",
+     "attributes": {
+      "name": "Inoue Takehiko",
+      "imageUrl": null,
+      "biography": {
+       "en": "Takehiko Inoue (井上 雄彦, Inoue Takehiko, born 12 January 1967) is a Japanese manga artist. He is best known for the basketball series [Slam Dunk (1990–1996)](https://mangadex.org/title/319df2e2-e6a6-4e3a-a31c-68539c140a84/slam-dunk), and the jidaigeki manga [Vagabond](https://mangadex.org/title/d1a9fdeb-f713-407f-960c-8326b586e6fd/vagabond), which are two of the best-selling manga series in history. Many of his works are about basketball, Inoue himself being a huge fan of the sport. His works sold in North America through Viz Media are **Slam Dunk**, **Vagabond** and [Real](https://mangadex.org/title/62b74aa6-24df-4b91-b76d-39e7ab3c3ca5/real), although **Slam Dunk** was earlier translated by **Gutsoon! Entertainment**. In 2012, Inoue became the first recipient of the Cultural Prize at the Asia Cosmopolitan Awards.\n\n---\nHis real name is **Nariai Takehiko (成合雄彦)**.\n\nInoue Takehiko first started playing basketball in high school as a means to winning attention from the opposite sex, he was in kendo club in elementary school and junior high. After being immersed in the competitive sport, he became a huge basketball fan. His love for the sport can be easily seen both from his choice in using it as a central theme in his works, as well as the unmistakable ability in capturing the details of it all.\n\nHe went to Kumamoto University but dropped out, and became assistant to [Hojo Tsukasa](https://mangadex.org/author/bdd3b599-48be-49d2-8bea-877e38704ad6/tsukasa-hojo) for ten months during [City Hunter](https://mangadex.org/title/f1c716b5-e82f-4625-a646-280cfa66abad/city-hunter).\n\n[Hara Yasuhisa](https://mangadex.org/author/6637c726-8d02-456f-b837-65e1b190d0af/hara-yasuhisa), [Tatsuzawa Katsumi](https://www.mangaupdates.com/authors.html?id=6613), [Mihara Kazuto](https://mangadex.org/author/345dc961-0229-40a5-8419-14cd2e94774a/mihara-kazuto) and [Yuki Izumi](https://mangadex.org/author/b6b68daf-f191-44fc-9ef6-b01376160bd5/yuki-izumi) are former assistants of his.\n\n[Mizushima Shinji](https://mangadex.org/author/370fdd0d-ff84-4edf-beb5-db78cdca3f85/mizushima-shinji)’s [Dokaben](https://www.mangaupdates.com/series.html?id=84088) was one of the works that made him to become a mangaka.\n\nHe is the artist for the X360 RPG \"[Lost Odyssey](https://www.xbox.com/en-US/games/store/lost-odyssey/BZB4S8FS8T5B)\".\n\nMarried and has a son. \n"
+      },
+      "twitter": "https://twitter.com/inouetake",
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": "https://itplanning.co.jp/",
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2022-02-17T13:41:00+00:00",
+      "version": 4
+     }
+    },
+    {
+     "id": "d0afd13f-36dd-4723-8e73-ea9d338b2492",
+     "type": "author",
+     "attributes": {
+      "name": "Yoshikawa Eiji",
+      "imageUrl": null,
+      "biography": {},
+      "twitter": null,
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2021-04-19T21:59:45+00:00",
+      "version": 1
+     }
+    },
+    {
+     "id": "0b59098f-13c0-41cb-a110-9cbcec72dc0c",
+     "type": "artist",
+     "attributes": {
+      "name": "Inoue Takehiko",
+      "imageUrl": null,
+      "biography": {
+       "en": "Takehiko Inoue (井上 雄彦, Inoue Takehiko, born 12 January 1967) is a Japanese manga artist. He is best known for the basketball series [Slam Dunk (1990–1996)](https://mangadex.org/title/319df2e2-e6a6-4e3a-a31c-68539c140a84/slam-dunk), and the jidaigeki manga [Vagabond](https://mangadex.org/title/d1a9fdeb-f713-407f-960c-8326b586e6fd/vagabond), which are two of the best-selling manga series in history. Many of his works are about basketball, Inoue himself being a huge fan of the sport. His works sold in North America through Viz Media are **Slam Dunk**, **Vagabond** and [Real](https://mangadex.org/title/62b74aa6-24df-4b91-b76d-39e7ab3c3ca5/real), although **Slam Dunk** was earlier translated by **Gutsoon! Entertainment**. In 2012, Inoue became the first recipient of the Cultural Prize at the Asia Cosmopolitan Awards.\n\n---\nHis real name is **Nariai Takehiko (成合雄彦)**.\n\nInoue Takehiko first started playing basketball in high school as a means to winning attention from the opposite sex, he was in kendo club in elementary school and junior high. After being immersed in the competitive sport, he became a huge basketball fan. His love for the sport can be easily seen both from his choice in using it as a central theme in his works, as well as the unmistakable ability in capturing the details of it all.\n\nHe went to Kumamoto University but dropped out, and became assistant to [Hojo Tsukasa](https://mangadex.org/author/bdd3b599-48be-49d2-8bea-877e38704ad6/tsukasa-hojo) for ten months during [City Hunter](https://mangadex.org/title/f1c716b5-e82f-4625-a646-280cfa66abad/city-hunter).\n\n[Hara Yasuhisa](https://mangadex.org/author/6637c726-8d02-456f-b837-65e1b190d0af/hara-yasuhisa), [Tatsuzawa Katsumi](https://www.mangaupdates.com/authors.html?id=6613), [Mihara Kazuto](https://mangadex.org/author/345dc961-0229-40a5-8419-14cd2e94774a/mihara-kazuto) and [Yuki Izumi](https://mangadex.org/author/b6b68daf-f191-44fc-9ef6-b01376160bd5/yuki-izumi) are former assistants of his.\n\n[Mizushima Shinji](https://mangadex.org/author/370fdd0d-ff84-4edf-beb5-db78cdca3f85/mizushima-shinji)’s [Dokaben](https://www.mangaupdates.com/series.html?id=84088) was one of the works that made him to become a mangaka.\n\nHe is the artist for the X360 RPG \"[Lost Odyssey](https://www.xbox.com/en-US/games/store/lost-odyssey/BZB4S8FS8T5B)\".\n\nMarried and has a son. \n"
+      },
+      "twitter": "https://twitter.com/inouetake",
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": "https://itplanning.co.jp/",
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2022-02-17T13:41:00+00:00",
+      "version": 4
+     }
+    },
+    {
+     "id": "8e74a0f1-09a0-407f-9bfd-d4dc961e54e9",
+     "type": "cover_art",
+     "attributes": {
+      "volume": "37",
+      "fileName": "05f8dcb4-8ea1-48db-a0b1-3a8fbf695e5a.jpg",
+      "locale": "ja",
+      "createdAt": "2022-07-24T22:10:43+00:00",
+      "updatedAt": "2022-07-24T22:10:43+00:00",
+      "version": 1
+     }
+    },
+    {
+     "id": "577469f9-fc50-4e3b-ba38-bccf4138c637",
+     "type": "manga",
+     "related": "sequel"
+    },
+    {
+     "id": "6e5ddee5-eccb-48cc-b6bb-43488cc9791f",
+     "type": "manga",
+     "related": "colored"
+    },
+    {
+     "id": "88b6fcca-57dd-4df2-aac5-8935eaa6c34d",
+     "type": "manga",
+     "related": "alternate_story"
+    },
+    {
+     "id": "9560d60b-bc1f-4a4f-9420-c8eae79f8104",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "9843917a-1546-4672-b5ad-3ecc5f7020af",
+     "type": "manga",
+     "related": "alternate_story"
+    },
+    {
+     "id": "a2a9216f-6a8d-4b28-bb9f-8ee549245787",
+     "type": "manga",
+     "related": "alternate_story"
+    },
+    {
+     "id": "a9bf14be-fcff-4eea-9c45-ba3e40d399fa",
+     "type": "manga",
+     "related": "alternate_story"
+    },
+    {
+     "id": "fe18fe91-fa82-441c-9d87-66414d59a622",
+     "type": "manga",
+     "related": "same_franchise"
+    }
+   ]
+  },
+  "ol_volume": {
+   "author_name": [
+    "井上雄彦 (Takehiko Inoue)"
+   ],
+   "cover_i": 863044,
+   "edition_count": 0,
+   "key": "/works/OL8783776W",
+   "title": "Vagabond, Volume 1"
+  }
+ },
+ "naruto1": {
+  "parsed": [
+   "Naruto",
+   1
+  ],
+  "anilist": {
+   "id": 30011,
+   "siteUrl": "https://anilist.co/manga/30011",
+   "format": "MANGA",
+   "status": "FINISHED",
+   "countryOfOrigin": "JP",
+   "volumes": 72,
+   "chapters": 700,
+   "startDate": {
+    "year": 1999
+   },
+   "title": {
+    "romaji": "NARUTO",
+    "english": "Naruto",
+    "native": "NARUTO -ナルト-"
+   },
+   "genres": [
+    "Action",
+    "Adventure",
+    "Supernatural"
+   ],
+   "tags": [
+    {
+     "name": "Shounen",
+     "rank": 97
+    },
+    {
+     "name": "Ninja",
+     "rank": 93
+    },
+    {
+     "name": "Revenge",
+     "rank": 92
+    },
+    {
+     "name": "Coming of Age",
+     "rank": 92
+    },
+    {
+     "name": "Found Family",
+     "rank": 88
+    },
+    {
+     "name": "Super Power",
+     "rank": 86
+    },
+    {
+     "name": "Male Protagonist",
+     "rank": 85
+    },
+    {
+     "name": "Martial Arts",
+     "rank": 82
+    },
+    {
+     "name": "War",
+     "rank": 82
+    },
+    {
+     "name": "Tragedy",
+     "rank": 78
+    },
+    {
+     "name": "Orphan",
+     "rank": 74
+    },
+    {
+     "name": "Kaiju",
+     "rank": 71
+    },
+    {
+     "name": "Necromancy",
+     "rank": 70
+    },
+    {
+     "name": "Time Skip",
+     "rank": 70
+    },
+    {
+     "name": "Philosophy",
+     "rank": 67
+    },
+    {
+     "name": "Cultivation",
+     "rank": 65
+    },
+    {
+     "name": "Magic",
+     "rank": 65
+    },
+    {
+     "name": "Henshin",
+     "rank": 62
+    },
+    {
+     "name": "Anachronism",
+     "rank": 56
+    },
+    {
+     "name": "Animals",
+     "rank": 53
+    },
+    {
+     "name": "Heterosexual",
+     "rank": 53
+    },
+    {
+     "name": "Travel",
+     "rank": 52
+    },
+    {
+     "name": "Love Triangle",
+     "rank": 50
+    },
+    {
+     "name": "Demons",
+     "rank": 48
+    },
+    {
+     "name": "Espionage",
+     "rank": 40
+    },
+    {
+     "name": "Aliens",
+     "rank": 36
+    },
+    {
+     "name": "Large Breasts",
+     "rank": 20
+    }
+   ],
+   "averageScore": 79,
+   "coverImage": {
+    "extraLarge": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/nx30011-9yUF1dXWgDOx.jpg"
+   },
+   "staff": {
+    "edges": [
+     {
+      "role": "Story & Art",
+      "node": {
+       "name": {
+        "full": "Masashi Kishimoto"
+       }
+      }
+     },
+     {
+      "role": "Assistant",
+      "node": {
+       "name": {
+        "full": "Yuuichi Itakura"
+       }
+      }
+     },
+     {
+      "role": "Assistant",
+      "node": {
+       "name": {
+        "full": "Ryou Tasaka"
+       }
+      }
+     },
+     {
+      "role": "Translator (Portuguese)",
+      "node": {
+       "name": {
+        "full": "Ricardo Cruz"
+       }
+      }
+     },
+     {
+      "role": "Assistant",
+      "node": {
+       "name": {
+        "full": "Kenji Taira"
+       }
+      }
+     },
+     {
+      "role": "Assistant",
+      "node": {
+       "name": {
+        "full": "Osamu Kajisa"
+       }
+      }
+     }
+    ]
+   }
+  },
+  "mangadex": {
+   "id": "6b1eb93e-473a-4ab3-9922-1a66d2a29a4a",
+   "type": "manga",
+   "attributes": {
+    "title": {
+     "en": "Naruto"
+    },
+    "altTitles": [
+     {
+      "ja": "ナルト"
+     },
+     {
+      "ja": "-ナルト-"
+     },
+     {
+      "ja": "NARUTO -ナルト-"
+     },
+     {
+      "uk": "Наруто"
+     },
+     {
+      "ru": "Наруто"
+     },
+     {
+      "bg": "Наруто"
+     },
+     {
+      "sr": "Нароуто"
+     },
+     {
+      "bn": "নারুতো"
+     },
+     {
+      "hi": "नारुतो"
+     },
+     {
+      "ur": "ناروٹو"
+     },
+     {
+      "ar": "ناروتو"
+     },
+     {
+      "he": "נארוטו"
+     },
+     {
+      "ka": "ნარუტო"
+     },
+     {
+      "ta": "நருடோ"
+     },
+     {
+      "ko": "나루토"
+     },
+     {
+      "zh": "狐忍"
+     },
+     {
+      "zh-hk": "火影忍者"
+     },
+     {
+      "my": "နာရူတို"
+     },
+     {
+      "th": "นินจาคาถาโอ้โฮเฮะ"
+     },
+     {
+      "be": "Нарута"
+     }
+    ],
+    "isLocked": false,
+    "links": {
+     "al": "30011",
+     "bl": "185408",
+     "bw": "series/13003/list",
+     "mu": "7z3yqqk",
+     "mal": "11",
+     "engtl": "https://mangaplus.shueisha.co.jp/titles/100018"
+    },
+    "officialLinks": null,
+    "originalLanguage": "ja",
+    "lastVolume": "72",
+    "lastChapter": "700",
+    "publicationDemographic": "shounen",
+    "status": "completed",
+    "year": 1999,
+    "contentRating": "suggestive",
+    "tags": [
+     {
+      "id": "36fd93ea-e8b8-445e-b836-358f02b3d33d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Monsters"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "391b0423-d847-456f-aff0-8b0cfc03066b",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Action"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "489dd859-9b61-4c37-af75-5b18e88daafc",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Ninja"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "4d32cc48-9f00-4cca-9b5a-a839f0764984",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Comedy"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "799c202e-7daa-44eb-9cf7-8a3c0441531e",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Martial Arts"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "87cc87cd-a395-47af-b27a-93258283bbc6",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Adventure"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "b29d6a3d-1569-4e7a-8caf-7557bc92cd5d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Gore"
+       },
+       "group": "content",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "cdc58593-87dd-415e-bbc0-2ec27bf404cc",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Fantasy"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     }
+    ],
+    "state": "published",
+    "chapterNumbersResetOnNewVolume": false,
+    "createdAt": "2018-01-18T02:06:39+00:00",
+    "updatedAt": "2026-07-08T08:07:10+00:00",
+    "version": 39,
+    "availableTranslatedLanguages": [
+     "en",
+     "ru",
+     "pt-br",
+     "tr",
+     "es-la",
+     "ro",
+     "uk",
+     "id",
+     "sr",
+     "bg",
+     "hr",
+     "ar",
+     "es",
+     "nl"
+    ],
+    "latestUploadedChapter": "33464902-afce-41c3-8b8f-9cd87bd4dcbd"
+   },
+   "relationships": [
+    {
+     "id": "7f718dfa-e5be-45ea-a5cb-0fcd3ed52d5f",
+     "type": "author",
+     "attributes": {
+      "name": "Kishimoto Masashi",
+      "imageUrl": null,
+      "biography": {
+       "en": "Masashi Kishimoto (岸本 斉史, Kishimoto Masashi, born November 8, 1974) is a Japanese manga artist. His best known work, Naruto, was in serialization from 1999 to 2014 and has sold over 250 million copies worldwide in 46 countries as of May 2019. The series has been adapted into two anime and multiple films, video games, and related media. Besides the Naruto manga, Kishimoto also personally supervised the two canonical anime films, The Last: Naruto the Movie and Boruto: Naruto the Movie, and has written several one-shot stories. In 2019, Kishimoto wrote Samurai 8: The Tale of Hachimaru which ended in March 2020. From May 2016 through October 2020 he supervised the Boruto: Naruto Next Generations manga written by [Ukyō Kodachi](https://mangadex.org/author/54d2c255-f4a9-4bd5-b927-587ef9c4e3d2/kodachi-ukyou) and illustrated by [Mikio Ikemoto](https://mangadex.org/author/99fd0ae9-cac3-47ed-85c9-e9983b93c839/ikemoto-mikio). In November 2020 it was announced that he had taken over as writer on the series, replacing Kodachi.\n\nA reader of manga from a young age, Kishimoto showed a desire to write his own manga, citing authors [Akira Toriyama](https://mangadex.org/author/7bb20b16-0f35-4510-b2b3-bbeffba54c23/toriyama-akira) and [Katsuhiro Otomo](https://mangadex.org/author/42390fa3-1ff3-4ca9-871a-2133783a28a1/otomo-katsuhiro) as his main inspirations. As a result, Kishimoto spent several years working to write his own shōnen manga for Weekly Shōnen Jump magazine which he was a fan of. \nHe has a twin brother named [Seishi Kishimoto](https://mangadex.org/author/1679e5f6-daa2-432b-b481-2d1bd150a8fa) "
+      },
+      "twitter": null,
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2024-07-14T15:18:44+00:00",
+      "version": 3
+     }
+    },
+    {
+     "id": "7f718dfa-e5be-45ea-a5cb-0fcd3ed52d5f",
+     "type": "artist",
+     "attributes": {
+      "name": "Kishimoto Masashi",
+      "imageUrl": null,
+      "biography": {
+       "en": "Masashi Kishimoto (岸本 斉史, Kishimoto Masashi, born November 8, 1974) is a Japanese manga artist. His best known work, Naruto, was in serialization from 1999 to 2014 and has sold over 250 million copies worldwide in 46 countries as of May 2019. The series has been adapted into two anime and multiple films, video games, and related media. Besides the Naruto manga, Kishimoto also personally supervised the two canonical anime films, The Last: Naruto the Movie and Boruto: Naruto the Movie, and has written several one-shot stories. In 2019, Kishimoto wrote Samurai 8: The Tale of Hachimaru which ended in March 2020. From May 2016 through October 2020 he supervised the Boruto: Naruto Next Generations manga written by [Ukyō Kodachi](https://mangadex.org/author/54d2c255-f4a9-4bd5-b927-587ef9c4e3d2/kodachi-ukyou) and illustrated by [Mikio Ikemoto](https://mangadex.org/author/99fd0ae9-cac3-47ed-85c9-e9983b93c839/ikemoto-mikio). In November 2020 it was announced that he had taken over as writer on the series, replacing Kodachi.\n\nA reader of manga from a young age, Kishimoto showed a desire to write his own manga, citing authors [Akira Toriyama](https://mangadex.org/author/7bb20b16-0f35-4510-b2b3-bbeffba54c23/toriyama-akira) and [Katsuhiro Otomo](https://mangadex.org/author/42390fa3-1ff3-4ca9-871a-2133783a28a1/otomo-katsuhiro) as his main inspirations. As a result, Kishimoto spent several years working to write his own shōnen manga for Weekly Shōnen Jump magazine which he was a fan of. \nHe has a twin brother named [Seishi Kishimoto](https://mangadex.org/author/1679e5f6-daa2-432b-b481-2d1bd150a8fa) "
+      },
+      "twitter": null,
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2024-07-14T15:18:44+00:00",
+      "version": 3
+     }
+    },
+    {
+     "id": "af4e6e40-f0b1-4fab-a083-e0c6c9ee8b85",
+     "type": "cover_art",
+     "attributes": {
+      "volume": "1",
+      "fileName": "c5a3090c-4ca0-40a2-9102-e0ee0c6dac15.jpg",
+      "locale": "ja",
+      "createdAt": "2021-05-23T07:52:11+00:00",
+      "updatedAt": "2021-05-23T07:52:11+00:00",
+      "version": 2
+     }
+    },
+    {
+     "id": "00d22884-a479-40e6-a8c4-47b3f8f630dc",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "02ce7614-982d-4f3a-9adc-03034ef6208a",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "08755746-cc69-40a2-9cdd-e2c3709400d8",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "0c9b5fd4-8eed-4796-a51f-d77c035adfee",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "0d6ad575-0fe3-4b23-ab34-13d6995f7438",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "154fe5e3-461b-4269-8754-fbb2be606c7c",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "158b294b-928a-46cf-a68c-1096f72e9ca0",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "17904b4c-dd7f-4029-a5db-30c03bf153b2",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "1b19e1f6-9beb-475a-a6b1-9faa8b92d2d3",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "1d420a8f-90f2-44a3-ba9b-646dce06fd00",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "1d8dd24a-af82-465b-8da3-32a99574833b",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "1f6ab3bb-ed17-40bb-9ca4-86ee4e52e38d",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "20a29701-a551-4747-a6bc-f72890170223",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "20d9c018-7a70-44fe-90a7-af37697bbbdd",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "228d1c8e-32ec-41e1-8dfb-5347c0d4dbc1",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "2355a333-d58e-454f-9f21-5bc07323f57d",
+     "type": "manga",
+     "related": "preserialization"
+    },
+    {
+     "id": "24bb1d05-c9d9-4ac6-a368-facad7d9bc34",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "27878f80-07a8-4155-8d2a-8f1a505f4b73",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "279d4d87-832e-4707-9298-2751956cb959",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "2823ca86-e269-496d-b043-bdaa688b9086",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "28a6ac63-9618-4832-aa4a-4c735f002571",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "2c8d5e6d-6b89-4ead-b437-00817b3444bb",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "2de08c73-36c3-49ba-a375-a4089d5d8834",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "2f2f3144-7889-44ac-aed2-086dd6e93edd",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "309c7b73-49fe-42c3-b758-0ca38a0e9d35",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "31506288-f80d-4838-9df2-95475fd4f3e2",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "32f98650-9d09-4b32-bc3e-ad35d4839727",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "33140152-1f76-4ee1-87b3-285f448ee2fa",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "39a8fdc4-6c42-4726-8a53-04383bdc8ca6",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "3cce7ccc-f73f-4173-881b-d159cea54072",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "3f4e659f-7b1a-4fa2-96fd-f30731be94bc",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "41795f6e-b98d-40a5-ac6b-a5c1b4fa8db0",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "43352b84-de8b-434b-b1c0-32446e2bf773",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "46e530ce-0766-4cbd-b005-5e6fb0ba5e71",
+     "type": "manga",
+     "related": "sequel"
+    },
+    {
+     "id": "47db4c48-0ab1-417d-b58f-bdb9e5f53cb5",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "4882f611-03b3-4784-9db9-6f3f3e7c781e",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "492c5090-f3ca-487c-a297-42ee01fe3221",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "4e494979-ed04-4263-9426-133240fc8e12",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "517814e6-6601-4e2c-927e-73aa80c0b940",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "525a889b-c38a-4f7f-8828-03efca30d3f1",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "52d09ed8-932d-42ea-b293-c3e15fe03af3",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "538f4c0a-02fc-4847-9007-48e5122748d8",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "5a130749-788d-46af-8eff-3df7909b2926",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "5a798981-bb09-467b-b9e1-189cdec90617",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "5b5b94eb-d06d-4385-9f7c-d62c6b25fe9c",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "5b65f494-5cfe-4446-8813-dc1375893166",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "5c56fce4-2259-4218-bf65-53a0f781907f",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "6486f195-2ab2-47f0-a611-7107fdb0b961",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "65125892-8584-4938-b45c-7a4cd9ad67d7",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "65a45094-1875-4ac1-8945-31a273c3846b",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "65e8e0bb-2f5e-4818-888f-5f49d97379e9",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "69423cb0-f99d-4d93-8fd3-f01bed85970a",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "6bff73ab-6e17-497b-ba0c-eed6b898a567",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "6cdd7d8e-ccef-46e4-adad-6a77642e344a",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "70d38cd3-1bb3-4d7a-b636-6a62f0351995",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "748c75af-48cf-425b-8d1d-03fa1d181cc0",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "775d6276-16e3-455f-8ed7-3860ec5fbb52",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "77b6185a-83e3-43bd-ac9d-532eeb2f3db0",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "77fdf1da-c552-4135-80ce-a82761cbdeba",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "79291797-6bdb-4686-9ed2-7d2a319a641b",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "79cb4363-2d24-4019-9384-2e5b6a5aab53",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "7a0823d2-9f1f-4b7a-b2a6-4029218d409b",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "7edddf22-b41b-4c4d-a583-6de27edb6078",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "80b8b1a1-1b4c-4a59-9921-c5b71e90aa7b",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "816b94fc-b575-4741-8913-bb10f8b49d9b",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "826c5378-7b94-4401-a219-f1e83ac00ff4",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "86b8a62a-c8af-4bea-b8d8-936e6a28a02b",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "8c6e9c82-72be-48f1-bad1-a5fbde959581",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "8d134e92-10df-44c9-9a81-f14e28bea3f4",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "8f8c4f0e-93f5-433e-ba13-017746b485ec",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "9385a2a5-9a45-4f35-935e-a8a39bd7ee49",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "93a04759-f931-44a8-bdb5-d747359f4ad9",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "9482a297-1675-4c0f-b612-0d3c30d72219",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "94e069a5-0062-49c9-b9dc-cb5cd9118437",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "9694e581-df6c-483a-942b-9572212c8669",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "97eaef70-9d5b-4853-a658-5da89e57db48",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "99a704b4-e338-464a-8fc7-f67d69caaf22",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "9c164235-ff12-4f59-a5c8-cb2f47bfb12e",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "9d70a52f-8180-49e2-87da-145a25767c1f",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "9efd56f6-7681-44ea-98dc-5efb8b2433e1",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "9f9780ca-68e1-472b-a6c5-caa8156b5d41",
+     "type": "manga",
+     "related": "same_franchise"
+    },
+    {
+     "id": "a12918b7-0581-46a6-9f8f-abbac7b0da08",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "a14176d9-9832-43d2-b98a-f16fa4e82021",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "a25e6fdc-cba4-47af-bd3d-09eabdbde751",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "a47862ce-0e27-42d7-9f3b-5bb581f047e4",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "a6464dfd-6037-443d-a026-ce523753c5f8",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "a787b10a-02d0-46c0-8236-0d01d69ad4a3",
+     "type": "manga",
+     "related": "colored"
+    },
+    {
+     "id": "a83efd3f-415c-40e8-8fe5-22484232be25",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "a85b6949-86d4-4982-aaec-07e0e53becb5",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "a89c12ea-3f74-4556-8b25-522cb617363f",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "aa8de59a-3923-4930-a4c1-3453e73673c1",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "aca675b8-cbb4-47b1-9bce-879da93d29ac",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "acd3e3a1-048c-4a7d-8cfa-5ff2b0015bcb",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "ae544332-861d-462d-b81a-ff0bcec985cb",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "af3b5bcd-9ad4-466a-9f1b-89f0673865fd",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b02cc76a-9f00-4b13-b1f7-d0cbca9a3260",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b22c9fe7-00eb-41ce-a7df-d98766d0b25f",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b31b5a81-3c8c-4c5f-8104-05299656c946",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b6247ee9-cbac-4d6f-be1d-9026d43d12d5",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b91b790c-f7b4-4b90-a36e-5981c88c2ab3",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b93f14e1-35ad-424d-a73d-ab2d12529310",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "bbd121c1-f7e1-4b70-8c97-239dc349d89a",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "bc736f80-8f43-440e-a621-ada97de37c43",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "be36050e-76b5-47fa-9f60-f6399a05bcc4",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "c1b470e1-ba33-4522-9b36-77e079f87bcb",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "c3313555-f52c-4f1f-901f-7c09a03af19c",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "c340a4a5-8c3c-497d-bde2-9010036d2e0a",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "c6d07a79-5db4-4873-8805-ac157141a245",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "c75de038-fef5-4ea2-ae18-8aa5e01c5a7e",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "c7b0826d-d6bc-4867-baf8-d2a5bc3c778a",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "c906567f-311e-4a7c-8ce3-eb1c15fb2742",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "c9752908-ee70-47a0-9c63-95e097894462",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "cc33a2b4-02f0-48d8-97d7-7ba23a06d7e2",
+     "type": "manga",
+     "related": "sequel"
+    },
+    {
+     "id": "ce7d64f3-5b76-4240-956e-015bd21a5464",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "d1533a3c-acfa-45d7-9d81-4c16876de100",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "d17166f9-fde7-4156-aa92-090680b8373a",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "d5e0431b-3410-4bbe-a147-4ce50fb21bd6",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "d6bb6f3b-caf8-428f-b440-04363a20d59c",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "d818945e-b1cb-497f-9346-e0098dbfcf35",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "d8350c75-9171-45c8-989f-34288f5740bd",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "da541fd8-d936-4c36-a681-a5d5abba1edb",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "dcdb2f4d-9737-4bac-ad59-c661c575460c",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "e0f3ea0a-c502-426f-8aae-dfd54a8031b7",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "e24c90ed-2d7c-42ec-b167-bdaa0b4ac3dd",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "e3c24292-0f04-484c-aad5-52867c8258bf",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "e403e362-529e-4ac3-bacc-cfb3be7d0757",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "e4960c4b-46cd-47f2-9f21-860e0ee03965",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "e7e77e9b-cda8-4f4a-8ad6-ea0019d9a5af",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "e8136a19-50c8-4736-945b-b89e04d8b4e2",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "e9d5052d-6fc2-4a14-b08e-1ed36e3c647a",
+     "type": "manga",
+     "related": "sequel"
+    },
+    {
+     "id": "ef404ef2-5a87-4807-863d-94b5688b8c73",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "f030008f-4a36-4a9c-8136-c490205cb9d1",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "ffdaa559-c2c1-4d34-a452-b829aed6873d",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "ffeefb3b-04a2-4b8e-9159-e131cfe078ed",
+     "type": "manga",
+     "related": "side_story"
+    }
+   ]
+  },
+  "ol_volume": {
+   "author_name": [
+    "Masashi Kishimoto"
+   ],
+   "cover_i": 1020779,
+   "edition_count": 27,
+   "first_publish_year": 2000,
+   "isbn": [
+    "9781417651054",
+    "6055686392",
+    "9788416401949",
+    "1421507102",
+    "2871294143",
+    "9782871294146",
+    "142152578X",
+    "159116365X",
+    "9789577316530",
+    "9781421526539",
+    "9783551762511",
+    "9784088728407",
+    "1421526530",
+    "4088728408",
+    "9788542621495",
+    "9781569319000",
+    "8415821069",
+    "1421519747",
+    "9788573513899",
+    "1417651059",
+    "3551762511",
+    "9577316530",
+    "8542621492",
+    "9781421507101",
+    "8573513896",
+    "8416401934",
+    "9783551744920",
+    "9788415821816",
+    "3551744920",
+    "8416401942",
+    "9781421525785",
+    "9786055686390",
+    "9788484492757",
+    "9781421519746",
+    "9781591163657",
+    "9788416401932",
+    "9788415821069",
+    "8415821816",
+    "8484492753",
+    "1569319006"
+   ],
+   "key": "/works/OL8755980W",
+   "publisher": [
+    "Yusuf Mohamed",
+    "Kana",
+    "Viz",
+    "Panini",
+    "VIZ",
+    "Viz Media",
+    "Panini Comics",
+    "Carlsen",
+    "Brand: Turtleback",
+    "Planeta Cómic",
+    "Dong li chu ban she you xian gong si",
+    "Shueisha",
+    "viz media llc",
+    "Planeta",
+    "Carlsen Verlag",
+    "Gerekli Seyler",
+    "Tandem Library",
+    "Pujol & Amado S.L.L.",
+    "VIZ Media LLC",
+    "Turtleback Books",
+    "Dong Li"
+   ],
+   "title": "Naruto 01"
+  }
+ },
+ "onepiece1": {
+  "parsed": [
+   "One Piece",
+   1
+  ],
+  "anilist": {
+   "id": 30013,
+   "siteUrl": "https://anilist.co/manga/30013",
+   "format": "MANGA",
+   "status": "RELEASING",
+   "countryOfOrigin": "JP",
+   "volumes": null,
+   "chapters": null,
+   "startDate": {
+    "year": 1997
+   },
+   "title": {
+    "romaji": "ONE PIECE",
+    "english": "One Piece",
+    "native": "ONE PIECE"
+   },
+   "genres": [
+    "Action",
+    "Adventure",
+    "Comedy",
+    "Fantasy"
+   ],
+   "tags": [
+    {
+     "name": "Pirates",
+     "rank": 96
+    },
+    {
+     "name": "Travel",
+     "rank": 96
+    },
+    {
+     "name": "Found Family",
+     "rank": 95
+    },
+    {
+     "name": "Shounen",
+     "rank": 92
+    },
+    {
+     "name": "Ensemble Cast",
+     "rank": 91
+    },
+    {
+     "name": "Prophecy",
+     "rank": 90
+    },
+    {
+     "name": "Super Power",
+     "rank": 87
+    },
+    {
+     "name": "Dystopian",
+     "rank": 85
+    },
+    {
+     "name": "Ships",
+     "rank": 81
+    },
+    {
+     "name": "Male Protagonist",
+     "rank": 81
+    },
+    {
+     "name": "Tragedy",
+     "rank": 80
+    },
+    {
+     "name": "Fugitive",
+     "rank": 80
+    },
+    {
+     "name": "Politics",
+     "rank": 79
+    },
+    {
+     "name": "Military",
+     "rank": 79
+    },
+    {
+     "name": "Crime",
+     "rank": 79
+    },
+    {
+     "name": "Conspiracy",
+     "rank": 79
+    },
+    {
+     "name": "Terrorism",
+     "rank": 77
+    },
+    {
+     "name": "Slapstick",
+     "rank": 77
+    },
+    {
+     "name": "War",
+     "rank": 75
+    },
+    {
+     "name": "Gods",
+     "rank": 72
+    },
+    {
+     "name": "Time Skip",
+     "rank": 71
+    },
+    {
+     "name": "Lost Civilization",
+     "rank": 71
+    },
+    {
+     "name": "Post-Apocalyptic",
+     "rank": 70
+    },
+    {
+     "name": "Primarily Adult Cast",
+     "rank": 69
+    },
+    {
+     "name": "Slavery",
+     "rank": 69
+    },
+    {
+     "name": "Anachronism",
+     "rank": 68
+    },
+    {
+     "name": "Primarily Male Cast",
+     "rank": 68
+    },
+    {
+     "name": "Mythology",
+     "rank": 68
+    },
+    {
+     "name": "Religion",
+     "rank": 67
+    },
+    {
+     "name": "Swordplay",
+     "rank": 66
+    },
+    {
+     "name": "Animals",
+     "rank": 66
+    },
+    {
+     "name": "Environmental",
+     "rank": 65
+    },
+    {
+     "name": "Gangs",
+     "rank": 64
+    },
+    {
+     "name": "Prison",
+     "rank": 63
+    },
+    {
+     "name": "Anti-Hero",
+     "rank": 63
+    },
+    {
+     "name": "Espionage",
+     "rank": 62
+    },
+    {
+     "name": "Anthropomorphism",
+     "rank": 60
+    },
+    {
+     "name": "Kaiju",
+     "rank": 60
+    },
+    {
+     "name": "Food",
+     "rank": 58
+    },
+    {
+     "name": "Skeleton",
+     "rank": 58
+    },
+    {
+     "name": "Samurai",
+     "rank": 57
+    },
+    {
+     "name": "Cyborg",
+     "rank": 57
+    },
+    {
+     "name": "Henshin",
+     "rank": 56
+    },
+    {
+     "name": "Adoption",
+     "rank": 56
+    },
+    {
+     "name": "Medicine",
+     "rank": 55
+    },
+    {
+     "name": "Assassins",
+     "rank": 55
+    },
+    {
+     "name": "Robots",
+     "rank": 53
+    },
+    {
+     "name": "Mermaid",
+     "rank": 53
+    },
+    {
+     "name": "Guns",
+     "rank": 53
+    },
+    {
+     "name": "Revenge",
+     "rank": 53
+    },
+    {
+     "name": "Surreal Comedy",
+     "rank": 53
+    },
+    {
+     "name": "Demons",
+     "rank": 52
+    },
+    {
+     "name": "Dragons",
+     "rank": 51
+    },
+    {
+     "name": "Drugs",
+     "rank": 51
+    },
+    {
+     "name": "Monster Girl",
+     "rank": 50
+    },
+    {
+     "name": "Meta",
+     "rank": 50
+    },
+    {
+     "name": "Battle Royale",
+     "rank": 49
+    },
+    {
+     "name": "Amnesia",
+     "rank": 49
+    },
+    {
+     "name": "Desert",
+     "rank": 48
+    },
+    {
+     "name": "Oiran",
+     "rank": 48
+    },
+    {
+     "name": "Time Manipulation",
+     "rank": 47
+    },
+    {
+     "name": "Transgender",
+     "rank": 46
+    },
+    {
+     "name": "Kemonomimi",
+     "rank": 45
+    },
+    {
+     "name": "Zombie",
+     "rank": 44
+    },
+    {
+     "name": "Memory Manipulation",
+     "rank": 43
+    },
+    {
+     "name": "Trains",
+     "rank": 43
+    },
+    {
+     "name": "Ninja",
+     "rank": 41
+    },
+    {
+     "name": "Centaur",
+     "rank": 41
+    },
+    {
+     "name": "Dinosaurs",
+     "rank": 41
+    },
+    {
+     "name": "Clone",
+     "rank": 40
+    },
+    {
+     "name": "Unrequited Love",
+     "rank": 40
+    },
+    {
+     "name": "Bar",
+     "rank": 40
+    },
+    {
+     "name": "Gender Bending",
+     "rank": 39
+    },
+    {
+     "name": "Angels",
+     "rank": 36
+    },
+    {
+     "name": "Artificial Intelligence",
+     "rank": 36
+    },
+    {
+     "name": "Aliens",
+     "rank": 36
+    },
+    {
+     "name": "Arranged Marriage",
+     "rank": 35
+    },
+    {
+     "name": "Body Swapping",
+     "rank": 35
+    },
+    {
+     "name": "Shapeshifting",
+     "rank": 34
+    },
+    {
+     "name": "Aromantic",
+     "rank": 33
+    },
+    {
+     "name": "Curses",
+     "rank": 30
+    },
+    {
+     "name": "Matriarchy",
+     "rank": 30
+    }
+   ],
+   "averageScore": 91,
+   "coverImage": {
+    "extraLarge": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30013-BeslEMqiPhlk.jpg"
+   },
+   "staff": {
+    "edges": [
+     {
+      "role": "Story & Art",
+      "node": {
+       "name": {
+        "full": "Eiichirou Oda"
+       }
+      }
+     },
+     {
+      "role": "Assistant (former)",
+      "node": {
+       "name": {
+        "full": "Tatsuma Eijiri"
+       }
+      }
+     },
+     {
+      "role": "Assistant (Former)",
+      "node": {
+       "name": {
+        "full": "Shinya Suzuki"
+       }
+      }
+     },
+     {
+      "role": "Assistant",
+      "node": {
+       "name": {
+        "full": "Mikio Itou"
+       }
+      }
+     },
+     {
+      "role": "Assistant (former)",
+      "node": {
+       "name": {
+        "full": "Katsunori Matsui"
+       }
+      }
+     },
+     {
+      "role": "Assistant (former)",
+      "node": {
+       "name": {
+        "full": "Yuusaku Shibata"
+       }
+      }
+     }
+    ]
+   }
+  },
+  "mangadex": {
+   "id": "a1c7c817-4e59-43b7-9365-09675a149a6f",
+   "type": "manga",
+   "attributes": {
+    "title": {
+     "ja-ro": "One Piece"
+    },
+    "altTitles": [
+     {
+      "ja": "ワンピース"
+     },
+     {
+      "uk": "Ван Піс"
+     },
+     {
+      "ru": "One Piece. Большой куш"
+     },
+     {
+      "ru": "Ван Пис"
+     },
+     {
+      "fa": "وان پیس"
+     },
+     {
+      "hi": "वन पीस"
+     },
+     {
+      "bn": "ওয়ান পিস"
+     },
+     {
+      "ne": "वान पिस"
+     },
+     {
+      "ne": "वान पीस"
+     },
+     {
+      "ta": "ஒன் பீஸ்"
+     },
+     {
+      "th": "วันพีซ"
+     },
+     {
+      "mn": "Уан Пийс"
+     },
+     {
+      "kk": "Уан Пис"
+     },
+     {
+      "kk": "One Piece. Батпан құйрық"
+     },
+     {
+      "kk": "Бір бөлік"
+     },
+     {
+      "he": "וואן פיס"
+     },
+     {
+      "ar": "ون بيس"
+     },
+     {
+      "ar": "قطعة واحدة"
+     },
+     {
+      "zh": "海贼王"
+     },
+     {
+      "zh": "海盗路飞"
+     },
+     {
+      "zh": "航海王"
+     },
+     {
+      "zh-hk": "海賊王"
+     },
+     {
+      "my": "ဝမ်းပိစ်"
+     },
+     {
+      "vi": "Đảo Hải Tặc"
+     },
+     {
+      "vi": "Vua Hải Tặc"
+     },
+     {
+      "ms": "Budak Getah"
+     },
+     {
+      "ko": "원피스"
+     },
+     {
+      "te": "వన్ పీస్"
+     },
+     {
+      "be": "Ўан Піс"
+     },
+     {
+      "be": "Ўанпіс"
+     },
+     {
+      "be": "Ўан-Піс"
+     },
+     {
+      "en": "One Piece"
+     },
+     {
+      "ur": "ون پیس"
+     }
+    ],
+    "isLocked": false,
+    "links": {
+     "al": "30013",
+     "ap": "one-piece",
+     "bl": "185407",
+     "bw": "series/13002/list",
+     "kt": "one-piece",
+     "mu": "pb8uwds",
+     "amz": "https://www.amazon.co.jp/dp/B07CKFRZGW",
+     "cdj": "https://www.cdjapan.co.jp/product/NEOBK-2439974",
+     "ebj": "https://ebookjapan.yahoo.co.jp/books/145222/",
+     "mal": "13",
+     "raw": "https://shonenjumpplus.com/episode/10833519556325021794",
+     "engtl": "https://mangaplus.shueisha.co.jp/titles/100020"
+    },
+    "officialLinks": null,
+    "originalLanguage": "ja",
+    "lastVolume": "",
+    "lastChapter": "",
+    "publicationDemographic": "shounen",
+    "status": "ongoing",
+    "year": 1997,
+    "contentRating": "suggestive",
+    "tags": [
+     {
+      "id": "0a39b5a1-b235-4886-a747-1d05d216532d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Award Winning"
+       },
+       "group": "format",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "256c8bd9-4904-4360-bf4f-508a76d67183",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Sci-Fi"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "36fd93ea-e8b8-445e-b836-358f02b3d33d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Monsters"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "391b0423-d847-456f-aff0-8b0cfc03066b",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Action"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "3de8c75d-8ee3-48ff-98ee-e20a65c86451",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Animals"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "4d32cc48-9f00-4cca-9b5a-a839f0764984",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Comedy"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "87cc87cd-a395-47af-b27a-93258283bbc6",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Adventure"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "b29d6a3d-1569-4e7a-8caf-7557bc92cd5d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Gore"
+       },
+       "group": "content",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "b9af3a63-f058-46de-a9a0-e0c13906197a",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Drama"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "cdc58593-87dd-415e-bbc0-2ec27bf404cc",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Fantasy"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     }
+    ],
+    "state": "published",
+    "chapterNumbersResetOnNewVolume": false,
+    "createdAt": "2018-01-18T19:31:27+00:00",
+    "updatedAt": "2026-08-10T03:22:44+00:00",
+    "version": 140,
+    "availableTranslatedLanguages": [
+     "ca",
+     "el",
+     "pt-br",
+     "vi",
+     "es",
+     "uk",
+     "ru",
+     "ar",
+     "de",
+     "es-la",
+     "en",
+     "it",
+     "ro",
+     "he",
+     "pl",
+     "fr",
+     "tr",
+     "id",
+     "hi",
+     "th",
+     "bg",
+     "mn",
+     "eu",
+     "cs"
+    ],
+    "latestUploadedChapter": "3847e752-83ea-49e3-833a-a56b6b0d9020"
+   },
+   "relationships": [
+    {
+     "id": "b6045e2c-28f4-4ce0-b4dd-b14070f2f5ae",
+     "type": "author",
+     "attributes": {
+      "name": "Oda Eiichirou (尾田栄一郎)",
+      "imageUrl": null,
+      "biography": {
+       "en": "**Name In Native Language:** 尾田栄一郎\n\nOda Eiichirou, born January 1, 1975, in Kumamoto City, Kumamoto Prefecture, Japan, is a manga artist, best known as the creator of the manga *One Piece*.\n\nA dedicated writer and artist since adolescence, Oda began working for Shueisha's Shonen Jump at 17. He once worked as an assistant to manga artist such as [Kaitani Shinobu](https://mangadex.org/author/07716641-e21e-431b-8456-d74f48986c35/kaitani-shinobu), [Tokuhiro Masaya](https://mangadex.org/author/628ddce4-66c6-4b90-95a3-1d8ffd7b7309/tokuhiro-masaya), and [Watsuki Nobuhiro](https://mangadex.org/author/e718ceea-6dff-4297-bd36-1cecaf077e83/watsuki-nobuhiro). He currently stands as one of the world's most prominent manga artist earning an estimated ¥3.1 billion (US$26 million) per year. Despite his rigorous work schedule, he maintains steady correspondence with fans (and the wider public) through both formal interviews and informal channels such as his SBS columns.\n\nOda has been married to the former model, promoter, actress, and racequeen Inaba Chiaki (稲葉ちあき) since November 7, 2004. Together they have two daughters born in 2006 and 2009."
+      },
+      "twitter": null,
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2026-04-14T17:33:46+00:00",
+      "version": 5
+     }
+    },
+    {
+     "id": "b6045e2c-28f4-4ce0-b4dd-b14070f2f5ae",
+     "type": "artist",
+     "attributes": {
+      "name": "Oda Eiichirou (尾田栄一郎)",
+      "imageUrl": null,
+      "biography": {
+       "en": "**Name In Native Language:** 尾田栄一郎\n\nOda Eiichirou, born January 1, 1975, in Kumamoto City, Kumamoto Prefecture, Japan, is a manga artist, best known as the creator of the manga *One Piece*.\n\nA dedicated writer and artist since adolescence, Oda began working for Shueisha's Shonen Jump at 17. He once worked as an assistant to manga artist such as [Kaitani Shinobu](https://mangadex.org/author/07716641-e21e-431b-8456-d74f48986c35/kaitani-shinobu), [Tokuhiro Masaya](https://mangadex.org/author/628ddce4-66c6-4b90-95a3-1d8ffd7b7309/tokuhiro-masaya), and [Watsuki Nobuhiro](https://mangadex.org/author/e718ceea-6dff-4297-bd36-1cecaf077e83/watsuki-nobuhiro). He currently stands as one of the world's most prominent manga artist earning an estimated ¥3.1 billion (US$26 million) per year. Despite his rigorous work schedule, he maintains steady correspondence with fans (and the wider public) through both formal interviews and informal channels such as his SBS columns.\n\nOda has been married to the former model, promoter, actress, and racequeen Inaba Chiaki (稲葉ちあき) since November 7, 2004. Together they have two daughters born in 2006 and 2009."
+      },
+      "twitter": null,
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2026-04-14T17:33:46+00:00",
+      "version": 5
+     }
+    },
+    {
+     "id": "38383930-d836-4fd7-85f7-ecfebdea3e3c",
+     "type": "cover_art",
+     "attributes": {
+      "volume": "1",
+      "fileName": "2f4aca53-64c7-46ac-ae85-3bc9b3169890.png",
+      "locale": "ja",
+      "createdAt": "2022-06-13T23:09:29+00:00",
+      "updatedAt": "2026-03-25T14:59:13+00:00",
+      "version": 3
+     }
+    },
+    {
+     "id": "00538a07-ca8f-4b45-a913-932da57b3edc",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "064cbe11-3f80-4ba1-b6a5-6f3e3d8fe3e0",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "077c2ea6-864e-4064-b83d-976b060c5a7d",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "0cb42e24-2aba-4681-be4c-d2f0073fbc99",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "0eac77f3-de44-4185-94c4-3b3b06c6e86e",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "10f0cbf6-eb3a-43d0-8a8d-8b9c1a2604af",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "11d5210f-412c-4654-b479-5f457404589c",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "13596834-6c99-4e61-a001-edfbaebe9dc5",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "17534d03-859c-47f2-8f36-0f11f8199ee5",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "177e8c50-e0d7-4960-af18-470ec925f356",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "1c6f277b-d8d4-48ef-a492-87daaef9bd41",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "2cddb9f7-8b27-4116-b0cb-1283306a7144",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "3e80185a-416e-496f-94a3-423efec8cd50",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "3fed8e2c-e44d-4c16-b3b0-2e79b0505e02",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "41a6670c-2eb9-4d15-b41a-c7153e3e5625",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "43ee1d1a-0885-421b-9a30-7aa184a9dc15",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "470ac1ec-c3dd-4dc2-9e5d-0104600ed1a5",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "487f1f04-75f3-4a2e-a4af-76e615e32585",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "4f3f6c04-4a55-42a0-a6da-23b4362f9bfd",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "51e9d8b6-72e7-4202-84a2-5d2dfe107057",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "555d06d1-e3d7-4c77-922a-5cb893e19611",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "5790818b-3088-429b-8dc9-26344d06226b",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "5798b983-2cf3-4858-82aa-51de8e642ecf",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "593ba05f-b575-4bfe-9534-d8562c87f490",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "5d5eab11-c930-4d2f-a669-d9108b4ac7a0",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "65f2e1a9-9a34-4123-a080-b3f34746e4a8",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "6755aa01-76e2-4e33-b21b-cf9b80165de8",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "6c6236b0-0fd7-4926-8a1a-cc346a6627e3",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "6db2750d-dd46-4f1b-b607-8700a7536e1e",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "70d0fcee-a0ae-400b-ba61-431a1e5a4bb3",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "74412a83-fd35-4814-b684-49bbb1643fa9",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "77b55397-d621-462f-8c04-1f450b83fc0d",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "799ca99d-9820-49e5-ac88-bfe31e2803f5",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "7bd37661-c0b1-4166-87c1-7e633adb55ac",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "7d34c0b9-c3ed-44a5-8723-6a15cccf2266",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "80970c99-a289-4e10-9dcc-33489a6fba0d",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "81985e43-5363-44cc-b709-828599da5012",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "826b1ca7-86c7-4d5f-8d20-b0c334bff310",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "8c6ef855-b506-431b-8a69-a254bbea46cd",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "8e159ba5-56fe-4680-ae9a-4aa9504902f3",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "8ee0dcd7-a898-49e6-b083-7aa42ebe1bb0",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "8f8c4f0e-93f5-433e-ba13-017746b485ec",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "8fe239cd-668a-428d-8735-ad85aa486ed5",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "9154c1da-feef-49d1-b903-e07531a005f2",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "9175d86a-0646-41df-9ed7-97b8a36429ca",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "9b33e6ab-2970-426a-b749-e10d5271fe51",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "a0b49136-9f4d-46d4-b5dd-d5393e015009",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "a14176d9-9832-43d2-b98a-f16fa4e82021",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "a2c1d849-af05-4bbc-b2a7-866ebb10331f",
+     "type": "manga",
+     "related": "colored"
+    },
+    {
+     "id": "a5ab3b40-3fc0-40f4-9b45-afb14f90325f",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "a6ebb201-97e2-4b96-b6b9-46b9ec0d354e",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "aab94c3a-34b4-4051-84ff-7ba9cbab0da8",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "b19e23fa-f03e-4698-b5bd-b42cab873d29",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b6c6aeea-a2c8-427b-9458-a39fab2a3ae2",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b70113a5-32a3-44e8-a28f-0e88392808ba",
+     "type": "manga",
+     "related": "adapted_from"
+    },
+    {
+     "id": "b70113a5-32a3-44e8-a28f-0e88392808ba",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "b809433a-ab87-4dea-844e-75facdd6e731",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b8574838-2a52-4bc9-988a-7fb1ed2cc81b",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b97d2f75-eef7-4476-b1a6-1264effe21c2",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "bb57f9b9-a5d3-4491-a1e4-042611212753",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "c2e76d62-702b-4a8e-a4d0-c7cecd45b8ea",
+     "type": "manga",
+     "related": "colored"
+    },
+    {
+     "id": "c60563d3-15b7-42c2-a0f2-e130b106d7aa",
+     "type": "manga",
+     "related": "side_story"
+    },
+    {
+     "id": "c9ab9a2a-415e-47d8-bc03-0268ee46a57e",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "ca04d204-875f-48bb-8eec-622b7ecd5cfa",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "cc76b063-dc2f-446f-b3eb-be3b56c1b8d6",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "d3ee87c2-40d5-4ab7-9167-430eb83d3710",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "d521d5e5-8cb2-4006-85cc-4f8f19a02fb8",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "d6422b61-76f0-4935-b0d0-84faaf7a63ef",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "d9d2e606-ca85-47a0-a288-04db5dc48432",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "da7f638f-8f76-402b-a0a9-75539c085436",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "db826054-0c1d-4a88-b70e-a65ce5970403",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "dc68edde-1497-4d59-940a-dd3170f752bf",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "f1abab1f-1282-4561-94f6-66d078a79e54",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "f1b82cf6-86f7-4639-aaa6-0f75bbeca0c0",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "f4ae29d1-8f3c-4ab2-af1d-a416337fafc3",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "f71e01a5-3f81-48b9-8fc6-4960878101fa",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "fa3211cf-e8c7-48c4-8d61-68680bdcf447",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "fc4eccf5-5fe6-49de-b12c-4124fcea4e16",
+     "type": "manga",
+     "related": "alternate_version"
+    },
+    {
+     "id": "fcb5111f-be88-4f5a-b456-22135f3eda49",
+     "type": "manga",
+     "related": "prequel"
+    },
+    {
+     "id": "fcb5111f-be88-4f5a-b456-22135f3eda49",
+     "type": "manga",
+     "related": "spin_off"
+    },
+    {
+     "id": "fcffdecb-2324-481a-9f41-960dec67e02f",
+     "type": "manga",
+     "related": "alternate_version"
+    }
+   ]
+  },
+  "ol_volume": {
+   "author_name": [
+    "尾田栄一郎"
+   ],
+   "cover_i": 1020563,
+   "edition_count": 18,
+   "first_publish_year": 1997,
+   "isbn": [
+    "1591163641",
+    "9781569319017",
+    "9789861125794",
+    "8468480118",
+    "9781591163640",
+    "9781421545257",
+    "2723488527",
+    "9780613962988",
+    "9788468480114",
+    "9781435221444",
+    "1435221443",
+    "9872462852",
+    "8468471526",
+    "1569319014",
+    "4088725093",
+    "2723433358",
+    "9783551745811",
+    "0613962982",
+    "9789872462857",
+    "3551745811",
+    "9782723433358",
+    "9163828995",
+    "9786055686420",
+    "9861125795",
+    "9782723488525",
+    "6055686422",
+    "9789163828997",
+    "142154525X",
+    "9788468471525",
+    "9784088725093"
+   ],
+   "key": "/works/OL8215661W",
+   "publisher": [
+    "Selbite",
+    "Shônen Manga",
+    "GLENAT",
+    "Star Comics",
+    "Dong li chu ban she you xian gong si",
+    "Carlsen",
+    "Planeta DeAgostini",
+    "Glénat",
+    "Shueisha",
+    "viz media",
+    "Carlsen Comics",
+    "Tandem Library",
+    "Viz Media, Subs. of Shogakukan Inc",
+    "LARP EDITORES",
+    "SHONEN JUMP",
+    "Planeta Cómic",
+    "Echiro oda",
+    "Viz Media",
+    "Gerekli Seyler",
+    "Glénat Manga"
+   ],
+   "title": "ONE PIECE 1"
+  }
+ },
+ "chainsaw1": {
+  "parsed": [
+   "Chainsaw Man",
+   1
+  ],
+  "anilist": {
+   "id": 105778,
+   "siteUrl": "https://anilist.co/manga/105778",
+   "format": "MANGA",
+   "status": "FINISHED",
+   "countryOfOrigin": "JP",
+   "volumes": 24,
+   "chapters": 232,
+   "startDate": {
+    "year": 2018
+   },
+   "title": {
+    "romaji": "Chainsaw Man",
+    "english": "Chainsaw Man",
+    "native": "チェンソーマン"
+   },
+   "genres": [
+    "Action",
+    "Comedy",
+    "Drama",
+    "Horror",
+    "Supernatural"
+   ],
+   "tags": [
+    {
+     "name": "Demons",
+     "rank": 96
+    },
+    {
+     "name": "Tragedy",
+     "rank": 96
+    },
+    {
+     "name": "Coming of Age",
+     "rank": 92
+    },
+    {
+     "name": "Urban Fantasy",
+     "rank": 92
+    },
+    {
+     "name": "Psychosexual",
+     "rank": 90
+    },
+    {
+     "name": "Male Protagonist",
+     "rank": 89
+    },
+    {
+     "name": "Dissociative Identities",
+     "rank": 89
+    },
+    {
+     "name": "Gore",
+     "rank": 88
+    },
+    {
+     "name": "Body Horror",
+     "rank": 88
+    },
+    {
+     "name": "Cosmic Horror",
+     "rank": 86
+    },
+    {
+     "name": "Henshin",
+     "rank": 85
+    },
+    {
+     "name": "Urban",
+     "rank": 84
+    },
+    {
+     "name": "Monster Boy",
+     "rank": 84
+    },
+    {
+     "name": "Found Family",
+     "rank": 83
+    },
+    {
+     "name": "Female Protagonist",
+     "rank": 82
+    },
+    {
+     "name": "Survival",
+     "rank": 82
+    },
+    {
+     "name": "Work",
+     "rank": 80
+    },
+    {
+     "name": "Shounen",
+     "rank": 79
+    },
+    {
+     "name": "Memory Manipulation",
+     "rank": 79
+    },
+    {
+     "name": "Unrequited Love",
+     "rank": 79
+    },
+    {
+     "name": "Anti-Hero",
+     "rank": 79
+    },
+    {
+     "name": "Alternate Universe",
+     "rank": 79
+    },
+    {
+     "name": "Ensemble Cast",
+     "rank": 77
+    },
+    {
+     "name": "Cult",
+     "rank": 76
+    },
+    {
+     "name": "Heterosexual",
+     "rank": 76
+    },
+    {
+     "name": "Politics",
+     "rank": 76
+    },
+    {
+     "name": "Guns",
+     "rank": 75
+    },
+    {
+     "name": "Human Pet",
+     "rank": 73
+    },
+    {
+     "name": "Assassins",
+     "rank": 73
+    },
+    {
+     "name": "Yandere",
+     "rank": 73
+    },
+    {
+     "name": "Monster Girl",
+     "rank": 72
+    },
+    {
+     "name": "Revenge",
+     "rank": 71
+    },
+    {
+     "name": "Shapeshifting",
+     "rank": 68
+    },
+    {
+     "name": "Femdom",
+     "rank": 68
+    },
+    {
+     "name": "Terrorism",
+     "rank": 68
+    },
+    {
+     "name": "Surreal Comedy",
+     "rank": 65
+    },
+    {
+     "name": "Philosophy",
+     "rank": 64
+    },
+    {
+     "name": "Slapstick",
+     "rank": 63
+    },
+    {
+     "name": "Meta",
+     "rank": 62
+    },
+    {
+     "name": "Primarily Teen Cast",
+     "rank": 60
+    },
+    {
+     "name": "Super Power",
+     "rank": 60
+    },
+    {
+     "name": "Afterlife",
+     "rank": 59
+    },
+    {
+     "name": "School",
+     "rank": 57
+    },
+    {
+     "name": "Nudity",
+     "rank": 57
+    },
+    {
+     "name": "Cannibalism",
+     "rank": 55
+    },
+    {
+     "name": "Delinquents",
+     "rank": 54
+    },
+    {
+     "name": "Necromancy",
+     "rank": 54
+    },
+    {
+     "name": "Angels",
+     "rank": 53
+    },
+    {
+     "name": "Time Skip",
+     "rank": 51
+    },
+    {
+     "name": "Amnesia",
+     "rank": 51
+    },
+    {
+     "name": "Tsundere",
+     "rank": 50
+    },
+    {
+     "name": "Yakuza",
+     "rank": 48
+    },
+    {
+     "name": "Mafia",
+     "rank": 48
+    },
+    {
+     "name": "Time Manipulation",
+     "rank": 46
+    },
+    {
+     "name": "Zombie",
+     "rank": 40
+    },
+    {
+     "name": "Chimera",
+     "rank": 40
+    },
+    {
+     "name": "Motorcycles",
+     "rank": 34
+    },
+    {
+     "name": "Vore",
+     "rank": 28
+    },
+    {
+     "name": "Denpa",
+     "rank": 28
+    },
+    {
+     "name": "Prophecy",
+     "rank": 20
+    },
+    {
+     "name": "Bisexual",
+     "rank": 13
+    },
+    {
+     "name": "Scissoring",
+     "rank": 10
+    }
+   ],
+   "averageScore": 84,
+   "coverImage": {
+    "extraLarge": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105778-euxXZEIfDY2u.png"
+   },
+   "staff": {
+    "edges": [
+     {
+      "role": "Story & Art",
+      "node": {
+       "name": {
+        "full": "Tatsuki Fujimoto"
+       }
+      }
+     },
+     {
+      "role": "Assistant",
+      "node": {
+       "name": {
+        "full": "Hanachika Toyama"
+       }
+      }
+     },
+     {
+      "role": "Assistant",
+      "node": {
+       "name": {
+        "full": "Norihito Sasaki"
+       }
+      }
+     },
+     {
+      "role": "Lettering (English)",
+      "node": {
+       "name": {
+        "full": "Sabrina Heep"
+       }
+      }
+     },
+     {
+      "role": "Assistant",
+      "node": {
+       "name": {
+        "full": "Yukinobu Tatsu"
+       }
+      }
+     },
+     {
+      "role": "Translator (French)",
+      "node": {
+       "name": {
+        "full": "Sébastien Ludmann"
+       }
+      }
+     }
+    ]
+   }
+  },
+  "mangadex": {
+   "id": "a77742b1-befd-49a4-bff5-1ad4e6b0ef7b",
+   "type": "manga",
+   "attributes": {
+    "title": {
+     "ja-ro": "Chainsaw Man"
+    },
+    "altTitles": [
+     {
+      "uk": "Людина-бензопила"
+     },
+     {
+      "ru": "Человек-бензопила"
+     },
+     {
+      "ja": "チェンソーマン"
+     },
+     {
+      "zh": "电锯人"
+     },
+     {
+      "zh-hk": "鏈鋸人"
+     },
+     {
+      "zh-hk": "電鋸人"
+     },
+     {
+      "tr": "Testere Adam"
+     },
+     {
+      "kk": "Шынжырлы ара адам"
+     },
+     {
+      "ro": "Omul Drujbă"
+     },
+     {
+      "en": "Chainsaw Man"
+     }
+    ],
+    "isLocked": true,
+    "links": {
+     "al": "105778",
+     "ap": "chainsaw-man",
+     "bl": "582763",
+     "bw": "series/191172/list",
+     "kt": "54139",
+     "mu": "ylx5wzn",
+     "amz": "https://www.amazon.co.jp/dp/B07MX551PW",
+     "cdj": "https://www.cdjapan.co.jp/product/NEOBK-2326199",
+     "ebj": "https://ebookjapan.yahoo.co.jp/books/527520",
+     "mal": "116778",
+     "raw": "https://www.shonenjump.com/j/rensai/chainsaw.html",
+     "engtl": "https://mangaplus.shueisha.co.jp/titles/100037"
+    },
+    "officialLinks": null,
+    "originalLanguage": "ja",
+    "lastVolume": "",
+    "lastChapter": "232",
+    "publicationDemographic": "shounen",
+    "status": "completed",
+    "year": 2018,
+    "contentRating": "suggestive",
+    "tags": [
+     {
+      "id": "0a39b5a1-b235-4886-a747-1d05d216532d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Award Winning"
+       },
+       "group": "format",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "36fd93ea-e8b8-445e-b836-358f02b3d33d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Monsters"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "391b0423-d847-456f-aff0-8b0cfc03066b",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Action"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "39730448-9a5f-48a2-85b0-a70db87b1233",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Demons"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "4d32cc48-9f00-4cca-9b5a-a839f0764984",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Comedy"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "b29d6a3d-1569-4e7a-8caf-7557bc92cd5d",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Gore"
+       },
+       "group": "content",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "cdad7e68-1419-41dd-bdce-27753074a640",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Horror"
+       },
+       "group": "genre",
+       "version": 1
+      },
+      "relationships": []
+     },
+     {
+      "id": "eabc5b4c-6aff-42f3-b657-3e90cbd00b75",
+      "type": "tag",
+      "attributes": {
+       "name": {
+        "en": "Supernatural"
+       },
+       "group": "theme",
+       "version": 1
+      },
+      "relationships": []
+     }
+    ],
+    "state": "published",
+    "chapterNumbersResetOnNewVolume": false,
+    "createdAt": "2019-09-10T13:07:45+00:00",
+    "updatedAt": "2026-10-08T19:53:07+00:00",
+    "version": 122,
+    "availableTranslatedLanguages": [
+     "fa",
+     "hu",
+     "cs",
+     "en",
+     "it",
+     "pt-br",
+     "es-la",
+     "uk",
+     "vi",
+     "es",
+     "ru",
+     "pl",
+     "id",
+     "th",
+     "fi",
+     "kk",
+     "fr",
+     "zh-hk",
+     "mn",
+     "ro",
+     "tr",
+     "bg",
+     "de",
+     "sr",
+     "ms",
+     "la",
+     "ar",
+     "hr",
+     "tl",
+     "el",
+     "ur",
+     "sv"
+    ],
+    "latestUploadedChapter": "1626059d-9355-4ab0-8b67-2d81e537938e"
+   },
+   "relationships": [
+    {
+     "id": "f85a5b93-3c87-4c61-9032-07ceacbb9e64",
+     "type": "author",
+     "attributes": {
+      "name": "Fujimoto Tatsuki",
+      "imageUrl": null,
+      "biography": {
+       "en": "**Name In Native Language:** 藤本タツキ\n\n**Other Languages:**\n藤本树\n\nFujimoto Tatsuki (born October 10, 1992 or 1993) is a Japanese manga artist, known for his works Fire Punch and Chainsaw Man.\n\nFujimoto published his first major and serialized work, Fire Punch, on Shueisha's Shounen Jump+ online magazine, where it ran from April 18, 2016, to January 1, 2018. The series spawned eight tankoubon volumes. Fujimoto also published on Shounen Jump+ the one-shot Me wo Sametara Onnanoko ni Natteita Byou (目が覚めたら女の子になっていた病) on April 24, 2017, and the one-shot Imouto no Ane (妹の姉) in the June 2018 issue of Jump Square on May 2, 2018.\n\nFujimoto's second major serialized work, Chainsaw Man, was published in Shueisha's Weekly Shounen Jump from December 3, 2018, to December 14, 2020. The series was collected in eleven tankoubon volumes. A sequel to the series is planned to start publishing in Shounen Jump+. Chainsaw Man topped Takarajimasha's Kono Manga ga Sugoi! list of best manga of 2021 for male readers and earned Fujimoto the 66th Shogakukan Manga Award for Best Shounen Manga. In 2021, the manga won the Harvey Awards for Best Manga.\n\nFujimoto claimed to be M. When he was in college, he was happy that a girl played tricks on him. In the self portrait, he claimed to be an 11-year-old girl.\n"
+      },
+      "twitter": "https://twitter.com/nagayama_koharu",
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2024-12-16T00:46:59+00:00",
+      "version": 5
+     }
+    },
+    {
+     "id": "f85a5b93-3c87-4c61-9032-07ceacbb9e64",
+     "type": "artist",
+     "attributes": {
+      "name": "Fujimoto Tatsuki",
+      "imageUrl": null,
+      "biography": {
+       "en": "**Name In Native Language:** 藤本タツキ\n\n**Other Languages:**\n藤本树\n\nFujimoto Tatsuki (born October 10, 1992 or 1993) is a Japanese manga artist, known for his works Fire Punch and Chainsaw Man.\n\nFujimoto published his first major and serialized work, Fire Punch, on Shueisha's Shounen Jump+ online magazine, where it ran from April 18, 2016, to January 1, 2018. The series spawned eight tankoubon volumes. Fujimoto also published on Shounen Jump+ the one-shot Me wo Sametara Onnanoko ni Natteita Byou (目が覚めたら女の子になっていた病) on April 24, 2017, and the one-shot Imouto no Ane (妹の姉) in the June 2018 issue of Jump Square on May 2, 2018.\n\nFujimoto's second major serialized work, Chainsaw Man, was published in Shueisha's Weekly Shounen Jump from December 3, 2018, to December 14, 2020. The series was collected in eleven tankoubon volumes. A sequel to the series is planned to start publishing in Shounen Jump+. Chainsaw Man topped Takarajimasha's Kono Manga ga Sugoi! list of best manga of 2021 for male readers and earned Fujimoto the 66th Shogakukan Manga Award for Best Shounen Manga. In 2021, the manga won the Harvey Awards for Best Manga.\n\nFujimoto claimed to be M. When he was in college, he was happy that a girl played tricks on him. In the self portrait, he claimed to be an 11-year-old girl.\n"
+      },
+      "twitter": "https://twitter.com/nagayama_koharu",
+      "pixiv": null,
+      "melonBook": null,
+      "fanBox": null,
+      "booth": null,
+      "namicomi": null,
+      "nicoVideo": null,
+      "skeb": null,
+      "fantia": null,
+      "tumblr": null,
+      "youtube": null,
+      "weibo": null,
+      "naver": null,
+      "website": null,
+      "createdAt": "2021-04-19T21:59:45+00:00",
+      "updatedAt": "2024-12-16T00:46:59+00:00",
+      "version": 5
+     }
+    },
+    {
+     "id": "23f4ba42-b58f-4216-b4cb-186e5506e1cf",
+     "type": "cover_art",
+     "attributes": {
+      "volume": "23",
+      "fileName": "6e518bd1-5f60-446b-8832-bfe6bf74834b.jpg",
+      "locale": "ja",
+      "createdAt": "2026-03-19T11:30:19+00:00",
+      "updatedAt": "2026-03-19T11:30:19+00:00",
+      "version": 1
+     }
+    },
+    {
+     "id": "192b2c21-e762-4927-8261-dc96adf11b0c",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "61325e33-e80b-443d-9b81-53b857b6ecdb",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "65cfafb6-2f7e-4f9e-9c19-db6915b3165b",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "6767bf31-1d6d-4215-9264-469555c7c513",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "89911b68-1f85-445c-95d9-a188f6469a86",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "8d5d7c3b-eb95-4e58-838f-4da6c2cbee1f",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "94e1bcf0-4c18-4a4f-8843-d1039bd5d6b4",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "a0d05d57-4a2c-4d4b-9aa6-7b99bed425ca",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "b1d12720-49d7-4730-9945-1cd8737d97e4",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "c63e5e58-f6b1-422f-bd41-1efaca70476b",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "ca56f180-bba8-4d5c-a6e7-39f42d4a3413",
+     "type": "manga",
+     "related": "doujinshi"
+    },
+    {
+     "id": "e896c48c-3150-437d-ba57-d8567eb399ae",
+     "type": "manga",
+     "related": "colored"
+    }
+   ]
+  },
+  "ol_volume": {
+   "author_name": [
+    "Tatsuki Fujimoto"
+   ],
+   "edition_count": 1,
+   "first_publish_year": 2023,
+   "isbn": [
+    "9798897223787"
+   ],
+   "key": "/works/OL42563116W",
+   "publisher": [
+    "Generic"
+   ],
+   "title": "Chainsaw Man Collection 13 Book Set Volumes 1-11 and Tatsuki Fujimoto Before Chainsaw Man"
+  }
+ }
+}
