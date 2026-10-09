@@ -1,5 +1,5 @@
 // The reference sources whose identifiers a person may hold (DEC-095), as a reader knows them.
-const SOURCES = { openlibrary: 'Open Library', comicvine: 'ComicVine', wikidata: 'Wikidata', viaf: 'VIAF', isni: 'ISNI' };
+const SOURCES = { openlibrary: 'Open Library', comicvine: 'ComicVine', anilist: 'AniList', mangadex: 'MangaDex', wikidata: 'Wikidata', viaf: 'VIAF', isni: 'ISNI' };
 
 export function sourceName(scheme) {
   return SOURCES[scheme] || scheme;

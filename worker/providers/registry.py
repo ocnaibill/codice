@@ -7,10 +7,15 @@ from typing import Dict, List, Optional
 from .base import BaseProvider, MetadataRecord
 from .google_books import GoogleBooksProvider
 from .openlibrary import OpenLibraryProvider
+from .anilist import AniListProvider
 from .comicvine import ComicVineProvider
+from .mangadex import MangaDexProvider
 from .gate import nothing_allowed
 from .match import judge
 from .query import read_file_title
+
+# The providers that answer about a series as a whole, and not about one book.
+SERIES_PROVIDERS = ('anilist', 'mangadex')
 
 
 class ProviderRegistry:
@@ -25,13 +30,18 @@ class ProviderRegistry:
                 GoogleBooksProvider(),
                 OpenLibraryProvider(),
             ],
+            # A comic or a manga: the series first (ComicVine, AniList, MangaDex), then the books for the volume of a manga.
             'cbz': [
                 ComicVineProvider(),
+                AniListProvider(),
+                MangaDexProvider(),
                 GoogleBooksProvider(),
                 OpenLibraryProvider(),
             ],
             'cbr': [
                 ComicVineProvider(),
+                AniListProvider(),
+                MangaDexProvider(),
                 GoogleBooksProvider(),
                 OpenLibraryProvider(),
             ],
@@ -69,6 +79,7 @@ class ProviderRegistry:
                     continue
                 match = judge(query, record)
                 record.match = match.as_dict()
+                record.provider_id = getattr(provider, 'id', '')
                 out.append((match, provider, record))
         return out
 
@@ -123,7 +134,38 @@ class ProviderRegistry:
             best = provider.enrich(best) if hasattr(provider, 'enrich') else best
         except Exception as e:
             print(f"   ⚠️ {provider.name} could not complete the answer: {e}")
+        if best.provider_id in SERIES_PROVIDERS:
+            self._volume(best, q, format)
         return best
+
+    def _volume(self, series, query, format):
+        """The answer of a series provider is about the series as a whole. The file is one volume of it: the volume number is put in, and when a
+        book provider that is on has exactly that volume (not a deluxe edition, not a box), its ISBN, publisher, date and cover are added, the
+        source then saying both."""
+        if query.number is None:
+            return
+        series.series = series.series or series.title
+        series.series_index = float(query.number)
+        names = [series.title] + list((series.raw or {}).get('alt_titles') or [])
+        for provider in self._allowed(self._providers.get(format, self._providers['default'])):
+            if not hasattr(provider, 'volume'):
+                continue
+            try:
+                volume = provider.volume([n for n in names if n], query.number)
+            except Exception as e:
+                print(f"   ⚠️ {provider.name} failed for the volume: {e}")
+                continue
+            if volume is None:
+                continue
+            series.isbn = volume.isbn or series.isbn
+            series.publisher = volume.publisher or series.publisher
+            series.publication_date = volume.publication_date or series.publication_date
+            series.cover_url = volume.cover_url or series.cover_url
+            series.source = f"{series.source} + {volume.source}"
+            series.raw = dict(series.raw or {}, volume_work=(volume.raw or {}).get('openlibrary_work'), volume_title=volume.title)
+            print(f"   📚 Volume {query.number} from {volume.source}: '{volume.title}'")
+            return
+        print(f"   ℹ️ No book that is exactly volume {query.number}: the suggestion is about the series")
 
     def download_cover(self, cover_url: str, file_path: str, covers_dir: str) -> str:
         """Download cover image using the first available provider."""

@@ -32,3 +32,19 @@ def closeness(a, b):
     ta, tb = set(tokens(a)), set(tokens(b))
     total = len(ta) + len(tb)
     return 2 * len(ta & tb) / total if total else 0.0
+
+
+_VOLUME_WORDS = frozenset({'vol', 'volume', 'tome', 'v', 'book', 'manga', 'livro'})
+
+
+def is_volume(title, series_titles, number):
+    """Whether the title of a book is volume `number` of the series (one of its names): the name of the series, the number, and nothing else.
+    "Naruto 01", "ONE PIECE 1" and "Vagabond, Volume 1" are; a "Deluxe Volume 1", a box of volumes or another volume are not (any other word in
+    the title, or a number other than ours, makes it another book)."""
+    words = [w for w in tokens(title, keep_stop=True) if w not in STOP or w in _VOLUME_WORDS]
+    numbers = {str(int(w)) for w in words if w.isdigit()}
+    text = {w for w in words if not w.isdigit() and w not in _VOLUME_WORDS}
+    # Without a word in Latin letters there is nothing to compare (the words of a title in Japanese are none): that is no volume of anything.
+    if numbers != {str(number)} or not text:
+        return False
+    return any(text == {w for w in tokens(name) if w not in _VOLUME_WORDS} for name in series_titles)

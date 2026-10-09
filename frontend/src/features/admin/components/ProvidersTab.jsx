@@ -10,6 +10,8 @@ const ABOUT = {
   google_books: { host: 'googleapis.com (Google)', keyEnv: 'GOOGLE_BOOKS_API_KEY' },
   openlibrary: { host: 'openlibrary.org (Internet Archive)', note: 'Também é a fonte das chaves de autoridade dos autores.' },
   comicvine: { host: 'comicvine.gamespot.com', keyEnv: 'COMICVINE_API_KEY' },
+  anilist: { host: 'graphql.anilist.co (AniList)', note: 'Para mangá: autores, gêneros, ano, sinopse e capa da série. Uso gratuito não comercial; não guardamos mais do que você aceita.' },
+  mangadex: { host: 'api.mangadex.org (MangaDex)', note: 'Para mangá: autores, gêneros, público (seinen, shounen…), sinopse e capa da série. Política de uso: não comercial.' },
 };
 const SENDS = {
   title: 'o título da obra',

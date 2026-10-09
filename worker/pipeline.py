@@ -75,7 +75,7 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
             'credits': [c.as_dict() for c in (getattr(enriched, 'credits', None) or [])],
         }
         raw = enriched.raw or {}
-        evidence = {k: raw[k] for k in ('google_id', 'openlibrary_id', 'comicvine_id') if raw.get(k)}
+        evidence = {k: raw[k] for k in ('google_id', 'openlibrary_id', 'comicvine_id', 'anilist_id', 'mangadex_id') if raw.get(k)}
         if record['credits']:
             evidence['credits'] = record['credits']
         evidence['query'] = metadata.title
