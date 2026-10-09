@@ -170,6 +170,12 @@ const EXACT = {
   'A category cannot go inside itself': 'Uma categoria não pode ficar dentro dela mesma, nem do que há nela.',
   'Move or delete its subcategories first': 'Mova ou apague as subcategorias primeiro.',
   'Category not found': 'Categoria não encontrada.',
+  'A term needs up to 100 characters': 'Dê um termo de até 100 caracteres.',
+  'A category has at most 300 terms': 'Uma categoria tem no máximo 300 termos.',
+  'That term is already a rule of this category': 'Esse termo já é uma regra desta categoria.',
+  'Rule not found': 'Essa regra não existe mais.',
+  'The library changed since the preview: look at it again': 'O acervo mudou desde a prévia: veja de novo o que as regras fariam.',
+  'That category is not in the list': 'Essa categoria não está na lista sugerida.',
   'Root not found': 'Pasta não encontrada.',
 };
 

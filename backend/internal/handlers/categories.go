@@ -401,6 +401,17 @@ func (h *CategoriesHandler) SetForWork(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Category not found", http.StatusNotFound)
 		return
 	}
+	// A category that a person takes the work out of stays out, whoever had put it there: the rules do not put it back.
+	if _, err := tx.ExecContext(r.Context(), `
+		INSERT INTO work_category_exclusions (work_id, category_id)
+		SELECT work_id, category_id FROM work_categories WHERE work_id = $1 AND NOT (category_id = ANY($2)) ON CONFLICT DO NOTHING`, workID, pq.Array(ids)); err != nil {
+		http.Error(w, "Error setting the categories", http.StatusInternalServerError)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `DELETE FROM work_category_exclusions WHERE work_id = $1 AND category_id = ANY($2)`, workID, pq.Array(ids)); err != nil {
+		http.Error(w, "Error setting the categories", http.StatusInternalServerError)
+		return
+	}
 	if _, err := tx.ExecContext(r.Context(), `DELETE FROM work_categories WHERE work_id = $1 AND NOT (category_id = ANY($2))`, workID, pq.Array(ids)); err != nil {
 		http.Error(w, "Error setting the categories", http.StatusInternalServerError)
 		return

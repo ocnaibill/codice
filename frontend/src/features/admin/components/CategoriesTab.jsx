@@ -4,6 +4,8 @@ import { inOrder, pathOf, placesFor } from '../../categories/tree';
 import { describeError } from '../api/admin';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
+import { CategoryRules } from './CategoryRules';
+import { StarterList } from './StarterList';
 import { LoadError } from '../../../components/ui/LoadError';
 
 const inputClass = 'rounded bg-surface px-3 py-1.5 text-[13px] outline-none';
@@ -91,7 +93,8 @@ export function CategoriesTab() {
     <div className="flex flex-col gap-5">
       <Section
         title="Categorias"
-        hint="Organizam a navegação do acervo por tema, como Ficção científica ou Mangá › Seinen. Uma obra pode estar em várias, e a que está numa subcategoria também conta na de cima. Começa vazio: crie as que fizerem sentido para o seu acervo. As tags continuam à parte."
+        hint="Organizam a navegação do acervo por tema, como Ficção científica ou Mangá › Seinen. Uma obra pode estar em várias, e a que está numa subcategoria também conta na de cima. Começa vazio: crie as que fizerem sentido para o seu acervo, ou parta de uma lista sugerida. As tags continuam à parte."
+        actions={data && <StarterList hasCategories={flat.length > 0} />}
       >
         <form
           className="mb-4 flex flex-wrap items-center gap-2"
@@ -127,6 +130,8 @@ export function CategoriesTab() {
         {done && <p role="status" className="mt-3 text-[13px] text-ink-soft">{done}</p>}
         <ErrorNote>{create.isError ? describeError(create.error) : update.isError ? describeError(update.error) : remove.isError && describeError(remove.error)}</ErrorNote>
       </Section>
+
+      {flat.length > 0 && <CategoryRules categories={flat} />}
 
       {deleting && (
         <ConfirmDialog
