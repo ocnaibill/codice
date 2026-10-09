@@ -1,6 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { messageOf } from '../../../lib/serverMessage';
 import { api } from '../../../lib/api';
+import { refreshLibrary } from '../../../lib/refreshLibrary';
 import { POLL_MS } from '../systemLimits';
 
 /** Turns an error from the API into a sentence a person can act on. */
@@ -61,6 +62,15 @@ export function useHealth() {
 }
 export const useOrphans = list('orphans', '/admin/storage/orphans');
 export const useTrash = list('trash', '/admin/trash');
+/** The works that were retired from the catalog, the latest first, a page at a time: they wait to be restored or to have their files sent to the trash. */
+export function useRetiredWorks(page = 1) {
+  return useQuery({
+    queryKey: ['admin', 'retired-works', page],
+    queryFn: async () => (await api.get('/admin/retired-works', { params: { page, limit: 20 } })).data, // { data, total, page, limit, totalPages }
+    staleTime: 0,
+    placeholderData: keepPreviousData,
+  });
+}
 /** The pairs waiting for a decision, a page at a time (an instance with thousands of works has over a thousand of them). Each
  *  page carries the pairs, how many wait in all (`total`) and whether there are more (`more`). */
 export function useDuplicates() {
@@ -201,6 +211,19 @@ export const useBulkImport = () =>
   useAdminAction(async ({ directory, removeOriginals }) =>
     (await api.post('/works/bulk-import', { directory, removeOriginals }, { timeout: 0 })).data);
 
+/** A retired work comes back to the catalog (staff). What shows works and counts is refreshed with the lists of the administration. */
+export function useRestoreWork() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.post(`/works/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin'] });
+      refreshLibrary(queryClient);
+    },
+  });
+}
+/** "Delete for good" of a retired work: its files go to the trash, where they can still be recovered (staff). Answers with how many files went and whether the record is gone. */
+export const usePurgeWork = () => useAdminAction(async (id) => (await api.delete(`/works/${id}`, { params: { purge: true } })).data);
 export const useRestoreTrash = () => useAdminAction((id) => api.post(`/admin/trash/${id}/restore`));
 export const useDeleteTrash = () => useAdminAction((id) => api.delete(`/admin/trash/${id}`, { params: { confirm: true } }));
 export const useEmptyTrash = () => useAdminAction(() => api.post('/admin/trash/empty', { confirm: true }));

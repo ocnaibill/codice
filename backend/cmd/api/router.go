@@ -268,6 +268,7 @@ func newRouter(d routerDeps) http.Handler {
 
 	// Trash (RF-045): staff can look, restore and empty; only the owner sets the
 	// automatic cleanup. Anything that destroys bytes asks for confirm=true.
+	r.With(staff).Get("/admin/retired-works", trashHandler.RetiredWorks)
 	r.With(staff).Get("/admin/trash", trashHandler.List)
 	r.With(staff).Post("/admin/trash/{id}/restore", trashHandler.Restore)
 	r.With(staff).Delete("/admin/trash/{id}", trashHandler.Delete)

@@ -6,8 +6,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/audit"
 	"github.com/ocnaibill/codice/backend/internal/storage"
 )
@@ -213,4 +215,83 @@ func (h *TrashHandler) TrashOrphans(w http.ResponseWriter, r *http.Request) {
 	h.record(r, "storage.orphans_trash", "orphans", map[string]any{"moved": moved})
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"moved": moved})
+}
+
+// RetiredWork is a work that was retired from the catalog (DEC-038), as the administration lists it: the readers do not see it, its
+// files, notes and history are kept, and it can be restored or its files sent to the trash.
+type RetiredWork struct {
+	ID        int       `json:"id"`
+	Title     string    `json:"title"`
+	Author    string    `json:"author"`
+	RetiredAt time.Time `json:"retiredAt"`
+	// RetiredBy is the name of the account that retired it, or empty when that account is gone or it was retired by the system.
+	RetiredBy string   `json:"retiredBy"`
+	Files     int      `json:"files"`
+	Formats   []string `json:"formats"`
+	// InTrash is how many of its files are in the trash already (sent there by "delete for good"); SizeBytes is what the ones that are not take.
+	InTrash   int   `json:"inTrash"`
+	SizeBytes int64 `json:"sizeBytes"`
+}
+
+// RetiredWorks answers GET /admin/retired-works?page=&limit=: the works that were retired, the latest first, with the numbers of their
+// files, for the staff to restore them or to send their files to the trash.
+func (h *TrashHandler) RetiredWorks(w http.ResponseWriter, r *http.Request) {
+	page, limit := 1, 20
+	if v, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && v > 0 {
+		page = v
+	}
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 100 {
+		limit = v
+	}
+	db := h.Trash.DB
+	var total int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM works WHERE retired_at IS NOT NULL`).Scan(&total); err != nil {
+		log.Println("Error counting the retired works:", err)
+		http.Error(w, "Error reading the retired works", http.StatusInternalServerError)
+		return
+	}
+	rows, err := db.Query(`
+		SELECT w.id, w.original_title,
+		       COALESCE((SELECT string_agg(p.name, ', ' ORDER BY c.position, p.name)
+		                 FROM work_contributors c JOIN person p ON p.id = c.person_id
+		                 WHERE c.work_id = w.id AND c.role = 'author'), ''),
+		       w.retired_at, COALESCE(NULLIF(u.display_name, ''), u.username, ''),
+		       (SELECT count(*) FROM files f JOIN editions e ON e.id = f.edition_id WHERE e.work_id = w.id),
+		       COALESCE((SELECT array_agg(DISTINCT upper(f.format))
+		                 FROM files f JOIN editions e ON e.id = f.edition_id WHERE e.work_id = w.id AND f.format IS NOT NULL), '{}'),
+		       (SELECT count(*) FROM trash_items ti JOIN files f ON f.id = ti.file_id JOIN editions e ON e.id = f.edition_id WHERE e.work_id = w.id),
+		       COALESCE((SELECT sum(f.size_bytes) FROM files f JOIN editions e ON e.id = f.edition_id
+		                 WHERE e.work_id = w.id AND NOT EXISTS (SELECT 1 FROM trash_items ti WHERE ti.file_id = f.id)), 0)
+		FROM works w
+		LEFT JOIN users u ON u.id = w.retired_by
+		WHERE w.retired_at IS NOT NULL
+		ORDER BY w.retired_at DESC, w.id DESC
+		LIMIT $1 OFFSET $2`, limit, (page-1)*limit)
+	if err != nil {
+		log.Println("Error reading the retired works:", err)
+		http.Error(w, "Error reading the retired works", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	works := []RetiredWork{}
+	for rows.Next() {
+		var rw RetiredWork
+		var formats pq.StringArray
+		if err := rows.Scan(&rw.ID, &rw.Title, &rw.Author, &rw.RetiredAt, &rw.RetiredBy, &rw.Files, &formats, &rw.InTrash, &rw.SizeBytes); err != nil {
+			log.Println("Error scanning a retired work:", err)
+			http.Error(w, "Error reading the retired works", http.StatusInternalServerError)
+			return
+		}
+		rw.Formats = []string(formats)
+		if rw.Formats == nil {
+			rw.Formats = []string{}
+		}
+		works = append(works, rw)
+	}
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Error reading the retired works", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"data": works, "total": total, "page": page, "limit": limit, "totalPages": (total + limit - 1) / limit})
 }

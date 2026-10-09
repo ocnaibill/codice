@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import { refreshLibrary } from '../../../lib/refreshLibrary';
 import { useGlobalStore } from '../../../store/useGlobalStore';
+import { toast } from '../../../components/ui/toast';
 import { useWork } from '../../reader/api/useWork';
 import { useCandidates } from '../../reader/api/useCandidates';
 import { reasonOf } from '../../reader/api/useVersions';
@@ -74,6 +75,18 @@ function EditForm({ work, onClose }) {
       refreshLibrary(queryClient);
       closeSheet();
       onClose();
+      // Where it went, and a way there: the retired works are in the trash of the administration, to be restored.
+      toast.success('Obra retirada', {
+        message: `“${work.title}” saiu do acervo, mas está guardada na Lixeira, em Administração, onde dá para restaurá-la.`,
+        action: {
+          label: 'Ver na lixeira',
+          onClick: () => {
+            const screens = useGlobalStore.getState();
+            screens.openAdmin();
+            screens.setAdminTab('trash');
+          },
+        },
+      });
     },
   });
   const busy = save.isPending || retire.isPending;

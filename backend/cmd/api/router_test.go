@@ -139,6 +139,7 @@ var staffRoutes = []route{
 	{"POST", "/admin/people/merges/1/merge"},
 	{"POST", "/admin/people/merges/1/dismiss"},
 	{"PUT", "/admin/people/1/name"},
+	{"GET", "/admin/retired-works"},
 	{"GET", "/admin/trash"},
 	{"POST", "/admin/trash/empty"},
 	{"GET", "/admin/trash/policy"},
