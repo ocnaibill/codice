@@ -63,7 +63,7 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
         analyzer.mark_protected(work_id)
     checkpoint()
 
-    enriched = provider_registry.search_best(metadata.title, metadata.format, author=metadata.author)
+    enriched = provider_registry.search_best(metadata.title, metadata.format, author=metadata.author, isbn=metadata.isbn)
     identifiers = dict(native)
     if enriched:
         source = (getattr(enriched, 'source', '') or 'provider')[:SOURCE_MAX]   # the column holds this much

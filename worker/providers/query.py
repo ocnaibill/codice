@@ -1,11 +1,12 @@
 """What the file says about itself, read to ask the providers and to judge what they answer.
 
-Only the title is ever sent to a provider (DEC-097). The author and the number are used here, to tell which of the answers is the work."""
+Only the title is sent to a provider, and the ISBN the file carries to the two that find a book by it (DEC-097, DEC-142). The author and the number
+are used here, to tell which of the answers is the work."""
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from .text import closeness, tokens
+from .text import closeness, normalize_isbn, tokens
 
 # The formats whose files are one volume or issue of a series: their number is not part of the title.
 SERIAL_FORMATS = ('cbz', 'cbr')
@@ -93,6 +94,7 @@ class FileQuery:
     left: str = ''       # the title without the part after the dash
     stripped: str = ''   # ... and without the number
     extra: str = ''      # what the title says in parentheses about the book ("Scythe" in "A nuvem (Scythe)")
+    isbn: Optional[str] = None   # the ISBN the file carries, as 13 digits (it is sent to the providers that search by it, DEC-142)
 
     @property
     def serial(self):
@@ -120,7 +122,7 @@ class FileQuery:
         return out
 
 
-def read_file_title(title, author=None, format='default') -> FileQuery:
+def read_file_title(title, author=None, format='default', isbn=None) -> FileQuery:
     """'A Nuvem 2 - Neal Shusterman' -> title as written, 'A Nuvem 2' without the author, 'A Nuvem' without the number, and the author as a hint."""
     clean = _clean(title)
     author = None if (author or '').strip().lower() in _NO_AUTHOR else author.strip()
@@ -135,4 +137,4 @@ def read_file_title(title, author=None, format='default') -> FileQuery:
     if rest:   # what is left of the title once the number is gone: a title that is only a number ("1984") has none
         number, stripped = int(match.group(1)), rest
     return FileQuery(title=clean, author=author, number=number, hint=hint, format=format or 'default', left=left, stripped=stripped,
-                     extra=parenthetical(title, author))
+                     extra=parenthetical(title, author), isbn=normalize_isbn(isbn))

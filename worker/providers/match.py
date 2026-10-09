@@ -6,12 +6,15 @@ close enough is not a suggestion: nothing is better than the wrong work."""
 from dataclasses import dataclass, asdict
 
 from .query import FileQuery, author_closeness
-from .text import closeness, main_title
+from .text import closeness, main_title, normalize_isbn
 
 # How close a title has to be, from 0 to 1, to be taken for the file's.
 TITLE_MIN = 0.85
 # How close the author has to be, when the file says one and the provider credits someone.
 AUTHOR_MIN = 0.5
+# An answer that has the ISBN of the file is the book if something else agrees: the title is at least this close, or the author is the one the file says.
+# An ISBN alone is not enough: the ISBN a file carries can be a wrong one.
+ISBN_TITLE_MIN = 0.5
 
 
 @dataclass
@@ -21,9 +24,13 @@ class Match:
     author: float = -1.0   # how close the author is; -1 when there was nothing to compare
     accepted: bool = False
     reason: str = ''       # why it was not accepted: 'title', 'author' or 'number'
+    isbn: bool = False     # the answer has the ISBN of the file: that is the book, whatever the title says
 
     def as_dict(self):
-        return asdict(self)
+        out = asdict(self)
+        if not self.isbn:
+            del out['isbn']   # told only when it is what decided
+        return out
 
 
 def _titles(record):
@@ -43,9 +50,23 @@ def _credits(record):
     return names or ([record.author] if record.author else [])
 
 
+def _isbns(record):
+    """Every ISBN an answer says it has, as 13 digits (a provider may list the ISBN-10 and the ISBN-13 of a volume)."""
+    found = [record.isbn] + list((record.raw or {}).get('isbns') or [])
+    return {i for i in (normalize_isbn(x) for x in found) if i}
+
+
 def judge(query: FileQuery, record) -> Match:
-    """Judges an answer against every way the file's title can be read; the best reading is the one that counts."""
+    """Judges an answer against every way the file's title can be read; the best reading is the one that counts. An answer that has the ISBN of
+    the file is the book when the title is somewhat close or the author is the file's (a translated title does not make it another book); an ISBN
+    that nothing else agrees with is left to the title, as a wrong ISBN in a file is possible."""
     names, titles = _credits(record), _titles(record)
+    if query.isbn and query.isbn in _isbns(record):
+        readings = [text for text, _ in query.variants()]
+        title = max([closeness(r, t) for r in readings for t in titles] + [closeness(main_title(r), main_title(t)) for r in readings for t in titles] or [0.0])
+        author = max([author_closeness(wanted, names) for _, wanted in query.variants() if wanted and names] or [-1.0])
+        if title >= ISBN_TITLE_MIN or author >= AUTHOR_MIN:
+            return Match(score=300.0 + min(max(getattr(record, 'prior', 0) or 0, 0), 10), title=round(title, 2), author=round(author, 2), accepted=True, isbn=True)
     best = Match()
     for text, wanted in query.variants():
         title = max([closeness(text, t) for t in titles] + [closeness(main_title(text), main_title(t)) for t in titles] or [0.0])

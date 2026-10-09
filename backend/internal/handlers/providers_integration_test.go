@@ -62,11 +62,15 @@ func TestProviders_EveryOneIsOffUntilTheOwnerTurnsItOnAndSaysWhatItSends(t *test
 			t.Errorf("%s must say what it receives, %s first: %+v", r.ID, first, r)
 		}
 	}
-	// Open Library is also asked about an author whose key an administrator accepted, and says so.
-	if got := strings.Join(rows[1].Sends, ","); got != "title,author_key" {
+	// Google Books and Open Library find a book by the ISBN of the file (DEC-142), and Open Library is also asked about an author whose key
+	// an administrator accepted; each says so.
+	if got := strings.Join(rows[0].Sends, ","); got != "title,isbn" {
+		t.Errorf("Google Books receives %q", got)
+	}
+	if got := strings.Join(rows[1].Sends, ","); got != "title,isbn,author_key" {
 		t.Errorf("Open Library receives %q", got)
 	}
-	for _, i := range []int{0, 2, 3, 4, 5} {
+	for _, i := range []int{2, 3, 4, 5} {
 		if len(rows[i].Sends) != 1 || rows[i].Sends[0] != "title" {
 			t.Errorf("%s receives only the title: %v", rows[i].ID, rows[i].Sends)
 		}

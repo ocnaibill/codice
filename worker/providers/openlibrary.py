@@ -2,7 +2,8 @@
 
 Open Library's search answers only the fields it is asked for: without `fields` it gives neither ISBN, nor publisher, nor subjects. The
 description of a work is not in the search at all, it is in the work (`/works/{id}`), which is asked for only for the answer that was chosen.
-Only the title leaves the server (DEC-097); the author the file says is compared here (providers.match).
+Only the title leaves the server (DEC-097), and the ISBN of the file, which finds the work if Open Library has the edition (DEC-142); the author the
+file says is compared here (providers.match).
 """
 import re
 from typing import List, Optional
@@ -18,6 +19,7 @@ FIELDS = ('key,title,subtitle,author_name,author_key,first_publish_year,isbn,pub
           'series_name,series_position')
 CANDIDATES = 20
 MAX_TAGS = 8
+MAX_ISBNS = 300
 
 # Subjects that are not about the book: where it can be borrowed, awards and lists written as `nyt:…=date`, and the like.
 _JUNK_SUBJECTS = frozenset({
@@ -98,7 +100,8 @@ class OpenLibraryProvider(BaseProvider):
         # A work with many editions is the one people mean when two answers are equally close to the title.
         record.prior = min(doc.get('edition_count') or 0, 40) / 4
         record.raw = {'openlibrary_work': doc.get('key'), 'openlibrary_id': (doc.get('key') or '').rsplit('/', 1)[-1] or None,
-                      'subtitle': doc.get('subtitle'), 'edition_count': doc.get('edition_count')}
+                      'subtitle': doc.get('subtitle'), 'edition_count': doc.get('edition_count'),
+                      'isbns': [i for i in (doc.get('isbn') or []) if isinstance(i, str)][:MAX_ISBNS]}  # every edition of the work: the file's is one of them
         return record
 
     def _ask(self, **params) -> List[dict]:
@@ -109,6 +112,10 @@ class OpenLibraryProvider(BaseProvider):
         """The works the title is. Asked by the title of the work first; when none is close to what the file says it is asked again by the
         whole text, which also finds a work by the title of one of its editions (a translation)."""
         title = query.search_title
+        if query.isbn:   # the ISBN of the file finds the work if Open Library has the edition (that is the book)
+            by_isbn = self._ask(isbn=query.isbn)
+            if by_isbn:
+                return [self._record(d) for d in by_isbn]
         if not title:
             return []
         docs = self._ask(title=title)

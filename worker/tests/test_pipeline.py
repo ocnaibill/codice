@@ -28,8 +28,9 @@ class FakeProviders:
         self.cover = cover
         self.downloads = []
 
-    def search_best(self, title, fmt, author=None):
+    def search_best(self, title, fmt, author=None, isbn=None):
         self.asked = (title, fmt, author)
+        self.asked_isbn = isbn
         return self.record
 
     def download_cover(self, url, file_path, covers_dir):
@@ -85,7 +86,7 @@ class TestPipeline:
         db = FakeDB()
         providers = FakeProviders(record(match={'score': 160.0, 'title': 1.0, 'author': 1.0, 'accepted': True, 'reason': ''}))
         run(db, meta(), providers)
-        assert providers.asked == ('Duna', 'epub', 'Frank Herbert')
+        assert providers.asked == ('Duna', 'epub', 'Frank Herbert') and providers.asked_isbn is None
         rows = db.matching("INSERT INTO metadata_candidates")
         assert rows
         for q, p in rows:
@@ -110,6 +111,11 @@ class TestPipeline:
         db = FakeDB()
         run(db, meta(), FakeProviders(record(source='OpenLibrary + Wikidata + Wikipedia')))
         assert all(p[3] == 'OpenLibrary + Wikidata + Wikipedia' for q, p in db.matching("INSERT INTO metadata_candidates"))
+
+    def test_the_isbn_of_the_file_is_one_of_the_things_the_providers_are_asked_with(self):
+        providers = FakeProviders(record())
+        run(FakeDB(), meta(isbn='9788554511456'), providers)
+        assert providers.asked_isbn == '9788554511456'
 
     def test_an_answer_that_was_not_judged_carries_no_match(self):
         import json

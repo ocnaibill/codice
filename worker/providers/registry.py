@@ -70,9 +70,9 @@ class ProviderRegistry:
 
     def _judged(self, query, format, resolvers=False):
         """Every answer of every provider that is on, judged against the file, with the provider that gave it. Only the title is sent
-        (`query.search_title`); the author and the number of the file are used here, to tell which answer is the work. The providers that
-        say what a work is (Wikidata) are not set against the book providers, unless `resolvers`, and the ones that only complete (Wikipedia)
-        are never asked to look anything up: they are asked apart."""
+        (`query.search_title`), and the ISBN to the providers that search by it (DEC-142); the author and the number of the file are used here,
+        to tell which answer is the work. The providers that say what a work is (Wikidata) are not set against the book providers, unless
+        `resolvers`, and the ones that only complete (Wikipedia) are never asked to look anything up: they are asked apart."""
         out = []
         for provider in self._allowed(self._providers.get(format, self._providers['default'])):
             if getattr(provider, 'completer', False) or (getattr(provider, 'resolver', False) and not resolvers):
@@ -123,12 +123,12 @@ class ProviderRegistry:
             print("   ❌ No metadata found from any provider")
         return results
 
-    def search_best(self, query: str, format: str = 'default', author: Optional[str] = None) -> Optional[MetadataRecord]:
+    def search_best(self, query: str, format: str = 'default', author: Optional[str] = None, isbn: Optional[str] = None) -> Optional[MetadataRecord]:
         """The answer that is the work the file is, or none. Every provider that is on is asked for the title, the answers are judged against
         what the file says (the title, and the author when the file's metadata has one), and only an answer that is close enough is a
         suggestion: nothing is better than the wrong work. The one chosen is completed (the description of the work, say) and carries
         how close it was in `match`."""
-        q = read_file_title(query, author, format)
+        q = read_file_title(query, author, format, isbn)
         judged = self._judged(q, format)
         accepted = [x for x in judged if x[0].accepted]
         # A manga catalog that knows the title is the one to take: it has the genres, the authors and the synopsis of the series, and the volume

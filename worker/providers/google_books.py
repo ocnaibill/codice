@@ -12,12 +12,19 @@ from typing import List, Optional
 from .base import BaseProvider, Credit, MetadataRecord
 from .http import get_json
 from .query import read_file_title
+from .text import normalize_isbn
 
 BASE = 'https://www.googleapis.com/books/v1/volumes'
 CANDIDATES = 20   # what Google gives for one search, at most
 # What is asked for: every field the record is made of, and no more, so that the answer is small.
 FIELDS = ('items(id,volumeInfo(title,subtitle,authors,publisher,publishedDate,description,industryIdentifiers,categories,imageLinks,'
           'ratingsCount))')
+
+
+def _all_isbns(identifiers):
+    """Every ISBN a volume has (the 10 and the 13), as 13 digits."""
+    found = (normalize_isbn(i.get('identifier')) for i in identifiers or [] if isinstance(i, dict))
+    return sorted({i for i in found if i})
 
 
 def _isbn(identifiers):
@@ -60,7 +67,7 @@ class GoogleBooksProvider(BaseProvider):
         # Many volumes are equally close to a title (the editions of one book): the one that says more about itself is the one to take.
         record.prior = (min(volume.get('ratingsCount') or 0, 20) / 4 + (1 if record.description else 0) + (1 if record.isbn else 0)
                         + (0.5 if record.cover_url else 0))
-        record.raw = {'google_id': item.get('id'), 'subtitle': volume.get('subtitle')}
+        record.raw = {'google_id': item.get('id'), 'subtitle': volume.get('subtitle'), 'isbns': _all_isbns(volume.get('industryIdentifiers'))}
         return record
 
     def _ask(self, text) -> List[dict]:
@@ -70,10 +77,15 @@ class GoogleBooksProvider(BaseProvider):
         return data.get('items') or []
 
     def lookup(self, query) -> List[MetadataRecord]:
-        """The volumes the title finds, by the title and, when the file's title says more in parentheses, by that too (each volume once)."""
+        """The volumes the ISBN of the file finds, if it has one and Google knows it (that is the book); else the ones the title finds, by the title
+        and, when the file's title says more in parentheses, by that too (each volume once)."""
         if not self.api_key:
             print("   ⚠️ Google Books: no API key (GOOGLE_BOOKS_API_KEY is empty), so it is not asked: without one it shares a quota with everybody")
             return []
+        if query.isbn:
+            by_isbn = [r for r in (self._record(i) for i in self._ask(f'isbn:{query.isbn}')) if r is not None]
+            if by_isbn:
+                return by_isbn
         texts = [t for t in (query.search_title, query.search_extra) if t]
         items, seen = [], set()
         for text in texts:

@@ -61,9 +61,9 @@ class BaseProvider(ABC):
         pass
 
     def lookup(self, query) -> List[MetadataRecord]:
-        """The answers to a file (a providers.query.FileQuery), several if the provider has them. Only the title leaves the server (DEC-097):
-        `query.search_title` is what to ask; the rest of the query is for judging the answers. A provider that only knows how to
-        `search` gives its one answer."""
+        """The answers to a file (a providers.query.FileQuery), several if the provider has them. Only the title leaves the server (DEC-097), and the ISBN
+        of the file for a provider that finds a book by it (DEC-142): `query.search_title` is what to ask; the rest
+        of the query is for judging the answers. A provider that only knows how to `search` gives its one answer."""
         record = self.search(query.search_title)
         return [record] if record is not None else []
 
