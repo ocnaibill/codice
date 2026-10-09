@@ -100,6 +100,16 @@ describe('WorkSheet: a work that is only partly processed (RN-018)', () => {
     for (const row of rows()) expect(row.textContent).not.toContain('texto');
   });
 
+  it('says a PDF that asks for a password is that, in the place of "text not read", with a warning', async () => {
+    await show(withFiles(file(40, 'pdf', { textStatus: 'failed', protected: true }), file(41, 'pdf', { textStatus: 'failed' })));
+    expect(rows()[0].textContent).toContain('PDF com senha');
+    expect(rows()[0].textContent).not.toContain('texto não lido');
+    expect([...rows()[0].querySelectorAll('span')].find((s) => s.textContent === 'PDF com senha').className).toContain('text-warning');
+    expect(rows()[0].textContent).toContain('Ler'); // it opens, with the password
+    expect(rows()[1].textContent).toContain('texto não lido'); // one that only failed
+    expect(rows()[1].textContent).not.toContain('PDF com senha');
+  });
+
   it('leaves a scan to the note of the OCR and does not say it has no text twice', async () => {
     await show(withFiles(file(36, 'pdf', { textStatus: 'empty', needsOcr: true })));
     expect(rows()[0].textContent).toContain('Páginas sem texto');

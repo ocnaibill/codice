@@ -9,8 +9,11 @@ vi.mock('../../../lib/api', () => ({
 }));
 // The viewer is not what is under test: a button that says "I reached the end".
 vi.mock('./viewers/PdfViewer', () => ({
-  default: ({ onProgress }) => (
-    <button onClick={() => onProgress({ type: 'pdf', page: 9 }, { percent: 100, completed: true })}>reach the end</button>
+  default: ({ onProgress, onCancelPassword }) => (
+    <>
+      <button onClick={() => onProgress({ type: 'pdf', page: 9 }, { percent: 100, completed: true })}>reach the end</button>
+      <button onClick={onCancelPassword}>give up the password</button>
+    </>
   ),
 }));
 
@@ -98,6 +101,13 @@ describe('Reader shell', () => {
     expect(mains[0].getAttribute('aria-label')).toBe('Leitura');
     expect(mains[0].textContent).toContain('reach the end'); // the viewer is inside it
     expect(container.querySelector('header').closest('main')).toBeNull(); // and the bar of the book is outside of it
+  });
+
+  it('closes the book when the person gives up the password of a PDF', async () => {
+    await open();
+    expect(useGlobalStore.getState().activeBookId).toBe(7);
+    await act(async () => { button('give up the password').click(); });
+    expect(useGlobalStore.getState().activeBookId).toBeNull();
   });
 
   it('keeps favorite and back actions connected to the existing behavior', async () => {

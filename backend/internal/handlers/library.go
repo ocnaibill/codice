@@ -118,8 +118,10 @@ type FileInfo struct {
 	// TextStatus says what became of reading the file's text: ready (there is text, TextSegments
 	// passages of it), empty (nothing to read: a scan), unsupported (this kind of file has no text) or
 	// failed. Empty until the text has been looked at.
-	TextStatus   string `json:"textStatus,omitempty"`
-	TextSegments int    `json:"textSegments,omitempty"`
+	TextStatus string `json:"textStatus,omitempty"`
+	// Protected: the file asks for a password to be opened (a PDF): the server could not read its text nor draw its cover, and the reader asks the person for the password.
+	Protected    bool `json:"protected,omitempty"`
+	TextSegments int  `json:"textSegments,omitempty"`
 	// Started is true when the calling user has a saved position in this file, even if the
 	// viewer could not say how far along it is (an EPUB has no fixed page count).
 	Started bool `json:"started"`
@@ -547,7 +549,8 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		       COALESCE(tx.status, ''), COALESCE(tx.segment_count, 0), COALESCE(f.declared_mode, ''),
 		       cardinality(tl.pages_without_text), oc.read, oc.failed,
 		       (SELECT CASE j.state WHEN 'running' THEN 'reading' ELSE 'queued' END FROM jobs j
-		        WHERE j.type = 'ocr' AND j.work_id = e.work_id AND j.state IN ('pending', 'running') ORDER BY j.id LIMIT 1)
+		        WHERE j.type = 'ocr' AND j.work_id = e.work_id AND j.state IN ('pending', 'running') ORDER BY j.id LIMIT 1),
+		       COALESCE(f.protected, FALSE)
 		FROM editions e
 		LEFT JOIN files f ON f.edition_id = e.id
 		LEFT JOIN text_layers tl ON tl.file_id = f.id
@@ -584,8 +587,9 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		var declaredMode string
 		var ocrPages, ocrRead, ocrFailed sql.NullInt64
 		var ocrState sql.NullString
+		var protected bool
 		if err := rows.Scan(&e.ID, &e.Title, &e.TitleSet, &e.Language, &e.Publisher, &e.PublicationDate, &e.ISBN, &e.IsPrimary,
-			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &started, &needsOCR, &missing, &textStatus, &textSegments, &declaredMode, &ocrPages, &ocrRead, &ocrFailed, &ocrState); err != nil {
+			&fileID, &format, &size, &availability, &filePath, &mode, &percent, &completed, &started, &needsOCR, &missing, &textStatus, &textSegments, &declaredMode, &ocrPages, &ocrRead, &ocrFailed, &ocrState, &protected); err != nil {
 			return nil, err
 		}
 		i, seen := index[e.ID]
@@ -598,7 +602,7 @@ func (h *LibraryHandler) loadEditions(workID int, userID string) ([]Edition, err
 		if fileID.Valid {
 			fi := FileInfo{ID: fileID.Int64, Format: format.String, Availability: availability.String,
 				PercentComplete: percent, Completed: completed.Bool, Started: started.Bool,
-				TextStatus: textStatus, TextSegments: textSegments, DeclaredMode: declaredMode}
+				TextStatus: textStatus, TextSegments: textSegments, DeclaredMode: declaredMode, Protected: protected}
 			if size.Valid {
 				fi.SizeBytes = &size.Int64
 			}

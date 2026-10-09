@@ -247,7 +247,7 @@ export function Reader() {
   const renderViewer = () => {
     switch (format) {
       case 'pdf':
-        return <PdfViewer fileUrl={fileUrl} onSelection={setSelection} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
+        return <PdfViewer fileUrl={fileUrl} onSelection={setSelection} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} onCancelPassword={closeBook} {...place} />;
       case 'epub':
         return <EpubViewer fileUrl={fileUrl} title={book.title} onSelection={setSelection} marks={marks} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'cbz':

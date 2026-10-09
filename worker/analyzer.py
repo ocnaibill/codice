@@ -106,6 +106,12 @@ class Analyzer:
     def __init__(self, db):
         self.db = db
 
+    def mark_protected(self, work_id: int):
+        """The primary file of the work asks for a password to open: the sheet and the notices say so."""
+        self.db.execute(
+            "UPDATE files SET protected = TRUE WHERE id = (SELECT file_id FROM work_primary WHERE work_id = %s)", (work_id,))
+        print(f"   🔒 Work {work_id}: the file asks for a password")
+
     def update_status(self, work_id: int, status: MediaStatus, error: Optional[str] = None):
         """Update media status in database."""
         query = """

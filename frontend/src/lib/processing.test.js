@@ -68,3 +68,19 @@ describe('coverageNote', () => {
     expect(coverageNote({ reading: 2, noText: 3 })).toContain('lido e 3 arquivos não têm');
   });
 });
+
+describe('fileTextState: a PDF that asks for a password (#89)', () => {
+  it('says so, whatever the text status says, and warns', () => {
+    for (const textStatus of ['failed', 'ready', 'empty', undefined]) {
+      const state = fileTextState({ format: 'pdf', protected: true, textStatus, textSegments: 3 });
+      expect(state.text, String(textStatus)).toBe('PDF com senha');
+      expect(state.tone).toBe('warn');
+      expect(state.title).toContain('abre no leitor, com a senha');
+    }
+  });
+
+  it('is not said of a file that does not ask for it', () => {
+    expect(fileTextState({ format: 'pdf', protected: false, textStatus: 'failed' }).text).toBe('texto não lido');
+    expect(fileTextState({ format: 'pdf', textStatus: 'ready', textSegments: 4 }).text).toBe('texto indexado');
+  });
+});

@@ -38,3 +38,41 @@ describe('what the library says of a work', () => {
     expect(noticeForWorkEvent(undefined, vi.fn())).toBeNull();
   });
 });
+
+describe('what the library says of a PDF that asks for a password (#89)', () => {
+  const locked = (extra = {}) => ({ type: 'WORK_READY', work_id: 9, title: 'meu livro trancado', protected: true, ...extra });
+
+  it('says it is a PDF with a password, that it was kept, what could not be done and that it opens with the password', () => {
+    const notice = noticeForWorkEvent(locked(), vi.fn());
+    expect(notice.tone).toBe('warning');
+    expect(notice.title).toBe('Este PDF tem senha');
+    expect(notice.message).toBe('“meu livro trancado” foi guardado, mas o Códice não consegue ler o texto nem fazer a capa, então a busca não o acha. Ele abre no leitor, com a senha.');
+    expect(notice.key).toBe('work-9');
+  });
+
+  it('is not the news that the metadata were updated, and does not show the technical error of the library', () => {
+    const notice = noticeForWorkEvent(locked(), vi.fn());
+    expect(notice.title).not.toBe('Metadados atualizados');
+    expect(notice.message).not.toMatch(/ValueError|encrypted|document closed/);
+  });
+
+  it('offers to open the work, and offers nothing without its number', () => {
+    const openWork = vi.fn();
+    const notice = noticeForWorkEvent(locked(), openWork);
+    expect(notice.action.label).toBe('Ver obra');
+    notice.action.onClick();
+    expect(openWork).toHaveBeenCalledWith(9);
+    expect(noticeForWorkEvent(locked({ work_id: undefined }), openWork).action).toBeUndefined();
+  });
+
+  it('says it without a title too, and keeps a long title short', () => {
+    expect(noticeForWorkEvent(locked({ title: '' }), vi.fn()).message).toMatch(/^O arquivo foi guardado, mas/);
+    const long = noticeForWorkEvent(locked({ title: 'x'.repeat(500) }), vi.fn());
+    expect(long.message.length).toBeLessThan(400);
+    expect(long.message).toContain('…');
+  });
+
+  it('does not take a work that says it is not protected for one that is', () => {
+    expect(noticeForWorkEvent({ type: 'WORK_READY', work_id: 1, title: 'Duna', protected: false }, vi.fn()).title).toBe('Metadados atualizados');
+  });
+});

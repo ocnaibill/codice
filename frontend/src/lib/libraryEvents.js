@@ -21,6 +21,7 @@ export function createLibraryEvents({ refresh, notify, openWork, wait = refreshW
   let lastRun = -Infinity;
   let needsRefresh = false;
   let ready = [];
+  let locked = []; // a PDF that asks for a password: each is said by itself, whatever their number
   let failed = [];
   let waitingToBeSeen = false;
 
@@ -51,8 +52,14 @@ export function createLibraryEvents({ refresh, notify, openWork, wait = refreshW
     }
     const readyNow = ready;
     const failedNow = failed;
+    const lockedNow = locked;
     ready = [];
     failed = [];
+    locked = [];
+    for (const event of lockedNow) {
+      const notice = noticeForWorkEvent(event, openWork);
+      if (notice) notify(notice);
+    }
     say(readyNow, (n) => ({ tone: 'success', title: 'Metadados atualizados', message: `${n} ${plural(n, 'obra', 'obras')} ${plural(n, 'ficou pronta', 'ficaram prontas')}.`, key: 'works-ready' }));
     say(failedNow, (n) => ({ tone: 'error', title: 'Não foi possível processar', message: `${n} ${plural(n, 'obra', 'obras')} ${plural(n, 'não pôde', 'não puderam')} ser processada${n === 1 ? '' : 's'}.`, key: 'works-failed' }));
   };
@@ -72,7 +79,8 @@ export function createLibraryEvents({ refresh, notify, openWork, wait = refreshW
   return {
     /** A message of the real-time channel. */
     handle(event) {
-      if (event?.type === 'WORK_READY') ready.push(event);
+      if (event?.type === 'WORK_READY' && event.protected) locked.push(event);
+      else if (event?.type === 'WORK_READY') ready.push(event);
       else if (event?.type === 'WORK_ERROR') failed.push(event);
       else if (event?.type !== 'WORK_ANALYZING') return;
       needsRefresh = true;

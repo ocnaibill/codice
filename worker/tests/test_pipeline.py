@@ -165,3 +165,43 @@ class TestTextLayer:
         db = FakeDB()
         run(db, meta(), FakeProviders())
         assert not db.matching("text_layers")
+
+
+def test_a_pdf_that_asks_for_a_password_is_analysed_without_error_and_marked_so(tmp_path):
+    from extractors.pdf_extractor import PdfExtractor
+    from tests.test_extractors import protected_pdf
+
+    db = FakeDB()
+    path = protected_pdf(str(tmp_path), name='trancado.pdf')
+    metadata = analyze_file(7, path, PdfExtractor(), Analyzer(db), FakeProviders(), str(tmp_path / 'covers'))
+    assert metadata.protected is True and metadata.title == 'trancado'
+    marks = [s for s in db.statements if s[0].startswith('UPDATE files SET protected = TRUE')]
+    assert len(marks) == 1 and marks[0][1] == (7,)  # of the work analysed, by its primary file
+    # No text layer was looked for: the file is closed.
+    assert not [s for s in db.statements if 'text_layers' in s[0]]
+
+
+def test_a_plain_pdf_is_not_marked_and_has_its_text_layer_looked_for(tmp_path):
+    from extractors.pdf_extractor import PdfExtractor
+    from tests.test_extractors import pdf_with_page_size
+
+    db = FakeDB()
+    path = pdf_with_page_size(str(tmp_path), 595, 842)
+    analyze_file(7, path, PdfExtractor(), Analyzer(db), FakeProviders(), str(tmp_path / 'covers'))
+    assert not [s for s in db.statements if s[0].startswith('UPDATE files SET protected')]
+    assert [s for s in db.statements if 'text_layers' in s[0]]
+
+
+def test_a_file_that_does_not_say_it_is_protected_is_not_marked():
+    for protected in (False, None):
+        db = FakeDB()
+        run(db, meta(title='Duna', protected=protected) if protected is not None else meta(title='Duna'), FakeProviders())
+        assert not [s for s in db.statements if s[0].startswith('UPDATE files SET protected')]
+
+
+def test_the_work_is_ready_and_says_when_its_file_asks_for_a_password():
+    from main import work_ready_event
+
+    assert work_ready_event(7, meta(title='Duna')) == {'type': 'WORK_READY', 'work_id': 7, 'title': 'Duna'}
+    assert work_ready_event(7, meta(title='Duna', protected=False)) == {'type': 'WORK_READY', 'work_id': 7, 'title': 'Duna'}
+    assert work_ready_event(7, meta(title='trancado', protected=True)) == {'type': 'WORK_READY', 'work_id': 7, 'title': 'trancado', 'protected': True}

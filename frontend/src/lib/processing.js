@@ -13,6 +13,10 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
  * `ocr` is what lib/ocr.js says of the pages of a scan, when there is one.
  */
 export function fileTextState(file, ocr = null) {
+  // A PDF that asks for a password cannot be read by the server, whatever else the text says of it.
+  if (file?.protected) {
+    return { text: 'PDF com senha', tone: 'warn', title: 'Este PDF tem senha: ele abre no leitor, com a senha, mas o Códice não lê o texto nem faz a capa, então a busca não o acha' };
+  }
   switch (file?.textStatus) {
     case 'ready':
       return file.textSegments > 0

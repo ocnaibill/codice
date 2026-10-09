@@ -57,6 +57,8 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
         'raw': metadata.raw,
     }
     analyzer.save_metadata(work_id, native)
+    if getattr(metadata, 'protected', False):
+        analyzer.mark_protected(work_id)
     checkpoint()
 
     enriched = provider_registry.search_best(metadata.title, metadata.format)
@@ -96,7 +98,8 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
     analyzer.save_media_pages(work_id, native)
     if metadata.format in ('cbz', 'cbr'):
         analyzer.save_declared_mode(work_id, (metadata.raw or {}).get('declared_mode'))
-    if metadata.format == 'pdf':
+    # A PDF that asks for a password cannot be looked into: it has no text layer to look for.
+    if metadata.format == 'pdf' and not getattr(metadata, 'protected', False):
         page_count, missing = detect_text_layer(file_path)
         analyzer.save_text_layer(work_id, page_count, missing)
         if missing:
