@@ -10,7 +10,7 @@ from typing import List, Optional
 from .base import BaseProvider, Credit, MetadataRecord
 from .http import get_json
 from .match import TITLE_MIN
-from .text import closeness, main_title, tokens
+from .text import closeness, is_volume, main_title, tokens
 
 BASE = 'https://openlibrary.org'
 # What the search is asked for: every field the record is made of (and no more, so that the answer is small).
@@ -97,7 +97,8 @@ class OpenLibraryProvider(BaseProvider):
                 pass
         # A work with many editions is the one people mean when two answers are equally close to the title.
         record.prior = min(doc.get('edition_count') or 0, 40) / 4
-        record.raw = {'openlibrary_work': doc.get('key'), 'subtitle': doc.get('subtitle'), 'edition_count': doc.get('edition_count')}
+        record.raw = {'openlibrary_work': doc.get('key'), 'openlibrary_id': (doc.get('key') or '').rsplit('/', 1)[-1] or None,
+                      'subtitle': doc.get('subtitle'), 'edition_count': doc.get('edition_count')}
         return record
 
     def _ask(self, **params) -> List[dict]:
@@ -117,6 +118,15 @@ class OpenLibraryProvider(BaseProvider):
             known = {d.get('key') for d in docs}
             docs += [d for d in self._ask(q=title) if d.get('key') not in known]
         return [self._record(d) for d in docs]
+
+    def volume(self, series_titles, number) -> Optional[MetadataRecord]:
+        """The book that is volume `number` of a series (asked by one of its names and the number: only the title leaves, DEC-097), if there is
+        one that is exactly that volume (providers.text.is_volume) and not a deluxe edition or a box. The one with most editions is the volume."""
+        if not series_titles or number is None:
+            return None
+        docs = [d for d in self._ask(q=f'{series_titles[0]} volume {number}') if is_volume(d.get('title', ''), series_titles, number)]
+        docs.sort(key=lambda d: -(d.get('edition_count') or 0))
+        return self._record(docs[0]) if docs else None
 
     def search(self, query: str) -> Optional[MetadataRecord]:
         """The first work for a text, as it always was (the registry's `search`)."""

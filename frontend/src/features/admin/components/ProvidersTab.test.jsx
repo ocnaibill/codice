@@ -44,6 +44,19 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
     expect(box('ComicVine').checked).toBe(false);
   });
 
+  it('says what the manga providers are for, where they live and that they take no key, and turns one on only after the question', async () => {
+    await open({ isOwner: true }, [...providers, provider('anilist', 'AniList', false), provider('mangadex', 'MangaDex', false)]);
+    const text = view.text();
+    expect(text).toContain('Recebe: o título da obra. Endereço: graphql.anilist.co (AniList).');
+    expect(text).toContain('Endereço: api.mangadex.org (MangaDex).');
+    expect(text).toContain('Para mangá: autores, gêneros, ano, sinopse e capa da série. Uso gratuito não comercial');
+    expect(text).toContain('público (seinen, shounen…)');
+    expect(text).not.toContain('chave de API: sem ela o AniList');
+    await view.click(box('AniList'));
+    expect(api.put).not.toHaveBeenCalled();
+    expect(confirmDialog().textContent).toContain('o título da obra');
+  });
+
   it('turns one on only after saying what is sent, and not at all if the owner backs out', async () => {
     await open();
     await view.click(box('Google Books'));

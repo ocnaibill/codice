@@ -35,6 +35,8 @@ var Known = []Info{
 	{ID: "google_books", Name: "Google Books", Sends: []string{"title"}, Key: "optional"},
 	{ID: "openlibrary", Name: "Open Library", Sends: []string{"title", "author_key"}},
 	{ID: "comicvine", Name: "ComicVine", Sends: []string{"title"}, Key: "required"},
+	{ID: "anilist", Name: "AniList", Sends: []string{"title"}},
+	{ID: "mangadex", Name: "MangaDex", Sends: []string{"title"}},
 }
 
 // KeysSettingKey is where the worker tells which API keys it has: {"comicvine": true, ...}. It tells whether each

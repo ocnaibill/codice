@@ -49,7 +49,7 @@ func summary(rows []providerRow) string {
 func TestProviders_EveryOneIsOffUntilTheOwnerTurnsItOnAndSaysWhatItSends(t *testing.T) {
 	s := newCatalogStack(t)
 	rows := s.providers()
-	if got := summary(rows); got != "google_books=off openlibrary=off comicvine=off" {
+	if got := summary(rows); got != "google_books=off openlibrary=off comicvine=off anilist=off mangadex=off" {
 		t.Fatalf("by default: %s", got)
 	}
 	for _, r := range rows {
@@ -61,13 +61,16 @@ func TestProviders_EveryOneIsOffUntilTheOwnerTurnsItOnAndSaysWhatItSends(t *test
 	if got := strings.Join(rows[1].Sends, ","); got != "title,author_key" {
 		t.Errorf("Open Library receives %q", got)
 	}
-	for _, i := range []int{0, 2} {
-		if len(rows[i].Sends) != 1 {
+	for _, i := range []int{0, 2, 3, 4} {
+		if len(rows[i].Sends) != 1 || rows[i].Sends[0] != "title" {
 			t.Errorf("%s receives only the title: %v", rows[i].ID, rows[i].Sends)
 		}
 	}
-	if rows[0].Key != "optional" || rows[1].Key != "" || rows[2].Key != "required" {
-		t.Errorf("Google Books takes a key it can do without, Open Library none, ComicVine one it cannot: %+v", rows)
+	if rows[0].Key != "optional" || rows[1].Key != "" || rows[2].Key != "required" || rows[3].Key != "" || rows[4].Key != "" {
+		t.Errorf("Google Books takes a key it can do without, ComicVine one it cannot, the others none: %+v", rows)
+	}
+	if got := rows[3].ID + "," + rows[4].ID + "," + rows[3].Name + "," + rows[4].Name; got != "anilist,mangadex,AniList,MangaDex" {
+		t.Errorf("the manga providers are asked after ComicVine: %s", got)
 	}
 	for _, r := range rows {
 		if r.KeyConfigured != nil {
@@ -81,12 +84,12 @@ func TestProviders_TurningOneOnOrOffLeavesTheOthersAndIsAudited(t *testing.T) {
 	if code := s.setProvider("openlibrary", `{"enabled":true}`); code != 204 {
 		t.Fatalf("on: %d", code)
 	}
-	if got := summary(s.providers()); got != "google_books=off openlibrary=on comicvine=off" {
+	if got := summary(s.providers()); got != "google_books=off openlibrary=on comicvine=off anilist=off mangadex=off" {
 		t.Errorf("after turning Open Library on: %s", got)
 	}
 	s.setProvider("google_books", `{"enabled":true}`)
 	s.setProvider("openlibrary", `{"enabled":false}`)
-	if got := summary(s.providers()); got != "google_books=on openlibrary=off comicvine=off" {
+	if got := summary(s.providers()); got != "google_books=on openlibrary=off comicvine=off anilist=off mangadex=off" {
 		t.Errorf("after the others: %s", got)
 	}
 	// What the worker reads is exactly this, with real booleans.
@@ -122,7 +125,7 @@ func TestProviders_RefusesWhatIsNotAYesOrANoOrAProviderThatDoesNotExistAndChange
 func TestProviders_TwoChangedAtTheSameTimeDoNotUndoEachOther(t *testing.T) {
 	s := newCatalogStack(t)
 	var wg sync.WaitGroup
-	for _, id := range []string{"google_books", "openlibrary", "comicvine"} {
+	for _, id := range []string{"google_books", "openlibrary", "comicvine", "anilist", "mangadex"} {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -132,7 +135,7 @@ func TestProviders_TwoChangedAtTheSameTimeDoNotUndoEachOther(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if got := summary(s.providers()); got != "google_books=on openlibrary=on comicvine=on" {
+	if got := summary(s.providers()); got != "google_books=on openlibrary=on comicvine=on anilist=on mangadex=on" {
 		t.Errorf("after turning all on at once: %s", got)
 	}
 }
@@ -141,13 +144,13 @@ func TestProviders_OnlyAPlainYesTurnsOneOnAndASettingThatIsNotAChoiceIsReplaced(
 	s := newCatalogStack(t)
 	for _, raw := range []string{`{"openlibrary": "true", "google_books": 1, "comicvine": null}`, `"yes"`, `[true]`, `true`} {
 		s.exec(`INSERT INTO settings (key, value) VALUES ('metadata.providers', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, raw)
-		if got := summary(s.providers()); got != "google_books=off openlibrary=off comicvine=off" {
+		if got := summary(s.providers()); got != "google_books=off openlibrary=off comicvine=off anilist=off mangadex=off" {
 			t.Errorf("setting %s: %s, want all off", raw, got)
 		}
 	}
 	// Choosing over a setting that is not an object makes it one.
 	s.setProvider("openlibrary", `{"enabled":true}`)
-	if got := summary(s.providers()); got != "google_books=off openlibrary=on comicvine=off" {
+	if got := summary(s.providers()); got != "google_books=off openlibrary=on comicvine=off anilist=off mangadex=off" {
 		t.Errorf("after choosing: %s", got)
 	}
 }
@@ -244,7 +247,7 @@ func TestProviders_CannotTurnOnWhatNeedsAKeyThatTheWorkerSaysItDoesNotHave(t *te
 	if code := s.setProvider("comicvine", `{"enabled":true}`); code != 204 {
 		t.Errorf("with the key: %d", code)
 	}
-	if got := summary(s.providers()); got != "google_books=off openlibrary=off comicvine=on" { // the setting was replaced above
+	if got := summary(s.providers()); got != "google_books=off openlibrary=off comicvine=on anilist=off mangadex=off" { // the setting was replaced above
 		t.Errorf("after: %s", got)
 	}
 }

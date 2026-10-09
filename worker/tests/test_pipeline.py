@@ -91,6 +91,16 @@ class TestPipeline:
         for q, p in rows:
             assert json.loads(p[-1])['match'] == {'score': 160.0, 'title': 1.0, 'author': 1.0, 'accepted': True, 'reason': ''}
 
+    def test_the_ids_a_provider_knows_the_work_by_travel_as_evidence(self):
+        import json
+        db = FakeDB()
+        run(db, meta(), FakeProviders(record(raw={'anilist_id': 30002, 'mangadex_id': 'abc-1', 'openlibrary_id': 'OL1W', 'other': 'x'})))
+        rows = db.matching("INSERT INTO metadata_candidates")
+        assert rows
+        for q, p in rows:
+            evidence = json.loads(p[-1])
+            assert (evidence['anilist_id'], evidence['mangadex_id'], evidence['openlibrary_id']) == (30002, 'abc-1', 'OL1W') and 'other' not in evidence
+
     def test_an_answer_that_was_not_judged_carries_no_match(self):
         import json
         db = FakeDB()

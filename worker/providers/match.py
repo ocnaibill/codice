@@ -34,6 +34,7 @@ def _titles(record):
         titles.append(f'{record.title} {subtitle}')
     if record.series:
         titles.append(record.series)
+    titles.extend((record.raw or {}).get('alt_titles') or [])   # the other names of a work (the English and the native title of a manga)
     return [t for t in titles if t]
 
 

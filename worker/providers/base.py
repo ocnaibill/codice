@@ -43,6 +43,7 @@ class MetadataRecord:
     cover_url: Optional[str] = None
     source: str = ""
     raw: dict = field(default_factory=dict)
+    provider_id: str = ''   # the id of the provider that answered (what the owner chooses by), set by the registry
     prior: float = 0.0   # how well known the work is, from 0 to 10, for breaking a tie between answers that are equally close
     match: dict = field(default_factory=dict)   # how close the answer is to the file (providers.match), set when it is judged
 
@@ -93,7 +94,8 @@ class BaseProvider(ABC):
             return None
 
         try:
-            resp = requests.get(cover_url, timeout=10)
+            from .http import user_agent   # MangaDex and Wikimedia refuse a request that does not say who asks
+            resp = requests.get(cover_url, headers={'User-Agent': user_agent()}, timeout=10)
             if resp.status_code != 200:
                 return None
 
