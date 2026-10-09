@@ -123,6 +123,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/auth/preferences", ppl.GetPreferences)
 	r.Put("/auth/preferences", ppl.SetPreferences)
 	r.Put("/admin/name-order", ppl.SetLibraryOrder)
+	r.Get("/admin/retired-works", trashAdmin.RetiredWorks)
 	r.Get("/admin/trash", trashAdmin.List)
 	r.Post("/admin/trash/{id}/restore", trashAdmin.Restore)
 	r.Delete("/admin/trash/{id}", trashAdmin.Delete)

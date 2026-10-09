@@ -11,6 +11,7 @@ vi.mock('../../../lib/api', () => ({
 import { api } from '../../../lib/api';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { EditBookModal } from './EditBookModal';
+import { useToasts } from '../../../components/ui/toast';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -202,6 +203,30 @@ describe('EditBookModal: the metadata of a work (#70)', () => {
     expect(api.delete).toHaveBeenCalledWith('/works/7');
     expect(onClose).toHaveBeenCalled();
     expect(useGlobalStore.getState().sheetWorkId).toBeNull();
+  });
+
+  it('says where the retired work went, and the notice takes the person to the trash of the administration', async () => {
+    useToasts.getState().clear();
+    useGlobalStore.setState({ adminOpen: false, adminTab: 'jobs' });
+    await render({ tab: 'edit' });
+    await click(button('Retirar do acervo'));
+    await click(button('Retirar do acervo', document.querySelector('[aria-label="Retirar esta obra do acervo?"]')));
+    const [notice] = useToasts.getState().items;
+    expect(notice.tone).toBe('success');
+    expect(notice.title).toBe('Obra retirada');
+    expect(notice.message).toContain('está guardada na Lixeira, em Administração');
+    expect(notice.action.label).toBe('Ver na lixeira');
+    await act(async () => { notice.action.onClick(); });
+    expect(useGlobalStore.getState()).toMatchObject({ adminOpen: true, adminTab: 'trash' });
+  });
+
+  it('says nothing of the trash when the retirement did not work', async () => {
+    useToasts.getState().clear();
+    api.delete.mockRejectedValueOnce({ response: { status: 500, data: 'x' } });
+    await render({ tab: 'edit' });
+    await click(button('Retirar do acervo'));
+    await click(button('Retirar do acervo', document.querySelector('[aria-label="Retirar esta obra do acervo?"]')));
+    expect(useToasts.getState().items).toHaveLength(0);
   });
 
   it('closes on Escape, but a confirmation on top takes the Escape for itself', async () => {
