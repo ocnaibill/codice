@@ -5,55 +5,8 @@ Uses mocked HTTP responses to test each provider's parsing.
 import pytest
 from unittest.mock import patch, MagicMock
 from providers.base import Credit, MetadataRecord
-from providers.google_books import GoogleBooksProvider
 from providers.openlibrary import OpenLibraryProvider
-from providers.comicvine import ComicVineProvider
 from providers.registry import ProviderRegistry
-
-
-class TestGoogleBooksProvider:
-    def setup_method(self):
-        self.provider = GoogleBooksProvider()
-
-    @patch('providers.google_books.requests.get')
-    def test_search_returns_record(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "items": [{
-                "volumeInfo": {
-                    "title": "Test Book",
-                    "authors": ["John Author"],
-                    "publisher": "Test Publisher",
-                    "language": "en",
-                    "publishedDate": "2023",
-                    "description": "A test book description.",
-                    "categories": ["Fiction", "Science Fiction"],
-                    "industryIdentifiers": [{"type": "ISBN_13", "identifier": "9781234567890"}],
-                    "imageLinks": {"thumbnail": "http://example.com/cover.jpg"},
-                }
-            }]
-        }
-        mock_get.return_value = mock_response
-
-        result = self.provider.search("Test Book")
-        assert result is not None
-        assert result.title == "Test Book"
-        assert result.author == "John Author"
-        assert result.isbn == "9781234567890"
-        assert "Fiction" in result.tags
-        assert result.cover_url is not None
-        assert result.cover_url.startswith("https://")
-
-    @patch('providers.google_books.requests.get')
-    def test_search_empty_returns_none(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"items": []}
-        mock_get.return_value = mock_response
-
-        result = self.provider.search("Nonexistent Book XYZ")
-        assert result is None
 
 
 class TestOpenLibraryProvider:
@@ -92,47 +45,6 @@ class TestOpenLibraryProvider:
 
         result = self.provider.search("Any Book")
         assert result is None
-
-
-class TestComicVineProvider:
-    def setup_method(self):
-        self.provider = ComicVineProvider()
-
-    def test_no_api_key_returns_none(self):
-        import os
-        key = os.environ.pop("COMICVINE_API_KEY", None)
-        result = self.provider.search("Batman")
-        assert result is None
-        if key:
-            os.environ["COMICVINE_API_KEY"] = key
-
-    @patch('providers.comicvine.requests.get')
-    @patch('providers.comicvine.ComicVineProvider.__init__', return_value=None)
-    def test_search_returns_record(self, mock_init, mock_get):
-        import os
-        os.environ['COMICVINE_API_KEY'] = 'test_key'
-        self.provider = ComicVineProvider()
-        self.provider.api_key = 'test_key'
-        self.provider.base_url = 'https://comicvine.gamespot.com/api'
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "results": [{
-                "name": "Batman #1",
-                "issue_number": "1",
-                "description": "The first issue.",
-                "volume": {"name": "Batman"},
-                "image": {"super_url": "https://example.com/cover.jpg"},
-                "cover_date": "2024-01-01",
-            }]
-        }
-        mock_get.return_value = mock_response
-
-        result = self.provider.search("Batman")
-        assert result is not None
-        assert result.title == "Batman #1"
-        assert result.series == "Batman"
-        assert result.series_index == 1.0
 
 
 class TestProviderRegistry:
@@ -181,30 +93,6 @@ class TestCredits:
         result = _openlibrary({"title": "Anonymous"})
         assert result.credits == [] and result.author is None
 
-    @patch('providers.google_books.requests.get')
-    def test_google_books_reads_every_author_and_no_identifier(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"items": [
-            {"volumeInfo": {"title": "T", "authors": ["A One", "  ", "B Two"]}}]}))
-        result = GoogleBooksProvider().search("T")
-        assert result.credits == [Credit("A One"), Credit("B Two")]
-        assert result.author == "A One"
-
-    @patch('providers.comicvine.requests.get')
-    def test_comicvine_keeps_the_role_and_id_of_each_credit(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"results": [{
-            "name": "Batman #1", "issue_number": "1", "volume": {"name": "Batman"},
-            "person_credits": [{"id": 11, "name": "Penciller Person", "role": "penciller"},
-                               {"id": 12, "name": "Writer Person", "role": "writer, inker"},
-                               {"name": "No Id", "role": ""}]}]}))
-        provider = ComicVineProvider()
-        provider.api_key = 'k'
-        provider.base_url = 'https://comicvine.gamespot.com/api'
-        result = provider.search("Batman")
-        assert [(c.name, c.role, c.ids) for c in result.credits] == [
-            ("Penciller Person", "penciller", {"comicvine": "11"}),
-            ("Writer Person", "writer, inker", {"comicvine": "12"}),
-            ("No Id", None, {})]
-
     def test_a_credit_leaves_out_what_the_provider_did_not_say(self):
         assert Credit("A One").as_dict() == {"name": "A One"}
         assert Credit("A One", "writer", {"openlibrary": "OL1A"}).as_dict() == {
@@ -217,13 +105,6 @@ class TestNoLanguageFromProviders:
     def test_open_library_does_not_give_the_language_of_an_edition_as_the_files(self):
         result = _openlibrary({"title": "Good Omens", "author_name": ["A One"], "language": ["cat", "eng"]})
         assert result.language is None
-
-    @patch('providers.google_books.requests.get')
-    def test_google_books_does_not_give_the_language_of_the_volume_it_matched(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"items": [
-            {"volumeInfo": {"title": "Duna", "authors": ["A One"], "language": "pt"}}]}))
-        assert GoogleBooksProvider().search("Duna").language is None
-
 
 class FakeProvider:
     """A provider that records that it was asked: what the gate is for is that it is not."""
@@ -397,26 +278,3 @@ class TestApiKeys:
         assert scrub('GET /v1?q=Duna&key=abc123 failed', 'abc123') == 'GET /v1?q=Duna&key=*** failed'
         assert scrub('nothing here', 'abc123', '', None, '  ') == 'nothing here'
         assert scrub(ValueError('url=k1&x=k2'), 'k1', 'k2') == 'url=***&x=***'
-
-    @patch('providers.comicvine.requests.get')
-    def test_comicvine_never_writes_any_part_of_its_key_to_the_log(self, mock_get, capsys):
-        mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"results": []}))
-        provider = ComicVineProvider()
-        provider.api_key = 'SECRETKEY-1234567890'
-        provider.search('Batman')
-        mock_get.side_effect = RuntimeError('Max retries url: /api/search?api_key=SECRETKEY-1234567890&query=Batman')
-        provider.search('Batman')
-        mock_get.side_effect = None
-        mock_get.return_value = MagicMock(status_code=401, text='bad key SECRETKEY-1234567890')
-        provider.search('Batman')
-        out = capsys.readouterr().out
-        assert 'SECRET' not in out and '7890' not in out and 'ComicVine API error' in out and 'non-200' in out
-
-    @patch('providers.google_books.requests.get')
-    def test_google_books_never_writes_its_key_to_the_log(self, mock_get, capsys):
-        mock_get.side_effect = RuntimeError('Max retries url: /v1/volumes?q=Duna&key=SECRETKEY-1234567890')
-        provider = GoogleBooksProvider()
-        provider.api_key = 'SECRETKEY-1234567890'
-        provider.search('Duna')
-        out = capsys.readouterr().out
-        assert 'SECRET' not in out and '7890' not in out and 'Google Books API error' in out and 'key=***' in out

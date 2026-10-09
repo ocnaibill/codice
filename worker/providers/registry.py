@@ -131,6 +131,9 @@ class ProviderRegistry:
         q = read_file_title(query, author, format)
         judged = self._judged(q, format)
         accepted = [x for x in judged if x[0].accepted]
+        # A manga catalog that knows the title is the one to take: it has the genres, the authors and the synopsis of the series, and the volume
+        # comes from the books. The comics database also answers for a manga, with an issue that scores higher only because it has a number.
+        accepted = [x for x in accepted if x[1].id in SERIES_PROVIDERS] or accepted
         resolver = self._first(format, 'resolver')
         entity = None
         if accepted:

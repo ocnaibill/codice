@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"github.com/ocnaibill/codice/backend/internal/metaproviders"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,8 +74,8 @@ func TestProviders_EveryOneIsOffUntilTheOwnerTurnsItOnAndSaysWhatItSends(t *test
 	if got := strings.Join(rows[6].Sends, ","); got != "page_title" {
 		t.Errorf("Wikipedia receives only the title of a page: %q", got)
 	}
-	if rows[0].Key != "optional" || rows[1].Key != "" || rows[2].Key != "required" || rows[3].Key != "" || rows[4].Key != "" || rows[5].Key != "" || rows[6].Key != "" {
-		t.Errorf("Google Books takes a key it can do without, ComicVine one it cannot, the others none: %+v", rows)
+	if rows[0].Key != "required" || rows[1].Key != "" || rows[2].Key != "required" || rows[3].Key != "" || rows[4].Key != "" || rows[5].Key != "" || rows[6].Key != "" {
+		t.Errorf("Google Books and ComicVine take a key they cannot do without, the others none: %+v", rows)
 	}
 	if got := rows[3].ID + "," + rows[4].ID + "," + rows[3].Name + "," + rows[4].Name; got != "anilist,mangadex,AniList,MangaDex" {
 		t.Errorf("the manga providers are asked after ComicVine: %s", got)
@@ -243,28 +244,41 @@ func TestProviders_CannotTurnOnWhatNeedsAKeyThatTheWorkerSaysItDoesNotHave(t *te
 	if got := s.scalar(`SELECT count(*) FROM audit_log WHERE action = 'providers.set'`); got != "0" {
 		t.Errorf("the refused choice was audited as a change")
 	}
-	// A key it can do without does not stop Google Books.
-	if code := s.setProvider("google_books", `{"enabled":true}`); code != 204 {
-		t.Errorf("Google Books without a key: %d", code)
+	// Google Books shares a quota with every anonymous client without a key of its own: it is turned on with one.
+	if code := s.setProvider("google_books", `{"enabled":true}`); code != 409 {
+		t.Errorf("Google Books without a key: %d, want 409", code)
 	}
+	// A provider that works without a key, within a lower limit, is not stopped by it.
+	known := metaproviders.Known
+	metaproviders.Known = append(append([]metaproviders.Info{}, known...), metaproviders.Info{ID: "withoutkey", Name: "Without key", Sends: []string{"title"}, Key: "optional"})
+	defer func() { metaproviders.Known = known }()
+	s.workerSays(`{"google_books": false, "comicvine": false, "withoutkey": false}`)
+	if code := s.setProvider("withoutkey", `{"enabled":true}`); code != 204 {
+		t.Errorf("a key it can do without: %d", code)
+	}
+	metaproviders.Known = known
 	// Turning it off is never in the way.
 	s.exec(`INSERT INTO settings (key, value) VALUES ('metadata.providers', '{"comicvine": true}') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`)
 	if code := s.setProvider("comicvine", `{"enabled":false}`); code != 204 {
 		t.Errorf("turning off without the key: %d", code)
 	}
 	// With the key it can be turned on.
-	s.workerSays(`{"comicvine": true}`)
-	if code := s.setProvider("comicvine", `{"enabled":true}`); code != 204 {
-		t.Errorf("with the key: %d", code)
+	s.workerSays(`{"comicvine": true, "google_books": true}`)
+	for _, id := range []string{"comicvine", "google_books"} {
+		if code := s.setProvider(id, `{"enabled":true}`); code != 204 {
+			t.Errorf("%s with the key: %d", id, code)
+		}
 	}
-	if got := summary(s.providers()); got != "google_books=off openlibrary=off comicvine=on anilist=off mangadex=off wikidata=off wikipedia=off" { // the setting was replaced above
+	if got := summary(s.providers()); got != "google_books=on openlibrary=off comicvine=on anilist=off mangadex=off wikidata=off wikipedia=off" { // the setting was replaced above
 		t.Errorf("after: %s", got)
 	}
 }
 
 func TestProviders_BeforeTheWorkerHasSaidAnythingTurningOnWhatNeedsAKeyIsAllowed(t *testing.T) {
 	s := newCatalogStack(t)
-	if code := s.setProvider("comicvine", `{"enabled":true}`); code != 204 {
-		t.Errorf("not known yet: %d", code)
+	for _, id := range []string{"comicvine", "google_books"} {
+		if code := s.setProvider(id, `{"enabled":true}`); code != 204 {
+			t.Errorf("%s, not known yet: %d", id, code)
+		}
 	}
 }

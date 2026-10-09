@@ -366,6 +366,28 @@ def registry(allowed, *providers):
     return r
 
 
+class TestMangaCatalogsBeforeTheComicsDatabase:
+    def issue(self):
+        r = MetadataRecord(title='Vol. 1', series='Berserk', series_index=1.0, publisher='Hakusensha', source='ComicVine')
+        r.raw = {'comicvine_id': '4000-1'}
+        return r
+
+    def test_a_manga_catalog_that_knows_the_title_is_taken_though_the_other_has_the_number_of_the_volume(self):
+        for order in (('anilist', 'comicvine'), ('comicvine', 'anilist')):
+            providers = {'anilist': Series('anilist', berserk()), 'comicvine': Series('comicvine', self.issue())}
+            got = registry({'anilist', 'comicvine'}, *[providers[i] for i in order]).search_best('Berserk v01', 'cbz')
+            assert got.provider_id == 'anilist' and got.series_index == 1.0
+
+    def test_without_one_the_comics_database_is_the_answer(self):
+        got = registry({'anilist', 'comicvine'}, Series('anilist', MetadataRecord(title='Outra Obra', series='Outra Obra', source='AniList')),
+                       Series('comicvine', self.issue())).search_best('Berserk v01', 'cbz')
+        assert got.provider_id == 'comicvine' and got.publisher == 'Hakusensha'
+
+    def test_a_manga_catalog_that_is_off_leaves_the_comics_database(self):
+        got = registry({'comicvine'}, Series('anilist', berserk()), Series('comicvine', self.issue())).search_best('Berserk v01', 'cbz')
+        assert got.provider_id == 'comicvine'
+
+
 class TestTwoLevels:
     def test_the_series_gets_the_number_of_the_volume_and_what_the_volume_has(self, capsys):
         books = Books(volume_one())
