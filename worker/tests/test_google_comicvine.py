@@ -87,7 +87,7 @@ class TestGoogleBooksRecords:
             'Duna', 'Frank Herbert', 'Aleph', '2015-09-16', 'Num planeta de areia.', '9788576572000', 'Google Books')
         assert r.credits == [Credit('Frank Herbert'), Credit('Brian Herbert')] and r.tags == ['Fiction', 'Science Fiction']
         assert r.cover_url == 'https://t.jpg' and r.language is None   # the language of a volume is not the file's (DEC-096)
-        assert r.raw == {'google_id': full['id'], 'subtitle': 'Livro 1'} and r.prior == 2 + 1 + 1 + 0.5
+        assert r.raw == {'google_id': full['id'], 'subtitle': 'Livro 1', 'isbns': []} and r.prior == 2 + 1 + 1 + 0.5
 
     def test_the_names_of_the_authors_are_trimmed(self):
         (r,), _ = self.lookup([book('Duna', ('  Frank Herbert ',))])

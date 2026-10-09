@@ -17,6 +17,7 @@ const ABOUT = {
 };
 const SENDS = {
   title: 'o título da obra',
+  isbn: 'o ISBN do arquivo, quando ele tem (para achar o livro sem dúvida)',
   page_title: 'só o título da página da obra na Wikipédia, que o Wikidata informou (nunca o título do arquivo)',
   author_key: 'a chave de cada autor que você aceita (para obter os identificadores dele: Wikidata, VIAF, ISNI)',
 };

@@ -22,6 +22,24 @@ def tokens(text, keep_stop=False):
     return words if keep_stop else [w for w in words if w not in STOP]
 
 
+def normalize_isbn(text):
+    """An ISBN as 13 digits, or None when the text is not one: ISBN-10 is converted, hyphens, spaces and a "urn:isbn:" in front are taken off,
+    and a number whose check digit is wrong is not an ISBN (a file's identifier can be anything)."""
+    chars = re.sub(r'(?i)^\s*(urn:)?isbn[:\s-]*', '', str(text or ''))
+    chars = re.sub(r'[\s-]', '', chars).upper()
+    if re.fullmatch(r'\d{9}[\dX]', chars):
+        total = sum((10 - i) * (10 if c == 'X' else int(c)) for i, c in enumerate(chars))
+        if total % 11:
+            return None
+        chars = '978' + chars[:9]
+        chars += str((10 - sum(int(c) * (3 if i % 2 else 1) for i, c in enumerate(chars)) % 10) % 10)
+        return chars
+    if re.fullmatch(r'97[89]\d{10}', chars):
+        total = sum(int(c) * (3 if i % 2 else 1) for i, c in enumerate(chars))
+        return chars if total % 10 == 0 else None
+    return None
+
+
 def main_title(title):
     """The title without its subtitle ("Sapiens: Uma breve história" -> "Sapiens")."""
     return re.split(r'\s*[:–—]\s*', title or '')[0]

@@ -22,7 +22,8 @@ var ErrUnknown = errors.New("unknown metadata provider")
 type Info struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	// Sends lists what leaves the instance: "title" is the title of the work, on every analysis; "author_key" is
+	// Sends lists what leaves the instance: "title" is the title of the work, on every analysis; "isbn" is the ISBN the file
+	// carries, when it has one, for the providers that find a book by it (DEC-142); "author_key" is
 	// the key Open Library gave an author an administrator accepted, to ask it for the identifiers it knows;
 	// "page_title" is the title of the page Wikidata says the work has on Wikipedia, which is all Wikipedia is asked.
 	Sends []string `json:"sends"`
@@ -33,8 +34,8 @@ type Info struct {
 
 // Known are the providers the worker can ask, in the order it asks them.
 var Known = []Info{
-	{ID: "google_books", Name: "Google Books", Sends: []string{"title"}, Key: "required"},
-	{ID: "openlibrary", Name: "Open Library", Sends: []string{"title", "author_key"}},
+	{ID: "google_books", Name: "Google Books", Sends: []string{"title", "isbn"}, Key: "required"},
+	{ID: "openlibrary", Name: "Open Library", Sends: []string{"title", "isbn", "author_key"}},
 	{ID: "comicvine", Name: "ComicVine", Sends: []string{"title"}, Key: "required"},
 	{ID: "anilist", Name: "AniList", Sends: []string{"title"}},
 	{ID: "mangadex", Name: "MangaDex", Sends: []string{"title"}},
