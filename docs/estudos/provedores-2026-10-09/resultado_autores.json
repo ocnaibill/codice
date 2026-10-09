@@ -1,0 +1,281 @@
+{
+ "Frank Herbert": {
+  "openlibrary": {
+   "key": "OL1758387A",
+   "name": "Frank Herbert Hayward",
+   "bio": false,
+   "bio_chars": 0,
+   "birth": "1872",
+   "death": "16.02.1954",
+   "photos": false,
+   "links": 0,
+   "remote_ids": [
+    "isni",
+    "lc_naf",
+    "viaf",
+    "wikidata"
+   ]
+  },
+  "wikidata": {
+   "qid": "Q7934",
+   "desc_en": "American writer (1920–1986)",
+   "label_pt": null,
+   "desc_pt": "escritor de ficção científica americano (1920-1986)",
+   "birth": "+1920-10-08T00:00:00Z",
+   "image": true,
+   "viaf": "59083797",
+   "isni": "0000000121347853",
+   "ol": "OL79034A",
+   "pt_wikipedia": true,
+   "en_wikipedia": true,
+   "ids": 5
+  },
+  "wikipedia": {
+   "pt": {
+    "extract_chars": 550,
+    "thumbnail": true,
+    "url": "https://pt.wikipedia.org/wiki/Frank_Herbert"
+   },
+   "en": {
+    "extract_chars": 257,
+    "thumbnail": true,
+    "url": "https://en.wikipedia.org/wiki/Frank_Herbert"
+   }
+  }
+ },
+ "Machado de Assis": {
+  "openlibrary": {
+   "key": "OL93286A",
+   "name": "Machado de Assis",
+   "bio": true,
+   "bio_chars": 480,
+   "birth": "21 June 1839",
+   "death": "29 September 1908",
+   "photos": true,
+   "links": 4,
+   "remote_ids": [
+    "bookbrainz",
+    "goodreads",
+    "imdb",
+    "isni",
+    "lc_naf",
+    "librarything",
+    "opac_sbn",
+    "project_gutenberg",
+    "viaf",
+    "wikidata"
+   ]
+  },
+  "wikidata": {
+   "qid": "Q311145",
+   "desc_en": "Brazilian writer (1839–1908)",
+   "label_pt": "Machado de Assis",
+   "desc_pt": "escritor brasileiro (1839–1908)",
+   "birth": "+1839-06-21T00:00:00Z",
+   "image": true,
+   "viaf": "95151633",
+   "isni": "0000000121441225",
+   "ol": "OL93286A",
+   "pt_wikipedia": true,
+   "en_wikipedia": true,
+   "ids": 5
+  },
+  "wikipedia": {
+   "pt": {
+    "extract_chars": 669,
+    "thumbnail": true,
+    "url": "https://pt.wikipedia.org/wiki/Machado_de_Assis"
+   },
+   "en": {
+    "extract_chars": 389,
+    "thumbnail": true,
+    "url": "https://en.wikipedia.org/wiki/Machado_de_Assis"
+   }
+  }
+ },
+ "Paulo Coelho": {
+  "openlibrary": {
+   "key": "OL120938A",
+   "name": "Paulo Coelho Netto",
+   "bio": true,
+   "bio_chars": 636,
+   "birth": "1 November 1902",
+   "death": "16 February 1985",
+   "photos": false,
+   "links": 0,
+   "remote_ids": [
+    "viaf"
+   ]
+  },
+  "wikidata": {
+   "qid": "Q12881",
+   "desc_en": "Brazilian lyricist and novelist (born 1947)",
+   "label_pt": "Paulo Coelho",
+   "desc_pt": "escritor e letrista brasileiro",
+   "birth": "+1947-08-24T00:00:00Z",
+   "image": true,
+   "viaf": "52700",
+   "isni": "0000000120981529",
+   "ol": "OL66700A",
+   "pt_wikipedia": true,
+   "en_wikipedia": true,
+   "ids": 5
+  },
+  "wikipedia": {
+   "pt": {
+    "extract_chars": 137,
+    "thumbnail": true,
+    "url": "https://pt.wikipedia.org/wiki/Paulo_Coelho"
+   },
+   "en": {
+    "extract_chars": 190,
+    "thumbnail": true,
+    "url": "https://en.wikipedia.org/wiki/Paulo_Coelho"
+   }
+  }
+ },
+ "Kentaro Miura": {
+  "openlibrary": {
+   "key": "OL1420926A",
+   "name": "三浦建太郎",
+   "bio": true,
+   "bio_chars": 450,
+   "birth": "11 July 1966",
+   "death": "06 May 2021",
+   "photos": true,
+   "links": 0,
+   "remote_ids": [
+    "amazon",
+    "bookbrainz",
+    "gnd",
+    "goodreads",
+    "imdb",
+    "isfdb",
+    "isni",
+    "lc_naf",
+    "librarything",
+    "musicbrainz",
+    "storygraph",
+    "viaf",
+    "wikidata"
+   ]
+  },
+  "wikidata": {
+   "qid": "Q715725",
+   "desc_en": "Japanese manga artist (1966–2021)",
+   "label_pt": "Kentaro Miura",
+   "desc_pt": "mangaká japonês (1966-2021)",
+   "birth": "+1966-07-11T00:00:00Z",
+   "image": false,
+   "viaf": "117044505",
+   "isni": "000000011085602X",
+   "ol": "OL1420926A",
+   "pt_wikipedia": true,
+   "en_wikipedia": true,
+   "ids": 5
+  },
+  "wikipedia": {
+   "pt": {
+    "extract_chars": 405,
+    "thumbnail": true,
+    "url": "https://pt.wikipedia.org/wiki/Kentaro_Miura"
+   },
+   "en": {
+    "extract_chars": 344,
+    "thumbnail": true,
+    "url": "https://en.wikipedia.org/wiki/Kentaro_Miura"
+   }
+  }
+ },
+ "Andrew S. Tanenbaum": {
+  "openlibrary": {
+   "key": "OL236786A",
+   "name": "Andrew S. Tanenbaum",
+   "bio": true,
+   "bio_chars": 604,
+   "birth": "16 March 1944",
+   "death": null,
+   "photos": true,
+   "links": 0,
+   "remote_ids": [
+    "goodreads",
+    "isni",
+    "lc_naf",
+    "viaf",
+    "wikidata"
+   ]
+  },
+  "wikidata": {
+   "qid": "Q92621",
+   "desc_en": "American-Dutch computer scientist",
+   "label_pt": "Andrew Stuart Tanenbaum",
+   "desc_pt": null,
+   "birth": "+1944-03-16T00:00:00Z",
+   "image": true,
+   "viaf": "108789370",
+   "isni": "0000000121037556",
+   "ol": "OL236786A",
+   "pt_wikipedia": true,
+   "en_wikipedia": true,
+   "ids": 5
+  },
+  "wikipedia": {
+   "pt": {
+    "extract_chars": 283,
+    "thumbnail": true,
+    "url": "https://pt.wikipedia.org/wiki/Andrew_Stuart_Tanenbaum"
+   },
+   "en": {
+    "extract_chars": 217,
+    "thumbnail": true,
+    "url": "https://en.wikipedia.org/wiki/Andrew_S._Tanenbaum"
+   }
+  }
+ },
+ "Neal Shusterman": {
+  "openlibrary": {
+   "key": "OL234454A",
+   "name": "Neal Shusterman",
+   "bio": false,
+   "bio_chars": 0,
+   "birth": "1962",
+   "death": null,
+   "photos": false,
+   "links": 0,
+   "remote_ids": [
+    "goodreads",
+    "imdb",
+    "isni",
+    "lc_naf",
+    "viaf",
+    "wikidata"
+   ]
+  },
+  "wikidata": {
+   "qid": "Q6984190",
+   "desc_en": "American novelist",
+   "label_pt": "Neal Shusterman",
+   "desc_pt": "Escritor norte-americano",
+   "birth": "+1962-11-12T00:00:00Z",
+   "image": true,
+   "viaf": "4001399",
+   "isni": "0000000119442691",
+   "ol": "OL234454A",
+   "pt_wikipedia": true,
+   "en_wikipedia": true,
+   "ids": 5
+  },
+  "wikipedia": {
+   "pt": {
+    "extract_chars": 361,
+    "thumbnail": true,
+    "url": "https://pt.wikipedia.org/wiki/Neal_Shusterman"
+   },
+   "en": {
+    "extract_chars": 220,
+    "thumbnail": true,
+    "url": "https://en.wikipedia.org/wiki/Neal_Shusterman"
+   }
+  }
+ }
+}

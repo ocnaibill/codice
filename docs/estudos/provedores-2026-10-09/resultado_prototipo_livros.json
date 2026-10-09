@@ -1,0 +1,400 @@
+{
+ "dune": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "Dune",
+   "author": "Frank Herbert",
+   "date": 1965,
+   "isbn": "9780340839935",
+   "publisher": "Berkley",
+   "cover": true,
+   "desc": true,
+   "tags": [
+    "Dune (Imaginary place)",
+    "Fiction",
+    "Fiction, science fiction, general",
+    "Dune (imaginary place), fiction",
+    "New York Times reviewed"
+   ],
+   "score": 170
+  },
+  "debug": {
+   "parsed": [
+    "Dune",
+    null,
+    "Frank Herbert"
+   ]
+  }
+ },
+ "neuromancer": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "Neuromancer",
+   "author": "William Gibson",
+   "date": 1984,
+   "isbn": "9783608504880",
+   "publisher": "J'ai Lu",
+   "cover": true,
+   "desc": true,
+   "tags": [
+    "Information superhighway",
+    "Computer hackers",
+    "Conspiracies",
+    "Open Library Staff Picks",
+    "Ciencia-ficción"
+   ],
+   "score": 170
+  },
+  "debug": {
+   "parsed": [
+    "Neuromancer",
+    null,
+    "William Gibson"
+   ]
+  }
+ },
+ "pragprog": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "The Pragmatic Programmer",
+   "author": "Andy Hunt, Dave Thomas",
+   "date": 1999,
+   "isbn": "0132100673",
+   "publisher": "Addison-Wesley Professional",
+   "cover": true,
+   "desc": true,
+   "tags": [
+    "Computer programming",
+    "Vocational education",
+    "Projectmanagement",
+    "Métodos ágeis",
+    "Programmeren (computers)"
+   ],
+   "score": 133
+  },
+  "debug": {
+   "parsed": [
+    "The Pragmatic Programmer",
+    null,
+    "Andrew Hunt"
+   ]
+  }
+ },
+ "modernos": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "Modern Operating Systems",
+   "author": "Andrew S. Tanenbaum, Herbert Bos",
+   "date": 1992,
+   "isbn": "5498073062",
+   "publisher": "Pearson India",
+   "cover": true,
+   "desc": true,
+   "tags": [
+    "Besturingssystemen",
+    "İşletim sistemleri (Bilgisayarlar)",
+    "Operating systems (Computers)",
+    "ÇIðsletim sistemleri (Bilgisayarlar",
+    "Computers and IT"
+   ],
+   "score": 168
+  },
+  "debug": {
+   "parsed": [
+    "Modern Operating Systems",
+    null,
+    "Andrew S. Tanenbaum"
+   ]
+  }
+ },
+ "cleancode": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "Clean Code",
+   "author": "Robert C. Martin",
+   "date": 2008,
+   "isbn": "9780136083221",
+   "publisher": "Prentice Hall",
+   "cover": true,
+   "desc": false,
+   "tags": [
+    "Agile software development",
+    "Reliability",
+    "Computer software",
+    "Computer software, development",
+    "Coding theory"
+   ],
+   "score": 163
+  },
+  "debug": {
+   "parsed": [
+    "Clean Code",
+    null,
+    "Robert C. Martin"
+   ]
+  }
+ },
+ "sicp": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "Structure and Interpretation of Computer Programs",
+   "author": "Harold Abelson, Gerald J. Sussman, Julie Sussman",
+   "date": 1989,
+   "isbn": "9780262510462",
+   "publisher": "MIT Press",
+   "cover": false,
+   "desc": false,
+   "tags": [
+    "Computer programs"
+   ],
+   "score": 160
+  },
+  "debug": {
+   "parsed": [
+    "Structure and Interpretation of Computer Programs",
+    null,
+    "Harold Abelson"
+   ]
+  }
+ },
+ "1984": {
+  "current": "none",
+  "improved": "ok",
+  "rec": {
+   "title": "1984",
+   "author": "XAVIER COSTE, George Orwell",
+   "date": 2021,
+   "isbn": "9782377315116",
+   "publisher": "NORMA EDITORIAL, S.A.",
+   "cover": true,
+   "desc": false,
+   "tags": [
+    "Graphic novel",
+    "Dystopia",
+    "Science fiction",
+    "Comic books"
+   ],
+   "score": 161
+  },
+  "debug": {
+   "parsed": [
+    "1984",
+    null,
+    "George Orwell"
+   ]
+  }
+ },
+ "hobbit": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "The Hobbit",
+   "author": "J.R.R. Tolkien",
+   "date": 1937,
+   "isbn": "9785878600125",
+   "publisher": "Minotauro",
+   "cover": true,
+   "desc": true,
+   "tags": [
+    "Fantasy",
+    "Arkenstone",
+    "Battle of Five Armies",
+    "invisibility",
+    "thrushes"
+   ],
+   "score": 170
+  },
+  "debug": {
+   "parsed": [
+    "The Hobbit",
+    null,
+    "J. R. R. Tolkien"
+   ]
+  }
+ },
+ "duna_pt": {
+  "current": "wrong",
+  "improved": "none",
+  "rec": null,
+  "debug": {
+   "parsed": [
+    "Duna",
+    null,
+    "Frank Herbert"
+   ],
+   "best": null
+  }
+ },
+ "casmurro": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "Dom Casmurro",
+   "author": "Machado de Assis",
+   "date": 1900,
+   "isbn": "9788500507007",
+   "publisher": "Ediciones Cátedra",
+   "cover": true,
+   "desc": true,
+   "tags": [
+    "Religious",
+    "Fiction",
+    "Reminiscing in old age",
+    "Adultery",
+    "Authorship"
+   ],
+   "score": 170
+  },
+  "debug": {
+   "parsed": [
+    "Dom Casmurro",
+    null,
+    "Machado de Assis"
+   ]
+  }
+ },
+ "alquimista": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "O Alquimista",
+   "author": "Paulo Coelho",
+   "date": 1988,
+   "isbn": "9781776710676",
+   "publisher": "HarperCollins Publishers",
+   "cover": true,
+   "desc": true,
+   "tags": [
+    "Translations into Indonesian",
+    "Voyages and travels",
+    "Fiction",
+    "Portuguese Fiction",
+    "Self-realization"
+   ],
+   "score": 170
+  },
+  "debug": {
+   "parsed": [
+    "O Alquimista",
+    null,
+    "Paulo Coelho"
+   ]
+  }
+ },
+ "sapiens": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "Sapiens",
+   "author": "Yuval Noah Harari",
+   "date": 2011,
+   "isbn": "9781716994982",
+   "publisher": "Blackstone Pub",
+   "cover": true,
+   "desc": true,
+   "tags": [
+    "Technology and civilization",
+    "Human beings",
+    "Historical Chronology",
+    "Historia universal",
+    "Historia"
+   ],
+   "score": 170
+  },
+  "debug": {
+   "parsed": [
+    "Sapiens: Uma breve história da humanidade",
+    null,
+    "Yuval Noah Harari"
+   ]
+  }
+ },
+ "lusiadas": {
+  "current": "ok",
+  "improved": "ok",
+  "rec": {
+   "title": "Os Lusíadas",
+   "author": "Luís de Camões, Souza Botelho",
+   "date": 1572,
+   "isbn": "9781720105664",
+   "publisher": "J. Archet",
+   "cover": true,
+   "desc": true,
+   "tags": [
+    "Poetry",
+    "History",
+    "Discovery and exploration",
+    "Description and travel",
+    "Explorers"
+   ],
+   "score": 170
+  },
+  "debug": {
+   "parsed": [
+    "Os Lusíadas",
+    null,
+    "Luís de Camões"
+   ]
+  }
+ },
+ "hp_pt": {
+  "current": "ok",
+  "improved": "none",
+  "rec": null,
+  "debug": {
+   "parsed": [
+    "Harry Potter e a Pedra Filosofal",
+    null,
+    "J. K. Rowling"
+   ],
+   "best": null
+  }
+ },
+ "nuvem": {
+  "current": "none",
+  "improved": "none",
+  "rec": null,
+  "debug": {
+   "parsed": [
+    "A Nuvem",
+    2,
+    "Neal Shusterman"
+   ],
+   "best": null
+  }
+ },
+ "scythe_pt": {
+  "current": "none",
+  "improved": "ok",
+  "rec": {
+   "title": "Scythe",
+   "author": "Neal Shusterman",
+   "date": 2016,
+   "isbn": "9788383183756",
+   "publisher": "Walker Books, Limited",
+   "cover": true,
+   "desc": true,
+   "tags": [
+    "Science fiction",
+    "JUVENILE FICTION / Action & Adventure / General",
+    "JUVENILE FICTION / Social Issues / Death & Dying",
+    "Death",
+    "JUVENILE FICTION / Science Fiction"
+   ],
+   "score": 165
+  },
+  "debug": {
+   "parsed": [
+    "Scythe",
+    null,
+    "Neal Shusterman"
+   ]
+  }
+ }
+}
