@@ -196,6 +196,25 @@ export const useCancelJob = () => useAdminAction((id) => api.post(`/admin/jobs/$
 
 export const useAddRoot = () => useAdminAction((path) => api.post('/admin/storage/roots', { path }));
 export const useRemoveRoot = () => useAdminAction((id) => api.delete(`/admin/storage/roots/${id}`));
+/** Deletes for good the retired works of a folder that keep no bytes on the server (only their records go). The server does a few
+ *  hundred a call, so this asks again until none waits and reports each step to `onProgress(purged so far)`; it answers with how many
+ *  it deleted. What was deleted before an error stays deleted, so the lists are asked again either way. */
+export function usePurgeRetiredInRoot() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, onProgress }) => {
+      let purged = 0;
+      for (;;) {
+        const { purged: step, remaining } = (await api.post(`/admin/storage/roots/${id}/purge-retired`)).data;
+        purged += step;
+        onProgress?.(purged);
+        // A call that deleted nothing is the end, whatever it says waits: asking again would not change that.
+        if (remaining === 0 || step === 0) return purged;
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['admin'] }),
+  });
+}
 export const useScanRoot = () => useAdminAction((rootId) => api.post('/admin/library/scan', { rootId }));
 export const useRetryCleanups = () => useAdminAction(() => api.post('/admin/storage/cleanups/retry'));
 export const useTrashOrphans = () =>

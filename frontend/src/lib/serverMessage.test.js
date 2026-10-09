@@ -60,6 +60,14 @@ describe('serverMessage', () => {
     expect(serverMessage(new Error('Network Error'), 'Sem resposta.')).toBe('Sem resposta.');
     expect(serverMessage(undefined, 'Sem resposta.')).toBe('Sem resposta.');
   });
+  it('says which way out there is when a folder cannot be removed because of the files it still holds (#230)', () => {
+    const said = (a, r) => serverMessage(refused(409, `Files in this directory are still catalogued: ${a} in the catalog, ${r} from retired works`), 'Falha.');
+    expect(said(3, 0)).toBe('Ainda há arquivos desta pasta no acervo: mova-os para o armazenamento gerenciado antes.');
+    expect(said(0, 2930)).toBe('Só restam 2930 arquivos de obras retiradas. Apague de vez essas obras, pelo botão desta pasta ou pela Lixeira: os arquivos da pasta continuam onde estão.');
+    expect(said(0, 1)).toBe('Só restam 1 arquivo de obras retiradas. Apague de vez essas obras, pelo botão desta pasta ou pela Lixeira: os arquivos da pasta continuam onde estão.');
+    expect(said(21, 2930)).toBe('Ainda há 21 arquivos desta pasta no acervo e 2930 arquivos de obras retiradas. Mova os do acervo para o armazenamento gerenciado e apague de vez as obras retiradas, pelo botão desta pasta ou pela Lixeira.');
+    expect(said(1, 1)).toBe('Ainda há 1 arquivo desta pasta no acervo e 1 arquivo de obras retiradas. Mova os do acervo para o armazenamento gerenciado e apague de vez as obras retiradas, pelo botão desta pasta ou pela Lixeira.');
+  });
 });
 
 // What the server can say is read from its source, so that a message written in English tomorrow is not shown to a person as it is:

@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -68,13 +70,47 @@ func (h *StorageHandler) Reorganize(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(res)
 }
 
-// StorageRoot is a directory the owner has authorised for the referenced library.
+// StorageRoot is a directory the owner has authorised for the referenced library, with what the catalog keeps in it.
 type StorageRoot struct {
 	ID   int    `json:"id"`
 	Path string `json:"path"`
+	// Files are the files in the directory that belong to works in the catalog; RetiredFiles, the ones of retired works.
+	Files        int `json:"files"`
+	RetiredFiles int `json:"retiredFiles"`
+	// RetiredWorks are the retired works with a file in the directory; PurgeableWorks, those among them that keep no
+	// bytes on the server, so that deleting them for good touches nothing but their records.
+	RetiredWorks   int `json:"retiredWorks"`
+	PurgeableWorks int `json:"purgeableWorks"`
 }
 
-// ListRoots returns the authorised directories and the managed storage directory.
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// rootUse counts what the catalog keeps in a directory: the files of the works in the catalog and of the retired ones.
+// A retired work is purgeable from here when none of its files is stored by the server (the ones in the trash are).
+func rootUse(ctx context.Context, q rowQuerier, root string) (sr StorageRoot, err error) {
+	err = q.QueryRowContext(ctx, `
+		WITH here AS (
+			SELECT l.file_id, w.id AS work_id, w.retired_at IS NOT NULL AS retired,
+			       w.id IS NOT NULL AND NOT EXISTS (
+			         SELECT 1 FROM storage_locations m JOIN files mf ON mf.id = m.file_id JOIN editions me ON me.id = mf.edition_id
+			         WHERE me.work_id = w.id AND m.mode = 'managed') AS keeps_nothing
+			FROM storage_locations l
+			LEFT JOIN files f ON f.id = l.file_id
+			LEFT JOIN editions e ON e.id = f.edition_id
+			LEFT JOIN works w ON w.id = e.work_id
+			WHERE l.mode = 'referenced' AND l.root = $1
+		)
+		SELECT count(*) FILTER (WHERE NOT retired), count(*) FILTER (WHERE retired),
+		       count(DISTINCT work_id) FILTER (WHERE retired),
+		       count(DISTINCT work_id) FILTER (WHERE retired AND keeps_nothing)
+		FROM here`, root).Scan(&sr.Files, &sr.RetiredFiles, &sr.RetiredWorks, &sr.PurgeableWorks)
+	sr.Path = root
+	return sr, err
+}
+
+// ListRoots returns the authorised directories, what the catalog keeps in each, and the managed storage directory.
 func (h *StorageHandler) ListRoots(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.DB.QueryContext(r.Context(), `SELECT id, path FROM storage_roots ORDER BY id`)
 	if err != nil {
@@ -84,10 +120,21 @@ func (h *StorageHandler) ListRoots(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	roots := []StorageRoot{}
 	for rows.Next() {
-		var sr StorageRoot
-		if rows.Scan(&sr.ID, &sr.Path) == nil {
-			roots = append(roots, sr)
+		var id int
+		var p string
+		if rows.Scan(&id, &p) == nil {
+			roots = append(roots, StorageRoot{ID: id, Path: p})
 		}
+	}
+	rows.Close()
+	for i := range roots {
+		use, err := rootUse(r.Context(), h.DB, roots[i].Path)
+		if err != nil {
+			http.Error(w, "Error listing roots", http.StatusInternalServerError)
+			return
+		}
+		use.ID = roots[i].ID
+		roots[i] = use
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"roots": roots, "managed": h.StoragePath})
@@ -191,10 +238,14 @@ func (h *StorageHandler) RemoveRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Root not found", http.StatusNotFound)
 		return
 	}
-	var files int
-	tx.QueryRowContext(r.Context(), `SELECT count(*) FROM storage_locations WHERE mode = 'referenced' AND root = $1`, p).Scan(&files)
-	if files > 0 {
-		http.Error(w, "Files in this directory are still catalogued: move them to the managed storage first", http.StatusConflict)
+	use, err := rootUse(r.Context(), tx, p)
+	if err != nil {
+		http.Error(w, "Error removing the root", http.StatusInternalServerError)
+		return
+	}
+	if use.Files+use.RetiredFiles > 0 {
+		// The two numbers say which way out there is: the files of the catalog are moved, the ones of retired works are deleted for good.
+		http.Error(w, fmt.Sprintf("Files in this directory are still catalogued: %d in the catalog, %d from retired works", use.Files, use.RetiredFiles), http.StatusConflict)
 		return
 	}
 	if _, err := tx.ExecContext(r.Context(), `DELETE FROM storage_roots WHERE id = $1`, id); err != nil {
@@ -210,6 +261,74 @@ func (h *StorageHandler) RemoveRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// purgeBatch is how many retired works one call to PurgeRetired deletes: a call is a request, and a folder can have thousands.
+// (A variable, so that a test can use a small one.)
+var purgeBatch = 200
+
+// PurgeRetired deletes for good some of the retired works whose files are in the directory and that keep no bytes on the
+// server, so only their records go: the files in the directory are never touched (RN-004), and the notes stay, without the
+// work. It answers how many it deleted and how many wait, and the screen asks again until none does. This is the way out
+// when removing a directory is refused because of the files of retired works (#230).
+func (h *StorageHandler) PurgeRetired(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil || id <= 0 {
+		http.Error(w, "Root not found", http.StatusNotFound)
+		return
+	}
+	var root string
+	if err := h.DB.QueryRowContext(r.Context(), `SELECT path FROM storage_roots WHERE id = $1`, id).Scan(&root); err != nil {
+		http.Error(w, "Root not found", http.StatusNotFound)
+		return
+	}
+	rows, err := h.DB.QueryContext(r.Context(), `
+		SELECT w.id FROM works w
+		WHERE w.retired_at IS NOT NULL
+		  AND EXISTS (SELECT 1 FROM storage_locations l JOIN files f ON f.id = l.file_id JOIN editions e ON e.id = f.edition_id
+		              WHERE e.work_id = w.id AND l.mode = 'referenced' AND l.root = $1)
+		  AND NOT EXISTS (SELECT 1 FROM storage_locations m JOIN files mf ON mf.id = m.file_id JOIN editions me ON me.id = mf.edition_id
+		                  WHERE me.work_id = w.id AND m.mode = 'managed')
+		ORDER BY w.id LIMIT $2`, root, purgeBatch)
+	if err != nil {
+		http.Error(w, "Error reading the retired works", http.StatusInternalServerError)
+		return
+	}
+	var ids []int
+	for rows.Next() {
+		var wid int
+		if rows.Scan(&wid) == nil {
+			ids = append(ids, wid)
+		}
+	}
+	rows.Close()
+
+	trash := &storage.Trash{DB: h.DB, Root: h.StoragePath}
+	purged := 0
+	for _, wid := range ids {
+		_, deleted, err := trash.PurgeWork(r.Context(), wid, currentUserID(r))
+		if err != nil {
+			log.Println("Error deleting a retired work:", err)
+			http.Error(w, "Error deleting the book", http.StatusInternalServerError)
+			return
+		}
+		if deleted {
+			purged++
+		}
+	}
+	if purged > 0 {
+		if err := audit.Record(r.Context(), h.DB, currentUserID(r), "storage.retired_purge", "storage_root", strconv.Itoa(id),
+			map[string]any{"path": root, "purged": purged}); err != nil {
+			log.Println("Could not audit the deletion of the retired works:", err)
+		}
+	}
+	use, err := rootUse(r.Context(), h.DB, root)
+	if err != nil {
+		http.Error(w, "Error reading the directory", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"purged": purged, "remaining": use.PurgeableWorks})
 }
 
 type scanRequest struct {
