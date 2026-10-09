@@ -261,6 +261,39 @@ export const useMergePeople = () =>
   useAdminAction(({ id, keep }) => api.post(`/admin/people/merges/${id}/merge`, { keep, confirm: true }));
 export const useDismissPeopleMerge = () => useAdminAction((id) => api.post(`/admin/people/merges/${id}/dismiss`));
 
+/** The people whose surname is still to be told apart (`state` unset), or the ones already dealt with (`state: 'done'`), a page at a time,
+ *  the ones with most works first. Each carries the division proposed (or, dealt with, the one it has). */
+export function useNames({ state, q = '', page = 1 }) {
+  return useQuery({
+    queryKey: ['admin', 'names', state ?? 'pending', q, page],
+    queryFn: async () => (await api.get('/admin/people/names', { params: { ...(state ? { state } : {}), ...(q ? { q } : {}), page } })).data, // { data, total, page, limit, totalPages }
+    staleTime: 0,
+    placeholderData: keepPreviousData,
+  });
+}
+/** Tells apart the surname of some people, one after the other, each as `{ id, family, given }` (`{ id, undivided: true }` says that there is
+ *  none, `{ id, family: '', given: '' }` takes the division back). It reports each one to `onProgress(how many so far)`, and stops at the first
+ *  the server refuses; what was saved stays saved, so the lists are asked again either way, the ones of the library included (the name is
+ *  shown in the order a person prefers once the surname is known). */
+export function useDivideNames() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ items, onProgress }) => {
+      let saved = 0;
+      for (const { id, family = '', given = '', undivided = false } of items) {
+        await api.put(`/admin/people/${id}/name`, undivided ? { undivided: true } : { family, given });
+        saved += 1;
+        onProgress?.(saved);
+      }
+      return saved;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin'] });
+      refreshLibrary(queryClient);
+    },
+  });
+}
+
 export const useBlockAccount = () => useAdminAction((id) => api.post(`/users/${id}/block`));
 export const useUnblockAccount = () => useAdminAction((id) => api.post(`/users/${id}/unblock`));
 

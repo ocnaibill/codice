@@ -192,6 +192,26 @@ func (h *PeopleHandler) SetLibraryOrder(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, people.OrderFor(r.Context(), h.DB, currentUserID(r)))
 }
 
+// Names answers GET /admin/people/names?state=&q=&page=&limit=: the people whose surname nobody has told apart yet, with the division
+// proposed for each, for someone from the staff to confirm or correct (DEC-139); with state=done, the ones that were already dealt with, to
+// change or take back. The ones with most works come first.
+func (h *PeopleHandler) Names(w http.ResponseWriter, r *http.Request) {
+	page, limit := 1, 20
+	if v, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && v > 0 {
+		page = v
+	}
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 100 {
+		limit = v
+	}
+	out, err := people.ListNames(r.Context(), h.DB, r.URL.Query().Get("state") == "done", r.URL.Query().Get("q"), page, limit)
+	if err != nil {
+		log.Println("Error listing the names to divide:", err)
+		http.Error(w, "Error listing the names", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // SetName corrects, by hand, which words of a person's name are the surname and which are the given names, or
 // takes the division away (empty). The words have to be the ones the name already has (#64): this says which is
 // which, it does not rename anyone.
@@ -200,12 +220,22 @@ func (h *PeopleHandler) SetName(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Family string `json:"family"`
 		Given  string `json:"given"`
+		// Undivided says that the name has no surname to tell apart (an organisation, a pen name): the person is not asked about again.
+		Undivided bool `json:"undivided"`
 	}
 	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req) != nil {
 		http.Error(w, "family and given are the parts of the name", http.StatusBadRequest)
 		return
 	}
-	switch err := people.SetParts(r.Context(), h.DB, id, req.Family, req.Given, currentUserID(r)); {
+	save := func() error { return people.SetParts(r.Context(), h.DB, id, req.Family, req.Given, currentUserID(r)) }
+	if req.Undivided {
+		if req.Family != "" || req.Given != "" {
+			http.Error(w, "a name without a surname has no parts", http.StatusBadRequest)
+			return
+		}
+		save = func() error { return people.SetUndivided(r.Context(), h.DB, id, true, currentUserID(r)) }
+	}
+	switch err := save(); {
 	case errors.Is(err, people.ErrNotFound):
 		http.Error(w, "Person not found", http.StatusNotFound)
 	case errors.Is(err, people.ErrNotTheName):

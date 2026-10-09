@@ -4,6 +4,7 @@ import {
 } from '../api/admin';
 import { ConfirmDialog } from './ConfirmDialog';
 import { PeopleMerges } from './PeopleMerges';
+import { PersonNames } from './PersonNames';
 import { REASON, contentLine, translationLine } from '../../../lib/duplicates';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 import { LoadError } from '../../../components/ui/LoadError';
@@ -89,6 +90,7 @@ export function DuplicatesTab() {
     <div className="flex flex-col gap-5">
       <Duplicates />
       <PeopleMerges />
+      <PersonNames />
     </div>
   );
 }

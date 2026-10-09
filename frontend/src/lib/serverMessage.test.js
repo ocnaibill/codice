@@ -87,6 +87,8 @@ describe('what the server says', () => {
 
   // Messages for programs that call the API, which no screen of the app brings about: they are not translated.
   const FOR_PROGRAMS = [
+    // the surname of a person, which the screen sends either as parts or as "no surname", never both
+    'a name without a surname has no parts',
     // the filters and the setting of the record of sign-ins, which the screen sends from lists and a field it checks first
     'The page is not valid',
     'The period is not valid: use RFC 3339 dates',
