@@ -43,6 +43,8 @@ class MetadataRecord:
     cover_url: Optional[str] = None
     source: str = ""
     raw: dict = field(default_factory=dict)
+    prior: float = 0.0   # how well known the work is, from 0 to 10, for breaking a tie between answers that are equally close
+    match: dict = field(default_factory=dict)   # how close the answer is to the file (providers.match), set when it is judged
 
 
 class BaseProvider(ABC):
@@ -56,6 +58,18 @@ class BaseProvider(ABC):
     def search(self, query: str) -> Optional[MetadataRecord]:
         """Search for metadata using a query string (title, ISBN, etc.)."""
         pass
+
+    def lookup(self, query) -> List[MetadataRecord]:
+        """The answers to a file (a providers.query.FileQuery), several if the provider has them. Only the title leaves the server (DEC-097):
+        `query.search_title` is what to ask; the rest of the query is for judging the answers. A provider that only knows how to
+        `search` gives its one answer."""
+        record = self.search(query.search_title)
+        return [record] if record is not None else []
+
+    def enrich(self, record: MetadataRecord) -> MetadataRecord:
+        """Completes the answer that was chosen with what costs another request (the description of a work, for one): only the one chosen is
+        asked about, not every candidate. A provider with nothing to add returns it as it is."""
+        return record
 
     @property
     @abstractmethod

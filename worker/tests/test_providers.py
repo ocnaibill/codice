@@ -60,7 +60,7 @@ class TestOpenLibraryProvider:
     def setup_method(self):
         self.provider = OpenLibraryProvider()
 
-    @patch('providers.openlibrary.requests.get')
+    @patch('providers.http.requests.get')
     def test_search_returns_record(self, mock_get):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -84,7 +84,7 @@ class TestOpenLibraryProvider:
         assert result.author == "Jane Author"
         assert result.cover_url == "https://covers.openlibrary.org/b/id/12345-L.jpg"
 
-    @patch('providers.openlibrary.requests.get')
+    @patch('providers.http.requests.get')
     def test_search_http_error(self, mock_get):
         mock_response = MagicMock()
         mock_response.status_code = 500
@@ -149,7 +149,7 @@ def _openlibrary(doc):
     response = MagicMock()
     response.status_code = 200
     response.json.return_value = {"docs": [doc]}
-    with patch('providers.openlibrary.requests.get', return_value=response):
+    with patch('providers.http.requests.get', return_value=response):
         return OpenLibraryProvider().search("Good Omens")
 
 

@@ -61,7 +61,7 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
         analyzer.mark_protected(work_id)
     checkpoint()
 
-    enriched = provider_registry.search_best(metadata.title, metadata.format)
+    enriched = provider_registry.search_best(metadata.title, metadata.format, author=metadata.author)
     identifiers = dict(native)
     if enriched:
         source = getattr(enriched, 'source', '') or 'provider'
@@ -79,6 +79,8 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
         if record['credits']:
             evidence['credits'] = record['credits']
         evidence['query'] = metadata.title
+        if getattr(enriched, 'match', None):
+            evidence['match'] = enriched.match   # how close the answer is to the file: the administration can say why it is a suggestion
         stored = analyzer.save_candidates(work_id, record, source, evidence)
         print(f"   💡 {stored} suggestion(s) from {source} waiting for review")
 

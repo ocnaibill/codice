@@ -28,7 +28,8 @@ class FakeProviders:
         self.cover = cover
         self.downloads = []
 
-    def search_best(self, title, fmt):
+    def search_best(self, title, fmt, author=None):
+        self.asked = (title, fmt, author)
         return self.record
 
     def download_cover(self, url, file_path, covers_dir):
@@ -78,6 +79,24 @@ class TestPipeline:
                 {'name': 'Frank Herbert', 'ids': {'openlibrary': 'OL79034A'}},
                 {'name': 'John Schoenherr', 'role': 'illustrator'}]
             assert evidence['query'] == 'Duna'
+
+    def test_how_close_the_answer_is_travels_as_evidence_and_the_providers_are_asked_with_the_files_author(self):
+        import json
+        db = FakeDB()
+        providers = FakeProviders(record(match={'score': 160.0, 'title': 1.0, 'author': 1.0, 'accepted': True, 'reason': ''}))
+        run(db, meta(), providers)
+        assert providers.asked == ('Duna', 'epub', 'Frank Herbert')
+        rows = db.matching("INSERT INTO metadata_candidates")
+        assert rows
+        for q, p in rows:
+            assert json.loads(p[-1])['match'] == {'score': 160.0, 'title': 1.0, 'author': 1.0, 'accepted': True, 'reason': ''}
+
+    def test_an_answer_that_was_not_judged_carries_no_match(self):
+        import json
+        db = FakeDB()
+        run(db, meta(), FakeProviders(record()))
+        for q, p in db.matching("INSERT INTO metadata_candidates"):
+            assert 'match' not in json.loads(p[-1])
 
     def test_the_people_credited_besides_the_author_become_a_contributors_suggestion(self):
         import json
