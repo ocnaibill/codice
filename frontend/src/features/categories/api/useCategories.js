@@ -2,11 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import { refreshLibrary } from '../../../lib/refreshLibrary';
 
-/** The tree of categories, flat and sorted by name, each with how many works are in it (and under it): `{ id, parentId, name, works, own }`. */
-export function useCategories() {
+/** The tree of categories, flat and sorted by name, each with how many works are in it (and under it): `{ id, parentId, name, works, own }`. With `covers`, each also has the covers of a few of its works. */
+export function useCategories({ covers = false } = {}) {
   return useQuery({
-    queryKey: ['categories'],
-    queryFn: async () => (await api.get('/categories')).data.data,
+    queryKey: ['categories', { covers }],
+    queryFn: async () => (await api.get('/categories', { params: covers ? { covers: 1 } : undefined })).data.data,
     staleTime: 30_000,
   });
 }

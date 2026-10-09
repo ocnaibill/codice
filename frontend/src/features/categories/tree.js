@@ -62,3 +62,11 @@ export function pathOf(flat, id) {
   for (let c = byId.get(id); c; c = c.parentId != null ? byId.get(c.parentId) : undefined) names.unshift(c.name);
   return names.join(' › ');
 }
+
+/** The categories above one, from the top down (not the category itself). */
+export function ancestorsOf(flat, id) {
+  const byId = new Map(flat.map((c) => [c.id, c]));
+  const above = [];
+  for (let c = byId.get(byId.get(id)?.parentId); c; c = byId.get(c.parentId)) above.unshift(c);
+  return above;
+}

@@ -14,6 +14,8 @@ import { SearchPage } from '../features/search/SearchPage';
 import { CollectionsGrid } from '../features/collections/components/CollectionsGrid';
 import { useCollections } from '../features/collections/api/useCollections';
 import { isStaff } from '../features/auth/api/useMe';
+import { CategoryShelf } from '../features/home/components/CategoryShelf';
+import { CategoryPage } from '../features/categories/components/CategoryPage';
 
 // "Adicionados recentemente" says how the catalog is sorted, so it only holds while it is: sorted by title or
 // by author the heading says that instead (the other views are named by what they hold, not by the order).
@@ -41,7 +43,10 @@ function QueryError({ children, onRetry }) {
 }
 
 export function HomePage({ searchQuery = '' }) {
+  const categoryId = useGlobalStore((state) => state.categoryPageId);
   if (searchQuery.trim()) return <SearchPage query={searchQuery} />;
+  // A category has a page of its own, in the place of the shelves (DEC-140).
+  if (categoryId) return <CategoryPage id={categoryId} />;
   return <HomeDashboard />;
 }
 
@@ -161,6 +166,7 @@ function HomeDashboard() {
           </>
         )}
       </section>
+      {view === 'all' && <CategoryShelf />}
       <section
         className="library-personal"
         aria-label="Sua coleção e anotações"

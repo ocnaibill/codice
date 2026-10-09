@@ -6,7 +6,7 @@ import { useGlobalStore } from '../../store/useGlobalStore';
 let view;
 const bottom = () => document.body.querySelector('.library-bottom-nav');
 const current = () => [...bottom().querySelectorAll('[aria-current="page"]')].map((b) => b.textContent.trim());
-beforeEach(() => useGlobalStore.setState({ notesOpen: false, adminOpen: false, searchQuery: '', libraryView: 'all' }));
+beforeEach(() => useGlobalStore.setState({ notesOpen: false, adminOpen: false, searchQuery: '', libraryView: 'all', categoryPageId: null }));
 afterEach(() => view.unmount());
 
 describe('the bottom bar of a phone (#13)', () => {
@@ -17,6 +17,12 @@ describe('the bottom bar of a phone (#13)', () => {
     await view.click(button);
     expect(useGlobalStore.getState().notesOpen).toBe(true);
     expect(current()).toEqual(['Anotações']);
+  });
+
+  it('does not mark Acervo while the page of a category is open', async () => {
+    useGlobalStore.setState({ categoryPageId: 7 });
+    view = await mount(<AppShell searchQuery="" canAdmin={false}><p>x</p></AppShell>);
+    expect(current()).toEqual([]);
   });
 
   it('does not mark the notes while a search is on screen', async () => {

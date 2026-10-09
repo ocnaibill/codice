@@ -3,7 +3,7 @@ import { HOME, hashFromRoute, isNewPlace, routeFromHash, routeFromState, stateFr
 
 const state = (over = {}) => ({
   adminOpen: false, adminTab: 'jobs', notesOpen: false, searchQuery: '', accountDialogs: [], libraryView: 'all', libraryPage: 1, librarySort: 'added',
-  sheetWorkId: null, collectionSheetId: null, personSheetId: null, activeBookId: null, activeFileId: null, ...over,
+  sheetWorkId: null, collectionSheetId: null, personSheetId: null, activeBookId: null, activeFileId: null, categoryPageId: null, ...over,
 });
 const hashOf = (over) => hashFromRoute(routeFromState(state(over)));
 
@@ -80,7 +80,7 @@ describe('the address of the screens (#182)', () => {
   it('says what the store is to be set to, with no place asked for and the saved position for the reader', () => {
     expect(stateFromRoute(routeFromHash('#/mangas?p=2&obra=12&leitor=7&arquivo=33'))).toEqual({
       adminOpen: false, adminTab: 'jobs', notesOpen: false, searchQuery: '', accountDialogs: [], libraryView: 'mangas', libraryPage: 2, librarySort: 'added',
-      sheetWorkId: 12, collectionSheetId: null, personSheetId: null, activeBookId: 7, activeFileId: 33, fromStart: false, seek: null,
+      sheetWorkId: 12, collectionSheetId: null, categoryPageId: null, personSheetId: null, activeBookId: 7, activeFileId: 33, fromStart: false, seek: null,
     });
     expect(stateFromRoute(HOME)).toMatchObject({ adminOpen: false, notesOpen: false, libraryView: 'all', sheetWorkId: null, activeBookId: null });
     expect(stateFromRoute(routeFromHash('#/admin/storage'))).toMatchObject({ adminOpen: true, adminTab: 'storage', notesOpen: false });
@@ -184,5 +184,46 @@ describe('what is a new place of the history', () => {
     expect(isNewPlace(route('#/busca?q=d'), route('#/busca?q=du'))).toBe(false);
     expect(isNewPlace(route('#/admin'), route('#/admin/storage'))).toBe(false);
     expect(isNewPlace(route('#/admin/storage'), route('#/admin/logins'))).toBe(false);
+  });
+});
+
+describe('the page of a category in the address (DEC-140)', () => {
+  it('is "#/categorias/" and the number, with the page after it', () => {
+    expect(hashOf({ categoryPageId: 7 })).toBe('#/categorias/7');
+    expect(hashOf({ categoryPageId: 7, libraryPage: 3 })).toBe('#/categorias/7?p=3');
+    expect(hashOf({ categoryPageId: 7, sheetWorkId: 12 })).toBe('#/categorias/7?obra=12');
+  });
+
+  it('reads it back, with the page and what is open over it', () => {
+    expect(routeFromHash('#/categorias/7')).toMatchObject({ area: 'library', categoria: 7, page: 1 });
+    expect(routeFromHash('#/categorias/7?p=3&obra=12')).toMatchObject({ categoria: 7, page: 3, obra: 12 });
+    expect(routeFromHash('#/Categorias/7').categoria).toBe(7);
+  });
+
+  it('is the library when the number is not a category: nothing, zero, negative, a fraction, words', () => {
+    for (const hash of ['#/categorias', '#/categorias/', '#/categorias/0', '#/categorias/-2', '#/categorias/1.5', '#/categorias/abc']) {
+      expect(routeFromHash(hash)).toEqual(HOME);
+    }
+  });
+
+  it('tells the store which category is open, and none when it is not', () => {
+    expect(stateFromRoute(routeFromHash('#/categorias/7')).categoryPageId).toBe(7);
+    expect(stateFromRoute(HOME).categoryPageId).toBeNull();
+    expect(stateFromRoute(routeFromHash('#/acervo')).categoryPageId).toBeNull();
+  });
+
+  it('is not in the address when another area is open: the administration, a search, the notes', () => {
+    expect(hashOf({ categoryPageId: 7, adminOpen: true })).toBe('#/admin');
+    expect(hashOf({ categoryPageId: 7, searchQuery: 'duna' })).toBe('#/busca?q=duna');
+    expect(hashOf({ categoryPageId: 7, notesOpen: true })).toBe('#/notas');
+    expect(routeFromState(state({ categoryPageId: 7, adminOpen: true })).categoria).toBeNull();
+  });
+
+  it('is a new place when it opens, and when another category opens, but not when its page turns', () => {
+    const route = (hash) => routeFromHash(hash);
+    expect(isNewPlace(route('#/acervo'), route('#/categorias/7'))).toBe(true);
+    expect(isNewPlace(route('#/categorias/7'), route('#/acervo'))).toBe(true);
+    expect(isNewPlace(route('#/categorias/7'), route('#/categorias/8'))).toBe(true);
+    expect(isNewPlace(route('#/categorias/7'), route('#/categorias/7?p=2'))).toBe(false);
   });
 });

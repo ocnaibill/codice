@@ -34,3 +34,12 @@ describe('useWorks: sorting', () => {
     expect(api.get.mock.calls.at(-1)[0]).not.toContain('sort=');
   });
 });
+
+describe('useWorks: the category', () => {
+  it('asks for the works of a category, and of no category when none is given', async () => {
+    await mount({ category: 7 });
+    expect(api.get.mock.calls[0][0]).toContain('category=7');
+    await mount({});
+    expect(api.get.mock.calls.at(-1)[0]).not.toContain('category');
+  });
+});

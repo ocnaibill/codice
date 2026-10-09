@@ -386,3 +386,148 @@ func TestCategories_SettingThoseOfAWorkReplacesWhatItHadAndRefusesWhatDoesNotExi
 		t.Errorf("no audit entry")
 	}
 }
+
+func (s *catalogStack) inCategory(work int, ids ...int64) {
+	s.t.Helper()
+	list := "["
+	for i, id := range ids {
+		if i > 0 {
+			list += ","
+		}
+		list += fmt.Sprint(id)
+	}
+	if code := s.setWorkCategories(work, list+"]"); code != 200 {
+		s.t.Fatalf("putting %d in %s]: %d", work, list, code)
+	}
+}
+
+func listedTitles(l workList) string {
+	out := []string{}
+	for _, w := range l.Data {
+		out = append(out, w.Title)
+	}
+	return strings.Join(out, "|")
+}
+
+func TestWorksOfACategory_AreTheOnesInItAndUnderItAndNoOthers(t *testing.T) {
+	s := newCatalogStack(t)
+	manga := s.makeCategory("Mangá", nil)
+	seinen := s.makeCategory("Seinen", &manga)
+	dark := s.makeCategory("Dark", &seinen)
+	scifi := s.makeCategory("Ficção científica", nil)
+	berserk := s.addWork("Berserk", "Kentaro Miura", "a.cbz", "cbz")
+	vagabond := s.addWork("Vagabond", "Takehiko Inoue", "b.cbz", "cbz")
+	naruto := s.addWork("Naruto", "Masashi Kishimoto", "c.cbz", "cbz")
+	duna := s.addWork("Duna", "Frank Herbert", "d.epub", "epub")
+	s.addWork("Sem categoria", "Alguém", "e.epub", "epub")
+	s.inCategory(berserk, dark)
+	s.inCategory(vagabond, seinen)
+	s.inCategory(naruto, manga)
+	s.inCategory(duna, scifi, seinen) // in two places, listed once
+
+	for query, want := range map[string]string{
+		fmt.Sprintf("?category=%d&sort=title", manga):  "Berserk|Duna|Naruto|Vagabond",
+		fmt.Sprintf("?category=%d&sort=title", seinen): "Berserk|Duna|Vagabond",
+		fmt.Sprintf("?category=%d&sort=title", dark):   "Berserk",
+		fmt.Sprintf("?category=%d&sort=title", scifi):  "Duna",
+		"?category=99999": "",
+		"?category=0":     "",
+		"?category=-1":    "",
+		"?category=x":     "",
+		fmt.Sprintf("?category=%d&search=duna", manga):    "Duna",
+		fmt.Sprintf("?category=%d&search=duna", scifi):    "Duna",
+		fmt.Sprintf("?category=%d&search=berserk", scifi): "",
+	} {
+		if got := listedTitles(s.list(ana, query)); got != want {
+			t.Errorf("%s: %q, want %q", query, got, want)
+		}
+	}
+	if l := s.list(ana, fmt.Sprintf("?category=%d", manga)); l.Total != 4 {
+		t.Errorf("total = %d, want 4 (a work in two places under it counts once)", l.Total)
+	}
+	// Pages: the filter is in the count and in the page.
+	first := s.list(ana, fmt.Sprintf("?category=%d&sort=title&limit=2", manga))
+	second := s.list(ana, fmt.Sprintf("?category=%d&sort=title&limit=2&page=2", manga))
+	if listedTitles(first) != "Berserk|Duna" || listedTitles(second) != "Naruto|Vagabond" || first.Total != 4 {
+		t.Errorf("pages: %q, %q (total %d)", listedTitles(first), listedTitles(second), first.Total)
+	}
+	// A retired work is not in it, and without the filter nothing changes.
+	s.retire(naruto)
+	if got := listedTitles(s.list(ana, fmt.Sprintf("?category=%d&sort=title", manga))); got != "Berserk|Duna|Vagabond" {
+		t.Errorf("after retiring: %q", got)
+	}
+	if l := s.list(ana, ""); l.Total != 4 {
+		t.Errorf("the whole library = %d, want 4", l.Total)
+	}
+}
+
+func TestWorksOfACategory_AreEachByThemselvesEvenWhenTheGridPutsASeriesTogether(t *testing.T) {
+	s := newCatalogStack(t)
+	manga := s.makeCategory("Mangá", nil)
+	for i := 1; i <= 3; i++ {
+		id := s.addWork(fmt.Sprintf("Vagabond %d", i), "Takehiko Inoue", fmt.Sprintf("%d.cbz", i), "cbz")
+		s.exec(`UPDATE works SET series = 'Vagabond', series_index = $2, unit = 'volume', comic_kind = 'manga' WHERE id = $1`, id, i)
+		s.inCategory(id, manga)
+	}
+	if l := s.list(ana, fmt.Sprintf("?category=%d&series=collapse&sort=title", manga)); l.Total != 3 {
+		t.Errorf("%d items, want the 3 works", l.Total)
+	}
+}
+
+func TestCategories_CoversAreAskedForAndAreOfTheNewestWorksWithOne(t *testing.T) {
+	s := newCatalogStack(t)
+	manga := s.makeCategory("Mangá", nil)
+	seinen := s.makeCategory("Seinen", &manga)
+	empty := s.makeCategory("Vazia", nil)
+	cover := func(work int, url string) {
+		s.exec(`UPDATE editions SET cover_url = $1 WHERE work_id = $2 AND is_primary`, url, work)
+	}
+	var works []int
+	for i := 1; i <= 5; i++ {
+		id := s.addWork(fmt.Sprintf("Livro %d", i), "Alguém", fmt.Sprintf("%d.cbz", i), "cbz")
+		cover(id, fmt.Sprintf("/covers/%d.jpg", i))
+		works = append(works, id)
+	}
+	noCover := s.addWork("Sem capa", "Alguém", "x.cbz", "cbz")
+	s.exec(`UPDATE editions SET cover_url = '' WHERE work_id = $1 AND is_primary`, noCover)
+	s.inCategory(works[0], manga)
+	s.inCategory(works[1], seinen)
+	s.inCategory(works[2], seinen)
+	s.inCategory(works[3], manga)
+	s.inCategory(works[4], seinen)
+	s.inCategory(noCover, seinen)
+	gone := s.addWork("Retirado", "Alguém", "g.cbz", "cbz")
+	cover(gone, "/covers/gone.jpg")
+	s.inCategory(gone, seinen)
+	s.retire(gone)
+
+	get := func(query string) map[string]Category {
+		rec := s.do(ana, "GET", "/categories"+query, "")
+		var out catList
+		json.Unmarshal(rec.Body.Bytes(), &out)
+		by := map[string]Category{}
+		for _, c := range out.Data {
+			by[c.Name] = c
+		}
+		return by
+	}
+	// Not asked for: not sent.
+	if c := get("")["Mangá"]; len(c.Covers) != 0 {
+		t.Errorf("covers without asking: %v", c.Covers)
+	}
+	by := get("?covers=1")
+	// The newest first (the last work put in), three at most, the ones under it too, none without a cover, none retired.
+	if got := strings.Join(by["Mangá"].Covers, "|"); got != "/covers/5.jpg|/covers/4.jpg|/covers/3.jpg" {
+		t.Errorf("Mangá = %s", got)
+	}
+	if got := strings.Join(by["Seinen"].Covers, "|"); got != "/covers/5.jpg|/covers/3.jpg|/covers/2.jpg" {
+		t.Errorf("Seinen = %s", got)
+	}
+	if got := by["Vazia"].Covers; len(got) != 0 {
+		t.Errorf("an empty category has covers: %v", got)
+	}
+	_ = empty
+	if rec := s.do(ana, "GET", "/categories?covers=2", ""); strings.Contains(rec.Body.String(), "covers") {
+		t.Errorf("covers=2 is not asking for them")
+	}
+}

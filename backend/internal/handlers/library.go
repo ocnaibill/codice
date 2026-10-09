@@ -299,6 +299,7 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	formatGroup := r.URL.Query().Get("formatGroup")             // "ebooks" | "comics" | "mangas" | "audio"
 	collapseSeries := r.URL.Query().Get("series") == "collapse" // the grid of the library, which shows a series as one card (#187)
 	person, role := r.URL.Query().Get("person"), r.URL.Query().Get("role")
+	category := r.URL.Query().Get("category") // the works in a category, and in the ones under it (DEC-140)
 	retiredOnly := isStaffRequest(r) && r.URL.Query().Get("retired") == "true"
 
 	if p := r.URL.Query().Get("page"); p != "" {
@@ -350,6 +351,19 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 			whereClauses = append(whereClauses, cond+")")
 		}
 	}
+	if category != "" {
+		// What is not a category finds nothing, rather than everything (a number that is none finds no work).
+		id, err := strconv.ParseInt(category, 10, 64)
+		if err != nil {
+			whereClauses = append(whereClauses, "FALSE")
+		} else {
+			args = append(args, id)
+			whereClauses = append(whereClauses, fmt.Sprintf(`w.id IN (SELECT wc.work_id FROM work_categories wc WHERE wc.category_id IN (
+				WITH RECURSIVE down AS (SELECT id FROM categories WHERE id = $%d UNION ALL SELECT c.id FROM categories c JOIN down d ON c.parent_id = d.id)
+				SELECT id FROM down))`, argIdx))
+			argIdx++
+		}
+	}
 	if inProgressOnly {
 		// In progress is decided by the version that counts, in whatever edition or format: reading
 		// the English EPUB of a book whose primary file is the Portuguese one counts, and a work
@@ -362,9 +376,9 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	if cond := shelfCondition(formatGroup, "wp.file_format"); cond != "" {
 		whereClauses = append(whereClauses, cond)
 	}
-	// A series is one card only in the plain grid: a search, a person, the reading in progress, the favorites and the trash
+	// A series is one card only in the plain grid: a search, a person, a category, the reading in progress, the favorites and the trash
 	// show the works, each by itself. With no work that has a unit there is nothing to put together.
-	collapseSeries = collapseSeries && search == "" && person == "" && role == "" && !inProgressOnly && !favoriteOnly && !retiredOnly && hasSeriesWorks(h.DB)
+	collapseSeries = collapseSeries && search == "" && person == "" && role == "" && category == "" && !inProgressOnly && !favoriteOnly && !retiredOnly && hasSeriesWorks(h.DB)
 	if collapseSeries {
 		whereClauses = append(whereClauses, seriesRepresentative(formatGroup))
 	}

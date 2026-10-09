@@ -24,6 +24,7 @@ export function AppShell({
   const view = useGlobalStore((state) => state.libraryView);
   const adminOpen = useGlobalStore((state) => state.adminOpen);
   const notesOpen = useGlobalStore((state) => state.notesOpen);
+  const categoryOpen = useGlobalStore((state) => state.categoryPageId != null);
   const openNotes = useGlobalStore((state) => state.openNotes);
   const setView = useGlobalStore((state) => state.setLibraryView);
   const goHome = () => {
@@ -95,6 +96,7 @@ export function AppShell({
               !searchQuery &&
               !adminOpen &&
               !notesOpen &&
+              !categoryOpen &&
               (view === key ||
                 (key === 'all' && ['ebooks', 'comics', 'mangas', 'audio'].includes(view)))
                 ? 'page'

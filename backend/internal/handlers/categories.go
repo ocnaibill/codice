@@ -35,6 +35,8 @@ type Category struct {
 	Name     string `json:"name"`
 	Works    int    `json:"works"`
 	Own      int    `json:"own"`
+	// Covers are the covers of up to three of the newest works in it or under it, for the shelf of the home (only with ?covers=1).
+	Covers []string `json:"covers,omitempty"`
 }
 
 // WorkCategory is a category a work was put in, with where it is in the tree ("Mangá › Seinen").
@@ -58,8 +60,19 @@ func tidyCategoryName(raw string) (string, bool) {
 	return name, true
 }
 
-// List answers GET /categories: the whole tree, flat, each with its parent; the client nests it.
+// coversSQL is the covers of up to three of the newest works that are in a category or under it, and have one.
+const coversSQL = `COALESCE((SELECT array_agg(cv ORDER BY wid DESC) FROM (
+			SELECT wp.cover_url AS cv, w.id AS wid FROM tree t JOIN work_categories wc ON wc.category_id = t.id
+			JOIN works w ON w.id = wc.work_id AND w.retired_at IS NULL JOIN work_primary wp ON wp.work_id = w.id
+			WHERE t.root = c.id AND COALESCE(wp.cover_url, '') <> '' GROUP BY w.id, wp.cover_url ORDER BY w.id DESC LIMIT 3) x), '{}')`
+
+// List answers GET /categories: the whole tree, flat, each with its parent; the client nests it. With covers=1 each also carries the covers
+// of some of its works.
 func (h *CategoriesHandler) List(w http.ResponseWriter, r *http.Request) {
+	covers := "'{}'::text[]"
+	if r.URL.Query().Get("covers") == "1" {
+		covers = coversSQL
+	}
 	rows, err := h.DB.QueryContext(r.Context(), `
 		WITH RECURSIVE tree AS (
 			SELECT id, id AS root FROM categories
@@ -69,7 +82,8 @@ func (h *CategoriesHandler) List(w http.ResponseWriter, r *http.Request) {
 		SELECT c.id, c.parent_id, c.name,
 		       (SELECT count(DISTINCT wc.work_id) FROM tree t JOIN work_categories wc ON wc.category_id = t.id
 		         JOIN works w ON w.id = wc.work_id AND w.retired_at IS NULL WHERE t.root = c.id),
-		       (SELECT count(*) FROM work_categories wc JOIN works w ON w.id = wc.work_id AND w.retired_at IS NULL WHERE wc.category_id = c.id)
+		       (SELECT count(*) FROM work_categories wc JOIN works w ON w.id = wc.work_id AND w.retired_at IS NULL WHERE wc.category_id = c.id),
+		       `+covers+`
 		FROM categories c
 		ORDER BY unaccent(lower(c.name)), c.id`)
 	if err != nil {
@@ -82,7 +96,8 @@ func (h *CategoriesHandler) List(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c Category
 		var parent sql.NullInt64
-		if err := rows.Scan(&c.ID, &parent, &c.Name, &c.Works, &c.Own); err != nil {
+		var cover pq.StringArray
+		if err := rows.Scan(&c.ID, &parent, &c.Name, &c.Works, &c.Own, &cover); err != nil {
 			log.Println("Error reading a category:", err)
 			http.Error(w, "Error listing the categories", http.StatusInternalServerError)
 			return
@@ -90,6 +105,7 @@ func (h *CategoriesHandler) List(w http.ResponseWriter, r *http.Request) {
 		if parent.Valid {
 			c.ParentID = &parent.Int64
 		}
+		c.Covers = []string(cover)
 		out = append(out, c)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": out})
