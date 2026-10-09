@@ -1,6 +1,7 @@
 package database_test
 
 import (
+	"strings"
 	"database/sql"
 	"fmt"
 	"sync"
@@ -117,6 +118,51 @@ func TestMigrate_JoiningVersionsCanBeRolledBackAndReapplied(t *testing.T) {
 	}
 	if _, err := db.Exec(`INSERT INTO duplicate_candidates (work_a, work_b, reason, state) VALUES (` + itoa(b) + `, ` + itoa(c) + `, 'manual', 'linked')`); err != nil {
 		t.Errorf("after reapplying: %v", err)
+	}
+}
+
+// The origin of a suggestion names every provider that took part ("OpenLibrary + Wikidata + Wikipedia"), which did not fit in the
+// 32 characters of the column: the analysis of the file failed on the insert (DEC-141).
+func TestMigrate_TheOriginOfASuggestionHasRoomForEveryProviderThatTookPart(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.MigrateTo(db, 61); err != nil {
+		t.Fatal(err)
+	}
+	work, _, _ := testdb.AddWork(t, db, testdb.Work{Title: "A", Path: "a.epub", Format: "epub"})
+	label := "OpenLibrary + Wikidata + Wikipedia"
+	insert := `INSERT INTO metadata_candidates (work_id, field, value, source) VALUES (` + itoa(work) + `, 'title', 'x', $1)`
+	if _, err := db.Exec(insert, label); err == nil {
+		t.Fatal("the label fitted before the migration: the test proves nothing")
+	}
+	if _, err := db.Exec(insert, "OpenLibrary + Wikidata"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{insert, `INSERT INTO work_field_sources (work_id, field, source) VALUES (` + itoa(work) + `, 'title', $1)`} {
+		if _, err := db.Exec(q, label); err != nil {
+			t.Errorf("%s: %v", q, err)
+		}
+		if _, err := db.Exec(q, strings.Repeat("x", 65)); err == nil {
+			t.Errorf("a label of 65 characters was accepted: %s", q)
+		}
+	}
+	// Going back cuts the labels that do not fit (the suggestion stays), and leaves alone what fitted.
+	if err := database.RollbackTo(db, 61); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	var sources string
+	db.QueryRow(`SELECT string_agg(source, '|' ORDER BY source) FROM metadata_candidates`).Scan(&sources)
+	if sources != "OpenLibrary + Wikidata|"+label[:32] {
+		t.Errorf("after going back the candidates are %q: the long label is cut and the short one stays", sources)
+	}
+	db.QueryRow(`SELECT source FROM work_field_sources WHERE work_id = ` + itoa(work)).Scan(&sources)
+	if sources != label[:32] {
+		t.Errorf("the origin of a field was %q, want it cut to %q", sources, label[:32])
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("reapply: %v", err)
 	}
 }
 

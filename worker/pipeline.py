@@ -7,6 +7,8 @@ from analyzer import Analyzer
 from extractors.plain_text import plain_description
 from ocr_detect import detect_text_layer
 
+SOURCE_MAX = 64   # `metadata_candidates.source` and `work_field_sources.source` (migration 00062)
+
 
 def ensure_file(file_path):
     """Fail early, and permanently, when there is nothing to read. The extractors
@@ -64,7 +66,7 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
     enriched = provider_registry.search_best(metadata.title, metadata.format, author=metadata.author)
     identifiers = dict(native)
     if enriched:
-        source = getattr(enriched, 'source', '') or 'provider'
+        source = (getattr(enriched, 'source', '') or 'provider')[:SOURCE_MAX]   # the column holds this much
         record = {
             'title': enriched.title, 'author': enriched.author, 'series': enriched.series,
             'series_index': enriched.series_index, 'isbn': enriched.isbn,
@@ -75,7 +77,7 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
             'credits': [c.as_dict() for c in (getattr(enriched, 'credits', None) or [])],
         }
         raw = enriched.raw or {}
-        evidence = {k: raw[k] for k in ('google_id', 'openlibrary_id', 'comicvine_id', 'anilist_id', 'mangadex_id') if raw.get(k)}
+        evidence = {k: raw[k] for k in ('google_id', 'openlibrary_id', 'comicvine_id', 'anilist_id', 'mangadex_id', 'wikidata_id', 'translated_from') if raw.get(k)}
         if record['credits']:
             evidence['credits'] = record['credits']
         evidence['query'] = metadata.title

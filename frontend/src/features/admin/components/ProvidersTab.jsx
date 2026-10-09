@@ -12,9 +12,12 @@ const ABOUT = {
   comicvine: { host: 'comicvine.gamespot.com', keyEnv: 'COMICVINE_API_KEY' },
   anilist: { host: 'graphql.anilist.co (AniList)', note: 'Para mangá: autores, gêneros, ano, sinopse e capa da série. Uso gratuito não comercial; não guardamos mais do que você aceita.' },
   mangadex: { host: 'api.mangadex.org (MangaDex)', note: 'Para mangá: autores, gêneros, público (seinen, shounen…), sinopse e capa da série. Política de uso: não comercial.' },
+  wikidata: { host: 'www.wikidata.org (Wikimedia)', note: 'Diz que obra é: traduz um título que os outros não conhecem (“A Nuvem” é Thunderhead), e acrescenta o identificador, a série e os gêneros em português. Dados em domínio público (CC0).' },
+  wikipedia: { host: '*.wikipedia.org (Wikimedia)', note: 'Completa a sinopse com o resumo da página da obra, quando nenhum outro provedor trouxe uma; a fonte e a licença (CC BY-SA 4.0) ficam escritas junto do texto. Só funciona com o Wikidata ligado, que diz qual é a página.' },
 };
 const SENDS = {
   title: 'o título da obra',
+  page_title: 'só o título da página da obra na Wikipédia, que o Wikidata informou (nunca o título do arquivo)',
   author_key: 'a chave de cada autor que você aceita (para obter os identificadores dele: Wikidata, VIAF, ISNI)',
 };
 
