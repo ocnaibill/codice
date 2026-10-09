@@ -89,6 +89,9 @@ describe('what the server says', () => {
   const FOR_PROGRAMS = [
     // the categories, which the screens send from the tree they show (a name is checked before it is sent)
     'name is required',
+    'term is required',
+    'links is the number of new places the preview showed',
+    'groups are the categories of the list to make',
     'ids are the categories of the work',
     // the surname of a person, which the screen sends either as parts or as "no surname", never both
     'a name without a surname has no parts',

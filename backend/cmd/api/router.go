@@ -89,6 +89,7 @@ func newRouter(d routerDeps) http.Handler {
 	personalCollections := &handlers.PersonalCollectionsHandler{DB: db}
 	workTitles := &handlers.WorkTitlesHandler{DB: db}
 	categories := &handlers.CategoriesHandler{DB: db}
+	categoryRules := &handlers.CategoryRulesHandler{DB: db}
 	workContributors := &handlers.WorkContributorsHandler{DB: db}
 	progressHandler := &handlers.ProgressHandler{DB: db}
 	searchHandler := &handlers.SearchHandler{DB: db}
@@ -208,6 +209,13 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/admin/categories", categories.Create)
 	r.With(staff).Put("/admin/categories/{id}", categories.Update)
 	r.With(staff).Delete("/admin/categories/{id}", categories.Delete)
+	r.With(staff).Get("/admin/categories/rules", categoryRules.List)
+	r.With(staff).Post("/admin/categories/{id}/rules", categoryRules.Add)
+	r.With(staff).Delete("/admin/categories/rules/{ruleId}", categoryRules.Remove)
+	r.With(staff).Get("/admin/categories/rules/preview", categoryRules.Preview)
+	r.With(staff).Post("/admin/categories/rules/apply", categoryRules.Apply)
+	r.With(staff).Get("/admin/categories/starter", categoryRules.StarterList)
+	r.With(staff).Post("/admin/categories/starter", categoryRules.CreateFromStarter)
 	r.With(staff).Delete("/works/{id}/titles/{titleId}", workTitles.Remove)
 	r.With(staff).Patch("/works/{id}/editions/{editionId}", workTitles.EditEdition)
 	r.With(staff).Post("/works/{id}/contributors", workContributors.Add)

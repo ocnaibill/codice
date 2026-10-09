@@ -12,7 +12,7 @@ const TONES = {
  * button of its own, so the person never confirms by pressing "OK" without
  * knowing what it means. Escape and the backdrop cancel.
  *
- * choices: [{ label, value, tone }]; onChoose(value) is called with the one picked.
+ * choices: [{ label, value, tone, disabled }]; onChoose(value) is called with the one picked.
  */
 export function ConfirmDialog({ title, message, choices, onChoose, onCancel, cancelLabel = 'Cancelar', requireText }) {
   const [typed, setTyped] = useState('');
@@ -47,7 +47,7 @@ export function ConfirmDialog({ title, message, choices, onChoose, onCancel, can
             <button
               key={String(choice.value)}
               onClick={() => onChoose(choice.value)}
-              disabled={locked}
+              disabled={locked || choice.disabled}
               className={`rounded px-4 py-2 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-40 ${TONES[choice.tone || 'neutral']}`}
             >
               {choice.label}

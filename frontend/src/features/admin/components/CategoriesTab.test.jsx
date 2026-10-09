@@ -20,6 +20,7 @@ async function open(categories = tree) {
   current = categories;
   api.get.mockImplementation(async (url) => {
     if (url === '/categories') return { data: { data: current } };
+    if (url === '/admin/categories/rules') return { data: { data: [] } };
     throw new Error(`unexpected GET ${url}`);
   });
   api.post.mockResolvedValue({ data: { id: 9, name: 'Nova' } });
@@ -34,6 +35,18 @@ afterEach(() => view.unmount());
 beforeEach(() => vi.clearAllMocks());
 
 describe('CategoriesTab', () => {
+  it('offers the list to start from while it is empty, and to add from after, and has the rules only once there are categories', async () => {
+    await open([]);
+    expect(view.button('Começar de uma lista sugerida')).toBeTruthy();
+    expect(view.text()).not.toContain('Regras');
+    view.unmount();
+    await open();
+    expect(view.button('Adicionar da lista sugerida')).toBeTruthy();
+    expect(view.button('Começar de uma lista sugerida')).toBeUndefined();
+    expect(document.body.querySelector('h2')).not.toBeNull();
+    expect([...document.body.querySelectorAll('h2')].map((h) => h.textContent)).toEqual(['Categorias', 'Regras']);
+  });
+
   it('starts empty and says so', async () => {
     await open([]);
     expect(view.text()).toContain('Nenhuma categoria ainda. Crie a primeira acima.');
