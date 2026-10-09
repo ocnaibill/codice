@@ -42,14 +42,16 @@ type WorkMetadata struct {
 	// AlternativeTitles are the other names of the work (#185): the ones kept for it, and the titles of its editions.
 	AlternativeTitles []AlternativeTitle `json:"alternativeTitles"`
 	// Contributors are the people credited on the work, by role and place (#185): the authors, the first being the main one.
-	Contributors []Contributor     `json:"contributors"`
-	Locks        map[string]bool   `json:"locks"`
-	Sources      map[string]string `json:"sources"`
+	Contributors []Contributor `json:"contributors"`
+	// Categories are the places of the tree of categories that the work is in (DEC-140), each with its path ("Mangá › Seinen").
+	Categories []WorkCategory    `json:"categories"`
+	Locks      map[string]bool   `json:"locks"`
+	Sources    map[string]string `json:"sources"`
 }
 
 // loadMetadata reads the metadata block shown by GET /works/{id}.
 func loadMetadata(ctx context.Context, db *sql.DB, workID int, order string) (*WorkMetadata, error) {
-	m := &WorkMetadata{Locks: map[string]bool{}, Sources: map[string]string{}, AlternativeTitles: []AlternativeTitle{}, Contributors: []Contributor{}}
+	m := &WorkMetadata{Locks: map[string]bool{}, Sources: map[string]string{}, AlternativeTitles: []AlternativeTitle{}, Contributors: []Contributor{}, Categories: []WorkCategory{}}
 	var titleL, authorL, seriesL, coverL, isbnL, pubL, langL, dateL, descL bool
 	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(e.isbn, ''), COALESCE(e.publisher, ''),
@@ -74,6 +76,9 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int, order string) (*W
 		return nil, err
 	}
 	if m.Contributors, err = loadContributors(db, workID, order); err != nil {
+		return nil, err
+	}
+	if m.Categories, err = loadWorkCategories(ctx, db, workID); err != nil {
 		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, `SELECT field, source FROM work_field_sources WHERE work_id = $1`, workID)
