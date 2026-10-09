@@ -342,7 +342,7 @@ func SetParts(ctx context.Context, db *sql.DB, id int, family, given, actor stri
 		return err
 	}
 	if family == "" && given == "" {
-		if _, err := db.ExecContext(ctx, `UPDATE person SET family_name = NULL, given_name = NULL WHERE id = $1`, id); err != nil {
+		if _, err := db.ExecContext(ctx, `UPDATE person SET family_name = NULL, given_name = NULL, name_undivided = FALSE WHERE id = $1`, id); err != nil {
 			return err
 		}
 		return audit.Record(ctx, db, actor, "person.parts", "person", fmt.Sprint(id), map[string]any{"family": "", "given": ""})
@@ -354,7 +354,7 @@ func SetParts(ctx context.Context, db *sql.DB, id int, family, given, actor stri
 	if given != "" {
 		g = given
 	}
-	if _, err := db.ExecContext(ctx, `UPDATE person SET family_name = $2, given_name = $3 WHERE id = $1`, id, family, g); err != nil {
+	if _, err := db.ExecContext(ctx, `UPDATE person SET family_name = $2, given_name = $3, name_undivided = FALSE WHERE id = $1`, id, family, g); err != nil {
 		return err
 	}
 	return audit.Record(ctx, db, actor, "person.parts", "person", fmt.Sprint(id), map[string]any{"family": family, "given": given})

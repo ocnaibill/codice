@@ -133,6 +133,7 @@ var staffRoutes = []route{
 	{"GET", "/admin/suggestions"},
 	{"GET", "/admin/metadata-providers"},
 	{"GET", "/admin/people/merges"},
+	{"GET", "/admin/people/names"},
 	{"GET", "/admin/ocr"},
 	{"POST", "/admin/works/1/ocr/retry"},
 	{"POST", "/admin/files/1/ocr/language"},
