@@ -4,6 +4,7 @@ import { JobsTab } from './components/JobsTab';
 import { StorageTab } from './components/StorageTab';
 import { SystemTab } from './components/SystemTab';
 import { TrashTab } from './components/TrashTab';
+import { CategoriesTab } from './components/CategoriesTab';
 import { DuplicatesTab } from './components/DuplicatesTab';
 import { AccountsTab } from './components/AccountsTab';
 import { LoginsTab } from './components/LoginsTab';
@@ -57,6 +58,7 @@ export function AdminPage({ isOwner, onClose }) {
         {tab === 'trash' && <TrashTab isOwner={isOwner} />}
         {tab === 'suggestions' && <SuggestionsTab isOwner={isOwner} onOpenProviders={() => setTab('providers')} />}
         {tab === 'providers' && <ProvidersTab isOwner={isOwner} />}
+        {tab === 'categories' && <CategoriesTab />}
         {tab === 'duplicates' && <DuplicatesTab />}
         {tab === 'ocr' && <OcrTab isOwner={isOwner} />}
         {tab === 'dictionaries' && <DictionariesTab isOwner={isOwner} />}

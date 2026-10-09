@@ -163,6 +163,13 @@ const EXACT = {
   'The directory overlaps an existing root': 'Essa pasta se sobrepõe a outra já autorizada.',
   'Forbidden: directory is outside the allowed import roots': 'Essa pasta está fora das pastas autorizadas.',
   'Directory not found': 'Pasta não encontrada.',
+  // The categories (DEC-140)
+  'A category with that name already exists there': 'Já existe uma categoria com esse nome nesse lugar.',
+  'A category needs a name of up to 80 characters': 'Dê à categoria um nome de até 80 caracteres.',
+  'Categories go at most 3 levels deep': 'As categorias vão até três níveis: a categoria, a subcategoria e a de baixo.',
+  'A category cannot go inside itself': 'Uma categoria não pode ficar dentro dela mesma, nem do que há nela.',
+  'Move or delete its subcategories first': 'Mova ou apague as subcategorias primeiro.',
+  'Category not found': 'Categoria não encontrada.',
   'Root not found': 'Pasta não encontrada.',
 };
 

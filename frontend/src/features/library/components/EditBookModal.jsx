@@ -16,6 +16,7 @@ import { useAddWorkTitle, useEditEditionTitle, useRemoveWorkTitle } from '../../
 import { useAddContributor, useOrderContributors, useRemoveContributor } from '../../reader/api/useWorkContributors';
 import { peopleOf, ROLES } from '../../reader/credits';
 import { COMIC_KINDS, UNITS } from '../../collections/text';
+import { WorkCategoriesEditor } from '../../categories/components/WorkCategoriesEditor';
 
 const LOCKS = [
   ['title', 'Título'], ['author', 'Autor'], ['series', 'Série'], ['cover', 'Capa'], ['isbn', 'ISBN'],
@@ -505,7 +506,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
 
   useDialog(dialogRef, { onEscape: onClose, initialFocus: closeRef });
 
-  const tabs = [['suggestions', pending > 0 ? `Sugestões (${pending})` : 'Sugestões'], ['edit', 'Editar'], ['titles', 'Títulos e autores']];
+  const tabs = [['suggestions', pending > 0 ? `Sugestões (${pending})` : 'Sugestões'], ['edit', 'Editar'], ['titles', 'Títulos e autores'], ['categories', 'Categorias']];
 
   return (
     <div ref={dialogRef} className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/60 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label="Metadados da obra">
@@ -538,6 +539,7 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
           {work && tab === 'suggestions' && <WorkSuggestions workId={work.id} emptyText="Nenhuma sugestão esperando decisão." />}
           {work && tab === 'edit' && <EditForm work={work} onClose={onClose} />}
           {work && tab === 'titles' && <TitlesAndPeople work={work} />}
+          {work && tab === 'categories' && <WorkCategoriesEditor work={work} />}
         </div>
       </div>
     </div>

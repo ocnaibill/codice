@@ -6,6 +6,7 @@ export const ADMIN_TABS = [
   ['trash', 'Lixeira'],
   ['suggestions', 'Sugestões'],
   ['providers', 'Provedores'],
+  ['categories', 'Categorias'],
   ['duplicates', 'Duplicatas'],
   ['ocr', 'OCR'],
   ['dictionaries', 'Dicionários'],

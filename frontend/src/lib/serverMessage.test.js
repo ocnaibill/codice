@@ -87,6 +87,9 @@ describe('what the server says', () => {
 
   // Messages for programs that call the API, which no screen of the app brings about: they are not translated.
   const FOR_PROGRAMS = [
+    // the categories, which the screens send from the tree they show (a name is checked before it is sent)
+    'name is required',
+    'ids are the categories of the work',
     // the surname of a person, which the screen sends either as parts or as "no surname", never both
     'a name without a surname has no parts',
     // the filters and the setting of the record of sign-ins, which the screen sends from lists and a field it checks first
