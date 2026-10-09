@@ -2,6 +2,19 @@
 // for the most part (its API is for programs too), and the screens used to show that text as it came. Here what a person can
 // bring about is said in Portuguese, and what is not known is never shown in English: the screen's own sentence is.
 
+// Removing a folder is refused while the catalog keeps files in it: the ones of works in the catalog are moved to the managed storage,
+// and the ones of retired works go away with those works, which are deleted for good (#230). The sentence says which way out there is.
+function stillCatalogued(active, retired) {
+  const files = (n) => `${n} arquivo${n === 1 ? '' : 's'}`;
+  if (active > 0 && retired > 0) {
+    return `Ainda há ${files(active)} desta pasta no acervo e ${files(retired)} de obras retiradas. Mova os do acervo para o armazenamento gerenciado e apague de vez as obras retiradas, pelo botão desta pasta ou pela Lixeira.`;
+  }
+  if (retired > 0) {
+    return `Só restam ${files(retired)} de obras retiradas. Apague de vez essas obras, pelo botão desta pasta ou pela Lixeira: os arquivos da pasta continuam onde estão.`;
+  }
+  return 'Ainda há arquivos desta pasta no acervo: mova-os para o armazenamento gerenciado antes.';
+}
+
 const EXACT = {
   // Entering, and the accounts
   'Invalid username or password': 'Usuário ou senha incorretos.',
@@ -148,13 +161,13 @@ const EXACT = {
   'The subdirectory is not a safe relative path': 'A subpasta não é um caminho relativo seguro.',
   'The directory is already a root': 'Essa pasta já está autorizada.',
   'The directory overlaps an existing root': 'Essa pasta se sobrepõe a outra já autorizada.',
-  'Files in this directory are still catalogued: move them to the managed storage first': 'Ainda há arquivos desta pasta no acervo: mova-os para o armazenamento gerenciado antes.',
   'Forbidden: directory is outside the allowed import roots': 'Essa pasta está fora das pastas autorizadas.',
   'Directory not found': 'Pasta não encontrada.',
   'Root not found': 'Pasta não encontrada.',
 };
 
 const PATTERNS = [
+  [/^Files in this directory are still catalogued: (\d+) in the catalog, (\d+) from retired works$/, (m) => stillCatalogued(Number(m[1]), Number(m[2]))],
   [/^The note is longer than (\d+) characters$/, (m) => `A anotação passa de ${m[1]} caracteres.`],
   [/^a tag has at most (\d+) characters$/, (m) => `Uma tag tem no máximo ${m[1]} caracteres.`],
   [/^at most (\d+) tags$/, (m) => `No máximo ${m[1]} tags.`],

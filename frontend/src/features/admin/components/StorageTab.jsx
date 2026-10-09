@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  useRoots, useAddRoot, useRemoveRoot, useScanRoot, useCleanups, useRetryCleanups, useOrphans, useTrashOrphans,
+  useRoots, useAddRoot, useRemoveRoot, usePurgeRetiredInRoot, useScanRoot, useCleanups, useRetryCleanups, useOrphans, useTrashOrphans,
   useReorganizePreview, useReorganize, describeError,
 } from '../api/admin';
 import { formatBytes } from '../format';
@@ -12,13 +12,34 @@ import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 import { LoadError } from '../../../components/ui/LoadError';
 import { PermissionNote } from '../../../components/ui/PermissionNote';
 
+const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/** The retired works of a folder that also keep files the server stores: the folder's button does not delete those, the trash does. */
+function keepsBytes(n) {
+  return n === 1
+    ? '1 obra retirada guarda também arquivos no servidor: apague-a na Lixeira.'
+    : `${n} obras retiradas guardam também arquivos no servidor: apague-as na Lixeira.`;
+}
+
+/** What the catalog keeps in a folder: the files of the works in the catalog and, apart, those of retired works. */
+function rootUse(root) {
+  const parts = [];
+  if (root.files > 0) parts.push(count(root.files, 'arquivo no acervo', 'arquivos no acervo'));
+  if (root.retiredFiles > 0) parts.push(`${count(root.retiredFiles, 'arquivo', 'arquivos')} de ${count(root.retiredWorks, 'obra retirada', 'obras retiradas')}`);
+  return parts.join(' · ');
+}
+
 function Roots({ isOwner }) {
   const { data, isLoading, isError, error, refetch, isRefetching } = useRoots();
   const add = useAddRoot();
   const remove = useRemoveRoot();
+  const purge = usePurgeRetiredInRoot();
   const scan = useScanRoot();
   const [path, setPath] = useState('');
   const [removing, setRemoving] = useState(null);
+  const [purging, setPurging] = useState(null); // the folder waiting for a yes to "delete its retired works for good"
+  const [progress, setProgress] = useState(0); // how many the running deletion has deleted so far
+  const [done, setDone] = useState('');
   const roots = data?.roots || [];
 
   return (
@@ -32,9 +53,20 @@ function Roots({ isOwner }) {
       <ul className="divide-y divide-border-hairline">
         {roots.map((root) => (
           <li key={root.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-            <code className="text-[13px] text-ink">{root.path}</code>
+            <div className="min-w-0">
+              <code className="text-[13px] text-ink">{root.path}</code>
+              {rootUse(root) && <p className="text-[12px] text-ink-faint">{rootUse(root)}</p>}
+              {root.retiredWorks > root.purgeableWorks && (
+                <p className="text-[12px] text-ink-faint">{keepsBytes(root.retiredWorks - root.purgeableWorks)}</p>
+              )}
+            </div>
             <div className="flex gap-2">
               <Btn onClick={() => scan.mutate(root.id)} disabled={scan.isPending}>Varrer</Btn>
+              {root.purgeableWorks > 0 && (
+                <Btn tone="danger" onClick={() => setPurging(root)} disabled={purge.isPending} aria-label={`Apagar de vez as obras retiradas de ${root.path}`}>
+                  Apagar {count(root.purgeableWorks, 'obra retirada', 'obras retiradas')}
+                </Btn>
+              )}
               {isOwner && <Btn tone="danger" onClick={() => setRemoving(root)}>Remover</Btn>}
             </div>
           </li>
@@ -61,7 +93,9 @@ function Roots({ isOwner }) {
           <Btn tone="primary" type="submit" disabled={add.isPending || !path.trim()}>Autorizar pasta</Btn>
         </form>
       )}
-      <ErrorNote>{add.isError ? describeError(add.error) : scan.isError ? describeError(scan.error) : remove.isError && describeError(remove.error)}</ErrorNote>
+      {purge.isPending && <p role="status" className="mt-2 text-[13px] text-ink-soft">Apagando as obras retiradas… {count(progress, 'obra apagada', 'obras apagadas')} até agora.</p>}
+      {done && <p role="status" className="mt-2 text-[13px] text-ink-soft">{done}</p>}
+      <ErrorNote>{add.isError ? describeError(add.error) : scan.isError ? describeError(scan.error) : remove.isError ? describeError(remove.error) : purge.isError && describeError(purge.error)}</ErrorNote>
 
       {removing && (
         <ConfirmDialog
@@ -70,6 +104,31 @@ function Roots({ isOwner }) {
           choices={[{ label: 'Remover', value: true, tone: 'danger' }]}
           onChoose={() => { remove.mutate(removing.id); setRemoving(null); }}
           onCancel={() => setRemoving(null)}
+        />
+      )}
+      {purging && (
+        <ConfirmDialog
+          title="Apagar de vez as obras retiradas?"
+          message={
+            <p>
+              {count(purging.purgeableWorks, 'obra retirada', 'obras retiradas')} com arquivo em {purging.path} {purging.purgeableWorks === 1 ? 'será apagada' : 'serão apagadas'} de vez.
+              Só {purging.purgeableWorks === 1 ? 'o registro dela sai' : 'os registros delas saem'} do Códice: os arquivos da pasta continuam onde estão, e as anotações continuam, sem a obra.
+              Isso não tem volta.
+            </p>
+          }
+          choices={[{ label: 'Apagar de vez', value: true, tone: 'danger' }]}
+          onChoose={() => {
+            const root = purging;
+            setPurging(null);
+            setDone('');
+            setProgress(0);
+            remove.reset(); // the refusal to remove the folder was about the files this is deleting
+            purge.mutate(
+              { id: root.id, onProgress: setProgress },
+              { onSuccess: (n) => setDone(`${count(n, 'obra retirada foi apagada', 'obras retiradas foram apagadas')} de vez. Os arquivos de ${root.path} não foram tocados.`) }
+            );
+          }}
+          onCancel={() => setPurging(null)}
         />
       )}
     </Section>

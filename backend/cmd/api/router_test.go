@@ -146,6 +146,7 @@ var staffRoutes = []route{
 	{"GET", "/admin/storage/orphans"},
 	{"GET", "/admin/storage/reorganize"},
 	{"GET", "/admin/storage/roots"},
+	{"POST", "/admin/storage/roots/1/purge-retired"},
 	{"POST", "/admin/library/scan"},
 	{"POST", "/admin/library/move-to-managed"},
 	{"GET", "/admin/storage/cleanups"},
