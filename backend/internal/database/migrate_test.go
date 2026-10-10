@@ -1,9 +1,9 @@
 package database_test
 
 import (
-	"strings"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 

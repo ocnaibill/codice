@@ -13,10 +13,11 @@ class CodiceDatabase:
         )
 
     def execute(self, query, params=None):
-        """Execute a query (INSERT, UPDATE, DELETE)."""
+        """Execute a query (INSERT, UPDATE, DELETE). Returns how many rows it changed."""
         with psycopg2.connect(self.db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(query, params)
+                return cur.rowcount
 
     def fetchone(self, query, params=None):
         """Execute a query and return one row."""

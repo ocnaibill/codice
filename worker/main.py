@@ -12,6 +12,7 @@ from extractors import EpubExtractor, PdfExtractor, CbzExtractor, CbrExtractor, 
 from extractors.base import BaseExtractor
 from providers import ProviderRegistry
 from providers.gate import asks_providers, db_gate, report_keys
+from rematch import MetadataRematch
 from authority import resolve_pending
 from maintenance import repair_descriptions
 from db import CodiceDatabase
@@ -121,6 +122,7 @@ def build_runner(db, client, heartbeat=None):
     # Only the providers the owner turned on are asked (#68): the title of a work goes to no one else.
     provider_registry = ProviderRegistry(enabled=db_gate(db))
     analyzer = Analyzer(db)
+    rematch = MetadataRematch(db, analyzer, provider_registry)
 
     storage_path = os.getenv('CODICE_STORAGE_PATH', './uploads')
     # If relative, resolve from project root (two levels up from worker/)
@@ -155,6 +157,11 @@ def build_runner(db, client, heartbeat=None):
             outcome = ocr.run(job['work_id'], retry_failed=bool(job['payload'].get('retry_failed')), checkpoint=checkpoint) if ocr else {}
             print(f"   🔤 {outcome or 'nothing to read'}")
             return outcome
+        if job.get('type') == 'match_metadata':
+            # Someone from the staff asked to search the providers again for this work: the answers come back as suggestions, and the
+            # work is left as it is (it never changes the status of the work).
+            print(f"\n🔁 Metadata search {job['id']} (work {job['work_id']}, attempt {job['attempts']}/{job['max_attempts']})")
+            return rematch.run(job['id'], job['work_id'], checkpoint=checkpoint)
         if job.get('type') == 'extract_text':
             # Reading the text is a job of its own: it never changes the status of the work, so a work
             # that can be read stays readable while its text is being extracted (or if that fails).
@@ -187,7 +194,7 @@ def build_runner(db, client, heartbeat=None):
 
     def on_success(job, metadata):
         if not is_ingest(job):
-            print(f"✅ Text job {job['id']} completed.")
+            print(f"✅ Job {job['id']} ({job.get('type')}) completed.")
             return
         analyzer.update_status(job['work_id'], MediaStatus.READY)
         publish(client, work_ready_event(job['work_id'], metadata))
@@ -198,7 +205,7 @@ def build_runner(db, client, heartbeat=None):
             dictionaries.fail(job, message)
             return
         if not is_ingest(job):
-            print(f"   ❌ Text job {job['id']} failed: {message}")
+            print(f"   ❌ Job {job['id']} ({job.get('type')}) failed: {message}")
             return
         analyzer.update_status(job['work_id'], MediaStatus.ERROR, message)
         publish(client, {"type": "WORK_ERROR", "work_id": job['work_id'], "error": message})
@@ -208,7 +215,7 @@ def build_runner(db, client, heartbeat=None):
             dictionaries.retrying(job, message)
             return
         if not is_ingest(job):
-            print(f"   🔁 Text job will retry: {message}")
+            print(f"   🔁 Job {job['id']} ({job.get('type')}) will retry: {message}")
             return
         # Not final: the job waits and runs again, so the work goes back to queued.
         analyzer.update_status(job['work_id'], MediaStatus.QUEUED)

@@ -141,6 +141,8 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Post("/admin/jobs/rerun-failed", jobsAdmin.RerunFailed)
 	r.Post("/admin/jobs/{id}/rerun", jobsAdmin.Rerun)
 	r.Post("/admin/works/{id}/extract-text", jobsAdmin.ExtractText)
+	r.Post("/admin/works/{id}/metadata-refresh", jobsAdmin.RefreshMetadata)
+	r.Get("/admin/works/{id}/metadata-refresh", jobsAdmin.MetadataRefreshStatus)
 	r.Get("/search", (&SearchHandler{DB: db}).Search)
 	r.Post("/admin/jobs/{id}/cancel", jobsAdmin.Cancel)
 	r.Get("/admin/embeddings", embeddingsAdmin.Get)

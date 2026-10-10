@@ -263,6 +263,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/admin/jobs/{id}/rerun", jobsHandler.Rerun)
 	r.With(staff).Post("/admin/jobs/{id}/cancel", jobsHandler.Cancel)
 	r.With(staff).Post("/admin/works/{id}/extract-text", jobsHandler.ExtractText)
+	r.With(staff).Post("/admin/works/{id}/metadata-refresh", jobsHandler.RefreshMetadata)
+	r.With(staff).Get("/admin/works/{id}/metadata-refresh", jobsHandler.MetadataRefreshStatus)
 
 	// Storage administration (RF-044): preview, then confirm that exact preview
 	r.With(staff).Get("/admin/storage/reorganize", storageHandler.PreviewReorganize)

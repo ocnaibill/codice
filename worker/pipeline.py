@@ -20,6 +20,29 @@ def ensure_file(file_path):
         raise FileNotFoundError(f"file not found: {os.path.basename(file_path)}")
 
 
+def suggest(analyzer: Analyzer, work_id, enriched, query_title, include_locked=False):
+    """Stores what a provider answered as suggestions for a person to decide. Returns where it came from, how many were new and the provider's raw data.
+    A field a person confirmed gets none, unless `include_locked`: whoever asked for the search again wants to be able to change it."""
+    source = (getattr(enriched, 'source', '') or 'provider')[:SOURCE_MAX]   # the column holds this much
+    record = {
+        'title': enriched.title, 'author': enriched.author, 'series': enriched.series,
+        'series_index': enriched.series_index, 'isbn': enriched.isbn,
+        'language': None,  # a provider says the language of some edition, not of this file (DEC-096)
+        'publisher': enriched.publisher,
+        'publication_date': enriched.publication_date, 'description': plain_description(enriched.description),
+        'tags': enriched.tags,
+        'credits': [c.as_dict() for c in (getattr(enriched, 'credits', None) or [])],
+    }
+    raw = enriched.raw or {}
+    evidence = {k: raw[k] for k in ('google_id', 'openlibrary_id', 'comicvine_id', 'anilist_id', 'mangadex_id', 'wikidata_id', 'translated_from') if raw.get(k)}
+    if record['credits']:
+        evidence['credits'] = record['credits']
+    evidence['query'] = query_title
+    if getattr(enriched, 'match', None):
+        evidence['match'] = enriched.match   # how close the answer is to the file: the administration can say why it is a suggestion
+    return source, analyzer.save_candidates(work_id, record, source, evidence, include_locked=include_locked), raw
+
+
 def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_registry, covers_dir,
                  checkpoint=lambda: None):
     """Analyze one file and store the results. Returns the extracted metadata.
@@ -66,24 +89,7 @@ def analyze_file(work_id, file_path, extractor, analyzer: Analyzer, provider_reg
     enriched = provider_registry.search_best(metadata.title, metadata.format, author=metadata.author, isbn=metadata.isbn)
     identifiers = dict(native)
     if enriched:
-        source = (getattr(enriched, 'source', '') or 'provider')[:SOURCE_MAX]   # the column holds this much
-        record = {
-            'title': enriched.title, 'author': enriched.author, 'series': enriched.series,
-            'series_index': enriched.series_index, 'isbn': enriched.isbn,
-            'language': None,  # a provider says the language of some edition, not of this file (DEC-096)
-            'publisher': enriched.publisher,
-            'publication_date': enriched.publication_date, 'description': plain_description(enriched.description),
-            'tags': enriched.tags,
-            'credits': [c.as_dict() for c in (getattr(enriched, 'credits', None) or [])],
-        }
-        raw = enriched.raw or {}
-        evidence = {k: raw[k] for k in ('google_id', 'openlibrary_id', 'comicvine_id', 'anilist_id', 'mangadex_id', 'wikidata_id', 'translated_from') if raw.get(k)}
-        if record['credits']:
-            evidence['credits'] = record['credits']
-        evidence['query'] = metadata.title
-        if getattr(enriched, 'match', None):
-            evidence['match'] = enriched.match   # how close the answer is to the file: the administration can say why it is a suggestion
-        stored = analyzer.save_candidates(work_id, record, source, evidence)
+        source, stored, raw = suggest(analyzer, work_id, enriched, metadata.title)
         print(f"   💡 {stored} suggestion(s) from {source} waiting for review")
 
         # A provider cover is used only when the file has none.
