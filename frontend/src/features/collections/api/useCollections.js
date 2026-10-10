@@ -58,7 +58,13 @@ export function useCreateCollection() {
 export function useRenameCollection() {
   const refresh = useRefreshing();
   return useMutation({
-    mutationFn: async ({ id, name, kind }) => (await api.patch(`${base(kind)}/${id}`, { name })).data,
+    // The name, the description or both: what is not given is not touched (an empty description clears it, DEC-163).
+    mutationFn: async ({ id, name, description, kind }) => {
+      const body = {};
+      if (name !== undefined) body.name = name;
+      if (description !== undefined) body.description = description;
+      return (await api.patch(`${base(kind)}/${id}`, body)).data;
+    },
     onSuccess: refresh,
   });
 }

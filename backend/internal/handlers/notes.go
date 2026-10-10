@@ -279,7 +279,9 @@ func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 type noteFilter struct {
 	workID, fileID int64
 	// personID: the notes on works the person has a hand in, in any role (the page of a person, DEC-158).
-	personID     int64
+	personID int64
+	// collectionID: the notes on works in a collection the caller may see: an official one or one of their own (DEC-163).
+	collectionID int64
 	kind, tag, q string
 }
 
@@ -295,6 +297,11 @@ func parseNoteFilter(r *http.Request) (noteFilter, error) {
 	if v := q.Get("personId"); v != "" {
 		if f.personID, err = strconv.ParseInt(v, 10, 64); err != nil || f.personID <= 0 {
 			return f, errors.New("personId is a number")
+		}
+	}
+	if v := q.Get("collectionId"); v != "" {
+		if f.collectionID, err = strconv.ParseInt(v, 10, 64); err != nil || f.collectionID <= 0 {
+			return f, errors.New("collectionId is a number")
 		}
 	}
 	if v := q.Get("fileId"); v != "" {
@@ -333,6 +340,11 @@ func (f noteFilter) where(userID string) (string, []any) {
 	}
 	if f.personID > 0 {
 		add("EXISTS (SELECT 1 FROM work_contributors pc WHERE pc.work_id = n.source_work_id AND pc.person_id = ?)", f.personID)
+	}
+	if f.collectionID > 0 {
+		add(`EXISTS (SELECT 1 FROM collection_works cw JOIN collections cc ON cc.id = cw.collection_id
+		             WHERE cw.collection_id = ? AND cw.work_id = n.source_work_id
+		               AND (cc.kind = 'official' OR cc.owner_id = $1::uuid))`, f.collectionID)
 	}
 	if f.kind != "" {
 		add("n.kind = ?", f.kind)

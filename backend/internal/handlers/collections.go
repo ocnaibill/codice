@@ -19,9 +19,11 @@ type CollectionsHandler struct{ DB *sql.DB }
 
 // Collection is a collection as the lists show it.
 type Collection struct {
-	ID             int64  `json:"id"`
-	Kind           string `json:"kind"`
-	Name           string `json:"name"`
+	ID   int64  `json:"id"`
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+	// Description is what was said of the collection (DEC-163); only the page of one asks for it.
+	Description    string `json:"description,omitempty"`
 	WorkCount      int    `json:"workCount"`
 	CompletedCount int    `json:"completedCount"`
 	CoverURL       string `json:"coverUrl"`
@@ -58,6 +60,8 @@ type CollectionWork struct {
 	UnitIndex    int        `json:"unitIndex,omitempty"`
 	UnitTotal    int        `json:"unitTotal,omitempty"`
 	ReadFormat   string     `json:"readFormat,omitempty"`
+	// Notes is how many notes and highlights with a passage the caller made on the work (DEC-163).
+	Notes int `json:"notes"`
 }
 
 // CollectionSummary is what the page of a collection says of the whole (DEC-162): how far the caller is, in how many hours, the years the
@@ -68,8 +72,10 @@ type CollectionSummary struct {
 	InProgress     int     `json:"inProgress"`
 	Percent        float64 `json:"percent"`
 	ReadingSeconds int     `json:"readingSeconds"`
-	YearFrom       *int    `json:"yearFrom,omitempty"`
-	YearTo         *int    `json:"yearTo,omitempty"`
+	// Notes is how many notes and highlights with a passage the caller made on the works of the collection (DEC-163).
+	Notes    int  `json:"notes"`
+	YearFrom *int `json:"yearFrom,omitempty"`
+	YearTo   *int `json:"yearTo,omitempty"`
 	// Missing are the numbers of a series that the works skip, by unit: with the volumes 1, 2 and 4 there is a 3 that is not in the library.
 	Missing     []MissingNumber `json:"missing"`
 	Authors     []PersonRef     `json:"authors"`
@@ -194,8 +200,8 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		visible = `(c.kind = 'official' OR c.owner_id = $1::uuid)`
 	}
 	var c Collection
-	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL, `+isFavoriteCollection+`, COALESCE(c.system_key, '') FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
-		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite, &c.System)
+	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL, `+isFavoriteCollection+`, COALESCE(c.system_key, ''), COALESCE(c.description, '') FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
+		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite, &c.System, &c.Description)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Collection not found", http.StatusNotFound)
 		return
