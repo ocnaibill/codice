@@ -26,11 +26,15 @@ type Collection struct {
 	Description string `json:"description,omitempty"`
 	// ReadingDirection is how the series is read ("ltr", "rtl" or "webtoon") when somebody said (DEC-166); empty otherwise.
 	ReadingDirection string `json:"readingDirection,omitempty"`
-	WorkCount        int    `json:"workCount"`
-	CompletedCount   int    `json:"completedCount"`
-	CoverURL         string `json:"coverUrl"`
-	Retired          bool   `json:"retired,omitempty"`
-	IsFavorite       bool   `json:"isFavorite"`
+	// PublicationStatus is how the series stands in publication ("ongoing", "finished", "hiatus" or "cancelled") and OriginalTitle its title in
+	// the script of its language (DEC-170); empty when nobody said.
+	PublicationStatus string `json:"publicationStatus,omitempty"`
+	OriginalTitle     string `json:"originalTitle,omitempty"`
+	WorkCount         int    `json:"workCount"`
+	CompletedCount    int    `json:"completedCount"`
+	CoverURL          string `json:"coverUrl"`
+	Retired           bool   `json:"retired,omitempty"`
+	IsFavorite        bool   `json:"isFavorite"`
 	// System is the key of a list the Códice keeps for the person ("read_later"): it is not renamed or put away. Empty for the others.
 	System string `json:"system,omitempty"`
 }
@@ -214,8 +218,9 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		visible = `(c.kind = 'official' OR c.owner_id = $1::uuid)`
 	}
 	var c Collection
-	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL, `+isFavoriteCollection+`, COALESCE(c.system_key, ''), COALESCE(c.description, ''), COALESCE(c.reading_direction, '') FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
-		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite, &c.System, &c.Description, &c.ReadingDirection)
+	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL, `+isFavoriteCollection+`, COALESCE(c.system_key, ''), COALESCE(c.description, ''), COALESCE(c.reading_direction, ''),
+		       COALESCE(c.publication_status, ''), COALESCE(c.original_title, '') FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
+		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite, &c.System, &c.Description, &c.ReadingDirection, &c.PublicationStatus, &c.OriginalTitle)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Collection not found", http.StatusNotFound)
 		return

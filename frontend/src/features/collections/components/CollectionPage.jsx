@@ -100,6 +100,50 @@ const DIRECTIONS = [
 ];
 const directionText = (key) => DIRECTIONS.find((d) => d.key === key)?.text ?? null;
 
+// How a series stands in publication (DEC-170).
+const PUBLICATION = [
+  { key: 'ongoing', text: 'Em andamento' },
+  { key: 'finished', text: 'Concluída' },
+  { key: 'hiatus', text: 'Em hiato' },
+  { key: 'cancelled', text: 'Cancelada' },
+];
+const publicationText = (key) => PUBLICATION.find((p) => p.key === key)?.text ?? null;
+
+/** What is said of the series besides its name (DEC-170): its title in the script of its language, and how it stands in publication. */
+function SeriesDataForm({ collection, onDone }) {
+  const [title, setTitle] = React.useState(collection.originalTitle ?? '');
+  const [status, setStatus] = React.useState(collection.publicationStatus ?? '');
+  const [message, setMessage] = React.useState('');
+  const save = useRenameCollection();
+  const submit = (event) => {
+    event.preventDefault();
+    setMessage('');
+    save.mutate(
+      { id: collection.id, originalTitle: title, publicationStatus: status, kind: collection.kind },
+      { onSuccess: onDone, onError: (error) => setMessage(collectionReason(error, 'Não foi possível salvar os dados da série.')) }
+    );
+  };
+  return (
+    <form onSubmit={submit} aria-label="Dados da série" className="flex flex-wrap items-end gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
+      <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-sm text-ink-soft">
+        Título original
+        <input autoFocus value={title} maxLength={255} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: ベルセルク" className="min-h-11 rounded-lg border border-border-hairline bg-surface px-3 text-ink" />
+      </label>
+      <label className="flex min-w-[180px] flex-col gap-1 text-sm text-ink-soft">
+        Situação
+        <select value={status} onChange={(event) => setStatus(event.target.value)} className="min-h-11 rounded-lg border border-border-hairline bg-surface px-3 text-ink">
+          <option value="">Não informada</option>
+          {PUBLICATION.map((p) => <option key={p.key} value={p.key}>{p.text}</option>)}
+        </select>
+      </label>
+      <button type="submit" disabled={save.isPending} className={PRIMARY}>Salvar</button>
+      <button type="button" onClick={onDone} className={BUTTON}>Cancelar</button>
+      <p className="basis-full text-xs text-ink-faint">O título original é o nome da série na escrita da língua dela. Deixe vazio para tirar.</p>
+      {message && <p role="alert" className="basis-full text-sm text-danger">{message}</p>}
+    </form>
+  );
+}
+
 /** How the series is read (DEC-166): where the reader opens a work of it when its file does not say. */
 function DirectionForm({ collection, onDone }) {
   const [value, setValue] = React.useState(collection.readingDirection ?? '');
@@ -478,7 +522,7 @@ export function CollectionPage() {
   const remove = useRemoveFromCollection();
   const retire = useRetireCollection();
   const restore = useRestoreCollection();
-  const [mode, setMode] = React.useState(null); // 'rename' | 'describe' | 'direction' | 'add' | 'classify' | 'group' | 'retire'
+  const [mode, setMode] = React.useState(null); // 'rename' | 'describe' | 'direction' | 'data' | 'add' | 'classify' | 'group' | 'retire'
   const [removing, setRemoving] = React.useState(null); // the place waiting for a yes
   const [message, setMessage] = React.useState('');
   const notesRef = React.useRef(null);
@@ -606,7 +650,10 @@ export function CollectionPage() {
                   <p className="font-mono text-[11px] uppercase tracking-widest text-brand">
                     {[years, collection.workCount > 0 ? worksText(collection.workCount) : null].filter(Boolean).join(' · ') || words.eyebrow}
                   </p>
-                  <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl leading-tight text-ink outline-none sm:text-5xl">{collection.name}</h1>
+                  <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl leading-tight text-ink outline-none sm:text-5xl">
+                    {collection.name}
+                    {collection.originalTitle && <span className="ml-3 align-baseline text-2xl text-ink-soft sm:text-3xl">{collection.originalTitle}</span>}
+                  </h1>
                   {(summary?.authors?.length > 0 || summary?.translators?.length > 0) && (
                     <p className="mt-1 text-sm text-ink-soft">
                       {summary.authors.map((p, i) => (
@@ -629,6 +676,9 @@ export function CollectionPage() {
                     </p>
                   )}
                 </div>
+                {publicationText(collection.publicationStatus) && (
+                  <p className="font-mono text-[11px] uppercase tracking-widest text-ink-soft">Publicação: {publicationText(collection.publicationStatus)}</p>
+                )}
                 {directionText(collection.readingDirection) && (
                   <p className="font-mono text-[11px] uppercase tracking-widest text-ink-soft">Leitura: {directionText(collection.readingDirection)}</p>
                 )}
@@ -691,6 +741,9 @@ export function CollectionPage() {
               <div className="flex flex-wrap items-center gap-2">
                 {!collection.system && <button onClick={() => setMode(mode === 'rename' ? null : 'rename')} aria-pressed={mode === 'rename'} className={BUTTON}>Renomear</button>}
                 {official && (
+                  <button onClick={() => setMode(mode === 'data' ? null : 'data')} aria-pressed={mode === 'data'} className={BUTTON}>Dados da série</button>
+                )}
+                {official && (
                   <button onClick={() => setMode(mode === 'direction' ? null : 'direction')} aria-pressed={mode === 'direction'} className={BUTTON}>Direção de leitura</button>
                 )}
                 {!collection.system && (
@@ -716,6 +769,7 @@ export function CollectionPage() {
           )}
 
           {staff && mode === 'rename' && <RenameForm collection={collection} onDone={() => setMode(null)} />}
+          {staff && official && mode === 'data' && <SeriesDataForm collection={collection} onDone={() => setMode(null)} />}
           {staff && official && mode === 'direction' && <DirectionForm collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'describe' && <DescribeForm collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'add' && <AddWorkPanel collection={collection} members={works} onDone={() => setMode(null)} />}
