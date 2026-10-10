@@ -6,6 +6,8 @@ import { useWork } from '../../reader/api/useWork';
 import { useWorkSeries } from '../../reader/api/useWorkSeries';
 import { useSetCompletion, useSetWorkFinished } from '../../reader/api/useCompletion';
 import { useFavoriteToggle } from '../../reader/api/useFavoriteToggle';
+import { useFileOutline } from '../../reader/api/useFileOutline';
+import { WorkOutline } from './WorkOutline';
 import { reasonOf, useSplitEdition } from '../../reader/api/useVersions';
 import { isStaff, useMe } from '../../auth/api/useMe';
 import { JoinVersionsDialog } from '../../reader/components/JoinVersionsDialog';
@@ -233,6 +235,19 @@ function yearOf(date) {
   return year ? year[1] : date;
 }
 
+const canRead = (file) => file?.availability === 'available' && !!file.url;
+// The formats the text index has a table of contents for.
+const OUTLINED_FORMATS = new Set(['epub', 'pdf', 'txt', 'md']);
+
+/** The file the page leads with: the one the person was reading if it still opens, else the primary edition's first, else any. */
+function leadFileOf(work) {
+  const editions = work?.editions ?? [];
+  const files = editions.flatMap((edition) => edition.files);
+  return files.find((file) => file.id === work?.continue?.fileId && canRead(file))
+    ?? editions.find((edition) => edition.isPrimary)?.files.find(canRead)
+    ?? files.find(canRead);
+}
+
 /** The synopsis, as many lines as fit and the rest one press away (the long ones of a publisher fill the page otherwise). */
 function Description({ text }) {
   const [all, setAll] = React.useState(false);
@@ -297,6 +312,8 @@ export function WorkPage() {
   const openCollection = useGlobalStore((state) => state.openCollection);
   // The official collection of the series the work is in, to open it from the name of the series (#187).
   const seriesCollection = useWorkSeries(workId).data?.collection ?? null;
+  const leadFile = work ? leadFileOf(work) : undefined;
+  const outline = useFileOutline(leadFile?.id, { enabled: !!leadFile && OUTLINED_FORMATS.has((leadFile.format || '').toLowerCase()) }).data;
   const splitEdition = useSplitEdition();
   const [joining, setJoining] = React.useState(false);
   const [splitting, setSplitting] = React.useState(null); // the edition waiting for a yes
@@ -322,10 +339,6 @@ export function WorkPage() {
   const otherRoles = ROLES.filter((r) => r.key !== 'author').map((r) => ({ ...r, people: peopleOf(meta?.contributors, r.key) })).filter((r) => r.people.length > 0);
   const editions = work?.editions ?? [];
   const files = editions.flatMap((edition) => edition.files);
-  const canRead = (file) => file?.availability === 'available' && !!file.url;
-  const leadFile = files.find((file) => file.id === work?.continue?.fileId && canRead(file))
-    ?? editions.find((edition) => edition.isPrimary)?.files.find(canRead)
-    ?? files.find(canRead);
   const canContinue = work?.inProgress && leadFile?.id === work?.continue?.fileId;
   const leadEdition = editions.find((edition) => edition.files.some((file) => file.id === leadFile?.id));
   // The work goes by the title written for the edition in focus, if there is one; its other names go under it.
@@ -463,6 +476,13 @@ export function WorkPage() {
             busy={setWorkFinished.isPending}
             onFinish={(finished) => setWorkFinished.mutate({ workId: work.id, finished })}
           />
+
+          {leadFile && (
+            <WorkOutline
+              outline={outline}
+              onOpen={(locator, title) => openBook(work.id, leadFile.id, { locator, context: { kind: 'chapter', quote: title } })}
+            />
+          )}
           {notice && (
             <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border-l-4 border-success bg-surface-alt p-4 text-sm text-ink">
               <span>{notice.text}</span>
