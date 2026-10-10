@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
+	"github.com/ocnaibill/codice/backend/internal/equivalence"
 	"github.com/ocnaibill/codice/backend/internal/locator"
 )
 
@@ -68,6 +70,9 @@ type Note struct {
 	// Links says, for each [[link]] in Body (by the name as written), the concept it points to now, or null when
 	// there is none yet (#21). Only a list of notes says it; the export does not.
 	Links map[string]*LinkOut `json:"links,omitempty"`
+	// Chapter is the title of the entry of the file's outline that the note's place is in (DEC-151), said only when asked for
+	// (`chapters=true`) and when the file has an outline: nothing is made up.
+	Chapter string `json:"chapter,omitempty"`
 }
 
 // CreateNoteRequest saves marginalia against a work. Quote is the passage kept from the
@@ -429,7 +434,46 @@ func (h *NotesHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error listing notes", http.StatusInternalServerError)
 		return
 	}
+	if r.URL.Query().Get("chapters") == "true" {
+		if err := attachChapters(r.Context(), h.DB, notes); err != nil {
+			log.Println("Error reading the chapters of notes:", err)
+			http.Error(w, "Error listing notes", http.StatusInternalServerError)
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": notes, "total": total})
+}
+
+// attachChapters says, for each note that points somewhere in a file with an outline, the chapter that place is in: the entry of the outline that
+// holds the segment nearest to the note's locator. A file is read once however many notes it has.
+func attachChapters(ctx context.Context, db *sql.DB, notes []Note) error {
+	type index struct {
+		nodes    []equivalence.Node
+		segments []equivalence.Segment
+	}
+	loaded := map[int64]*index{}
+	for i := range notes {
+		n := &notes[i]
+		if n.FileID == nil || len(n.Locator) == 0 {
+			continue
+		}
+		ix, ok := loaded[*n.FileID]
+		if !ok {
+			nodes, segments, _, err := loadOutlineIndex(ctx, db, *n.FileID)
+			if err != nil {
+				return err
+			}
+			ix = &index{nodes: nodes, segments: segments}
+			loaded[*n.FileID] = ix
+		}
+		if len(ix.nodes) == 0 {
+			continue
+		}
+		if seg := nearestSegment(ix.segments, n.Locator); seg != nil && seg.Node >= 0 && seg.Node < len(ix.nodes) {
+			n.Chapter = ix.nodes[seg.Node].Title
+		}
+	}
+	return nil
 }
 
 // UpdateNoteRequest edits the words of a note. A field that is absent stays as it is. Where the

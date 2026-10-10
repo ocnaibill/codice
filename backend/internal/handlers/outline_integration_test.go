@@ -193,3 +193,75 @@ func TestOutline_ASegmentOfAnOutlineThatIsNotTheOneInTheFileIsNotAnEntry(t *test
 		t.Errorf("the place is in an entry that the outline does not have: %v", *out.Current)
 	}
 }
+
+type chaptered struct {
+	Data []struct {
+		ID      int    `json:"id"`
+		Kind    string `json:"kind"`
+		Quote   string `json:"quote"`
+		Chapter string `json:"chapter"`
+	} `json:"data"`
+}
+
+func (s *catalogStack) notesWithChapters(a actor, query string) chaptered {
+	s.t.Helper()
+	rec := s.do(a, "GET", "/notes?"+query, "")
+	if rec.Code != 200 {
+		s.t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	var out chaptered
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	return out
+}
+
+func TestNotes_SayTheChapterTheirPlaceIsInWhenAskedAndTheFileHasAnOutline(t *testing.T) {
+	s := newCatalogStack(t)
+	work, epub, pdf := s.bookWithTwoFiles()
+	s.outlinedEPUB(epub)
+	add := func(a actor, file int64, body string) {
+		t.Helper()
+		if rec := s.do(a, "POST", fmt.Sprintf("/works/%d/notes", work), body); rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+			t.Fatalf("%d %s", rec.Code, rec.Body.String())
+		}
+	}
+	f := fmt.Sprint(epub)
+	add(ana, epub, `{"kind":"highlight","quote":"na capa","fileId":`+f+`,"locator":{"type":"epub","href":"cover.xhtml"}}`)
+	add(ana, epub, `{"kind":"highlight","quote":"no meio do um","fileId":`+f+`,"locator":{"type":"epub","href":"c1.xhtml","progression":0.6}}`)
+	add(ana, epub, `{"kind":"note","quote":"no três","body":"minha nota","fileId":`+f+`,"locator":{"type":"epub","href":"c3.xhtml","progression":0.2}}`)
+	add(ana, pdf, `{"kind":"highlight","quote":"num pdf sem índice","fileId":`+fmt.Sprint(pdf)+`,"locator":{"type":"pdf","page":3}}`)
+	add(ana, epub, `{"kind":"highlight","quote":"sem lugar"}`)
+
+	got := map[string]string{}
+	for _, n := range s.notesWithChapters(ana, fmt.Sprintf("workId=%d&limit=50&chapters=true", work)).Data {
+		got[n.Quote] = n.Chapter
+	}
+	want := map[string]string{
+		"na capa":            "Capa",
+		"no meio do um":      "Capítulo 1",
+		"no três":            "Capítulo 3",
+		"num pdf sem índice": "",
+		"sem lugar":          "",
+	}
+	for q, c := range want {
+		if got[q] != c {
+			t.Errorf("%q is in %q, want %q", q, got[q], c)
+		}
+	}
+	// A note whose file was taken away keeps its place and has no file to say a chapter of.
+	s.exec(`UPDATE notes SET file_id = NULL WHERE quote = 'no três'`)
+	for _, n := range s.notesWithChapters(ana, fmt.Sprintf("workId=%d&limit=50&chapters=true", work)).Data {
+		if n.Quote == "no três" && n.Chapter != "" {
+			t.Errorf("a note with no file has no chapter: %+v", n)
+		}
+	}
+	// Not asked for: not said (the list of every note does not read the outline of every file).
+	for _, n := range s.notesWithChapters(ana, fmt.Sprintf("workId=%d&limit=50", work)).Data {
+		if n.Chapter != "" {
+			t.Errorf("the chapter was not asked for: %+v", n)
+		}
+	}
+	// The notes are the caller's.
+	if got := s.notesWithChapters(bob, fmt.Sprintf("workId=%d&limit=50&chapters=true", work)); len(got.Data) != 0 {
+		t.Errorf("bob sees ana's notes: %+v", got.Data)
+	}
+}
