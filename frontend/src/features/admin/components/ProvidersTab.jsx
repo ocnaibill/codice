@@ -3,6 +3,7 @@ import { describeError, useMetadataProviders, useSetMetadataProvider } from '../
 import { ConfirmDialog } from './ConfirmDialog';
 import { Empty, ErrorNote, Loading, Section } from './ui';
 import { LoadError } from '../../../components/ui/LoadError';
+import { describeHealth, TONE_CLASS } from '../providerHealth';
 import { PermissionNote } from '../../../components/ui/PermissionNote';
 
 // What each provider is, where it lives, and what asking it hands over: the owner decides knowing (DEC-045).
@@ -60,6 +61,7 @@ export function ProvidersTab({ isOwner }) {
         {providers.map((provider) => {
           const about = ABOUT[provider.id] || {};
           const note = keyNote(provider);
+          const health = describeHealth(provider);
           return (
             <li key={provider.id} className="flex flex-wrap items-start justify-between gap-3 py-4">
               <div className="min-w-0">
@@ -73,6 +75,11 @@ export function ProvidersTab({ isOwner }) {
                 {about.note && <p className="text-[12px] text-ink-faint">{about.note}</p>}
                 {note && (
                   <p className={`text-[12px] ${blocked(provider) ? 'text-danger' : 'text-ink-faint'}`}>{note}</p>
+                )}
+                {health && (
+                  <p className={`text-[12px] ${TONE_CLASS[health.tone]}`} data-health={provider.health?.state ?? 'none'}>
+                    {health.text}
+                  </p>
                 )}
               </div>
               <label className="flex min-h-10 items-center gap-2 text-[13px] text-ink">

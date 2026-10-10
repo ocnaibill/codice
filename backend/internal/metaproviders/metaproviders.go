@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/ocnaibill/codice/backend/internal/audit"
 )
@@ -57,6 +58,24 @@ type Status struct {
 	// KeyConfigured is whether the worker has the API key: null when the provider has none or the worker has not
 	// said yet (it says at start).
 	KeyConfigured *bool `json:"keyConfigured"`
+	// Health is how the provider answered the last time the worker asked it (DEC-144): null until it was asked.
+	Health *Health `json:"health"`
+}
+
+// EmptyWarning is how many searches in a row a provider can answer with nothing at all, every request answered, before the administration
+// says it may not be working (an unknown title is no news; ten in a row is).
+const EmptyWarning = 10
+
+// Health is what the worker kept of the last request to a provider. It holds no key and no title.
+type Health struct {
+	// State is "ok", "key" (the key was refused), "quota" (too many requests), "down" (it did not answer) or "error" (it answered with another error).
+	State     string     `json:"state"`
+	Status    int        `json:"status"`
+	Problem   string     `json:"problem"`
+	CheckedAt time.Time  `json:"checkedAt"`
+	LastOKAt  *time.Time `json:"lastOkAt"`
+	// Empty is true when many searches in a row came back with nothing although the provider answered every request.
+	Empty bool `json:"empty"`
 }
 
 func find(id string) (Info, bool) {
@@ -120,15 +139,47 @@ func List(ctx context.Context, db *sql.DB) ([]Status, error) {
 	if err != nil {
 		return nil, err
 	}
+	health, err := readHealth(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Status, 0, len(Known))
 	for _, k := range Known {
-		st := Status{Info: k, Enabled: on[k.ID]}
+		st := Status{Info: k, Enabled: on[k.ID], Health: health[k.ID]}
 		if has, said := keys[k.ID]; said && k.Key != "" {
 			st.KeyConfigured = &has
 		}
 		out = append(out, st)
 	}
 	return out, nil
+}
+
+// readHealth is how each provider answered the last time, by provider id.
+func readHealth(ctx context.Context, db *sql.DB) (map[string]*Health, error) {
+	rows, err := db.QueryContext(ctx, `SELECT provider, state, status, problem, checked_at, last_ok_at, empty_streak FROM provider_health`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]*Health{}
+	for rows.Next() {
+		var (
+			id     string
+			h      Health
+			lastOK sql.NullTime
+			streak int
+		)
+		if err := rows.Scan(&id, &h.State, &h.Status, &h.Problem, &h.CheckedAt, &lastOK, &streak); err != nil {
+			return nil, err
+		}
+		if lastOK.Valid {
+			t := lastOK.Time
+			h.LastOKAt = &t
+		}
+		h.Empty = streak >= EmptyWarning
+		out[id] = &h
+	}
+	return out, rows.Err()
 }
 
 // AnyEnabled is whether some provider may be asked.

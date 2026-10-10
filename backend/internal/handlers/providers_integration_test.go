@@ -18,6 +18,14 @@ type providerRow struct {
 	Key           string
 	Enabled       bool
 	KeyConfigured *bool
+	Health        *struct {
+		State     string
+		Status    int
+		Problem   string
+		CheckedAt string
+		LastOkAt  *string
+		Empty     bool
+	}
 }
 
 func (s *catalogStack) providers() []providerRow {
@@ -283,6 +291,53 @@ func TestProviders_BeforeTheWorkerHasSaidAnythingTurningOnWhatNeedsAKeyIsAllowed
 	for _, id := range []string{"comicvine", "google_books"} {
 		if code := s.setProvider(id, `{"enabled":true}`); code != 204 {
 			t.Errorf("%s, not known yet: %d", id, code)
+		}
+	}
+}
+
+func TestProviders_SayHowEachOneAnsweredTheLastTimeAndNothingElse(t *testing.T) {
+	s := newCatalogStack(t)
+	for _, r := range s.providers() {
+		if r.Health != nil {
+			t.Errorf("%s: nothing was asked yet, so nothing is known: %+v", r.ID, r.Health)
+		}
+	}
+	s.exec(`INSERT INTO provider_health (provider, state, status, problem, checked_at, last_ok_at, empty_streak) VALUES
+		('google_books', 'key', 403, 'HTTP 403: the key is not allowed to ask this', now() - interval '5 minutes', now() - interval '2 days', 0),
+		('openlibrary', 'ok', 200, '', now(), now(), 9),
+		('comicvine', 'ok', 200, '', now(), now(), 10),
+		('anilist', 'quota', 429, 'HTTP 429', now(), NULL, 3),
+		('mangadex', 'down', 0, 'the request failed', now(), NULL, 0),
+		('wikidata', 'error', 400, 'HTTP 400', now(), NULL, 0),
+		('nobody', 'ok', 200, '', now(), now(), 0)`)
+	by := map[string]providerRow{}
+	for _, r := range s.providers() {
+		by[r.ID] = r
+	}
+	if len(by) != 7 {
+		t.Errorf("a provider the library does not have is not listed: %d", len(by))
+	}
+	google := by["google_books"].Health
+	if google == nil || google.State != "key" || google.Status != 403 || !strings.Contains(google.Problem, "not allowed") || google.LastOkAt == nil || google.Empty || google.CheckedAt == "" {
+		t.Errorf("Google Books: %+v", google)
+	}
+	for id, want := range map[string]string{"openlibrary": "ok", "comicvine": "ok", "anilist": "quota", "mangadex": "down", "wikidata": "error"} {
+		if h := by[id].Health; h == nil || h.State != want {
+			t.Errorf("%s: %+v, want %s", id, h, want)
+		}
+	}
+	// Nine searches in a row with nothing is an unknown title; ten is a provider that may not be working.
+	if by["openlibrary"].Health.Empty || !by["comicvine"].Health.Empty {
+		t.Errorf("the warning for many empty searches: open library %v, comicvine %v", by["openlibrary"].Health.Empty, by["comicvine"].Health.Empty)
+	}
+	if by["anilist"].Health.LastOkAt != nil || by["wikipedia"].Health != nil {
+		t.Errorf("never answered well, or never asked: %+v / %+v", by["anilist"].Health, by["wikipedia"].Health)
+	}
+	// What the page is told is the kind of answer and when, never a key or a title.
+	raw := s.do(admin, "GET", "/admin/metadata-providers", "").Body.String()
+	for _, secret := range []string{"api_key", "apikey", "key=", "query"} {
+		if strings.Contains(strings.ToLower(raw), secret) {
+			t.Errorf("the list says %q: %s", secret, raw)
 		}
 	}
 }

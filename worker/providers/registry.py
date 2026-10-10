@@ -24,10 +24,12 @@ SERIES_PROVIDERS = ('anilist', 'mangadex')
 class ProviderRegistry:
     """Registry that selects providers by format with priority ordering."""
 
-    def __init__(self, enabled=None):
+    def __init__(self, enabled=None, health=None):
         # Which providers may be asked (the owner's choice, gate.py). Without one, none is: asking a third party
         # is never the default.
         self._enabled = enabled or nothing_allowed
+        # Who is told how many answers each provider gave (providers.health): many searches in a row with none says it is not working.
+        self.health = health
         self._providers: Dict[str, List[BaseProvider]] = {
             # Wikidata translates a title the book providers do not know and says what the work is; Wikipedia completes with the text about it.
             'default': [
@@ -82,6 +84,8 @@ class ProviderRegistry:
             except Exception as e:
                 print(f"   ⚠️ {provider.name} failed: {e}")
                 continue
+            if self.health is not None:
+                self.health.answered(provider.id, len(answers))
             if not answers:
                 print(f"   ⚠️ {provider.name}: no results")
             for record in answers:
@@ -166,6 +170,10 @@ class ProviderRegistry:
             self._identify(best, q, resolver, entity)
         self._complete(best, format)
         return best
+
+    def names(self):
+        """What each provider calls itself in the log, and its id: ("Google Books", "google_books")."""
+        return {p.name: p.id for providers in self._providers.values() for p in providers}
 
     def _first(self, format, role):
         """The first provider that is on and has the role (`resolver` or `completer`), or none."""

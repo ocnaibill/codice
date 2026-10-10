@@ -13,6 +13,7 @@ import requests
 from .gate import scrub
 
 PROJECT = 'https://github.com/ocnaibill/codice'
+MAX_SAID = 120   # what a provider says about a refusal, at most, in the log and for the administration
 
 # What each status says about the one who asked, for whoever reads the log.
 STATUS_HINTS = {
@@ -37,6 +38,9 @@ def min_interval(environ=None):
     environ = os.environ if environ is None else environ
     return 0.35 if (environ.get('CODICE_CONTACT') or '').strip() else 1.05
 
+
+# Who is told how each request came out (providers.health.HealthRecorder.reply): the administration says it next to the provider.
+reporter = None
 
 _last_call = {}
 _clock = time.monotonic
@@ -64,8 +68,32 @@ class Reply:
         return self.status == 200 and self.data is not None
 
 
+def _said(resp, secrets=()):
+    """What the provider says about why it refused, in a few words (Google: {"error": {"message": ...}}; others: {"error": "..."}). Without it a
+    key that is not valid looks like any badly made request."""
+    try:
+        data = resp.json()
+        error = data.get('error') if isinstance(data, dict) else None
+        message = error.get('message') if isinstance(error, dict) else error
+    except Exception:
+        return ''
+    if not isinstance(message, str):
+        return ''
+    return scrub(' '.join(message.split()), *secrets)[:MAX_SAID]
+
+
 def get_json(provider, url, params=None, headers=None, timeout=10, secrets=(), interval=None, post=None) -> Reply:
     """Asks a provider and says, in the log, why it did not answer. The secrets (the key the URL carries) are never written."""
+    reply = _ask(provider, url, params, headers, timeout, secrets, interval, post)
+    if reporter is not None:
+        try:
+            reporter(provider, reply)
+        except Exception as err:   # how a provider answered is not worth losing its answer
+            print(f"   ⚠️ {provider}: could not report how it answered ({err})")
+    return reply
+
+
+def _ask(provider, url, params, headers, timeout, secrets, interval, post) -> Reply:
     host = urlparse(url).netloc
     _wait(host, min_interval() if interval is None else interval)
     sent = {'User-Agent': user_agent(), 'Accept': 'application/json'}
@@ -81,6 +109,9 @@ def get_json(provider, url, params=None, headers=None, timeout=10, secrets=(), i
         return Reply(0, None, problem)
     if resp.status_code != 200:
         problem = f'HTTP {resp.status_code}' + (f': {STATUS_HINTS[resp.status_code]}' if resp.status_code in STATUS_HINTS else '')
+        said = _said(resp, secrets)
+        if said:
+            problem += f' ({said})'
         print(f"   ⚠️ {provider}: {problem}")
         return Reply(resp.status_code, None, problem)
     try:

@@ -71,6 +71,34 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
     expect(confirmDialog().textContent).toContain('é enviado a *.wikipedia.org (Wikimedia): só o título da página');
   });
 
+  describe('how each answered the last time (DEC-144)', () => {
+    const healthy = (over) => ({ state: 'ok', status: 200, problem: '', checkedAt: new Date().toISOString(), lastOkAt: new Date().toISOString(), empty: false, ...over });
+    const noteOf = (state) => document.body.querySelector(`[data-health="${state}"]`);
+
+    it('says, next to each provider, whether it is answering, and why it is not', async () => {
+      await open({ isOwner: true }, [
+        provider('google_books', 'Google Books', true, { key: 'required', keyConfigured: true, sends: ['title', 'isbn'], health: healthy({ state: 'key', status: 403 }) }),
+        provider('openlibrary', 'Open Library', true, { sends: ['title', 'isbn', 'author_key'], health: healthy() }),
+        provider('comicvine', 'ComicVine', true, { key: 'required', keyConfigured: true, health: healthy({ state: 'quota', status: 429 }) }),
+        provider('anilist', 'AniList', true, { health: healthy({ state: 'down', status: 0, lastOkAt: null }) }),
+        provider('mangadex', 'MangaDex', true),
+        provider('wikidata', 'Wikidata', false),
+      ]);
+      expect(noteOf('key').textContent).toContain('A chave foi recusada (HTTP 403');
+      expect(noteOf('key').textContent).toContain('Confira GOOGLE_BOOKS_API_KEY no ambiente do worker');
+      expect(noteOf('key').className).toContain('text-danger');
+      expect(noteOf('ok').textContent).toContain('Respondendo normalmente');
+      expect(noteOf('ok').className).toContain('text-success');
+      expect(noteOf('quota').textContent).toContain('O limite de uso foi atingido (HTTP 429');
+      expect(noteOf('quota').className).toContain('text-warning');
+      expect(noteOf('down').textContent).toContain('Não respondeu: rede ou serviço fora do ar');
+      expect(noteOf('down').textContent).toContain('Ainda não respondeu bem.');
+      expect(noteOf('none').textContent).toBe('Ainda não foi perguntado: nada a dizer sobre ele.');
+      // a provider that is off and was never asked has nothing to say
+      expect(document.body.querySelectorAll('[data-health]')).toHaveLength(5);
+    });
+  });
+
   it('turns one on only after saying what is sent, and not at all if the owner backs out', async () => {
     await open();
     await view.click(box('Google Books'));
