@@ -12,7 +12,7 @@ from profiles import resolve_pending
 URL = os.environ.get('TEST_DATABASE_URL')
 pytestmark = pytest.mark.skipif(not URL, reason='TEST_DATABASE_URL is not set')
 MIGRATIONS = [os.path.join(os.path.dirname(__file__), '..', '..', 'backend', 'internal', 'database', 'migrations', name)
-              for name in ('00064_person_profile.sql', '00069_person_born_place.sql')]
+              for name in ('00064_person_profile.sql', '00069_person_born_place.sql', '00073_person_profile_manual.sql')]
 
 PROFILE = {'description': 'escritor americano', 'born': '1920-10-08', 'died': '1986-02-11', 'image': 'A.jpg', 'pages': {'pt': 'Frank Herbert'},
            'born_place': None, 'place_read': True,
@@ -110,6 +110,34 @@ class TestTheMigration:
             db.execute(open(path, encoding='utf-8').read().split('-- +goose Down', 1)[1])
         with pytest.raises(psycopg2.errors.UndefinedTable):
             db.execute('SELECT 1 FROM person_profile')
+
+
+class TestAProfileWrittenByHand:
+    """DEC-167: a profile that staff wrote (manual) has no identifier, or has one the worker must not read over."""
+
+    def test_it_needs_no_identifier_and_is_not_manual_unless_somebody_wrote_it(self, db):
+        a, b = person(db, 'Miguel Nicodelis'), person(db, 'Frank Herbert', 'Q7934')
+        db.execute("INSERT INTO person_profile (person_id, wikidata_id, description, manual) VALUES (%s, NULL, 'escritor', TRUE)", (a,))
+        db.execute("INSERT INTO person_profile (person_id, wikidata_id) VALUES (%s, 'Q7934')", (b,))
+        assert read(db, 'SELECT person_id, wikidata_id, manual FROM person_profile ORDER BY person_id') == [(a, None, True), (b, 'Q7934', False)]
+
+    def test_it_is_not_given_to_a_person_that_joins_the_identifier(self, db):
+        a = person(db, 'Frank Herbert', 'Q7934')
+        db.execute("INSERT INTO person_profile (person_id, wikidata_id, description, place_read, manual) VALUES (%s, 'Q7934', 'meu texto', TRUE, TRUE)", (a,))
+        db.execute("INSERT INTO authority_lookups (source, key, state) VALUES ('wikidata', 'Q7934', 'done')")
+        b = person(db, 'F. Herbert', 'Q7934')
+        run(db, {'wikidata'}, fetcher({}))
+        assert read(db, f'SELECT count(*) FROM person_profile WHERE person_id = {b}') == [(0,)]
+
+    def test_a_reading_that_was_on_its_way_does_not_write_over_it(self, db):
+        a = person(db, 'Frank Herbert', 'Q7934')
+
+        def fetch(qid, covers_dir, allow_bio, allow_image=True):
+            # Staff write the profile while the worker is asking Wikidata.
+            db.execute("INSERT INTO person_profile (person_id, wikidata_id, description, place_read, manual) VALUES (%s, 'Q7934', 'meu texto', TRUE, TRUE)", (a,))
+            return 'ok', PROFILE
+        run(db, {'wikidata', 'wikipedia'}, fetch)
+        assert read(db, 'SELECT description, manual FROM person_profile') == [('meu texto', True)]
 
 
 class TestKeepingAProfile:

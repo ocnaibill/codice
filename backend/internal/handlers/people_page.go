@@ -56,7 +56,7 @@ type PersonTag struct {
 
 // PersonProfile is the profile of a person: a short description, the years, a biography with where it came from, and a photo with its credit.
 type PersonProfile struct {
-	WikidataID  string `json:"wikidataId"`
+	WikidataID  string `json:"wikidataId,omitempty"`
 	Description string `json:"description"`
 	Born        string `json:"born,omitempty"`
 	// BornPlace is the name of the place they were born in (DEC-160), from Wikidata; absent when it has none.
@@ -69,6 +69,8 @@ type PersonProfile struct {
 	// Hidden and ImageHidden are what staff chose; they are only told to staff.
 	Hidden      bool `json:"hidden,omitempty"`
 	ImageHidden bool `json:"imageHidden,omitempty"`
+	// Manual says the profile was written by hand (DEC-167); only staff are told.
+	Manual bool `json:"manual,omitempty"`
 }
 
 // ProfileBioSource is the page a biography is taken from.
@@ -99,10 +101,10 @@ func readProfile(r *http.Request, db *sql.DB, personID int) (*PersonProfile, err
 		bio                                          string
 	)
 	err := db.QueryRowContext(r.Context(), `
-		SELECT wikidata_id, description, born, died, born_place, bio, bio_language, bio_title, bio_url,
-		       image_path, image_credit, image_license, image_license_url, image_page_url, hidden, image_hidden
+		SELECT COALESCE(wikidata_id, ''), description, born, died, born_place, bio, bio_language, bio_title, bio_url,
+		       image_path, image_credit, image_license, image_license_url, image_page_url, hidden, image_hidden, manual
 		FROM person_profile WHERE person_id = $1`, personID).Scan(&p.WikidataID, &p.Description, &born, &died, &bornPlace, &bio, &bioLang, &bioTitle, &bioURL,
-		&path, &credit, &license, &licenseURL, &imagePage, &p.Hidden, &p.ImageHidden)
+		&path, &credit, &license, &licenseURL, &imagePage, &p.Hidden, &p.ImageHidden, &p.Manual)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -114,15 +116,19 @@ func readProfile(r *http.Request, db *sql.DB, personID int) (*PersonProfile, err
 		return nil, nil
 	}
 	p.Born, p.Died, p.BornPlace = born.String, died.String, bornPlace.String
-	if bio != "" && bioLang.Valid {
+	// A biography written by hand has no source to cite (editing it clears the language); one from Wikipedia always does, even in a profile
+	// that was touched by hand in some other field.
+	if bio != "" && (bioLang.Valid || p.Manual) {
 		p.Bio = bio
-		p.BioSource = &ProfileBioSource{Language: bioLang.String, Title: bioTitle.String, URL: bioURL.String, License: "CC BY-SA 4.0"}
+		if bioLang.Valid {
+			p.BioSource = &ProfileBioSource{Language: bioLang.String, Title: bioTitle.String, URL: bioURL.String, License: "CC BY-SA 4.0"}
+		}
 	}
 	if path.Valid && path.String != "" && (!p.ImageHidden || staff) {
 		p.Image = &ProfileImage{URL: path.String, Credit: credit.String, License: license.String, LicenseURL: licenseURL.String, PageURL: imagePage.String}
 	}
 	if !staff {
-		p.Hidden, p.ImageHidden = false, false
+		p.Hidden, p.ImageHidden, p.Manual = false, false, false
 	}
 	return &p, nil
 }

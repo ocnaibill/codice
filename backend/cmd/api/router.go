@@ -79,7 +79,7 @@ func newRouter(d routerDeps) http.Handler {
 	jobsHandler := &handlers.JobsHandler{DB: db, RedisClient: d.RedisClient, StoragePath: d.StoragePath}
 	dupesHandler := &handlers.DuplicatesHandler{DB: db}
 	versionsHandler := &handlers.VersionsHandler{DB: db}
-	peopleHandler := &handlers.PeopleHandler{DB: db}
+	peopleHandler := &handlers.PeopleHandler{DB: db, CoversDir: filepath.Join(d.StoragePath, "covers")}
 	providersHandler := &handlers.ProvidersHandler{DB: db, RedisClient: d.RedisClient}
 	trashHandler := &handlers.TrashHandler{Trash: &storage.Trash{DB: db, Root: d.StoragePath}}
 	storageHandler := &handlers.StorageHandler{Mover: d.Mover, DB: db, StoragePath: d.StoragePath}
@@ -329,6 +329,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Get("/admin/people/names", peopleHandler.Names)
 	r.With(staff).Put("/admin/people/{id}/name", peopleHandler.SetName)
 	r.With(staff).Put("/admin/people/{id}/profile", peopleHandler.SetProfile)
+	r.With(staff).Delete("/admin/people/{id}/profile", peopleHandler.ResetProfile)
+	r.With(staff).Post("/admin/people/{id}/profile/photo", peopleHandler.SetPhoto)
 	// How names are shown (#64): each account chooses, the owner sets the library's default.
 	r.With(catalog, auth).Get("/people/{id}", peopleHandler.Page)
 	r.With(auth).Get("/auth/preferences", peopleHandler.GetPreferences)

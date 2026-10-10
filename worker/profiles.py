@@ -196,7 +196,8 @@ _KEEP = """
         born_place = EXCLUDED.born_place, place_read = EXCLUDED.place_read,
         died = EXCLUDED.died, bio = EXCLUDED.bio, bio_language = EXCLUDED.bio_language, bio_title = EXCLUDED.bio_title, bio_url = EXCLUDED.bio_url,
         bio_state = EXCLUDED.bio_state, image_path = EXCLUDED.image_path, image_credit = EXCLUDED.image_credit, image_license = EXCLUDED.image_license,
-        image_license_url = EXCLUDED.image_license_url, image_page_url = EXCLUDED.image_page_url, fetched_at = now();"""
+        image_license_url = EXCLUDED.image_license_url, image_page_url = EXCLUDED.image_page_url, fetched_at = now()
+    WHERE NOT person_profile.manual;"""
 _REMEMBER = """
     INSERT INTO authority_lookups (source, key, state) VALUES ('wikidata', %s, %s)
     ON CONFLICT (source, key) DO UPDATE SET state = EXCLUDED.state, attempts = authority_lookups.attempts + 1, attempted_at = now();"""
@@ -209,8 +210,8 @@ _PENDING = """
           AND (l.state <> 'failed' OR l.attempts >= %s OR l.attempted_at > now() - interval '1 day'))
     ORDER BY a.value LIMIT %s"""
 # A profile read before the place of birth was kept: asked again, once, for the place alone.
-_PLACE_PENDING = "SELECT DISTINCT wikidata_id FROM person_profile WHERE NOT place_read ORDER BY wikidata_id LIMIT %s"
-_BIO_PENDING = "SELECT DISTINCT wikidata_id FROM person_profile WHERE bio_state = 'pending' ORDER BY wikidata_id LIMIT %s"
+_PLACE_PENDING = "SELECT DISTINCT wikidata_id FROM person_profile WHERE NOT place_read AND NOT manual AND wikidata_id IS NOT NULL ORDER BY wikidata_id LIMIT %s"
+_BIO_PENDING = "SELECT DISTINCT wikidata_id FROM person_profile WHERE bio_state = 'pending' AND NOT manual AND wikidata_id IS NOT NULL ORDER BY wikidata_id LIMIT %s"
 # Another person with the same identifier (an author written two ways, not merged yet) has the profile already: no request for it.
 _SHARE = """
     INSERT INTO person_profile (person_id, wikidata_id, description, born, died, bio, bio_language, bio_title, bio_url, bio_state,
@@ -218,7 +219,7 @@ _SHARE = """
     SELECT a.person_id, p.wikidata_id, p.description, p.born, p.died, p.bio, p.bio_language, p.bio_title, p.bio_url, p.bio_state,
            p.image_path, p.image_credit, p.image_license, p.image_license_url, p.image_page_url, p.born_place, p.place_read, p.fetched_at
     FROM person_authority a
-    JOIN (SELECT DISTINCT ON (wikidata_id) * FROM person_profile ORDER BY wikidata_id, fetched_at DESC) p ON p.wikidata_id = a.value
+    JOIN (SELECT DISTINCT ON (wikidata_id) * FROM person_profile WHERE NOT manual ORDER BY wikidata_id, fetched_at DESC) p ON p.wikidata_id = a.value
     WHERE a.scheme = 'wikidata' AND NOT EXISTS (SELECT 1 FROM person_profile q WHERE q.person_id = a.person_id)
     ON CONFLICT (person_id) DO NOTHING"""
 
@@ -255,11 +256,11 @@ def resolve_pending(db, allowed, covers_dir, limit=3, fetch=fetch_profile, sleep
             break
         status, profile = fetch(qid, covers_dir, allow_bio=False, allow_image=False)
         if status == 'ok' and profile.get('place_read'):
-            db.execute("UPDATE person_profile SET born_place = %s, place_read = TRUE WHERE wikidata_id = %s AND NOT place_read",
+            db.execute("UPDATE person_profile SET born_place = %s, place_read = TRUE WHERE wikidata_id = %s AND NOT place_read AND NOT manual",
                        (profile.get('born_place'), qid))
             answered += 1
         elif status == 'missing':
-            db.execute("UPDATE person_profile SET place_read = TRUE WHERE wikidata_id = %s AND NOT place_read", (qid,))   # no such person: no place to wait for
+            db.execute("UPDATE person_profile SET place_read = TRUE WHERE wikidata_id = %s AND NOT place_read AND NOT manual", (qid,))   # no such person: no place to wait for
         sleep(0.5)
     if allowed('wikipedia'):
         for (qid,) in db.fetchall(_BIO_PENDING, (limit,)) or []:
@@ -269,7 +270,7 @@ def resolve_pending(db, allowed, covers_dir, limit=3, fetch=fetch_profile, sleep
             if status == 'ok':
                 bio = profile['bio'] or (None, None, None, '')
                 db.execute("""UPDATE person_profile SET bio = %s, bio_language = %s, bio_title = %s, bio_url = %s, bio_state = %s
-                              WHERE wikidata_id = %s AND bio_state = 'pending'""",
+                              WHERE wikidata_id = %s AND bio_state = 'pending' AND NOT manual""",
                            (bio[3], bio[0], bio[1], bio[2], profile['bio_state'], qid))
                 answered += 1
             sleep(0.5)

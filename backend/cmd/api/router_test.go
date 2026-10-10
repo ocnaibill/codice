@@ -145,6 +145,8 @@ var staffRoutes = []route{
 	{"GET", "/admin/metadata-providers"},
 	{"POST", "/admin/works/1/metadata-refresh"},
 	{"PUT", "/admin/people/1/profile"},
+	{"DELETE", "/admin/people/1/profile"},
+	{"POST", "/admin/people/1/profile/photo"},
 	{"GET", "/admin/works/1/metadata-refresh"},
 	{"GET", "/admin/people/merges"},
 	{"GET", "/admin/people/names"},
