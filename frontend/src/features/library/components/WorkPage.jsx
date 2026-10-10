@@ -9,6 +9,8 @@ import { useFavoriteToggle } from '../../reader/api/useFavoriteToggle';
 import { useFileOutline } from '../../reader/api/useFileOutline';
 import { useReadLaterToggle } from '../../reader/api/useReadLaterToggle';
 import { WorkOutline } from './WorkOutline';
+import { WorkPreview } from './WorkPreview';
+import { useFilePreview } from '../../reader/api/useFilePreview';
 import { FeaturedQuote, WorkHighlights } from './WorkHighlights';
 import { useWorkHighlights } from '../api/useWorkHighlights';
 import { reasonOf, useSplitEdition } from '../../reader/api/useVersions';
@@ -241,6 +243,8 @@ function yearOf(date) {
 const canRead = (file) => file?.availability === 'available' && !!file.url;
 // The formats the text index has a table of contents for.
 const OUTLINED_FORMATS = new Set(['epub', 'pdf', 'txt', 'md']);
+// The ones a plain preview of the text makes sense for: a PDF keeps its pages, and is read in its own viewer.
+const PREVIEW_FORMATS = new Set(['epub', 'txt', 'md']);
 
 /** The file the page leads with: the one the person was reading if it still opens, else the primary edition's first, else any. */
 function leadFileOf(work) {
@@ -336,6 +340,8 @@ export function WorkPage() {
   const seriesCollection = useWorkSeries(workId).data?.collection ?? null;
   const leadFile = work ? leadFileOf(work) : undefined;
   const notes = useWorkHighlights(workId).data?.data;
+  const [previewFrom, setPreviewFrom] = React.useState(null); // null: the window that holds the person's place
+  const previewing = useFilePreview(leadFile?.id, { from: previewFrom ?? undefined, enabled: !!leadFile && PREVIEW_FORMATS.has((leadFile.format || '').toLowerCase()) });
   const outline = useFileOutline(leadFile?.id, { enabled: !!leadFile && OUTLINED_FORMATS.has((leadFile.format || '').toLowerCase()) }).data;
   const splitEdition = useSplitEdition();
   const [joining, setJoining] = React.useState(false);
@@ -346,6 +352,7 @@ export function WorkPage() {
     setJoining(false);
     setSplitting(null);
     setNotice(null);
+    setPreviewFrom(null);
   }, [workId]);
 
   // A page that opens starts at its top, with the focus on what it is about (a screen reader says it).
@@ -502,6 +509,17 @@ export function WorkPage() {
             busy={setWorkFinished.isPending}
             onFinish={(finished) => setWorkFinished.mutate({ workId: work.id, finished })}
           />
+
+          {leadFile && PREVIEW_FORMATS.has((leadFile.format || '').toLowerCase()) && (
+            <WorkPreview
+              title={shownTitle}
+              data={previewing.data}
+              busy={previewing.isFetching}
+              onPrev={setPreviewFrom}
+              onNext={setPreviewFrom}
+              onOpen={(segment) => openBook(work.id, leadFile.id, { locator: segment.locator, context: { kind: 'chapter', quote: segment.chapter || shownTitle } })}
+            />
+          )}
 
           {leadFile && (
             <WorkOutline

@@ -151,6 +151,7 @@ describe('what the server says', () => {
     'percent is not a number',
     'q is what to search for',
     'rootId is a number',
+    'from is a position from 0', // the window of the preview: only a program can ask for a negative one
     'rootId is required',
     "scope must be 'assets' or 'ws'",
     'state is ok, missing or conflict',
