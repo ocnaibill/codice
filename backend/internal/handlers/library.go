@@ -96,6 +96,28 @@ type ContinueFile struct {
 	Chapter   string `json:"chapter,omitempty"`
 	UnitIndex int    `json:"unitIndex,omitempty"`
 	UnitTotal int    `json:"unitTotal,omitempty"`
+	// RemainingSeconds, only in the detail, is how long is left of the file at the pace of the caller in it (DEC-155); absent until they have
+	// read enough for the pace to be worth saying.
+	RemainingSeconds int `json:"remainingSeconds,omitempty"`
+}
+
+const (
+	// An estimate of the time left is said only after this much reading and this far through the file: before it the pace is a guess.
+	remainingMinSeconds = 600
+	remainingMinPercent = 5.0
+)
+
+// estimateRemaining is how many seconds are left of a file, at the pace the person has had in it: the time spent reading, over the part of the
+// file it got them through. It says 0 when it cannot say: too little reading or too little of the file, or a file that is finished.
+func estimateRemaining(readingSeconds int, percent float64) int {
+	if readingSeconds < remainingMinSeconds || percent < remainingMinPercent || percent >= 100 {
+		return 0
+	}
+	left := float64(readingSeconds) * (100 - percent) / percent
+	if left > 3600*1000 { // more than a thousand hours is not an estimate of a book
+		return 0
+	}
+	return int(left + 0.5)
 }
 
 // Edition is one publication of a work: its language, publisher and date, and
@@ -543,6 +565,19 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	work.Editions = editions
+
+	if c := work.Continue; c != nil && !c.Completed {
+		var seconds int
+		var percent float64
+		err := h.DB.QueryRowContext(r.Context(),
+			`SELECT reading_seconds, percent_complete FROM reading_progress WHERE user_id = $1::uuid AND file_id = $2`, userID, c.FileID).Scan(&seconds, &percent)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			log.Println("Error fetching the pace:", err)
+			http.Error(w, "Error fetching book", http.StatusInternalServerError)
+			return
+		}
+		c.RemainingSeconds = estimateRemaining(seconds, percent)
+	}
 
 	if work.Completions, err = h.loadCompletions(r, userID, id); err != nil {
 		log.Println("Error fetching completions:", err)

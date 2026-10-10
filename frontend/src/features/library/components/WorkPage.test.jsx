@@ -570,6 +570,20 @@ describe('WorkPage: the page of the work (DEC-149)', () => {
     expect(container.querySelector('section[aria-label="Pré-visualização do texto"]')).toBeNull();
   });
 
+  it('says how long is left when the server says it, and not when it does not', async () => {
+    await show({ ...reading, continue: { ...reading.continue, remainingSeconds: 2 * 3600 + 45 * 60 } });
+    expect(container.querySelector('[aria-label="Seu progresso"]').textContent).toContain('~2 h 45 min restantes');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show(reading);
+    expect(container.querySelector('[aria-label="Seu progresso"]').textContent).not.toContain('restantes');
+    act(() => root.unmount());
+    root = createRoot(container);
+    // a finished file has none left, whatever the server may have said
+    await show({ ...reading, continue: { ...reading.continue, completed: true, percentComplete: 100, remainingSeconds: 900 } });
+    expect(container.querySelector('[aria-label="Seu progresso"]').textContent).not.toContain('restantes');
+  });
+
   it('is left by a search: the results are what the person asked for', () => {
     useGlobalStore.setState({ sheetWorkId: 7, searchQuery: '' });
     useGlobalStore.getState().setSearchQuery('duna');

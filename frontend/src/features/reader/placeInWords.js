@@ -80,3 +80,18 @@ export function placeLabel(format, last, legacyProgress) {
   if (Number.isNaN(pageNum)) return null;
   return `Página ${COMIC_FORMATS.has(format) ? pageNum + 1 : pageNum}`;
 }
+
+/**
+ * How long is left, as a person says it: "~45 min restantes", "~2 h 45 min restantes", "~12 h restantes". Nothing for what is not an estimate
+ * (the server says none until the pace is worth saying).
+ */
+export function remainingText(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  if (minutes < 60) return `~${minutes} min restantes`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  // From ten hours on, minutes are not part of an estimate.
+  if (hours >= 10 || rest === 0) return `~${hours} h restantes`;
+  return `~${hours} h ${rest} min restantes`;
+}
