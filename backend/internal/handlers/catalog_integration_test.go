@@ -196,6 +196,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	eq := &EquivalenceHandler{DB: db}
 	r.Get("/progress/files/{id}/equivalent", eq.Find)
 	r.Get("/progress/files/{id}/outline", (&OutlineHandler{DB: db}).Get)
+	r.Get("/progress/files/{id}/preview", (&PreviewHandler{DB: db}).Get)
 	r.Post("/progress/files/{id}/equivalent/accept", eq.Accept)
 	r.Post("/works/{id}/reading-heartbeat", lib.ReadingHeartbeat)
 	r.Post("/works/{id}/favorite", fav.AddFavorite)

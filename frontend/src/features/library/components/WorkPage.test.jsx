@@ -531,6 +531,45 @@ describe('WorkPage: the page of the work (DEC-149)', () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
+  it('shows a plain preview of the text of an EPUB and moves to the next window', async () => {
+    const window = (from, nextFrom) => ({
+      fileId: 10, total: 40, from, prevFrom: from > 0 ? 0 : null, nextFrom, current: 2,
+      segments: [{ sequence: from, text: `Texto da janela ${from}.`, chapter: 'Capítulo 1', part: 'body', locator: { type: 'epub', href: 'c1.xhtml' } }],
+    });
+    api.get.mockImplementation(async (url, options) => {
+      if (url === '/progress/files/10/preview') return { data: options?.params?.from === 6 ? window(6, null) : window(1, 6) };
+      return { data: { ...work } };
+    });
+    useGlobalStore.setState({ sheetWorkId: 7, activeBookId: null, activeFileId: null, fromStart: false });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
+    await flush();
+    await flush();
+    const section = () => container.querySelector('section[aria-label="Pré-visualização do texto"]');
+    expect(section().textContent).toContain('Texto da janela 1.');
+    expect(api.get).toHaveBeenCalledWith('/progress/files/10/preview', { params: {} });
+    await act(async () => { [...section().querySelectorAll('button')].find((b) => b.textContent === 'Próxima').click(); });
+    await flush();
+    await flush();
+    expect(api.get).toHaveBeenCalledWith('/progress/files/10/preview', { params: { from: 6 } });
+    expect(section().textContent).toContain('Texto da janela 6.');
+    await act(async () => { [...section().querySelectorAll('button')].find((b) => b.textContent === 'Abrir no leitor').click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 10 });
+    expect(useGlobalStore.getState().seek).toMatchObject({ locator: { type: 'epub', href: 'c1.xhtml' } });
+  });
+
+  it('asks for no preview of a PDF (it is read in its viewer) or of a comic', async () => {
+    api.get.mockResolvedValue({ data: { ...work, editions: [{ id: 1, isPrimary: true, language: 'en', files: [{ id: 40, format: 'pdf', availability: 'available', url: '/f/40', percentComplete: 0, completed: false }] }] } });
+    useGlobalStore.setState({ sheetWorkId: 7 });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    api.get.mockClear();
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
+    await flush();
+    await flush();
+    expect(api.get.mock.calls.map((c) => c[0]).filter((u) => String(u).includes('preview'))).toEqual([]);
+    expect(container.querySelector('section[aria-label="Pré-visualização do texto"]')).toBeNull();
+  });
+
   it('is left by a search: the results are what the person asked for', () => {
     useGlobalStore.setState({ sheetWorkId: 7, searchQuery: '' });
     useGlobalStore.getState().setSearchQuery('duna');
