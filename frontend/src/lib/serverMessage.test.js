@@ -155,6 +155,8 @@ describe('what the server says', () => {
     'stars is a number from 1 to 5', // the stars: the page only offers one to five
     'from is a position from 0', // the window of the preview: only a program can ask for a negative one
     'hidden and imageHidden say what to hide, and the texts what to write', // the page sends one of them, or the texts: only a program sends none
+    'Search not found', // the page reads it as "no search was made" (404) and shows nothing
+    'wikidataId is a Wikidata identifier, like Q6984190', // the page only sends the identifier of a candidate it was given
     'rootId is required',
     "scope must be 'assets' or 'ws'",
     'state is ok, missing or conflict',

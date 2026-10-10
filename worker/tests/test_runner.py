@@ -224,7 +224,7 @@ class TestJobsClientClaim:
         assert "jobs_claim(%s, %s, %s, %s::text[])" in query
         # ingestion, reading the text, and the dictionaries the owner installs; reading by OCR and the embeddings are for the
         # workers that are given those types
-        assert params == ("worker-1", 60, 2, ['ingest', 'extract_text', 'dictionary', 'match_metadata', 'provider_test'])
+        assert params == ("worker-1", 60, 2, ['ingest', 'extract_text', 'dictionary', 'match_metadata', 'provider_test', 'profile_search'])
 
     def test_the_types_can_be_narrowed_or_widened_explicitly(self):
         from runner import JobsClient

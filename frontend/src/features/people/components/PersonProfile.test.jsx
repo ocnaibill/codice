@@ -27,9 +27,15 @@ const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0))
 const click = async (el) => { await act(async () => { el.click(); }); await flush(); };
 const button = (text) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
 
+let searchReply = null; // what GET .../profile/search answers: null is "none was made" (404), or a function giving the answer
 async function show(p, role = 'reader') {
   api.get.mockImplementation(async (url) => {
     if (url === '/auth/me') return { data: { id: 'u', role } };
+    if (url === '/admin/people/9/profile/search') {
+      const answer = typeof searchReply === 'function' ? searchReply() : searchReply;
+      if (!answer) throw Object.assign(new Error('x'), { response: { status: 404 } });
+      return { data: answer };
+    }
     throw new Error(`unexpected GET ${url}`);
   });
   api.put.mockResolvedValue({ data: {} });
@@ -43,6 +49,7 @@ async function show(p, role = 'reader') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  searchReply = null;
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -275,5 +282,113 @@ describe('PersonProfile: written by hand, by owner and admin (DEC-167)', () => {
     await show(profile({ manual: true, wikidataId: '' }), 'admin');
     await click(button('Descartar o perfil'));
     expect(container.querySelector('[role="alertdialog"]').textContent).not.toContain('Wikidata');
+  });
+});
+
+describe('PersonProfile: looking the person up on Wikidata (DEC-168)', () => {
+  const found = [
+    { id: 'Q6984190', label: 'Neal Shusterman', description: 'Escritor norte-americano', born: '1962-11-12', photo: true, wikipedia: true },
+    { id: 'Q111', label: 'Neal S.', description: '', photo: false, wikipedia: false },
+  ];
+  const typeInto = async (el, value) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const open = async (p = null, role = 'admin') => {
+    await show(p, role);
+    await click(button('Buscar o perfil'));
+  };
+  const field = () => container.querySelector('section[aria-label="Buscar o perfil"] input');
+
+  it('is offered to the staff, with or without a profile, and not to a reader', async () => {
+    await show(null, 'admin');
+    expect(button('Buscar o perfil')).toBeTruthy();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show(profile(), 'owner');
+    expect(button('Buscar o perfil')).toBeTruthy();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show(profile(), 'reader');
+    expect(button('Buscar o perfil')).toBeUndefined();
+  });
+
+  it('asks for the search by the name of the person, and says it is waiting', async () => {
+    api.post.mockResolvedValueOnce({ data: { state: 'pending', query: 'Herbert, Frank', results: [] } });
+    await open();
+    expect(field().value).toBe('Herbert, Frank');
+    await click(button('Buscar'));
+    expect(api.post).toHaveBeenCalledWith('/admin/people/9/profile/search', { query: 'Herbert, Frank' });
+    expect(container.textContent).toContain('Buscando na Wikidata…');
+    expect(button('Buscar').disabled).toBe(true);
+  });
+
+  it('asks for what was typed instead, and shows the candidates with what tells them apart', async () => {
+    await open();
+    api.post.mockImplementationOnce(async () => {
+      searchReply = { state: 'done', query: 'Neal Shusterman', results: found };
+      return { data: { state: 'pending', query: 'Neal Shusterman', results: [] } };
+    });
+    await typeInto(field(), 'Neal Shusterman');
+    await click(button('Buscar'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 1700)); });
+    expect(api.post).toHaveBeenCalledWith('/admin/people/9/profile/search', { query: 'Neal Shusterman' });
+    const list = container.querySelector('ul[aria-label="Pessoas encontradas"]');
+    const rows = [...list.querySelectorAll('li')].map((li) => li.textContent);
+    expect(rows[0]).toContain('Neal Shusterman');
+    expect(rows[0]).toContain('Escritor norte-americano');
+    expect(rows[0]).toContain('nasc. 12 de novembro de 1962');
+    expect(rows[0]).toContain('com foto · com Wikipédia');
+    expect(rows[1]).toContain('Sem descrição');
+    const link = list.querySelector('a');
+    expect(link.href).toBe('https://www.wikidata.org/wiki/Q6984190');
+    expect(link.rel).toContain('noopener');
+  }, 10000);
+
+  it('ties the person to the one chosen, and says the profile is on its way', async () => {
+    searchReply = { state: 'done', query: 'Herbert, Frank', results: found };
+    api.post.mockResolvedValueOnce({ data: { profile: 'queued' } });
+    await open();
+    await click(container.querySelector('button[aria-label^="É esta pessoa: Neal Shusterman"]'));
+    expect(api.post).toHaveBeenCalledWith('/admin/people/9/profile/link', { wikidataId: 'Q6984190' });
+    expect(container.textContent).toContain('o perfil dessa pessoa chega em instantes');
+  });
+
+  it('says what happened to a profile that was written by hand, and what the server refused', async () => {
+    searchReply = { state: 'done', query: 'x', results: found };
+    api.post.mockResolvedValueOnce({ data: { profile: 'kept' } });
+    await open();
+    await click(container.querySelector('button[aria-label^="É esta pessoa: Neal Shusterman"]'));
+    expect(container.textContent).toContain('O perfil escrito à mão continua. Descarte-o');
+    api.post.mockRejectedValueOnce(Object.assign(new Error('x'), { response: { status: 400, data: 'Escolha uma das pessoas da busca.' } }));
+    await click(container.querySelector('button[aria-label^="É esta pessoa: Neal S."]'));
+    expect(container.querySelector('[role="alert"]').textContent).toBe('Escolha uma das pessoas da busca.');
+  });
+
+  it('says why there is nothing: Wikidata off, no answer, or nobody by that name', async () => {
+    searchReply = { state: 'off', query: 'x', results: [] };
+    await open();
+    expect(container.textContent).toContain('A Wikidata está desligada');
+    act(() => root.unmount());
+    root = createRoot(container);
+    searchReply = { state: 'failed', query: 'x', results: [] };
+    await open();
+    expect(container.textContent).toContain('A Wikidata não respondeu');
+    act(() => root.unmount());
+    root = createRoot(container);
+    searchReply = { state: 'done', query: 'x', results: [] };
+    await open();
+    expect(container.textContent).toContain('Ninguém com esse nome na Wikidata. Tente outra grafia, ou escreva o perfil à mão.');
+  });
+
+  it('closes, and shows the panel under the profile of a person that has one', async () => {
+    searchReply = { state: 'done', query: 'x', results: found };
+    await open(profile());
+    expect(container.querySelector('section[aria-label="Perfil"]')).toBeTruthy();
+    expect(container.querySelector('section[aria-label="Buscar o perfil"]')).toBeTruthy();
+    await click(button('Fechar'));
+    expect(container.querySelector('section[aria-label="Buscar o perfil"]')).toBeNull();
   });
 });

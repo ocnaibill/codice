@@ -45,7 +45,7 @@ class JobsClient:
 
     # This worker analyses files and reads their text. Organizing, scanning and transferring are
     # file-system jobs that the API process runs; taking them here would fail them.
-    JOB_TYPES = ['ingest', 'extract_text', 'dictionary', 'match_metadata', 'provider_test']
+    JOB_TYPES = ['ingest', 'extract_text', 'dictionary', 'match_metadata', 'provider_test', 'profile_search']
 
     def __init__(self, db, owner: str, lease_seconds: int = 120, max_running: int = 1, types=None):
         self.db = db
