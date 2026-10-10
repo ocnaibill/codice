@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/people"
@@ -45,6 +46,48 @@ type CollectionWork struct {
 	// nobody said.
 	Unit      string `json:"unit"`
 	ComicKind string `json:"comicKind"`
+	// What the caller has done of the work and what it is, for a row of the page of a collection (DEC-162); empty for a place whose work is gone.
+	Percent      float64    `json:"percent"`
+	Started      bool       `json:"started"`
+	CompletedAt  *time.Time `json:"completedAt,omitempty"`
+	OriginalYear *int       `json:"originalYear,omitempty"`
+	Synopsis     string     `json:"synopsis,omitempty"`
+	Formats      []string   `json:"formats"`
+	Rating       int        `json:"rating"`
+	Chapter      string     `json:"chapter,omitempty"`
+	UnitIndex    int        `json:"unitIndex,omitempty"`
+	UnitTotal    int        `json:"unitTotal,omitempty"`
+	ReadFormat   string     `json:"readFormat,omitempty"`
+}
+
+// CollectionSummary is what the page of a collection says of the whole (DEC-162): how far the caller is, in how many hours, the years the
+// works span, who wrote and translated them and the tags they carry most. The numbers about reading are the caller's own.
+type CollectionSummary struct {
+	Works          int     `json:"works"`
+	Finished       int     `json:"finished"`
+	InProgress     int     `json:"inProgress"`
+	Percent        float64 `json:"percent"`
+	ReadingSeconds int     `json:"readingSeconds"`
+	YearFrom       *int    `json:"yearFrom,omitempty"`
+	YearTo         *int    `json:"yearTo,omitempty"`
+	// Missing are the numbers of a series that the works skip, by unit: with the volumes 1, 2 and 4 there is a 3 that is not in the library.
+	Missing     []MissingNumber `json:"missing"`
+	Authors     []PersonRef     `json:"authors"`
+	Translators []PersonRef     `json:"translators"`
+	Tags        []PersonTag     `json:"tags"`
+}
+
+// MissingNumber is a number of a series that no work has, and the unit it is of ("volume", "chapter" or none).
+type MissingNumber struct {
+	Unit   string  `json:"unit"`
+	Number float64 `json:"number"`
+}
+
+// PersonRef is a person of a work, to open their page from the page of a collection.
+type PersonRef struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Works int    `json:"works"`
 }
 
 // visibleCollection is the condition for a collection (alias c) the caller ($1) may see: an official one that is not
@@ -234,6 +277,12 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 		goOn = continueSeries(entries)
 	}
+	summary, err := h.summarize(r.Context(), userID, order, works)
+	if err != nil {
+		log.Println("Error summarizing a collection:", err)
+		http.Error(w, "Error fetching the collection", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"collection": c, "works": works, "continue": goOn})
+	json.NewEncoder(w).Encode(map[string]any{"collection": c, "works": works, "continue": goOn, "summary": summary})
 }

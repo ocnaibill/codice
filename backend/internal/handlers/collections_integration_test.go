@@ -17,6 +17,7 @@ type collectionDetail struct {
 	Collection Collection
 	Works      []CollectionWork
 	Continue   *SeriesStep
+	Summary    CollectionSummary
 }
 
 func (s *catalogStack) collections(a actor, query string) collectionList {

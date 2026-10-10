@@ -4,7 +4,7 @@ import { AppShell } from './components/layout/AppShell';
 import { HomePage } from './pages/HomePage';
 import { Reader } from './features/reader/components/Reader';
 import { WorkPage } from './features/library/components/WorkPage';
-import { CollectionSheet } from './features/collections/components/CollectionSheet';
+import { CollectionPage } from './features/collections/components/CollectionPage';
 import { PersonPage } from './features/people/components/PersonPage';
 import { NotesPage } from './features/notes/NotesPage';
 import { EditBookModal } from './features/library/components/EditBookModal';
@@ -60,6 +60,7 @@ function App() {
   const adminOpen = useGlobalStore((state) => state.adminOpen);
   const sheetWorkId = useGlobalStore((state) => state.sheetWorkId);
   const personSheetId = useGlobalStore((state) => state.personSheetId);
+  const collectionSheetId = useGlobalStore((state) => state.collectionSheetId);
   const notesOpen = useGlobalStore((state) => state.notesOpen);
   const metadataWorkId = useGlobalStore((state) => state.metadataWorkId);
   const metadataTab = useGlobalStore((state) => state.metadataTab);
@@ -293,7 +294,6 @@ function App() {
       {dialogOpen('sobre') && <AboutModal onClose={() => closeAccountDialog('sobre')} />}
       {dialogOpen('sessoes') && <SessionsModal onClose={() => closeAccountDialog('sessoes')} onOpenApps={() => openAccountDialog('aplicativos')} />}
       {/* The page of a work is above them: they are still there when the person goes back. */}
-      {!sheetWorkId && !personSheetId && <CollectionSheet />}
       {metadataWorkId && <EditBookModal key={`${metadataWorkId}-${metadataTab}`} workId={metadataWorkId} tab={metadataTab} onClose={closeMetadata} />}
       {activeBookId ? (
         <Reader />
@@ -315,6 +315,8 @@ function App() {
             <WorkPage />
           ) : personSheetId ? (
             <PersonPage />
+          ) : collectionSheetId ? (
+            <CollectionPage />
           ) : adminOpen && !staff ? (
             <NoPermission title="A administração é de quem cuida do acervo" onBack={closeBook}>
               Sua conta é de leitura. Se você precisa mexer no acervo, peça a quem administra.
