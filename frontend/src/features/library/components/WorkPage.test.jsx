@@ -4,13 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../lib/api', () => ({
-  api: { get: vi.fn(), put: vi.fn() },
+  api: { get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() },
   authenticatedUrl: (u) => u,
 }));
 
 import { api } from '../../../lib/api';
 import { useGlobalStore } from '../../../store/useGlobalStore';
-import { WorkSheet } from './WorkSheet';
+import { WorkPage } from './WorkPage';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -48,7 +48,7 @@ async function open() {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <WorkSheet />
+        <WorkPage />
       </QueryClientProvider>
     );
   });
@@ -68,7 +68,7 @@ afterEach(() => {
   useGlobalStore.setState({ sheetWorkId: null, activeBookId: null, activeFileId: null, fromStart: false });
 });
 
-describe('WorkSheet: a work that is only partly processed (RN-018)', () => {
+describe('WorkPage: a work that is only partly processed (RN-018)', () => {
   const file = (id, format, extra = {}) => ({ id, format, availability: 'available', url: `/file/${id}`, percentComplete: 0, completed: false, ...extra });
   const withFiles = (...files) => ({ ...work, editions: [{ id: 2, language: 'pt', isPrimary: true, files }] });
   const rows = () => [...container.querySelectorAll('li')].filter((li) => li.querySelector('button'));
@@ -77,7 +77,7 @@ describe('WorkSheet: a work that is only partly processed (RN-018)', () => {
     api.get.mockResolvedValue({ data: w });
     useGlobalStore.setState({ sheetWorkId: 7, activeBookId: null, activeFileId: null, fromStart: false });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => { root.render(<QueryClientProvider client={client}><WorkSheet /></QueryClientProvider>); });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
     await flush();
   }
 
@@ -125,7 +125,7 @@ describe('WorkSheet: a work that is only partly processed (RN-018)', () => {
   });
 });
 
-describe('WorkSheet: the pages of a scan (#24)', () => {
+describe('WorkPage: the pages of a scan (#24)', () => {
   const withOcr = (ocr, extra = {}) => ({
     ...work,
     editions: [{ id: 2, language: 'pt-BR', isPrimary: true, files: [{ id: 20, format: 'pdf', availability: 'available', url: '/file/20', percentComplete: 0, completed: false, needsOcr: true, ...(ocr ? { ocr } : {}), ...extra }] }],
@@ -136,7 +136,7 @@ describe('WorkSheet: the pages of a scan (#24)', () => {
     api.get.mockResolvedValue({ data: w });
     useGlobalStore.setState({ sheetWorkId: 7, activeBookId: null, activeFileId: null, fromStart: false });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => { root.render(<QueryClientProvider client={client}><WorkSheet /></QueryClientProvider>); });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
     await flush();
   }
 
@@ -173,11 +173,11 @@ describe('WorkSheet: the pages of a scan (#24)', () => {
   });
 });
 
-describe('WorkSheet', () => {
+describe('WorkPage', () => {
   it('shows nothing until a work is chosen', async () => {
     const client = new QueryClient();
     useGlobalStore.setState({ sheetWorkId: null });
-    await act(async () => { root.render(<QueryClientProvider client={client}><WorkSheet /></QueryClientProvider>); });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
     expect(container.textContent).toBe('');
   });
 
@@ -229,7 +229,7 @@ describe('WorkSheet', () => {
     try {
       await open();
       expect(buttons('Continuar leitura')).toHaveLength(0);
-      await act(async () => { buttons('Abrir leitor')[0].click(); });
+      await act(async () => { [...container.querySelectorAll('button')].find((b) => b.textContent.startsWith('Abrir leitor')).click(); });
       expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 10, fromStart: false });
     } finally {
       delete work.inProgress; delete work.continue;
@@ -303,15 +303,168 @@ describe('WorkSheet', () => {
     expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 22, fromStart: true });
   });
 
-  it('closes without opening anything', async () => {
+  it('goes back without opening anything', async () => {
     await open();
-    await act(async () => { container.querySelector('[aria-label="Fechar"]').click(); });
+    await act(async () => { buttons('← Voltar')[0].click(); });
     expect(useGlobalStore.getState()).toMatchObject({ sheetWorkId: null, activeBookId: null });
   });
 
-  it('closes with Escape', async () => {
+  it('is a page: Escape belongs to the dialogs and menus over it, and does not leave it', async () => {
     await open();
     await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(useGlobalStore.getState().sheetWorkId).toBe(7);
+  });
+
+  it('says where it is: the library, the category of the work, and the work', async () => {
+    api.get.mockResolvedValue({ data: { ...work, metadata: { ...work.metadata, categories: [{ id: 5, name: 'Seinen', path: 'Mangá › Seinen' }] } } });
+    useGlobalStore.setState({ sheetWorkId: 7 });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
+    await flush();
+    const crumbs = container.querySelector('nav[aria-label="Onde você está"]');
+    expect(crumbs.textContent).toContain('Biblioteca');
+    expect(crumbs.textContent).toContain('Mangá › Seinen');
+    expect(crumbs.querySelector('[aria-current="page"]').textContent).toBe('Duna');
+    await act(async () => { buttons('Mangá › Seinen')[0].click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ categoryPageId: 5, sheetWorkId: null });
+  });
+});
+
+describe('WorkPage: the page of the work (DEC-149)', () => {
+  async function show(extra = {}) {
+    api.get.mockResolvedValue({ data: { ...work, ...extra } });
+    api.post.mockResolvedValue({ data: {} });
+    api.delete.mockResolvedValue({ data: {} });
+    useGlobalStore.setState({ sheetWorkId: 7, activeBookId: null, activeFileId: null, fromStart: false });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
+    await flush();
+  }
+  const reading = {
+    inProgress: true, formatCount: 2,
+    continue: { fileId: 10, format: 'epub', language: 'en', position: 'epubcfi(/6/4)', percentComplete: 68, completed: false, chapter: 'Cap. 14: O Despertar', unitIndex: 4819, unitTotal: 7100 },
+  };
+
+  it('says where the person stopped: the chapter, how far through and which position of how many', async () => {
+    await show(reading);
+    const text = container.textContent;
+    expect(text).toContain('Retomando:');
+    expect(text).toContain('Cap. 14: O Despertar');
+    expect(text).toContain('68% lido');
+    expect(text).toContain('Pos. 4.819 de 7.100');
+    expect(text).toContain('2 formatos disponíveis');
+    expect(buttons('Continuar leitura')).toHaveLength(1);
+  });
+
+  it('says none of that of a work that was not begun', async () => {
+    await show({ continue: null, inProgress: false, formatCount: 1 });
+    const text = container.textContent;
+    expect(text).not.toContain('Retomando');
+    expect(text).not.toContain('formatos disponíveis');
+    expect(container.querySelector('[aria-label="Seu progresso"]')).toBeNull();
+  });
+
+  it('names the format on the button that opens the reader, when there is nothing to continue', async () => {
+    await show({ continue: null, inProgress: false });
+    expect([...container.querySelectorAll('button')].map((b) => b.textContent)).toContain('Abrir leitor EPUB');
+  });
+
+  it('lists the tags of the work', async () => {
+    await show({ tags: ['ficção científica', 'space opera'] });
+    expect([...container.querySelectorAll('ul[aria-label="Etiquetas"] li')].map((li) => li.textContent)).toEqual(['#ficção científica', '#space opera']);
+  });
+
+  it('shortens a long synopsis and gives the rest on a press; a short one has nothing to open', async () => {
+    await show({ metadata: { ...work.metadata, description: 'Muito longa. '.repeat(60) } });
+    const more = buttons('Ler mais')[0];
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => { more.click(); });
+    expect(buttons('Mostrar menos')[0].getAttribute('aria-expanded')).toBe('true');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show();
+    expect(buttons('Ler mais')).toHaveLength(0);
+  });
+
+  it('keeps the work among the favorites with the heart, and takes it out again', async () => {
+    await show({ isFavorite: false });
+    const heart = container.querySelector('button[aria-label="Adicionar aos favoritos"]');
+    expect(heart.getAttribute('aria-pressed')).toBe('false');
+    await act(async () => { heart.click(); });
+    expect(api.post).toHaveBeenCalledWith('/works/7/favorite');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show({ isFavorite: true });
+    const filled = container.querySelector('button[aria-label="Remover dos favoritos"]');
+    expect(filled.getAttribute('aria-pressed')).toBe('true');
+    await act(async () => { filled.click(); });
+    expect(api.delete).toHaveBeenCalledWith('/works/7/favorite');
+  });
+
+  it('clamps a long synopsis to six lines until it is opened', async () => {
+    await show({ metadata: { ...work.metadata, description: 'Muito longa. '.repeat(60) } });
+    const text = () => container.querySelector('p.whitespace-pre-line');
+    expect(text().style.webkitLineClamp).toBe('6');
+    await act(async () => { buttons('Ler mais')[0].click(); });
+    expect(text().style.webkitLineClamp).toBe('');
+  });
+
+  it('does not promise the chapter or the place when the file it was in cannot be opened any more', async () => {
+    const gone = {
+      ...reading,
+      editions: [
+        { id: 1, isPrimary: true, language: 'en', files: [{ id: 10, format: 'epub', availability: 'missing', percentComplete: 68, completed: false }] },
+        { id: 2, isPrimary: false, language: 'pt', files: [{ id: 20, format: 'pdf', availability: 'available', url: '/file/20', percentComplete: 0, completed: false }] },
+      ],
+    };
+    await show(gone);
+    const text = container.textContent;
+    expect(text).not.toContain('Retomando');
+    expect(text).not.toContain('Pos. 4.819');
+    expect(buttons('Continuar leitura')).toHaveLength(0);
+    expect(text).toContain('68% lido'); // how far it went is still true
+  });
+
+  it('says a finished file is finished, and not a percentage', async () => {
+    await show({ ...reading, inProgress: false, continue: { ...reading.continue, completed: true, percentComplete: 100 } });
+    const progress = container.querySelector('[aria-label="Seu progresso"]');
+    expect(progress.textContent).toContain('Concluído');
+    expect(progress.textContent).not.toContain('100% lido');
+  });
+
+  it('has no list of tags for a work that has none', async () => {
+    await show({ tags: [] });
+    expect(container.querySelector('ul[aria-label="Etiquetas"]')).toBeNull();
+  });
+
+  it('goes back to what was under it, with the page of the collection it came from still open', async () => {
+    await show();
+    useGlobalStore.setState({ collectionSheetId: 3, libraryView: 'ebooks' });
+    await act(async () => { buttons('← Voltar')[0].click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ sheetWorkId: null, collectionSheetId: 3, libraryView: 'ebooks' });
+    useGlobalStore.setState({ collectionSheetId: null, libraryView: 'all' });
+  });
+
+  it('says the year of a publication date that was kept whole, and a date that is not one as it is', async () => {
+    await show({
+      editions: [
+        { id: 1, language: 'pt', publisher: 'Seguinte', publicationDate: '2018-05-25T03:00:00+00:00', isPrimary: true, files: [{ id: 10, format: 'epub', availability: 'available', url: '/f/10', percentComplete: 0, completed: false }] },
+        { id: 2, language: 'en', publisher: 'Ace', publicationDate: 'primavera de 1990', isPrimary: false, files: [] },
+      ],
+    });
+    const chips = [...container.querySelectorAll('[aria-label="Dados da edição em foco"] span')].map((c) => c.textContent);
+    expect(chips).toContain('2018');
+    expect(container.textContent).not.toContain('T03:00:00');
+    expect(container.textContent).toContain('primavera de 1990');
+  });
+
+  it('is left by a search: the results are what the person asked for', () => {
+    useGlobalStore.setState({ sheetWorkId: 7, searchQuery: '' });
+    useGlobalStore.getState().setSearchQuery('duna');
     expect(useGlobalStore.getState().sheetWorkId).toBeNull();
+    useGlobalStore.setState({ sheetWorkId: 7 });
+    useGlobalStore.getState().setSearchQuery('   '); // nothing typed is no search
+    expect(useGlobalStore.getState().sheetWorkId).toBe(7);
+    useGlobalStore.getState().setSearchQuery('');
   });
 });

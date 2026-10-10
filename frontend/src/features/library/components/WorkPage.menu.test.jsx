@@ -10,7 +10,7 @@ vi.mock('../../../lib/api', () => ({
 
 import { api } from '../../../lib/api';
 import { useGlobalStore } from '../../../store/useGlobalStore';
-import { WorkSheet } from './WorkSheet';
+import { WorkPage } from './WorkPage';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -33,7 +33,7 @@ async function open({ role = 'admin', pending = 0 } = {}) {
   });
   useGlobalStore.setState({ sheetWorkId: 7, metadataWorkId: null, metadataTab: 'suggestions' });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await act(async () => { root.render(<QueryClientProvider client={client}><WorkSheet /></QueryClientProvider>); });
+  await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
   await flush();
   await flush();
 }
@@ -99,7 +99,7 @@ describe('the sheet of a work: the actions for owner and admin (#70)', () => {
     expect(useGlobalStore.getState()).toMatchObject({ metadataWorkId: 7, metadataTab: 'edit' });
   });
 
-  it('closes the menu on a click outside and on Escape, and Escape then does not close the sheet', async () => {
+  it('closes the menu on a click outside and on Escape, and the page stays', async () => {
     await open();
     await act(async () => { dots().click(); });
     await act(async () => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); });
@@ -110,7 +110,7 @@ describe('the sheet of a work: the actions for owner and admin (#70)', () => {
     expect(container.querySelector('[role="menu"]')).toBeNull();
     expect(useGlobalStore.getState().sheetWorkId).toBe(7);
     await key('Escape');
-    expect(useGlobalStore.getState().sheetWorkId).toBeNull();
+    expect(useGlobalStore.getState().sheetWorkId).toBe(7); // a page is left by going back, not by Escape
   });
 
   it('lets an open menu have the Escape, from wherever it comes: the focused element or the window', async () => {
@@ -119,7 +119,7 @@ describe('the sheet of a work: the actions for owner and admin (#70)', () => {
     await key('Escape', dots());
     expect(container.querySelector('[role="menu"]')).toBeNull();
     expect(useGlobalStore.getState().sheetWorkId).toBe(7);
-    // Chrome runs every listener of the window even when one stops the propagation, so the sheet must not depend on it.
+    // Chrome runs every listener of the window even when one stops the propagation, so the menu must not depend on it.
     await act(async () => { dots().click(); });
     await act(async () => {
       const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
@@ -128,17 +128,5 @@ describe('the sheet of a work: the actions for owner and admin (#70)', () => {
     });
     expect(container.querySelector('[role="menu"]')).toBeNull();
     expect(useGlobalStore.getState().sheetWorkId).toBe(7);
-  });
-
-  it('leaves the Escape to a dialog opened over it', async () => {
-    await open();
-    const over = document.createElement('div');
-    over.setAttribute('role', 'dialog');
-    document.body.appendChild(over);
-    await key('Escape');
-    expect(useGlobalStore.getState().sheetWorkId).toBe(7);
-    over.remove();
-    await key('Escape');
-    expect(useGlobalStore.getState().sheetWorkId).toBeNull();
   });
 });

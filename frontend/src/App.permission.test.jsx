@@ -33,7 +33,7 @@ vi.mock('./lib/routeSync', () => ({ startRouteSync: () => () => {} }));
 vi.mock('./components/layout/AppShell', () => ({ AppShell: ({ children }) => <main>{children}</main> }));
 vi.mock('./pages/HomePage', () => ({ HomePage: () => <div>Acervo</div> }));
 vi.mock('./features/reader/components/Reader', () => ({ Reader: () => null }));
-vi.mock('./features/reader/components/WorkSheet', () => ({ WorkSheet: () => null }));
+vi.mock('./features/library/components/WorkPage', () => ({ WorkPage: () => null }));
 vi.mock('./features/upload/components/UploadModal', () => ({ UploadModal: () => null }));
 vi.mock('./features/auth/components/Auth', () => ({ Auth: () => null }));
 vi.mock('./features/admin/AdminPage', () => ({ AdminPage: ({ isOwner }) => <div>Administração {isOwner ? 'do dono' : 'da equipe'}</div> }));

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chapterAt, epubChapterEntries, epubUnit, pageUnit, whereExtras } from './placeInWords';
+import { chapterAt, epubChapterEntries, epubUnit, pageUnit, placeLabel, whereExtras } from './placeInWords';
 
 describe('chapterAt', () => {
   const entries = [
@@ -117,5 +117,25 @@ describe('whereExtras', () => {
 
   it('cuts a title at the length the server keeps', () => {
     expect(whereExtras({ chapter: 'x'.repeat(500) }).chapter).toHaveLength(200);
+  });
+});
+
+describe('placeLabel', () => {
+  it('says the page of how many for a PDF and a comic, and the position of how many for the rest', () => {
+    expect(placeLabel('pdf', { unitIndex: 42, unitTotal: 310 })).toBe('Página 42 de 310');
+    expect(placeLabel('cbz', { unitIndex: 5, unitTotal: 32 })).toBe('Página 5 de 32');
+    expect(placeLabel('epub', { unitIndex: 3412, unitTotal: 5018 })).toBe('Pos. 3.412 de 5.018');
+  });
+
+  it('falls back to the page of an older save for a PDF (from 1) and a comic (from 0), and to nothing for the rest', () => {
+    expect(placeLabel('pdf', {}, '42')).toBe('Página 42');
+    expect(placeLabel('cbr', undefined, '4')).toBe('Página 5');
+    expect(placeLabel('epub', {}, 'epubcfi(/6/2)')).toBeNull();
+    expect(placeLabel('txt', {}, '1534')).toBeNull();
+    expect(placeLabel('pdf', {}, 'abc')).toBeNull();
+  });
+
+  it('does not say a place that is past the end', () => {
+    expect(placeLabel('pdf', { unitIndex: 400, unitTotal: 310 }, '42')).toBe('Página 42');
   });
 });

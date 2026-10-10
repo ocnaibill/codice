@@ -9,7 +9,7 @@ vi.mock('./lib/api', () => ({
   clearAssetToken: vi.fn(),
   UNAUTHORIZED_EVENT: 'codice:unauthorized',
 }));
-const store = vi.hoisted(() => ({ metadataWorkId: null, metadataTab: 'suggestions', closeMetadata: vi.fn(), notesOpen: false, searchQuery: '', openAccountDialog: vi.fn(), closeAccountDialog: vi.fn() }));
+const store = vi.hoisted(() => ({ metadataWorkId: null, metadataTab: 'suggestions', closeMetadata: vi.fn(), notesOpen: false, sheetWorkId: null, searchQuery: '', openAccountDialog: vi.fn(), closeAccountDialog: vi.fn() }));
 vi.mock('./store/useGlobalStore', () => ({
   useGlobalStore: (selector) => selector({
     activeBookId: null,
@@ -45,7 +45,7 @@ vi.mock('./components/layout/AppShell', () => ({
 }));
 vi.mock('./pages/HomePage', () => ({ HomePage: () => <div>Acervo</div> }));
 vi.mock('./features/reader/components/Reader', () => ({ Reader: () => null }));
-vi.mock('./features/reader/components/WorkSheet', () => ({ WorkSheet: () => null }));
+vi.mock('./features/library/components/WorkPage', () => ({ WorkPage: () => <div>Página da obra montada</div> }));
 vi.mock('./features/collections/components/CollectionSheet', () => ({ CollectionSheet: () => <div>Página da coleção montada</div> }));
 vi.mock('./features/people/components/PersonSheet', () => ({ PersonSheet: () => <div>Página da pessoa montada</div> }));
 vi.mock('./features/upload/components/UploadModal', () => ({ UploadModal: () => null }));
@@ -77,6 +77,7 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/');
   store.metadataWorkId = null;
   store.notesOpen = false;
+  store.sheetWorkId = null;
   store.searchQuery = '';
   store.accountDialogs = [];
   api.get.mockResolvedValue({ data: { isFirstRun: false } });
@@ -222,11 +223,31 @@ describe('App startup', () => {
     expect(store.closeMetadata).toHaveBeenCalled();
   });
 
-  it('has the pages of a collection and of a person mounted next to the sheet of a work, to open over the library', async () => {
+  it('has the pages of a collection and of a person mounted, to open over the library', async () => {
     localStorage.setItem('codice_token', 'current-session');
     view = await mount(<App />);
     expect(view.text()).toContain('Página da coleção montada');
     expect(view.text()).toContain('Página da pessoa montada');
+    expect(view.text()).not.toContain('Página da obra montada');
+  });
+
+  it('shows the page of a work in the place of the library, with the pages of a collection and of a person out of the way', async () => {
+    localStorage.setItem('codice_token', 'current-session');
+    store.sheetWorkId = 7;
+    view = await mount(<App />);
+    expect(view.text()).toContain('Página da obra montada');
+    expect(view.text()).not.toContain('Acervo');
+    expect(view.text()).not.toContain('Página da coleção montada');
+    expect(view.text()).not.toContain('Página da pessoa montada');
+  });
+
+  it('shows the page of a work over the notes, and over the administration', async () => {
+    localStorage.setItem('codice_token', 'current-session');
+    store.notesOpen = true;
+    store.sheetWorkId = 7;
+    view = await mount(<App />);
+    expect(view.text()).toContain('Página da obra montada');
+    expect(view.text()).not.toContain('Todas as anotações');
   });
 
   it('has no metadata open unless a work asked for it', async () => {

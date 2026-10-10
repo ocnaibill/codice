@@ -16,7 +16,7 @@ export const useGlobalStore = create((set) => ({
   categoryPageId: null,
   openCategory: (id) => set({ categoryPageId: id, libraryPage: 1, searchQuery: '', adminOpen: false, notesOpen: false, activeBookId: null, activeFileId: null, sheetWorkId: null, collectionSheetId: null, personSheetId: null }),
   closeCategory: () => set({ categoryPageId: null, libraryPage: 1 }),
-  // The work whose sheet (edition, language and file choice) is open, if any.
+  // The work whose page (edition, language and file choice) is open, if any.
   sheetWorkId: null,
   // The collection whose page is open, if any (#206). The sheet of a work opens over it, and closing that one comes back here.
   collectionSheetId: null,
@@ -45,8 +45,8 @@ export const useGlobalStore = create((set) => ({
 
   // Actions
   isUploadModalOpen: false,
-  setSearchQuery: (query) => set({ searchQuery: query, ...(query.trim() ? { adminOpen: false, notesOpen: false, categoryPageId: null } : {}) }),
-  // The sheet of a work opens over whatever is on screen, the notes included.
+  setSearchQuery: (query) => set({ searchQuery: query, ...(query.trim() ? { adminOpen: false, notesOpen: false, categoryPageId: null, sheetWorkId: null } : {}) }),
+  // The page of a work (DEC-149) takes the place of whatever is on screen, the notes included, and going back finds it as it was.
   openWork: (id) => set({ sheetWorkId: id, activeBookId: null, activeFileId: null, adminOpen: false }),
   closeSheet: () => set({ sheetWorkId: null }),
   // `context` says what asked for the place ({ quote } of a note, or of a search hit), for when the place cannot be
