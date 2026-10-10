@@ -15,6 +15,8 @@ import { CollectionsGrid } from '../features/collections/components/CollectionsG
 import { useCollections } from '../features/collections/api/useCollections';
 import { isStaff } from '../features/auth/api/useMe';
 import { CategoryShelf } from '../features/home/components/CategoryShelf';
+import { CategoryRows } from '../features/home/components/CategoryRows';
+import { Shelf } from '../features/home/components/Shelf';
 import { CategoryPage } from '../features/categories/components/CategoryPage';
 
 // "Adicionados recentemente" says how the catalog is sorted, so it only holds while it is: sorted by title or
@@ -75,7 +77,7 @@ function HomeDashboard() {
   const favorites = useFavorites();
   const collections = useCollections({ limit: 1 });
   const lists = useCollections({ limit: 1, kind: 'personal' });
-  const notes = useNotes({ limit: 3 });
+  const notes = useNotes({ limit: 2, sample: true });
   const totalPages = grid.data?.totalPages ?? 1;
   const changePage = (next) => {
     setPage(next);
@@ -83,6 +85,29 @@ function HomeDashboard() {
       .getElementById('library-catalog')
       ?.scrollIntoView({ block: 'start' });
   };
+
+  // The home is shelves while it is the plain one: all the works, the newest first, as a grid. Another kind, another order or the list is
+  // the paginated catalog, in the same place, so that every work can be reached.
+  const shelves = view === 'all' && sort === 'added' && viewMode === 'grid';
+  const catalogTitle = (view === 'all' && SORTED_TITLES[sort]) || GRID_TITLES[view];
+  const personal = (
+    <div className="home-rail">
+      <div className="home-favorites">
+        {favorites.isError ? (
+          <QueryError onRetry={() => favorites.refetch()}>Não foi possível carregar os favoritos.</QueryError>
+        ) : (
+          <FavoriteSeries items={favorites.data?.data ?? []} total={favorites.data?.total ?? 0} isLoading={favorites.isLoading} />
+        )}
+      </div>
+      <div className="home-notes">
+        {notes.isError ? (
+          <QueryError onRetry={() => notes.refetch()}>Não foi possível carregar as anotações.</QueryError>
+        ) : (
+          <NotesQuotes notes={notes.data?.data ?? []} isLoading={notes.isLoading} />
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="library-dashboard">
@@ -93,106 +118,73 @@ function HomeDashboard() {
         error={stats.isError}
         onRetry={() => stats.refetch()}
       />
-      {inProgress.isError ? (
-        <QueryError onRetry={() => inProgress.refetch()}>
-          Não foi possível carregar as leituras em andamento.
-        </QueryError>
-      ) : (
-        <ContinueReading
-          items={inProgress.data?.data ?? []}
-          isLoading={inProgress.isLoading}
-          onViewAll={() => setView('reading')}
-        />
-      )}
-      <section
-        id="library-catalog"
-        aria-label="Acervo"
-        style={{ scrollMarginTop: 96 }}
-      >
-        <LibraryFilterBar
-          worksTotal={stats.data?.worksTotal}
-          breakdown={stats.data?.libraryBreakdown}
-          activeFilter={view}
-          onFilterChange={setView}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          sort={sort}
-          onSortChange={view === 'collections' || view === 'lists' ? undefined : setSort}
-          collectionsTotal={collections.data?.total ?? 0}
-          canManageCollections={isStaff(me)}
-          listsTotal={lists.data?.total}
-        />
-        {view === 'collections' || view === 'lists' ? (
-          <CollectionsGrid viewMode={viewMode} kind={view === 'lists' ? 'personal' : 'official'} />
-        ) : grid.isError ? (
-          <QueryError onRetry={() => grid.refetch()}>
-            Não foi possível carregar o acervo.
-          </QueryError>
-        ) : (
-          <>
-            <LibraryGrid
-              items={grid.data?.data ?? []}
-              isLoading={grid.isLoading}
-              isFetching={grid.isFetching}
-              title={(view === 'all' && SORTED_TITLES[sort]) || GRID_TITLES[view]}
-              viewMode={viewMode}
+      <div className="home-columns" data-catalog={shelves ? 'shelves' : 'full'}>
+        <div className="home-continue">
+          {inProgress.isError ? (
+            <QueryError onRetry={() => inProgress.refetch()}>Não foi possível carregar as leituras em andamento.</QueryError>
+          ) : (
+            <ContinueReading items={inProgress.data?.data ?? []} isLoading={inProgress.isLoading} onViewAll={() => setView('reading')} />
+          )}
+        </div>
+        <section id="library-catalog" aria-label="Acervo" className="home-catalog" style={{ scrollMarginTop: 96 }}>
+          <LibraryFilterBar
+            worksTotal={stats.data?.worksTotal}
+            breakdown={stats.data?.libraryBreakdown}
+            activeFilter={view}
+            onFilterChange={setView}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            sort={sort}
+            onSortChange={view === 'collections' || view === 'lists' ? undefined : setSort}
+            collectionsTotal={collections.data?.total ?? 0}
+            canManageCollections={isStaff(me)}
+            listsTotal={lists.data?.total}
+          />
+          {view === 'collections' || view === 'lists' ? (
+            <CollectionsGrid viewMode={viewMode} kind={view === 'lists' ? 'personal' : 'official'} />
+          ) : grid.isError ? (
+            <QueryError onRetry={() => grid.refetch()}>Não foi possível carregar o acervo.</QueryError>
+          ) : shelves ? (
+            <Shelf
+              headingId="recent-heading"
+              title={catalogTitle}
               total={grid.data?.total}
               countWord={grid.data?.series ? 'itens' : 'obras'}
+              items={grid.data?.data ?? []}
+              isLoading={grid.isLoading}
+              emptyText="Nenhuma obra encontrada nessa categoria ainda."
             />
-            {totalPages > 1 && (
-              <nav
-                className="library-pagination"
-                aria-label="Páginas do acervo"
-              >
-                <button
-                  className="library-button"
-                  disabled={page <= 1 || grid.isFetching}
-                  onClick={() => changePage(page - 1)}
-                >
-                  Anterior
-                </button>
-                <span aria-live="polite">
-                  {page} de {totalPages}
-                </span>
-                <button
-                  className="library-button"
-                  disabled={page >= totalPages || grid.isFetching}
-                  onClick={() => changePage(page + 1)}
-                >
-                  Próxima
-                </button>
-              </nav>
-            )}
-          </>
-        )}
-      </section>
+          ) : (
+            <>
+              <LibraryGrid
+                items={grid.data?.data ?? []}
+                isLoading={grid.isLoading}
+                isFetching={grid.isFetching}
+                title={catalogTitle}
+                viewMode={viewMode}
+                total={grid.data?.total}
+                countWord={grid.data?.series ? 'itens' : 'obras'}
+              />
+              {totalPages > 1 && (
+                <nav className="library-pagination" aria-label="Páginas do acervo">
+                  <button className="library-button" disabled={page <= 1 || grid.isFetching} onClick={() => changePage(page - 1)}>
+                    Anterior
+                  </button>
+                  <span aria-live="polite">
+                    {page} de {totalPages}
+                  </span>
+                  <button className="library-button" disabled={page >= totalPages || grid.isFetching} onClick={() => changePage(page + 1)}>
+                    Próxima
+                  </button>
+                </nav>
+              )}
+            </>
+          )}
+        </section>
+        {personal}
+      </div>
+      {shelves && <CategoryRows />}
       {view === 'all' && <CategoryShelf />}
-      <section
-        className="library-personal"
-        aria-label="Sua coleção e anotações"
-      >
-        {favorites.isError ? (
-          <QueryError onRetry={() => favorites.refetch()}>
-            Não foi possível carregar os favoritos.
-          </QueryError>
-        ) : (
-          <FavoriteSeries
-            items={favorites.data?.data ?? []}
-            total={favorites.data?.total ?? 0}
-            isLoading={favorites.isLoading}
-          />
-        )}
-        {notes.isError ? (
-          <QueryError onRetry={() => notes.refetch()}>
-            Não foi possível carregar as anotações.
-          </QueryError>
-        ) : (
-          <NotesQuotes
-            notes={notes.data?.data ?? []}
-            isLoading={notes.isLoading}
-          />
-        )}
-      </section>
     </div>
   );
 }

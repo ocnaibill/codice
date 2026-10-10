@@ -424,3 +424,58 @@ func TestNotes_TheColorIsInTheExport(t *testing.T) {
 		t.Fatalf("export: %d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestNotes_ASampleIsAFewAtRandomFromWhatTheCallerKept(t *testing.T) {
+	s := newCatalogStack(t)
+	duna, _, _ := s.bookWithTwoFiles()
+	for i := 0; i < 12; i++ {
+		s.addNote(ana, duna, fmt.Sprintf(`{"body":"anotação %d","tags":["t%d"]}`, i, i%2))
+	}
+	s.addNote(bob, duna, `{"body":"de outra pessoa"}`)
+
+	// A sample is as many as were asked for, whole, from the caller's own notes, and the total is the number of notes they have.
+	seen := map[int]bool{}
+	pairs := map[string]bool{}
+	for i := 0; i < 40; i++ {
+		got := s.notes(ana, "?limit=2&sample=true")
+		if len(got.Data) != 2 || got.Total != 12 {
+			t.Fatalf("a sample of 2 of 12: %d notes, total %d", len(got.Data), got.Total)
+		}
+		if got.Data[0].ID == got.Data[1].ID {
+			t.Fatalf("the same note twice: %+v", got.Data)
+		}
+		pair := []string{}
+		for _, n := range got.Data {
+			seen[n.ID] = true
+			pair = append(pair, fmt.Sprint(n.ID))
+			if strings.Contains(n.Body, "outra pessoa") {
+				t.Fatalf("a note of somebody else in the sample")
+			}
+		}
+		pairs[strings.Join(pair, ",")] = true
+	}
+	if len(seen) < 6 || len(pairs) < 4 {
+		t.Errorf("not at random: %d notes and %d pairs in 40 samples", len(seen), len(pairs))
+	}
+
+	// Without it the newest come, in order, every time.
+	a, b := s.notes(ana, "?limit=2"), s.notes(ana, "?limit=2")
+	if a.Data[0].ID != b.Data[0].ID || a.Data[0].ID < a.Data[1].ID {
+		t.Errorf("the plain list is the newest first, always: %+v %+v", a.Data, b.Data)
+	}
+	// The filters still count, and a sample that asks for more than there are is all of them.
+	for i := 0; i < 10; i++ {
+		for _, n := range s.notes(ana, "?limit=5&sample=true&tag=t1").Data {
+			if len(n.Tags) != 1 || n.Tags[0] != "t1" {
+				t.Fatalf("a sample ignored the filter: %+v", n)
+			}
+		}
+	}
+	if got := s.notes(ana, "?limit=50&sample=true&tag=t0"); len(got.Data) != 6 || got.Total != 6 {
+		t.Errorf("the whole of a small set: %d of %d", len(got.Data), got.Total)
+	}
+	// Anything but true is the plain list.
+	if got := s.notes(ana, "?limit=1&sample=1"); got.Data[0].ID != a.Data[0].ID {
+		t.Errorf("sample=1 is not a sample: %+v", got.Data)
+	}
+}
