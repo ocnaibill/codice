@@ -144,6 +144,7 @@ var staffRoutes = []route{
 	{"GET", "/admin/suggestions"},
 	{"GET", "/admin/metadata-providers"},
 	{"POST", "/admin/works/1/metadata-refresh"},
+	{"PUT", "/admin/people/1/profile"},
 	{"GET", "/admin/works/1/metadata-refresh"},
 	{"GET", "/admin/people/merges"},
 	{"GET", "/admin/people/names"},

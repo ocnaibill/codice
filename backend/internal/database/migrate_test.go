@@ -203,6 +203,52 @@ func TestMigrate_TheHealthOfAProviderIsOneRowWithAKnownState(t *testing.T) {
 	}
 }
 
+// The profile of an author (DEC-146) is one row per person, goes with the person, and its biography is in a state the page knows.
+func TestMigrate_TheProfileOfAPersonIsOneRowThatGoesWithThePerson(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	var person int
+	if err := db.QueryRow(`INSERT INTO person (name) VALUES ('Frank Herbert') RETURNING id`).Scan(&person); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO person_profile (person_id, wikidata_id) VALUES ($1, 'Q7934')`, person); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	var hidden, imageHidden bool
+	if err := db.QueryRow(`SELECT bio_state, hidden, image_hidden FROM person_profile WHERE person_id = $1`, person).Scan(&state, &hidden, &imageHidden); err != nil ||
+		state != "pending" || hidden || imageHidden {
+		t.Errorf("defaults: %q %v %v %v", state, hidden, imageHidden, err)
+	}
+	if _, err := db.Exec(`INSERT INTO person_profile (person_id, wikidata_id) VALUES ($1, 'Q7934')`, person); err == nil {
+		t.Error("a person was given two profiles")
+	}
+	var other int
+	db.QueryRow(`INSERT INTO person (name) VALUES ('Outro') RETURNING id`).Scan(&other)
+	if _, err := db.Exec(`INSERT INTO person_profile (person_id, wikidata_id, bio_state) VALUES ($1, 'Q1', 'maybe')`, other); err == nil {
+		t.Error("a state the page does not know was accepted")
+	}
+	if _, err := db.Exec(`DELETE FROM person WHERE id = $1`, person); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	db.QueryRow(`SELECT count(*) FROM person_profile`).Scan(&n)
+	if n != 0 {
+		t.Errorf("the profile of a person who is gone stayed: %d", n)
+	}
+	if err := database.RollbackTo(db, 63); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	if tableExists(t, db, "person_profile") {
+		t.Error("the table stayed after going back")
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("reapply: %v", err)
+	}
+}
+
 func itoa(n int) string { return fmt.Sprint(n) }
 
 // The names that were stored before #36 are fixed by the migration with the same rule as

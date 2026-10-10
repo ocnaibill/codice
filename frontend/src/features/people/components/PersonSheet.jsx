@@ -6,6 +6,7 @@ import { LibraryGrid } from '../../home/components/LibraryGrid';
 import { useWorks } from '../../library/api/useWorks';
 import { ROLES } from '../../reader/credits';
 import { usePerson } from '../api/usePerson';
+import { PersonProfile } from './PersonProfile';
 
 const PAGE_SIZE = 12;
 
@@ -66,6 +67,7 @@ export function PersonSheet() {
           {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta página.</LoadError>}
           {person && (
             <div className="flex flex-col gap-6">
+              <PersonProfile person={person} />
               {person.aliases.length > 0 && (
                 <p className="text-sm text-ink-soft">
                   Também aparece como <span className="text-ink">{person.aliases.join(' · ')}</span>

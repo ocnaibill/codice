@@ -122,6 +122,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Post("/admin/people/merges/{id}/dismiss", ppl.Dismiss)
 	r.Get("/admin/people/names", ppl.Names)
 	r.Put("/admin/people/{id}/name", ppl.SetName)
+	r.Put("/admin/people/{id}/profile", ppl.SetProfile)
 	r.Get("/auth/preferences", ppl.GetPreferences)
 	r.Put("/auth/preferences", ppl.SetPreferences)
 	r.Put("/admin/name-order", ppl.SetLibraryOrder)

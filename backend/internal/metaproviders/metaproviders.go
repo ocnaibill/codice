@@ -26,7 +26,8 @@ type Info struct {
 	// Sends lists what leaves the instance: "title" is the title of the work, on every analysis; "isbn" is the ISBN the file
 	// carries, when it has one, for the providers that find a book by it (DEC-142); "author_key" is
 	// the key Open Library gave an author an administrator accepted, to ask it for the identifiers it knows;
-	// "page_title" is the title of the page Wikidata says the work has on Wikipedia, which is all Wikipedia is asked.
+	// "page_title" is the title of the page Wikidata says the work, or an author, has on Wikipedia, which is all Wikipedia is asked;
+	// "author_id" is the Wikidata identifier of each author a person accepted, to read the profile of the author (DEC-146).
 	Sends []string `json:"sends"`
 	// Key says whether the provider takes an API key from the environment of the worker: "optional" (it works
 	// without, within a lower limit), "required" (it does not work without) or empty (it has none).
@@ -40,7 +41,7 @@ var Known = []Info{
 	{ID: "comicvine", Name: "ComicVine", Sends: []string{"title"}, Key: "required"},
 	{ID: "anilist", Name: "AniList", Sends: []string{"title"}},
 	{ID: "mangadex", Name: "MangaDex", Sends: []string{"title"}},
-	{ID: "wikidata", Name: "Wikidata", Sends: []string{"title"}},
+	{ID: "wikidata", Name: "Wikidata", Sends: []string{"title", "author_id"}},
 	{ID: "wikipedia", Name: "Wikipedia", Sends: []string{"page_title"}},
 }
 
