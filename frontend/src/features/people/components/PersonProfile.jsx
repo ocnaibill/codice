@@ -26,7 +26,10 @@ export function PersonProfile({ person }) {
 
   const born = formatProfileDate(profile.born);
   const died = formatProfileDate(profile.died);
-  const years = [born && `Nasceu em ${born}`, died && `Morreu em ${died}`].filter(Boolean).join(' · ');
+  // "Nasceu em 8 de outubro de 1920, em Tacoma": the place goes with the date, or alone when the date is not known.
+  const place = profile.bornPlace ? `em ${profile.bornPlace}` : '';
+  const birth = born ? `Nasceu em ${born}${place ? `, ${place}` : ''}` : place ? `Nasceu ${place}` : '';
+  const years = [birth, died && `Morreu em ${died}`].filter(Boolean).join(' · ');
   const image = profile.image;
   const hiddenNote = profile.hidden ? 'O perfil está oculto: só quem administra o vê.' : null;
 

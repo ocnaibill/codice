@@ -11,9 +11,11 @@ from profiles import resolve_pending
 
 URL = os.environ.get('TEST_DATABASE_URL')
 pytestmark = pytest.mark.skipif(not URL, reason='TEST_DATABASE_URL is not set')
-MIGRATION = os.path.join(os.path.dirname(__file__), '..', '..', 'backend', 'internal', 'database', 'migrations', '00064_person_profile.sql')
+MIGRATIONS = [os.path.join(os.path.dirname(__file__), '..', '..', 'backend', 'internal', 'database', 'migrations', name)
+              for name in ('00064_person_profile.sql', '00069_person_born_place.sql')]
 
 PROFILE = {'description': 'escritor americano', 'born': '1920-10-08', 'died': '1986-02-11', 'image': 'A.jpg', 'pages': {'pt': 'Frank Herbert'},
+           'born_place': None, 'place_read': True,
            'bio': ('pt', 'Frank Herbert', 'https://pt.wikipedia.org/wiki/Frank_Herbert', 'Frank Herbert foi um escritor.'), 'bio_state': 'done',
            'photo': {'path': '/covers/person_Q7934.jpg', 'credit': 'Unknown', 'license': 'Public domain', 'license_url': '', 'page': 'https://c.org/File:A.jpg'}}
 
@@ -31,8 +33,7 @@ class Db:
 
 
 def up_section():
-    text = open(MIGRATION, encoding='utf-8').read()
-    return text.split('-- +goose Up', 1)[1].split('-- +goose Down', 1)[0]
+    return '\n'.join(open(path, encoding='utf-8').read().split('-- +goose Up', 1)[1].split('-- +goose Down', 1)[0] for path in MIGRATIONS)
 
 
 @pytest.fixture
@@ -79,8 +80,8 @@ def fetcher(results):
     return fetch
 
 
-def read(db, query):
-    return db.fetchall(query)
+def read(db, query, params=()):
+    return db.fetchall(query, params)
 
 
 def run(db, allowed, fetch, **kw):
@@ -105,8 +106,8 @@ class TestTheMigration:
         assert read(db, 'SELECT hidden, image_hidden, bio_state, description, bio FROM person_profile') == [(False, False, 'pending', '', '')]
 
     def test_going_back_takes_the_table_away(self, db):
-        text = open(MIGRATION, encoding='utf-8').read().split('-- +goose Down', 1)[1]
-        db.execute(text)
+        for path in reversed(MIGRATIONS):
+            db.execute(open(path, encoding='utf-8').read().split('-- +goose Down', 1)[1])
         with pytest.raises(psycopg2.errors.UndefinedTable):
             db.execute('SELECT 1 FROM person_profile')
 
@@ -137,10 +138,44 @@ class TestKeepingAProfile:
         assert read(db, "SELECT attempts FROM authority_lookups WHERE key = 'Q7934'") == [(2,)]
 
 
+class TestThePlaceOfBirth:
+    def test_the_place_is_kept_with_the_profile_and_given_to_the_one_that_joins(self, db):
+        a = person(db, 'Frank Herbert', 'Q7934')
+        run(db, {'wikidata', 'wikipedia'}, fetcher({'Q7934': ('ok', dict(PROFILE, born_place='Tacoma', place_read=True))}))
+        assert read(db, 'SELECT born_place, place_read FROM person_profile WHERE person_id = %s', (a,)) == [('Tacoma', True)]
+        b = person(db, 'Herbert, Frank', 'Q7934')   # the same identifier, written another way
+        run(db, {'wikidata'}, fetcher({}))
+        assert read(db, 'SELECT born_place, place_read FROM person_profile WHERE person_id = %s', (b,)) == [('Tacoma', True)]
+
+    def test_a_profile_read_before_the_place_was_kept_is_asked_again_for_the_place_alone(self, db):
+        a = person(db, 'Frank Herbert', 'Q7934')
+        db.execute("INSERT INTO person_profile (person_id, wikidata_id, description) VALUES (%s, 'Q7934', 'escritor')", (a,))
+        assert read(db, 'SELECT place_read, born_place FROM person_profile') == [(False, None)]
+        fetch = fetcher({'Q7934': ('ok', dict(PROFILE, born_place='Tacoma', place_read=True))})
+        run(db, {'wikidata'}, fetch)
+        assert fetch.calls == [('Q7934', False, False)]
+        assert read(db, 'SELECT place_read, born_place, description FROM person_profile') == [(True, 'Tacoma', 'escritor')]   # nothing else was touched
+        run(db, {'wikidata'}, fetch)   # and it is not asked again
+        assert len(fetch.calls) == 1
+
+    def test_a_place_that_was_read_is_not_written_over_by_a_second_reading_of_the_same_identifier(self, db):
+        a, b = person(db, 'Frank Herbert', 'Q7934'), person(db, 'Herbert, Frank', 'Q7934')
+        db.execute("INSERT INTO person_profile (person_id, wikidata_id, born_place, place_read) VALUES (%s, 'Q7934', 'Tacoma', TRUE)", (a,))
+        db.execute("INSERT INTO person_profile (person_id, wikidata_id) VALUES (%s, 'Q7934')", (b,))
+        run(db, {'wikidata'}, fetcher({'Q7934': ('ok', dict(PROFILE, born_place='Outro lugar', place_read=True))}))
+        assert read(db, 'SELECT person_id, born_place FROM person_profile ORDER BY person_id') == [(a, 'Tacoma'), (b, 'Outro lugar')]
+
+    def test_a_place_that_could_not_be_read_stays_to_be_asked(self, db):
+        a = person(db, 'Frank Herbert', 'Q7934')
+        db.execute("INSERT INTO person_profile (person_id, wikidata_id) VALUES (%s, 'Q7934')", (a,))
+        run(db, {'wikidata'}, fetcher({'Q7934': ('ok', dict(PROFILE, born_place=None, place_read=False))}))
+        assert read(db, 'SELECT place_read FROM person_profile') == [(False,)]
+
+
 class TestWhoIsStillToRead:
     def test_a_person_with_a_profile_or_with_an_answered_lookup_is_not_read_again(self, db):
         a, b, c = person(db, 'A', 'Q1'), person(db, 'B', 'Q2'), person(db, 'C', 'Q3')
-        db.execute("INSERT INTO person_profile (person_id, wikidata_id) VALUES (%s, 'Q1')", (a,))
+        db.execute("INSERT INTO person_profile (person_id, wikidata_id, place_read) VALUES (%s, 'Q1', TRUE)", (a,))
         db.execute("INSERT INTO authority_lookups (source, key, state) VALUES ('wikidata', 'Q2', 'missing')")
         fetch = fetcher({'Q3': ('ok', PROFILE)})
         run(db, {'wikidata'}, fetch)
@@ -181,7 +216,7 @@ class TestWhoIsStillToRead:
 
     def test_a_person_that_joins_one_who_has_the_profile_gets_it_without_a_request(self, db):
         a = person(db, 'Frank Herbert', 'Q7934')
-        db.execute("INSERT INTO person_profile (person_id, wikidata_id, description) VALUES (%s, 'Q7934', 'escritor')", (a,))
+        db.execute("INSERT INTO person_profile (person_id, wikidata_id, description, place_read) VALUES (%s, 'Q7934', 'escritor', TRUE)", (a,))
         db.execute("INSERT INTO authority_lookups (source, key, state) VALUES ('wikidata', 'Q7934', 'done')")
         b = person(db, 'F. Herbert', 'Q7934')
         fetch = fetcher({})
@@ -191,7 +226,7 @@ class TestWhoIsStillToRead:
 
     def test_the_biography_of_the_ones_read_without_wikipedia_is_filled_when_it_is_on(self, db):
         a = person(db, 'Frank Herbert', 'Q7934')
-        db.execute("INSERT INTO person_profile (person_id, wikidata_id, description, bio_state, hidden) VALUES (%s, 'Q7934', 'escritor', 'pending', TRUE)", (a,))
+        db.execute("INSERT INTO person_profile (person_id, wikidata_id, description, bio_state, hidden, place_read) VALUES (%s, 'Q7934', 'escritor', 'pending', TRUE, TRUE)", (a,))
         fetch = fetcher({'Q7934': ('ok', PROFILE)})
         run(db, {'wikidata'}, fetch)
         assert fetch.calls == []   # Wikipedia is off: it waits

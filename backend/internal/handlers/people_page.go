@@ -59,7 +59,9 @@ type PersonProfile struct {
 	WikidataID  string `json:"wikidataId"`
 	Description string `json:"description"`
 	Born        string `json:"born,omitempty"`
-	Died        string `json:"died,omitempty"`
+	// BornPlace is the name of the place they were born in (DEC-160), from Wikidata; absent when it has none.
+	BornPlace string `json:"bornPlace,omitempty"`
+	Died      string `json:"died,omitempty"`
 	// Bio is the first paragraphs of the page of the person on Wikipedia, under CC BY-SA 4.0: BioSource says whose it is and where it is.
 	Bio       string            `json:"bio,omitempty"`
 	BioSource *ProfileBioSource `json:"bioSource,omitempty"`
@@ -92,13 +94,14 @@ func readProfile(r *http.Request, db *sql.DB, personID int) (*PersonProfile, err
 	var (
 		p                                            PersonProfile
 		born, died, bioLang, bioTitle, bioURL        sql.NullString
+		bornPlace                                    sql.NullString
 		path, credit, license, licenseURL, imagePage sql.NullString
 		bio                                          string
 	)
 	err := db.QueryRowContext(r.Context(), `
-		SELECT wikidata_id, description, born, died, bio, bio_language, bio_title, bio_url,
+		SELECT wikidata_id, description, born, died, born_place, bio, bio_language, bio_title, bio_url,
 		       image_path, image_credit, image_license, image_license_url, image_page_url, hidden, image_hidden
-		FROM person_profile WHERE person_id = $1`, personID).Scan(&p.WikidataID, &p.Description, &born, &died, &bio, &bioLang, &bioTitle, &bioURL,
+		FROM person_profile WHERE person_id = $1`, personID).Scan(&p.WikidataID, &p.Description, &born, &died, &bornPlace, &bio, &bioLang, &bioTitle, &bioURL,
 		&path, &credit, &license, &licenseURL, &imagePage, &p.Hidden, &p.ImageHidden)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -110,7 +113,7 @@ func readProfile(r *http.Request, db *sql.DB, personID int) (*PersonProfile, err
 	if p.Hidden && !staff {
 		return nil, nil
 	}
-	p.Born, p.Died = born.String, died.String
+	p.Born, p.Died, p.BornPlace = born.String, died.String, bornPlace.String
 	if bio != "" && bioLang.Valid {
 		p.Bio = bio
 		p.BioSource = &ProfileBioSource{Language: bioLang.String, Title: bioTitle.String, URL: bioURL.String, License: "CC BY-SA 4.0"}

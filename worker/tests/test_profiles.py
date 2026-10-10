@@ -66,7 +66,7 @@ class TestAnEntityThatIsAPerson:
     def test_it_gives_the_description_the_years_the_photo_and_the_pages(self):
         got = parse_entity(human())
         assert got == {'description': 'escritor de ficção científica americano (1920-1986)', 'born': '1920-10-08', 'died': '1986-02-11',
-                       'image': 'Frank Herbert 1984 (square).jpg', 'pages': {'pt': 'Frank Herbert', 'en': 'Frank Herbert'}}
+                       'image': 'Frank Herbert 1984 (square).jpg', 'pages': {'pt': 'Frank Herbert', 'en': 'Frank Herbert'}, 'place_id': None}
 
     def test_the_description_is_the_one_in_portuguese_of_brazil_then_of_portugal_then_english(self):
         e = human(descriptions={'en': {'value': 'writer'}, 'pt': {'value': 'escritor'}, 'pt-br': {'value': 'escritor brasileiro'}})
@@ -83,7 +83,7 @@ class TestAnEntityThatIsAPerson:
 
     def test_a_person_without_the_rest_has_only_what_there_is(self):
         got = parse_entity({'descriptions': {}, 'claims': {'P31': [claim({'id': 'Q5'})]}, 'sitelinks': {}})
-        assert got == {'description': '', 'born': None, 'died': None, 'image': None, 'pages': {}}
+        assert got == {'description': '', 'born': None, 'died': None, 'image': None, 'pages': {}, 'place_id': None}
 
     def test_the_photo_is_the_first_name_of_a_file_and_the_pages_are_only_the_ones_it_reads(self):
         got = parse_entity(human(claims={'P31': [claim({'id': 'Q5'})], 'P18': [claim({'id': 'Q1'}), claim('  '), claim('A.jpg')]}))
@@ -277,8 +277,8 @@ class TestReadingAProfile:
 
 
 class DB:
-    def __init__(self, pending=(), bio_pending=()):
-        self.statements, self.pending, self.bio_pending = [], list(pending), list(bio_pending)
+    def __init__(self, pending=(), bio_pending=(), place_pending=()):
+        self.statements, self.pending, self.bio_pending, self.place_pending = [], list(pending), list(bio_pending), list(place_pending)
 
     def execute(self, query, params=()):
         self.statements.append((' '.join(query.split()), params))
@@ -287,6 +287,8 @@ class DB:
         self.statements.append((' '.join(query.split()), params))
         if 'bio_state = \'pending\'' in query:
             return [(q,) for q in self.bio_pending]
+        if 'NOT place_read' in query:
+            return [(q,) for q in self.place_pending]
         return [(q,) for q in self.pending]
 
 
@@ -300,7 +302,7 @@ def fetcher(results):
     return fetch
 
 
-PROFILE = {'description': 'escritor', 'born': '1920', 'died': '1986', 'image': 'A.jpg', 'pages': {'pt': 'X'},
+PROFILE = {'description': 'escritor', 'born': '1920', 'died': '1986', 'image': 'A.jpg', 'pages': {'pt': 'X'}, 'born_place': 'Tacoma', 'place_read': True,
            'bio': ('pt', 'X', 'https://pt.wikipedia.org/wiki/X', 'Texto.'), 'bio_state': 'done',
            'photo': {'path': '/covers/person_Q1.jpg', 'credit': 'Jane', 'license': 'CC BY-SA 4.0', 'license_url': 'u', 'page': 'p'}}
 
@@ -323,7 +325,7 @@ class TestOverTheDatabase:
         (query, params), = [s for s in db.statements if 'INSERT INTO person_profile' in s[0] and 'authority_lookups' in s[0]]
         assert 'ON CONFLICT (person_id) DO UPDATE' in query and 'hidden' not in query.split('ON CONFLICT')[1]   # what staff hid is not undone
         assert params == ('escritor', '1920', '1986', 'Texto.', 'pt', 'X', 'https://pt.wikipedia.org/wiki/X', 'done', '/covers/person_Q1.jpg', 'Jane',
-                          'CC BY-SA 4.0', 'u', 'p', 'Q1', 'Q1', 'done')
+                          'CC BY-SA 4.0', 'u', 'p', 'Tacoma', True, 'Q1', 'Q1', 'done')
 
     def test_a_profile_with_no_biography_or_photo_keeps_none_of_them(self):
         bare = dict(PROFILE, bio=None, bio_state='none', photo=None)
@@ -436,3 +438,82 @@ class TestDownloading:
             raise RuntimeError('cannot')
         with patch.object(http, 'reporter', boom), patch('providers.http.requests.get', return_value=self.response(body=b'ab')):
             assert get_binary('Wikidata', 'https://u.org/a.jpg', 100).data == b'ab'
+
+
+class TestThePlaceOfBirth:
+    """The place a person was born in (DEC-160): its name, from the entity of the place, kept with the profile."""
+
+    def test_the_place_is_the_first_claim_that_is_one(self):
+        entity = human()
+        entity['claims']['P19'] = [claim({'id': 'Q36091'}, rank='preferred'), claim({'id': 'Q1'})]
+        assert parse_entity(entity)['place_id'] == 'Q36091'
+
+    def test_a_place_that_is_not_an_entity_is_none(self):
+        entity = human()
+        entity['claims']['P19'] = [claim('Tacoma'), claim({'id': 'not-a-qid'})]
+        assert parse_entity(entity)['place_id'] is None
+
+    def test_the_name_is_in_portuguese_when_there_is_one(self):
+        data = {'entities': {'Q1': {'labels': {'en': {'value': 'Tacoma'}, 'pt': {'value': 'Tacoma, Washington'}}}}}
+        assert profiles.parse_place(data, 'Q1') == 'Tacoma, Washington'
+        assert profiles.parse_place({'entities': {'Q1': {'labels': {'en': {'value': ' Tacoma '}}}}}, 'Q1') == 'Tacoma'
+        assert profiles.parse_place({'entities': {'Q1': {'labels': {}}}}, 'Q1') is None
+        assert profiles.parse_place({'entities': {}}, 'Q1') is None
+        assert profiles.parse_place(None, 'Q1') is None
+
+    def test_a_name_is_kept_to_what_the_column_holds(self):
+        data = {'entities': {'Q1': {'labels': {'pt': {'value': 'x' * 400}}}}}
+        assert len(profiles.parse_place(data, 'Q1')) == 255
+
+    def _fetch(self, place_reply):
+        calls = []
+
+        def fake_get_json(source, url, params=None, **kw):
+            calls.append(params)
+            if params.get('ids') == 'Q7934':
+                entity = human()
+                entity['claims']['P19'] = [claim({'id': 'Q36091'})]
+                return Reply(200, {'entities': {'Q7934': entity}}, True)
+            return place_reply
+        return fake_get_json, calls
+
+    def test_the_profile_carries_the_place_and_says_it_was_read(self):
+        reply = Reply(200, {'entities': {'Q36091': {'labels': {'pt': {'value': 'Tacoma'}}}}}, True)
+        fake, calls = self._fetch(reply)
+        with patch.object(profiles, 'get_json', fake):
+            status, profile = fetch_profile('Q7934', '/tmp/c', allow_bio=False, allow_image=False)
+        assert status == 'ok' and profile['born_place'] == 'Tacoma' and profile['place_read'] is True
+        assert [c['ids'] for c in calls] == ['Q7934', 'Q36091']
+
+    def test_a_place_that_could_not_be_reached_is_not_final(self):
+        fake, _ = self._fetch(Reply(503, None, False))
+        with patch.object(profiles, 'get_json', fake):
+            status, profile = fetch_profile('Q7934', '/tmp/c', allow_bio=False, allow_image=False)
+        assert status == 'ok' and profile['born_place'] is None and profile['place_read'] is False
+
+    def test_a_person_with_no_place_is_final(self):
+        def fake(source, url, params=None, **kw):
+            return Reply(200, {'entities': {'Q7934': human()}}, True)
+        with patch.object(profiles, 'get_json', fake):
+            status, profile = fetch_profile('Q7934', '/tmp/c', allow_bio=False, allow_image=False)
+        assert profile['born_place'] is None and profile['place_read'] is True
+
+    def test_the_profiles_read_before_are_asked_again_for_the_place_alone(self):
+        db = DB(place_pending=['Q1'])
+        fetch = fetcher({'Q1': ('ok', dict(PROFILE, born_place='Tacoma', place_read=True))})
+        n = resolve_pending(db, lambda p: p == 'wikidata', '/tmp/c', sleep=lambda s: None, fetch=fetch)
+        assert fetch.calls == [('Q1', False, False)] and n == 1
+        (query, params), = [s for s in db.statements if s[0].startswith('UPDATE person_profile SET born_place')]
+        assert params == ('Tacoma', 'Q1')
+
+    def test_a_place_that_failed_is_asked_again_another_day_and_not_marked(self):
+        db = DB(place_pending=['Q1'])
+        fetch = fetcher({'Q1': ('ok', dict(PROFILE, born_place=None, place_read=False))})
+        resolve_pending(db, lambda p: p == 'wikidata', '/tmp/c', sleep=lambda s: None, fetch=fetch)
+        assert not [s for s in db.statements if s[0].startswith('UPDATE person_profile SET born_place')]
+
+    def test_nothing_is_asked_while_wikidata_is_off(self):
+        db = DB(place_pending=['Q1'])
+        fetch = fetcher({'Q1': ('ok', PROFILE)})
+        resolve_pending(db, lambda p: False, '/tmp/c', sleep=lambda s: None, fetch=fetch)
+        assert fetch.calls == []

@@ -17,6 +17,20 @@ func (s *catalogStack) giveProfile(person int) {
 	                '/covers/person_Q7934.jpg', 'Unknown photographer', 'Public domain', '', 'https://commons.wikimedia.org/wiki/File:A.jpg')`, person)
 }
 
+func TestPersonProfile_SaysWhereTheyWereBornWhenWikidataSaysIt(t *testing.T) {
+	s := newCatalogStack(t)
+	s.addWork("Duna", "Frank Herbert", "a.epub", "epub")
+	frank := s.personID("Frank Herbert")
+	s.giveProfile(frank)
+	if p, _ := s.personPage(ana, frank); p.Profile.BornPlace != "" {
+		t.Errorf("none was read: %q", p.Profile.BornPlace)
+	}
+	s.exec(`UPDATE person_profile SET born_place = 'Tacoma', place_read = TRUE WHERE person_id = $1`, frank)
+	if p, _ := s.personPage(ana, frank); p.Profile.BornPlace != "Tacoma" {
+		t.Errorf("the place: %q", p.Profile.BornPlace)
+	}
+}
+
 func (s *catalogStack) setProfile(a actor, person int, body string) int {
 	s.t.Helper()
 	return s.do(a, "PUT", fmt.Sprintf("/admin/people/%d/profile", person), body).Code
