@@ -9,6 +9,7 @@ export const FIELD_LABELS = {
   language: 'Idioma',
   publisher: 'Editora',
   publication_date: 'Data de publicação',
+  original_year: 'Ano da primeira publicação',
   description: 'Sinopse',
   tags: 'Etiquetas',
 };

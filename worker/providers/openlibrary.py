@@ -84,8 +84,9 @@ class OpenLibraryProvider(BaseProvider):
         record.publisher = doc.get('publisher', [None])[0] if doc.get('publisher') else None
         # No language: `language` lists the languages of the editions of the work, in codes of three letters, and
         # the first is not the file's. The language of a file is read from the file (DEC-096).
+        # The first year the work was published is the work's, not the date of any edition (DEC-156).
         year = doc.get('first_publish_year')
-        record.publication_date = str(year) if year else None
+        record.original_year = str(year) if isinstance(year, int) and year else None
         record.isbn = _isbn(doc.get('isbn'))
         if doc.get('cover_i'):
             record.cover_url = f"https://covers.openlibrary.org/b/id/{doc['cover_i']}-L.jpg"

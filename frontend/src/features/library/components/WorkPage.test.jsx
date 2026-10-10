@@ -584,6 +584,22 @@ describe('WorkPage: the page of the work (DEC-149)', () => {
     expect(container.querySelector('[aria-label="Seu progresso"]').textContent).not.toContain('restantes');
   });
 
+  it('says the year the work was first published, apart from the date of the edition', async () => {
+    await show({ metadata: { ...work.metadata, originalYear: 1965 } });
+    const chips = [...container.querySelectorAll('[aria-label="Dados da edição em foco"] span')].map((c) => c.textContent);
+    expect(chips).toContain('1ª publicação: 1965');
+    expect(chips).toContain('1990'); // the edition's own
+  });
+
+  it('says a year before the common era as such, and nothing when nobody knows it', async () => {
+    await show({ metadata: { ...work.metadata, originalYear: -384 } });
+    expect(container.textContent).toContain('1ª publicação: 384 a.C.');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show({ metadata: { ...work.metadata, originalYear: null } });
+    expect(container.textContent).not.toContain('1ª publicação');
+  });
+
   it('is left by a search: the results are what the person asked for', () => {
     useGlobalStore.setState({ sheetWorkId: 7, searchQuery: '' });
     useGlobalStore.getState().setSearchQuery('duna');

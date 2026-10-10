@@ -99,7 +99,8 @@ class TestWikidata:
 
     def test_a_record_is_the_work(self):
         (r,), _ = self.lookup()
-        assert (r.title, r.author, r.publication_date, r.series, r.series_index, r.source) == ('Duna', 'Frank Herbert', '1965', 'Crônicas de Duna', 1.0, 'Wikidata')
+        assert (r.title, r.author, r.original_year, r.series, r.series_index, r.source) == ('Duna', 'Frank Herbert', '1965', 'Crônicas de Duna', 1.0, 'Wikidata')
+        assert r.publication_date is None   # P577 of a work is its first publication, not an edition's date (DEC-156)
         assert r.credits[0].ids == {'wikidata': 'Q7934'}
         assert r.tags == ['ficção científica soft', 'romance planetário', 'ficção social']
         assert r.prior == 0.6 and r.raw['sitelinks_count'] == 6
@@ -114,7 +115,7 @@ class TestWikidata:
     def test_less_in_the_entity_is_less_in_the_record(self):
         bare = entity('Q2', {'en': 'Bare'}, claims=[claim('P31', {'id': 'Q571'})])
         (r,), _ = self.lookup('Bare', None, [reply({'search': [{'id': 'Q2'}]}), reply({'entities': {'Q2': bare}}), reply({'entities': {}})])
-        assert (r.title, r.author, r.credits, r.publication_date, r.series, r.series_index, r.tags, r.prior) == ('Bare', None, [], None, None, None, [], 0.0)
+        assert (r.title, r.author, r.credits, r.original_year, r.series, r.series_index, r.tags, r.prior) == ('Bare', None, [], None, None, None, [], 0.0)
         assert r.raw['sitelinks'] == {} and r.raw['alt_titles'] == []
 
     def test_a_series_with_no_ordinal_has_no_number_and_a_bad_one_is_left_out(self):
@@ -127,7 +128,7 @@ class TestWikidata:
     def test_the_year_comes_from_the_first_date_that_has_one(self):
         e = entity('Q4', {'pt': 'Livro'}, claims=[claim('P31', {'id': 'Q8261'}), claim('P577', {'time': 'x'}), claim('P577', {'time': '+1999-05-01T00:00:00Z'})])
         (r,), _ = self.lookup('Livro', None, [reply({'search': [{'id': 'Q4'}]}), reply({'entities': {'Q4': e}}), reply({'entities': {}})])
-        assert r.publication_date == '1999'
+        assert r.original_year == '1999'
 
     def test_when_no_work_is_close_it_asks_again_in_english_and_keeps_each_once(self):
         other = entity('Q9', {'pt': 'Outro Livro'}, claims=[claim('P31', {'id': 'Q8261'})])

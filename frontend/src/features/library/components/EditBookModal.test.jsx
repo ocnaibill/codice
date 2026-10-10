@@ -136,6 +136,25 @@ describe('EditBookModal: the metadata of a work (#70)', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('writes the year the work was first published, apart from the date of the edition, and locks it', async () => {
+    await render({ tab: 'edit', work: { ...record, metadata: { ...record.metadata, originalYear: 1965, locks: { ...record.metadata.locks, original_year: false } } } });
+    const year = [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith('Ano da primeira publicação')).querySelector('input');
+    expect(year.value).toBe('1965');
+    expect(input('2017')).toBeTruthy(); // the date of the edition is its own field
+    await setValue(year, '1964');
+    await act(async () => { lock('Ano original').click(); });
+    await click(button('Salvar'));
+    expect(api.put.mock.calls[0][1]).toMatchObject({ original_year: '1964', original_year_lock: true, publication_date: '2017' });
+  });
+
+  it('leaves the year empty when nobody knows it, and sends it empty (which clears)', async () => {
+    await render({ tab: 'edit' });
+    const year = [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith('Ano da primeira publicação')).querySelector('input');
+    expect(year.value).toBe('');
+    await click(button('Salvar'));
+    expect(api.put.mock.calls[0][1]).toMatchObject({ original_year: '', original_year_lock: false });
+  });
+
   it('starts the author from the first author as it is stored, never from what the sheet shows for the work', async () => {
     await render({ tab: 'edit' });
     expect(input('Frank Herbert')).toBeTruthy();

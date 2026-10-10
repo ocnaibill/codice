@@ -29,7 +29,8 @@ def suggest(analyzer: Analyzer, work_id, enriched, query_title, include_locked=F
         'series_index': enriched.series_index, 'isbn': enriched.isbn,
         'language': None,  # a provider says the language of some edition, not of this file (DEC-096)
         'publisher': enriched.publisher,
-        'publication_date': enriched.publication_date, 'description': plain_description(enriched.description),
+        'publication_date': enriched.publication_date, 'original_year': getattr(enriched, 'original_year', None),
+        'description': plain_description(enriched.description),
         'tags': enriched.tags,
         'credits': [c.as_dict() for c in (getattr(enriched, 'credits', None) or [])],
     }

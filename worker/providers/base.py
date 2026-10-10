@@ -37,7 +37,8 @@ class MetadataRecord:
     isbn: Optional[str] = None
     language: Optional[str] = None
     publisher: Optional[str] = None
-    publication_date: Optional[str] = None
+    publication_date: Optional[str] = None   # of the edition in hand
+    original_year: Optional[str] = None      # the year the work was first published (DEC-156), as a whole number in text
     description: Optional[str] = None
     tags: List[str] = field(default_factory=list)
     cover_url: Optional[str] = None

@@ -154,7 +154,8 @@ class TestOpenLibrary:
     def test_a_record_is_made_of_the_work(self, mock_get):
         mock_get.return_value = reply(200, {'docs': [DUNE]})
         (r,) = self.provider.lookup(read_file_title('Dune', None, 'epub'))
-        assert (r.title, r.author, r.publisher, r.publication_date, r.isbn, r.source) == ('Dune', 'Frank Herbert', 'Ace', '1965', '9780340839935', 'OpenLibrary')
+        assert (r.title, r.author, r.publisher, r.original_year, r.isbn, r.source) == ('Dune', 'Frank Herbert', 'Ace', '1965', '9780340839935', 'OpenLibrary')
+        assert r.publication_date is None   # the first year of the work is not the date of an edition (DEC-156)
         assert r.cover_url == 'https://covers.openlibrary.org/b/id/99-L.jpg'
         assert r.credits[0].ids == {'openlibrary': 'OL79034A'}
         assert r.tags == ['Fiction', 'Science fiction'] and (r.series, r.series_index) == ('Dune', 1.0)
@@ -164,7 +165,7 @@ class TestOpenLibrary:
     def test_a_work_with_little_in_it_is_a_record_with_little_in_it(self, mock_get):
         mock_get.return_value = reply(200, {'docs': [{'key': '/works/OL2W', 'title': 'Obscure'}]})
         (r,) = self.provider.lookup(read_file_title('Obscure', None))
-        assert (r.author, r.publisher, r.publication_date, r.isbn, r.cover_url, r.tags, r.series, r.series_index, r.prior) == (None, None, None, None, None, [], None, None, 0.0)
+        assert (r.author, r.publisher, r.original_year, r.isbn, r.cover_url, r.tags, r.series, r.series_index, r.prior) == (None, None, None, None, None, [], None, None, 0.0)
 
     @patch('providers.http.requests.get')
     def test_a_position_that_is_not_a_number_is_left_out(self, mock_get):

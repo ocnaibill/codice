@@ -256,6 +256,12 @@ function leadFileOf(work) {
     ?? files.find(canRead);
 }
 
+/** "1965", or "384 a.C." for a negative year: the year a work was first published (DEC-156). */
+function originalYearText(year) {
+  if (!Number.isInteger(year)) return null;
+  return year < 0 ? `${-year} a.C.` : String(year);
+}
+
 /** The synopsis, as many lines as fit and the rest one press away (the long ones of a publisher fill the page otherwise). */
 function Description({ text }) {
   const [all, setAll] = React.useState(false);
@@ -375,8 +381,10 @@ export function WorkPage() {
   // The work goes by the title written for the edition in focus, if there is one; its other names go under it.
   const shownTitle = work ? titleInUse(work, leadEdition) : '';
   const others = work ? otherTitles(work, shownTitle) : [];
+  const firstYear = originalYearText(meta?.originalYear);
   const leadDetails = [
     COMIC_KINDS.find((k) => k.key === meta?.comicKind)?.one,
+    firstYear && `1ª publicação: ${firstYear}`,
     leadEdition && languageName(leadEdition.language),
     leadEdition?.publisher,
     yearOf(leadEdition?.publicationDate),

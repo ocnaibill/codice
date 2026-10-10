@@ -4,9 +4,9 @@ import json
 from analyzer import Analyzer, UPSERT_PRIMARY_EDITION_COVER, clean_tag, MAX_TAG
 
 VALUE_NAMES = ['title', 'author', 'series', 'series_index', 'isbn', 'language', 'publisher',
-               'publication_date', 'description']
+               'publication_date', 'description', 'original_year']
 LOCK_NAMES = ['title', 'author', 'series', 'cover', 'isbn', 'language', 'publisher',
-              'publication_date', 'description']
+              'publication_date', 'description', 'original_year']
 
 
 class FakeDB:
@@ -430,3 +430,38 @@ class TestShorten:
     def test_it_never_ends_on_punctuation_before_the_ellipsis(self):
         from analyzer import shorten
         assert shorten('palavra, outra, e mais coisas', 17) == 'palavra, outra…'
+
+
+class TestOriginalYearCandidates:
+    """The year a work was first published (DEC-156): suggested like the other descriptive fields, never applied by itself."""
+
+    def propose(self, db, **record):
+        Analyzer(db).save_candidates(7, record, 'OpenLibrary')
+        return [p for q, p in db.matching('INSERT INTO metadata_candidates')]
+
+    def test_a_year_is_suggested(self):
+        db = FakeDB()
+        rows = self.propose(db, original_year='1965')
+        assert [(p[1], p[2]) for p in rows] == [('original_year', '1965')]
+
+    def test_the_year_the_work_has_is_not_suggested_again(self):
+        db = FakeDB(values={'original_year': '1965'})
+        assert self.propose(db, original_year='1965') == []
+
+    def test_a_year_that_is_locked_is_not_suggested(self):
+        db = FakeDB(values={'original_year': '1970'}, locks={'original_year': True})
+        assert self.propose(db, original_year='1965') == []
+
+    def test_what_is_not_a_year_of_a_work_is_not_suggested(self):
+        for bad in ('1965-05-01', 'sem data', '0', '10000', '-3001', '19 65', '01965'):
+            assert self.propose(FakeDB(), original_year=bad) == [], bad
+
+    def test_a_year_before_the_common_era_is_one(self):
+        rows = self.propose(FakeDB(), original_year='-384')
+        assert [p[2] for p in rows] == ['-384']
+
+    def test_the_year_is_never_written_to_the_work_by_the_native_metadata(self):
+        db = FakeDB()
+        Analyzer(db).save_metadata(7, dict(NATIVE, original_year='1965'))
+        query, _ = db.work_update()
+        assert 'original_year' not in query
