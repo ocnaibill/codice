@@ -352,6 +352,14 @@ describe('CollectionSheet: a list of the person', () => {
     expect(labelled('Obras da lista').tagName).toBe('OL');
   });
 
+  it('is not renamed or put away when it is one the Códice keeps ("Ler depois"), but its works are managed like any list', async () => {
+    await openList({ role: 'reader', data: list([entry(10, 1, 'Duna')], { name: 'Ler depois', system: 'read_later' }) });
+    expect(button('Renomear')).toBeUndefined();
+    expect(button('Aposentar')).toBeUndefined();
+    expect(button('Acrescentar obra')).toBeTruthy();
+    expect(container.textContent).toContain('É uma lista do Códice');
+  });
+
   it('shows a work that left the library with what the list kept of it, and no way to open it', async () => {
     await openList();
     const row = [...container.querySelectorAll('ol li')][2];

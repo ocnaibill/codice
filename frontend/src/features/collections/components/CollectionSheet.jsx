@@ -327,13 +327,14 @@ export function CollectionSheet() {
                 <p className="text-sm text-ink-soft">
                   {collection.retired ? `${words.retired}. ` : ''}
                   {collectionLine(collection)}
+                  {collection.system ? ' É uma lista do Códice: ela guarda o que você deixou para ler depois.' : ''}
                 </p>
                 {staff && !collection.retired && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={() => setMode(mode === 'rename' ? null : 'rename')} aria-pressed={mode === 'rename'} className={BUTTON}>Renomear</button>
+                    {!collection.system && <button onClick={() => setMode(mode === 'rename' ? null : 'rename')} aria-pressed={mode === 'rename'} className={BUTTON}>Renomear</button>}
                     <button onClick={() => setMode(mode === 'add' ? null : 'add')} aria-pressed={mode === 'add'} className={BUTTON}>Acrescentar obra</button>
                     {official && <button onClick={() => setMode(mode === 'classify' ? null : 'classify')} aria-pressed={mode === 'classify'} className={BUTTON}>Classificar obras</button>}
-                    <button onClick={() => setMode(mode === 'retire' ? null : 'retire')} aria-pressed={mode === 'retire'} className={BUTTON}>Aposentar</button>
+                    {!collection.system && <button onClick={() => setMode(mode === 'retire' ? null : 'retire')} aria-pressed={mode === 'retire'} className={BUTTON}>Aposentar</button>}
                   </div>
                 )}
                 {staff && collection.retired && (

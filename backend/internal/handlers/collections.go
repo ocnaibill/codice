@@ -26,6 +26,8 @@ type Collection struct {
 	CoverURL       string `json:"coverUrl"`
 	Retired        bool   `json:"retired,omitempty"`
 	IsFavorite     bool   `json:"isFavorite"`
+	// System is the key of a list the Códice keeps for the person ("read_later"): it is not renamed or put away. Empty for the others.
+	System string `json:"system,omitempty"`
 }
 
 // CollectionWork is one place of a collection, in its order. A work that is not available (in the trash, or deleted for good,
@@ -104,7 +106,7 @@ func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := h.DB.Query(`
 		SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL,
-		       COALESCE(s.works, 0), COALESCE(s.completed, 0), COALESCE(s.cover, ''), `+isFavoriteCollection+`
+		       COALESCE(s.works, 0), COALESCE(s.completed, 0), COALESCE(s.cover, ''), `+isFavoriteCollection+`, COALESCE(c.system_key, '')
 		FROM collections c`+collectionStats+`
 		WHERE `+where+`
 		ORDER BY lower(c.name), c.id
@@ -118,7 +120,7 @@ func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	items := []Collection{}
 	for rows.Next() {
 		var c Collection
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.WorkCount, &c.CompletedCount, &c.CoverURL, &c.IsFavorite); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.WorkCount, &c.CompletedCount, &c.CoverURL, &c.IsFavorite, &c.System); err != nil {
 			log.Println("Error scanning collection:", err)
 			continue
 		}
@@ -149,8 +151,8 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		visible = `(c.kind = 'official' OR c.owner_id = $1::uuid)`
 	}
 	var c Collection
-	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL, `+isFavoriteCollection+` FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
-		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite)
+	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL, `+isFavoriteCollection+`, COALESCE(c.system_key, '') FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
+		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite, &c.System)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Collection not found", http.StatusNotFound)
 		return

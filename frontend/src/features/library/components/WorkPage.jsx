@@ -7,6 +7,7 @@ import { useWorkSeries } from '../../reader/api/useWorkSeries';
 import { useSetCompletion, useSetWorkFinished } from '../../reader/api/useCompletion';
 import { useFavoriteToggle } from '../../reader/api/useFavoriteToggle';
 import { useFileOutline } from '../../reader/api/useFileOutline';
+import { useReadLaterToggle } from '../../reader/api/useReadLaterToggle';
 import { WorkOutline } from './WorkOutline';
 import { FeaturedQuote, WorkHighlights } from './WorkHighlights';
 import { useWorkHighlights } from '../api/useWorkHighlights';
@@ -290,6 +291,25 @@ function FavoriteHeart({ work }) {
   );
 }
 
+/** "Ler depois": the work goes to a list the Códice keeps for the person (DEC-152), beside the heart that makes it a favorite. */
+function ReadLaterButton({ work }) {
+  const toggle = useReadLaterToggle(work.id);
+  const label = work.readLater ? 'Tirar de "Ler depois"' : 'Ler depois';
+  return (
+    <button
+      type="button"
+      className="library-favorite library-favorite--page"
+      onClick={() => toggle.mutate(!work.readLater)}
+      disabled={toggle.isPending}
+      aria-pressed={!!work.readLater}
+      aria-label={label}
+      title={label}
+    >
+      <LibraryIcon name="bookmark" />
+    </button>
+  );
+}
+
 /**
  * The page of a work (RF-041, DEC-028, DEC-149): what it is, where the person is in it, and its editions and the files of each,
  * with the reader's own position in every file, before the reader opens. Each file keeps its own position, so choosing another
@@ -466,6 +486,7 @@ export function WorkPage() {
                     </button>
                   )}
                   <FavoriteHeart work={work} />
+                  <ReadLaterButton work={work} />
                 </div>
                 {canContinue && last?.chapter && (
                   <p className="text-sm text-ink-soft">
