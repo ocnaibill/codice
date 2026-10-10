@@ -129,6 +129,7 @@ var staffRoutes = []route{
 	{"DELETE", "/collections/1/works/1"},
 	{"PUT", "/collections/1/order"},
 	{"PUT", "/collections/1/classification"},
+	{"PUT", "/collections/1/grouping"},
 	{"DELETE", "/works/1"},
 	{"POST", "/works/1/restore"},
 	{"GET", "/admin/jobs"},

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, newText, numberText, seriesCounts, sequenceWord, stepText, UNITS, unitLabel, wordsOf, worksText } from './text';
+import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, newText, numberText, seriesCounts, sequenceWord, stepText, UNITS, unitLabel, viewsOf, wordsOf, worksText, groupByVolume, groupByArc, extraGroup } from './text';
 
 describe('the text of a collection', () => {
   it('counts the works, in the singular too', () => {
@@ -152,5 +152,71 @@ describe('sequenceWord, what the sequence of a series is called (DEC-165)', () =
     expect(sequenceWord([w('volume'), w('')])).toBeNull();
     expect(sequenceWord([w('extra')])).toBeNull();
     expect(sequenceWord([])).toBeNull();
+  });
+});
+
+describe('the views of a series by volume and by arc (DEC-169)', () => {
+  const w = (id, unit, position, extra = {}) => ({ id, unit, position, ...extra });
+  const works = [
+    w(1, 'chapter', 1, { volumeNumber: 1, storyArc: 'Era de Ouro' }),
+    w(2, 'chapter', 2, { volumeNumber: 1, storyArc: 'Era de Ouro' }),
+    w(3, 'chapter', 3, { volumeNumber: 2 }),
+    w(4, 'volume', 2),
+    w(5, 'chapter', 9),
+    w(6, 'extra', 1, { volumeNumber: 9, storyArc: 'Extra' }),
+  ];
+
+  it('offers a view only when some work of the sequence has the data for it', () => {
+    expect(viewsOf([w(1, 'chapter', 1)]).map((v) => v.key)).toEqual(['units']);
+    expect(viewsOf(works).map((v) => v.key)).toEqual(['units', 'volumes', 'arcs']);
+    expect(viewsOf([w(1, 'chapter', 1, { volumeNumber: 3 })]).map((v) => v.key)).toEqual(['units', 'volumes']);
+    expect(viewsOf([w(1, 'chapter', 1, { storyArc: 'A' })]).map((v) => v.key)).toEqual(['units', 'arcs']);
+    // the complementary works are not the sequence: their data does not make a view
+    expect(viewsOf([w(1, 'chapter', 1), w(2, 'extra', 1, { volumeNumber: 1, storyArc: 'x' })]).map((v) => v.key)).toEqual(['units']);
+  });
+
+  it('puts the chapters in the volume that collected them, with the volume file first, in numeric order', () => {
+    // given out of numeric order, and with the volume file after its chapter
+    const groups = groupByVolume([works[2], works[3], works[4], works[0], works[1], works[5]]);
+    expect(groups.map((g) => [g.heading, g.works.map((x) => x.id)])).toEqual([
+      ['Volume 1', [1, 2]],
+      ['Volume 2', [4, 3]],
+      ['Sem volume', [5]],
+    ]);
+    expect(groups[1].works.map((x) => x.unit)).toEqual(['volume', 'chapter']);
+    expect(groups[0].note).toBe('2 capítulos');
+    expect(groups[1].note).toBe('1 capítulo');
+    expect(groups[2].note).toBeNull();
+  });
+
+  it('numbers the volumes as numbers, not as words', () => {
+    const groups = groupByVolume([w(1, 'chapter', 1, { volumeNumber: 10 }), w(2, 'chapter', 2, { volumeNumber: 2 }), w(3, 'chapter', 3, { volumeNumber: 2.5 })]);
+    expect(groups.map((g) => g.heading)).toEqual(['Volume 2', 'Volume 2,5', 'Volume 10']);
+  });
+
+  it('puts the works in their arc, in the order of the first chapter of each, saying the numbers it spans', () => {
+    const groups = groupByArc([
+      w(1, 'chapter', 5, { storyArc: 'Segundo' }), w(2, 'chapter', 6, { storyArc: 'Segundo' }),
+      w(3, 'chapter', 1, { storyArc: 'Primeiro' }), w(4, 'chapter', 9),
+      w(5, 'chapter', 2, { storyArc: 'Primeiro' }), w(6, 'chapter', 3, { storyArc: 'Primeiro' }),
+    ]);
+    expect(groups.map((g) => [g.heading, g.note, g.works.map((x) => x.id)])).toEqual([
+      ['Primeiro', 'Capítulos 1 a 3 · 3 obras', [3, 5, 6]],
+      ['Segundo', 'Capítulos 5 a 6 · 2 obras', [1, 2]],
+      ['Sem arco', null, [4]],
+    ]);
+  });
+
+  it('says a single number once, and a mix as works', () => {
+    expect(groupByArc([w(1, 'chapter', 4, { storyArc: 'A' })])[0].note).toBe('Capítulo 4 · 1 obra');
+    expect(groupByArc([w(1, 'chapter', 4, { storyArc: 'A' }), w(2, 'volume', 6, { storyArc: 'A' })])[0].note).toBe('Obras 4 a 6 · 2 obras');
+    expect(groupByArc([w(1, 'volume', 1, { storyArc: 'A' }), w(2, 'volume', 2, { storyArc: 'A' })])[0].note).toBe('Volumes 1 a 2 · 2 obras');
+  });
+
+  it('keeps the complementary works out of the arcs and the volumes, in a group that ends every view', () => {
+    expect(groupByVolume(works).flatMap((g) => g.works).some((x) => x.unit === 'extra')).toBe(false);
+    expect(groupByArc(works).flatMap((g) => g.works).some((x) => x.unit === 'extra')).toBe(false);
+    expect(extraGroup(works)).toEqual([{ key: 'extra', heading: 'Complementares', works: [works[5]] }]);
+    expect(extraGroup([w(1, 'chapter', 1)])).toEqual([]);
   });
 });

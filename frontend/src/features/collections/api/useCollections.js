@@ -126,6 +126,25 @@ export function useCollectionFavoriteToggle(id) {
 
 /** Gives the unit and the kind of comic to the works of an official collection, all at once (#187): the fields that are there, only
  *  the works that have none when `onlyUnset`. It answers how many works each field changed on. */
+/**
+ * Says, for the chapters of a range, the bound volume that collected them and/or their story arc (staff, DEC-169). `from` and `to` are numbers in
+ * the series, both in; with none, every work of the unit. An empty `storyArc` or `volumeNumber` takes the value away, and one not given is left.
+ */
+export function useGroupCollection() {
+  const refresh = useRefreshing();
+  return useMutation({
+    mutationFn: async ({ id, unit, from, to, storyArc, volumeNumber }) =>
+      (await api.put(`/collections/${id}/grouping`, {
+        ...(unit ? { unit } : {}),
+        ...(from != null ? { from } : {}),
+        ...(to != null ? { to } : {}),
+        ...(storyArc != null ? { storyArc } : {}),
+        ...(volumeNumber != null ? { volumeNumber } : {}),
+      })).data,
+    onSuccess: refresh,
+  });
+}
+
 export function useClassifyCollection() {
   const refresh = useRefreshing();
   return useMutation({

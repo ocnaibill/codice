@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
@@ -726,6 +728,9 @@ type UpdateWorkRequest struct {
 	// Unit and ComicKind (#187): "volume", "chapter", "oneshot" or "extra" (DEC-164), and "comic" or "manga"; an empty one clears, an absent one leaves.
 	Unit      *string `json:"unit"`
 	ComicKind *string `json:"comic_kind"`
+	// VolumeNumber and StoryArc (DEC-169): the bound volume that collected a chapter, and its arc; an empty one clears, an absent one leaves.
+	VolumeNumber *string `json:"volume_number"`
+	StoryArc     *string `json:"story_arc"`
 
 	TitleLock           *bool `json:"title_lock"`
 	AuthorLock          *bool `json:"author_lock"`
@@ -744,6 +749,26 @@ func validUnit(s string) bool {
 	return s == "" || s == "volume" || s == "chapter" || s == "oneshot" || s == unitExtra
 }
 func validComicKind(s string) bool { return s == "" || s == "comic" || s == "manga" }
+
+// cleanVolumeNumber is the number of a bound volume as it is kept: "12", "12.5"; empty clears. A number that is not above zero, or is too big,
+// is not one (DEC-169).
+func cleanVolumeNumber(s string) (string, bool) {
+	s = strings.TrimSpace(strings.ReplaceAll(s, ",", "."))
+	if s == "" {
+		return "", true
+	}
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil || n <= 0 || n >= 10000 || math.IsNaN(n) {
+		return "", false
+	}
+	return strconv.FormatFloat(n, 'f', -1, 64), true
+}
+
+// cleanStoryArc is the name of an arc: the stray spaces go, as they do in a name; empty clears.
+func cleanStoryArc(s string) (string, bool) {
+	arc := strings.Join(strings.Fields(s), " ")
+	return arc, utf8.RuneCountInString(arc) <= 255
+}
 
 // UpdateWork edits a work's descriptive metadata and tags in one transaction. A
 // field the admin actually changes becomes confirmed (RN-008): it is locked
@@ -827,6 +852,22 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "A unidade é volume, capítulo, único ou complementar.", http.StatusBadRequest)
 			return
 		}
+	}
+	if req.VolumeNumber != nil {
+		n, ok := cleanVolumeNumber(*req.VolumeNumber)
+		if !ok {
+			http.Error(w, "O volume é um número maior que zero.", http.StatusBadRequest)
+			return
+		}
+		next.VolumeNumber = n
+	}
+	if req.StoryArc != nil {
+		arc, ok := cleanStoryArc(*req.StoryArc)
+		if !ok {
+			http.Error(w, "O arco tem até 255 caracteres.", http.StatusBadRequest)
+			return
+		}
+		next.StoryArc = arc
 	}
 	if req.ComicKind != nil {
 		next.ComicKind = strings.TrimSpace(*req.ComicKind)

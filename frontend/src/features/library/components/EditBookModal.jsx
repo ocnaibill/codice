@@ -55,6 +55,9 @@ function EditForm({ work, onClose }) {
   // What a comic or manga work is (#187), said by hand.
   const [unit, setUnit] = useState(meta.unit || '');
   const [comicKind, setComicKind] = useState(meta.comicKind || '');
+  // Where a chapter sits (DEC-169): the bound volume that collected it, and its arc.
+  const [volumeNumber, setVolumeNumber] = useState(meta.volumeNumber ? String(meta.volumeNumber) : '');
+  const [storyArc, setStoryArc] = useState(meta.storyArc || '');
   const [isbn, setIsbn] = useState(meta.isbn || '');
   const [publisher, setPublisher] = useState(meta.publisher || '');
   const [language, setLanguage] = useState(meta.language || '');
@@ -105,6 +108,8 @@ function EditForm({ work, onClose }) {
       series_index: seriesIndex ? parseFloat(seriesIndex) : 0,
       unit,
       comic_kind: comicKind,
+      volume_number: volumeNumber.trim(),
+      story_arc: storyArc.trim(),
       isbn,
       publisher,
       language,
@@ -148,6 +153,12 @@ function EditForm({ work, onClose }) {
             <option value="">Não informada</option>
             {UNITS.map((u) => <option key={u.key} value={u.key}>{u.one}</option>)}
           </select>
+        </Field>
+        <Field label="Volume encadernado (tankōbon)">
+          <input className={inputClass} type="number" min="0" step="0.5" value={volumeNumber} onChange={(e) => setVolumeNumber(e.target.value)} placeholder="Ex.: 12" disabled={busy} />
+        </Field>
+        <Field label="Arco">
+          <input className={inputClass} value={storyArc} maxLength={255} onChange={(e) => setStoryArc(e.target.value)} placeholder="Ex.: A Era de Ouro" disabled={busy} />
         </Field>
         <Field label="Quadrinho ou mangá">
           <select className={inputClass} value={comicKind} onChange={(e) => setComicKind(e.target.value)} disabled={busy}>

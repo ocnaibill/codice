@@ -771,3 +771,148 @@ func (h *CollectionsAdminHandler) Classify(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"changed": changed})
 }
+
+// Group answers PUT /collections/{id}/grouping (staff, DEC-169): says, for the chapters of a range, the bound volume that collected them and/or the
+// story arc they are in, in one step. The range is by number in the series (`from` to `to`, both ends in); with none, every work of the unit; with a
+// `unit`, only the works of that unit. An empty `storyArc` or `volumeNumber` takes the value away; one that is not sent is left alone. A work out
+// of the library is not touched, and what changes is confirmed by hand, like the unit.
+func (h *CollectionsAdminHandler) Group(w http.ResponseWriter, r *http.Request) {
+	id, ok := collectionIDParam(r, "id")
+	if !ok {
+		http.Error(w, "Collection not found", http.StatusNotFound)
+		return
+	}
+	var req struct {
+		Unit         *string  `json:"unit"`
+		From         *float64 `json:"from"`
+		To           *float64 `json:"to"`
+		StoryArc     *string  `json:"storyArc"`
+		VolumeNumber *string  `json:"volumeNumber"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+	if req.StoryArc == nil && req.VolumeNumber == nil {
+		http.Error(w, "Diga o arco ou o volume.", http.StatusBadRequest)
+		return
+	}
+	if req.Unit != nil && !validUnit(*req.Unit) {
+		http.Error(w, "A unidade é volume, capítulo, único ou complementar.", http.StatusBadRequest)
+		return
+	}
+	if req.From != nil && req.To != nil && *req.From > *req.To {
+		http.Error(w, "O começo da faixa não pode passar do fim.", http.StatusBadRequest)
+		return
+	}
+	var arc, volume string
+	if req.StoryArc != nil {
+		var ok bool
+		if arc, ok = cleanStoryArc(*req.StoryArc); !ok {
+			http.Error(w, "O arco tem até 255 caracteres.", http.StatusBadRequest)
+			return
+		}
+	}
+	if req.VolumeNumber != nil {
+		var ok bool
+		if volume, ok = cleanVolumeNumber(*req.VolumeNumber); !ok {
+			http.Error(w, "O volume é um número maior que zero.", http.StatusBadRequest)
+			return
+		}
+	}
+	actor := currentUserID(r)
+	tx, ok := h.begin(w, r)
+	if !ok {
+		return
+	}
+	defer tx.Rollback()
+	name, retired, err := lockOfficial(r.Context(), tx, id)
+	if err != nil {
+		h.fail(w, "group", err)
+		return
+	}
+	if retired {
+		conflict(w, "A coleção está aposentada: restaure antes de mudar.", id)
+		return
+	}
+	// The works of the range; a number in the series is the position in the collection.
+	rows, err := tx.QueryContext(r.Context(), `
+		SELECT w.id FROM collection_works cw JOIN works w ON w.id = cw.work_id
+		WHERE cw.collection_id = $1 AND w.retired_at IS NULL
+		  AND ($2::text IS NULL OR COALESCE(w.unit, '') = $2)
+		  AND ($3::real IS NULL OR cw.position >= $3) AND ($4::real IS NULL OR cw.position <= $4)
+		  AND (($3::real IS NULL AND $4::real IS NULL) OR cw.position IS NOT NULL)
+		ORDER BY w.id FOR UPDATE OF w`, id, req.Unit, req.From, req.To)
+	if err != nil {
+		h.fail(w, "group", err)
+		return
+	}
+	var ids []int64
+	for rows.Next() {
+		var wid int64
+		if err := rows.Scan(&wid); err != nil {
+			rows.Close()
+			h.fail(w, "group", err)
+			return
+		}
+		ids = append(ids, wid)
+	}
+	rows.Close()
+	changed := map[string]int{}
+	if len(ids) > 0 {
+		for _, f := range []struct {
+			field string
+			value *string
+			text  string
+		}{{"story_arc", req.StoryArc, arc}, {"volume_number", req.VolumeNumber, volume}} {
+			if f.value == nil {
+				continue
+			}
+			var n int
+			err := tx.QueryRowContext(r.Context(), `
+				WITH changed AS (
+					UPDATE works SET `+f.field+` = NULLIF($2, '')`+map[string]string{"story_arc": "", "volume_number": "::real"}[f.field]+`, updated_at = CURRENT_TIMESTAMP
+					WHERE id = ANY($1) AND `+f.field+`::text IS DISTINCT FROM NULLIF($2, '')
+					RETURNING id)
+				SELECT count(*) FROM changed`, pq.Array(ids), f.text).Scan(&n)
+			if err != nil {
+				h.fail(w, "group", err)
+				return
+			}
+			changed[f.field] = n
+			if n > 0 {
+				if _, err := tx.ExecContext(r.Context(), `
+					INSERT INTO work_field_sources (work_id, field, source, actor_id)
+					SELECT unnest($1::int[]), $2, $3, NULLIF($4, '')::uuid
+					ON CONFLICT (work_id, field) DO UPDATE SET source = EXCLUDED.source, actor_id = EXCLUDED.actor_id, updated_at = now()`,
+					pq.Array(ids), f.field, sourceManual, actor); err != nil {
+					h.fail(w, "group", err)
+					return
+				}
+			}
+		}
+	}
+	details := map[string]any{"name": name, "works": len(ids), "changed": changed}
+	if req.StoryArc != nil {
+		details["storyArc"] = arc
+	}
+	if req.VolumeNumber != nil {
+		details["volumeNumber"] = volume
+	}
+	if req.From != nil {
+		details["from"] = *req.From
+	}
+	if req.To != nil {
+		details["to"] = *req.To
+	}
+	if err := audit.Record(r.Context(), tx, actor, "collection.group", "collection", strconv.FormatInt(id, 10), details); err != nil {
+		h.fail(w, "group", err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		h.fail(w, "group", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"works": len(ids), "changed": changed})
+}
