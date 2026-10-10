@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LOOKUP_LANGUAGES, groupTranslations, scriptLanguage, isLookupable, languageName, lookupLanguage, posLabel, senseFormOf, tagLabel, tagsLine, visibleSenses } from './dictionaryLookup';
+import { LOOKUP_LANGUAGES, groupTranslations, scriptLanguage, isLookupable, languageName, lookupLanguage, posLabel, selectedWord, senseFormOf, tagLabel, tagsLine, visibleSenses } from './dictionaryLookup';
 
 describe('isLookupable', () => {
   it('is true for a word, a word with a hyphen and a short expression', () => {
@@ -199,5 +199,33 @@ describe('scriptLanguage', () => {
 
   it('says nothing for nothing', () => {
     for (const w of ['', '   ', null, undefined]) expect(scriptLanguage(w)).toBeNull();
+  });
+});
+
+describe('selectedWord: a book with a soft hyphen inside every word', () => {
+  it('takes out what is not part of the word, wherever it is', () => {
+    expect(selectedWord('Le\u00adva')).toBe('Leva');
+    expect(selectedWord('For\u00admi\u00add\u00e1\u00advel')).toBe('Formidável');
+    expect(selectedWord('a\u200bb\u2060c\ufeffd')).toBe('abcd');
+  });
+
+  it('leaves the rest as it is: the hyphen that is part of the word, the accents and the case', () => {
+    expect(selectedWord('guarda-chuva')).toBe('guarda-chuva');
+    expect(selectedWord('Ação')).toBe('Ação');
+    expect(selectedWord('  tempo ')).toBe('  tempo ');
+  });
+
+  it('is nothing for nothing', () => {
+    expect(selectedWord(null)).toBe('');
+    expect(selectedWord(undefined)).toBe('');
+  });
+
+  it('makes a word broken by soft hyphens something to look up, and keeps what is nothing but them from being one', () => {
+    expect(isLookupable('Le\u00adva')).toBe(true);
+    expect(isLookupable('cei\u00adfa\u00addo\u00adra')).toBe(true);
+    expect(isLookupable('\u00ad\u200b')).toBe(false);
+    // the length is of the word, not of the word with its hints
+    const long = 'a\u00ad'.repeat(30);
+    expect(isLookupable(long)).toBe(true);
   });
 });

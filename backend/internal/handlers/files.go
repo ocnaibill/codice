@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -61,6 +62,30 @@ func NewCoverLookup(db *sql.DB) FileLookup {
 			return FileAccess{}, err
 		}
 		return FileAccess{WorkRetired: retired.Valid && retired.Bool}, nil
+	}
+}
+
+// bookTypes are the types of the formats of the library that the table of types of the system may not have: the server in its
+// container often does not know ".epub", and then the bytes are sniffed and an EPUB, which is a ZIP, is served as "application/zip" (a
+// browser that is given one names what it saves "….zip"). Said here, it does not depend on the machine.
+var bookTypes = map[string]string{
+	".epub": "application/epub+zip", ".cbz": "application/vnd.comicbook+zip", ".cbr": "application/vnd.comicbook-rar",
+	".pdf": "application/pdf", ".mobi": "application/x-mobipocket-ebook", ".azw": "application/vnd.amazon.ebook", ".azw3": "application/vnd.amazon.ebook",
+	".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".m4b": "audio/mp4", ".flac": "audio/flac", ".ogg": "audio/ogg", ".wav": "audio/wav",
+}
+
+// setBookHeaders says what a book file is and what to call it when it is saved: its type, by the name it has, and a file name that a browser
+// uses (a file served by its id has no name in its address, so without this it would be saved by its number). It is inline: nothing that
+// reads the file in a page (the readers, an audio element) is changed, and who goes to the address is given the file under its name. A file
+// of another kind (a cover, text) is left as it was.
+func setBookHeaders(w http.ResponseWriter, name string) {
+	contentType, ok := bookTypes[strings.ToLower(path.Ext(name))]
+	if !ok {
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	if disposition := mime.FormatMediaType("inline", map[string]string{"filename": name}); disposition != "" {
+		w.Header().Set("Content-Disposition", disposition)
 	}
 }
 
@@ -152,6 +177,7 @@ func (h *FilesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/svg+xml")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 	}
+	setBookHeaders(w, path.Base(rel))
 	// ServeContent gives Range requests, which readers and audio players use.
 	http.ServeContent(w, r, path.Base(rel), info.ModTime().Truncate(time.Second), f)
 }
@@ -217,5 +243,6 @@ func (h *FileByIDHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	setBookHeaders(w, path.Base(rel.String))
 	http.ServeContent(w, r, path.Base(rel.String), info.ModTime().Truncate(time.Second), f)
 }

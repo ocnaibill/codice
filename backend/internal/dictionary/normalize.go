@@ -13,11 +13,14 @@ import (
 // (testdata/normalize.json): a mismatch would be a word that is in the dictionary and is not found.
 //
 // An accent that is only a mark on a Latin letter goes, and so does case ("Ação" and "ACAO" read as "acao"). A mark that
-// makes a letter of another script stays: が is not か. Width forms are made plain, apostrophes are one, and what is
-// around the word and is not a letter, a number or a mark (a full stop, a quotation mark) is not part of it.
+// makes a letter of another script stays: が is not か. Width forms are made plain, apostrophes are one, the invisible
+// characters inside a word (the soft hyphen, the zero-width space, the word joiner) are not there, and what is around the word
+// and is not a letter, a number or a mark (a full stop, a quotation mark) is not part of it.
 func Normalize(text string) string {
 	folded := cases.Fold().String(norm.NFKC.String(text))
-	folded = strings.NewReplacer("’", "'", "ʼ", "'").Replace(folded)
+	// What a book puts inside a word to help the line break (a soft hyphen: "le­va", "tem­po", in all of its words, in some books) and
+	// what is invisible is not part of the word: left in, the word selected would never be the one the dictionary has.
+	folded = strings.NewReplacer("’", "'", "ʼ", "'", "\u00ad", "", "\u200b", "", "\u2060", "", "\ufeff", "").Replace(folded)
 	letters := make([]rune, 0, len(folded))
 	for _, r := range folded {
 		letters = append(letters, stripMarks(r))

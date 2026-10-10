@@ -192,3 +192,67 @@ func TestFiles_WithACommaOrASemicolonInThePathAreServed(t *testing.T) {
 		}
 	}
 }
+
+// The server in its container may not know ".epub": the bytes of an EPUB were then sniffed as a ZIP, and the browser that saved the file
+// named it "….zip" (the report of the owner, 10/10/2026).
+func TestFiles_ABookIsServedWithItsOwnTypeAndNameWhateverTheMachineKnows(t *testing.T) {
+	s := newCatalogStack(t)
+	// What an EPUB begins with: a ZIP, which is what the sniffing took it for.
+	zip := []byte("PK\x03\x04\x14\x00\x00\x00\x08\x00 rest of the archive")
+	name := "As foices Contos do Universo de Sycthe.epub"
+	s.addWork("As foices", "Neal Shusterman", name, "epub")
+	os.WriteFile(filepath.Join(s.storage, name), zip, 0o644)
+
+	r := chi.NewRouter()
+	r.Use(identityFromHeaders)
+	r.Method("GET", "/files/*", &FilesHandler{Root: s.storage, Lookup: NewFileLookup(s.db)})
+	r.Method("GET", "/file/{id}", &FileByIDHandler{DB: s.db, StorageRoot: s.storage})
+	get := func(target string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", target, nil)
+		req.Header.Set("X-Test-User", ana.id)
+		req.Header.Set("X-Test-Role", ana.role)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+	rec := get("/files/" + url.PathEscape(name))
+	if rec.Code != 200 {
+		t.Fatalf("file: %d", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/epub+zip" {
+		t.Errorf("type = %q", got)
+	}
+	disposition := rec.Header().Get("Content-Disposition")
+	if !strings.HasPrefix(disposition, "inline;") || !strings.Contains(disposition, `filename="As foices Contos do Universo de Sycthe.epub"`) {
+		t.Errorf("disposition = %q", disposition)
+	}
+	// By its id, which has no name in the address, it is the name of the file that is said.
+	id := s.scalar(`SELECT f.id FROM files f ORDER BY f.id LIMIT 1`)
+	byID := get("/file/" + id)
+	if byID.Code != 200 || byID.Header().Get("Content-Type") != "application/epub+zip" || !strings.Contains(byID.Header().Get("Content-Disposition"), "As foices Contos do Universo de Sycthe.epub") {
+		t.Errorf("by id: %d %q %q", byID.Code, byID.Header().Get("Content-Type"), byID.Header().Get("Content-Disposition"))
+	}
+	// A name with letters the header cannot carry as they are is said the way a header says it.
+	accent := "Ação & Reação.cbz"
+	s.addWork("Ação", "X", accent, "cbz")
+	os.WriteFile(filepath.Join(s.storage, accent), zip, 0o644)
+	rec = get("/files/" + url.PathEscape(accent))
+	if rec.Header().Get("Content-Type") != "application/vnd.comicbook+zip" || !strings.Contains(rec.Header().Get("Content-Disposition"), "filename*=utf-8''A%C3%A7%C3%A3o%20&%20Rea%C3%A7%C3%A3o.cbz") {
+		t.Errorf("accents: %q %q", rec.Header().Get("Content-Type"), rec.Header().Get("Content-Disposition"))
+	}
+}
+
+func TestBookTypes_CoverEveryFormatOfTheLibraryThatIsNotText(t *testing.T) {
+	for ext := range map[string]bool{".pdf": true, ".epub": true, ".cbz": true, ".cbr": true, ".mobi": true, ".azw": true, ".azw3": true,
+		".mp3": true, ".m4a": true, ".m4b": true, ".flac": true, ".ogg": true, ".wav": true} {
+		if bookTypes[ext] == "" {
+			t.Errorf("no type for %s", ext)
+		}
+	}
+	// What is text is left to be read as text, and a cover is not a book.
+	for _, ext := range []string{".txt", ".md", ".jpg", ".png", ".webp"} {
+		if bookTypes[ext] != "" {
+			t.Errorf("%s has a type of a book", ext)
+		}
+	}
+}
