@@ -180,3 +180,81 @@ func TestWorkContributors_TheCreditsCarryTheNameTheAccountIsShown(t *testing.T) 
 		t.Errorf("credits for bob = %+v", c)
 	}
 }
+
+func TestPeoplePage_SaysHowManyWorksTheyHaveAndHowFarTheCallerIsInThemAndTheTagsTheyCarry(t *testing.T) {
+	s := newCatalogStack(t)
+	duna := s.addWork("Duna", "Frank Herbert", "a.epub", "epub")
+	messias := s.addWork("Messias", "Frank Herbert", "b.epub", "epub")
+	filhos := s.addWork("Filhos", "Frank Herbert", "c.epub", "epub")
+	gone := s.addWork("Na lixeira", "Frank Herbert", "d.epub", "epub")
+	s.addWork("Outro", "Plato", "e.epub", "epub")
+	s.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, gone)
+	frank := s.personID("Frank Herbert")
+
+	// Ana finished Duna (a file read to the end), is in the middle of Messias, and has not begun Filhos; the time is hers.
+	s.progress(ana, "PUT", s.primaryFile(duna), `{"locator":{"type":"epub","href":"c9.xhtml"},"percent":100,"completed":true}`)
+	s.progress(ana, "PUT", s.primaryFile(messias), `{"locator":{"type":"epub","href":"c2.xhtml"},"percent":30}`)
+	s.exec(`UPDATE reading_progress SET reading_seconds = 3600 WHERE user_id = $1 AND file_id = $2`, idAna, s.primaryFile(duna))
+	s.exec(`UPDATE reading_progress SET reading_seconds = 1800 WHERE user_id = $1 AND file_id = $2`, idAna, s.primaryFile(messias))
+	// Bob has read one of the other's works.
+	s.progress(bob, "PUT", s.primaryFile(filhos), `{"locator":{"type":"epub","href":"c1.xhtml"},"percent":10}`)
+	s.exec(`UPDATE reading_progress SET reading_seconds = 99 WHERE user_id = $1`, idBob)
+
+	p, code := s.personPage(ana, frank)
+	if code != 200 || p.Stats.Works != 3 || p.Stats.Finished != 1 || p.Stats.InProgress != 1 || p.Stats.ReadingSeconds != 5400 {
+		t.Fatalf("ana: %d %+v", code, p.Stats)
+	}
+	if q, _ := s.personPage(bob, frank); q.Stats.Works != 3 || q.Stats.Finished != 0 || q.Stats.InProgress != 1 || q.Stats.ReadingSeconds != 99 {
+		t.Errorf("bob: %+v", q.Stats)
+	}
+	// A work marked finished as a whole counts as finished.
+	s.exec(`INSERT INTO work_reading_state (user_id, work_id, finished_at) VALUES ($1, $2, now())`, idAna, filhos)
+	if q, _ := s.personPage(ana, frank); q.Stats.Finished != 2 {
+		t.Errorf("a work marked as finished: %+v", q.Stats)
+	}
+
+	// The tags the works carry most, each counted once per work, the work in the trash not counted.
+	for _, t2 := range []struct {
+		work int
+		tags []string
+	}{{duna, []string{"ficção", "ecologia"}}, {messias, []string{"ficção", "política"}}, {filhos, []string{"ficção"}}, {gone, []string{"lixo"}}} {
+		for _, tag := range t2.tags {
+			s.exec(`INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`, tag)
+			s.exec(`INSERT INTO work_tags (work_id, tag_id) SELECT $1, id FROM tags WHERE name = $2`, t2.work, tag)
+		}
+	}
+	p, _ = s.personPage(ana, frank)
+	var got []string
+	for _, tg := range p.Tags {
+		got = append(got, fmt.Sprintf("%s:%d", tg.Name, tg.Works))
+	}
+	if strings.Join(got, ",") != "ficção:3,ecologia:1,política:1" {
+		t.Errorf("tags = %v", got)
+	}
+	// A work the person has in two roles counts once for a tag.
+	s.credit(admin, duna, "Frank Herbert", "editor")
+	p, _ = s.personPage(ana, frank)
+	for _, tg := range p.Tags {
+		if tg.Name == "ficção" && tg.Works != 3 {
+			t.Errorf("a work in two roles counted twice: %+v", tg)
+		}
+	}
+	// A person with no works has numbers of zero and a list that is empty, not missing.
+	s.exec(`INSERT INTO person (name) VALUES ('Sem Obras')`)
+	if q, _ := s.personPage(ana, s.personID("Sem Obras")); q.Stats != (PersonStats{}) || q.Tags == nil || len(q.Tags) != 0 {
+		t.Errorf("nobody's works: %+v %v", q.Stats, q.Tags)
+	}
+}
+
+func TestPeoplePage_ListsAtMostTheTagsThatFitTheHeader(t *testing.T) {
+	s := newCatalogStack(t)
+	work := s.addWork("Duna", "Frank Herbert", "a.epub", "epub")
+	for i := 0; i < personTags+4; i++ {
+		name := fmt.Sprintf("tag%02d", i)
+		s.exec(`INSERT INTO tags (name) VALUES ($1)`, name)
+		s.exec(`INSERT INTO work_tags (work_id, tag_id) SELECT $1, id FROM tags WHERE name = $2`, work, name)
+	}
+	if p, _ := s.personPage(ana, s.personID("Frank Herbert")); len(p.Tags) != personTags {
+		t.Errorf("tags: %d", len(p.Tags))
+	}
+}
