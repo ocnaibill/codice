@@ -1,5 +1,5 @@
 import React from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, authenticatedUrl } from '../../../lib/api';
 import { serverMessage } from '../../../lib/serverMessage';
 import { isStaff, useMe } from '../../auth/api/useMe';
@@ -45,6 +45,124 @@ function useResetProfile(personId) {
     mutationFn: async () => api.delete(`/admin/people/${personId}/profile`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['person', personId] }),
   });
+}
+
+/** The last search of the person on Wikidata (staff, DEC-168): null when none was made; it is read again while it waits for the worker. */
+function useProfileSearch(personId, enabled) {
+  return useQuery({
+    queryKey: ['person', personId, 'profile-search'],
+    enabled,
+    staleTime: 0,
+    queryFn: async () => {
+      try {
+        return (await api.get(`/admin/people/${personId}/profile/search`)).data;
+      } catch (error) {
+        if (error?.response?.status === 404) return null;
+        throw error;
+      }
+    },
+    refetchInterval: (query) => (query.state.data?.state === 'pending' ? 1500 : false),
+  });
+}
+
+function useAskSearch(personId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (query) => (await api.post(`/admin/people/${personId}/profile/search`, { query })).data,
+    onSuccess: (data) => queryClient.setQueryData(['person', personId, 'profile-search'], data),
+  });
+}
+
+function useLinkProfile(personId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (wikidataId) => (await api.post(`/admin/people/${personId}/profile/link`, { wikidataId })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['person', personId] }),
+  });
+}
+
+const SEARCH_STATES = {
+  off: 'A Wikidata está desligada. Quem é dono do acervo a liga em Administração › Provedores.',
+  failed: 'A Wikidata não respondeu. Tente de novo em instantes.',
+};
+const LINK_OUTCOMES = {
+  queued: 'Pronto: o perfil dessa pessoa chega em instantes.',
+  present: 'Esta pessoa já tem o perfil desta entrada da Wikidata.',
+  kept: 'O perfil escrito à mão continua. Descarte-o para ler o da Wikidata.',
+};
+
+/**
+ * Looks the person up on Wikidata by name (DEC-168): the candidates come with what tells one from another, and a person of the staff says which
+ * one is the author. Nothing is linked by the search itself.
+ */
+function ProfileSearch({ person, onClose }) {
+  const search = useProfileSearch(person.id, true);
+  const ask = useAskSearch(person.id);
+  const link = useLinkProfile(person.id);
+  const [query, setQuery] = React.useState(person.name ?? person.displayName ?? '');
+  const [message, setMessage] = React.useState('');
+  const [chosen, setChosen] = React.useState('');
+  const result = search.data;
+  const waiting = ask.isPending || result?.state === 'pending';
+
+  const submit = (event) => {
+    event.preventDefault();
+    setMessage('');
+    setChosen('');
+    ask.mutate(query.trim(), { onError: (error) => setMessage(serverMessage(error, 'Não foi possível pedir a busca.')) });
+  };
+  const choose = (candidate) => {
+    setMessage('');
+    link.mutate(candidate.id, {
+      onSuccess: (data) => { setChosen(candidate.id); setMessage(LINK_OUTCOMES[data?.profile] ?? LINK_OUTCOMES.queued); },
+      onError: (error) => setMessage(serverMessage(error, 'Não foi possível ligar o perfil.')),
+    });
+  };
+
+  return (
+    <section aria-label="Buscar o perfil" className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
+        <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-sm text-ink-soft">
+          Buscar na Wikidata por
+          <input value={query} maxLength={200} onChange={(event) => setQuery(event.target.value)} className={FIELD} />
+        </label>
+        <button type="submit" disabled={waiting || !query.trim()} className={PRIMARY}>Buscar</button>
+        <button type="button" onClick={onClose} className={BUTTON}>Fechar</button>
+      </form>
+      <p className="text-xs text-ink-faint">
+        Só o texto buscado sai do servidor. A busca não liga nada: você escolhe quem é o autor, e o perfil dele é lido depois.
+      </p>
+      {waiting && <p role="status" className="animate-pulse text-sm text-ink-soft">Buscando na Wikidata…</p>}
+      {!waiting && result && SEARCH_STATES[result.state] && <p role="status" className="text-sm text-ink">{SEARCH_STATES[result.state]}</p>}
+      {!waiting && result?.state === 'done' && result.results.length === 0 && (
+        <p role="status" className="text-sm text-ink">Ninguém com esse nome na Wikidata. Tente outra grafia, ou escreva o perfil à mão.</p>
+      )}
+      {!waiting && result?.state === 'done' && result.results.length > 0 && (
+        <ul aria-label="Pessoas encontradas" className="flex flex-col gap-2">
+          {result.results.map((c) => {
+            const years = [c.born && `nasc. ${formatProfileDate(c.born)}`, c.died && `morte ${formatProfileDate(c.died)}`].filter(Boolean).join(' · ');
+            return (
+              <li key={c.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-surface px-3 py-2">
+                <div className="min-w-[200px] flex-1 text-sm">
+                  <p className="font-semibold text-ink">{c.label}</p>
+                  <p className="text-ink-soft">{c.description || 'Sem descrição'}</p>
+                  <p className="font-mono text-[11px] text-ink-faint">
+                    {[years, c.photo && 'com foto', c.wikipedia && 'com Wikipédia'].filter(Boolean).join(' · ')}
+                    {years || c.photo || c.wikipedia ? ' · ' : ''}
+                    <a href={`https://www.wikidata.org/wiki/${c.id}`} target="_blank" rel="noopener noreferrer" className="underline hover:text-brand">Ver na Wikidata ({c.id})</a>
+                  </p>
+                </div>
+                <button type="button" disabled={link.isPending || chosen === c.id} onClick={() => choose(c)} className={PRIMARY} aria-label={`É esta pessoa: ${c.label}, ${c.id}`}>
+                  É esta pessoa
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {message && <p role={link.isError || ask.isError ? 'alert' : 'status'} className={`text-sm ${link.isError || ask.isError ? 'text-danger' : 'text-ink'}`}>{message}</p>}
+    </section>
+  );
 }
 
 const FIELD = 'min-h-11 w-full rounded-lg border border-border-hairline bg-surface px-3 text-sm text-ink';
@@ -168,17 +286,26 @@ export function PersonProfile({ person }) {
   const reset = useResetProfile(person.id);
   const profile = person.profile;
   const [editing, setEditing] = React.useState(false);
+  const [searching, setSearching] = React.useState(false);
   const [discarding, setDiscarding] = React.useState(false);
   const [resetMessage, setResetMessage] = React.useState('');
   if (!profile && !staff) return null;
   if (editing) return <ProfileEditor person={person} profile={profile} onDone={() => setEditing(false)} />;
   if (!profile) {
-    // Nothing was read for the person: staff are told, so the emptiness does not look like a defect, and can write it.
+    // Nothing was read for the person: staff are told, so the emptiness does not look like a defect, and can look it up or write it.
     return (
-      <section aria-label="Perfil" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border-hairline bg-white/60 p-4">
-        <p className="text-sm text-ink-soft">Sem perfil: nenhum provedor trouxe a foto e a biografia desta pessoa. Você pode escrevê-lo.</p>
-        <button type="button" onClick={() => setEditing(true)} className={BUTTON}>Escrever o perfil</button>
-      </section>
+      <div className="flex flex-col gap-3">
+        <section aria-label="Perfil" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border-hairline bg-white/60 p-4">
+          <p className="min-w-[220px] flex-1 text-sm text-ink-soft">
+            Sem perfil: nenhum provedor trouxe a foto e a biografia desta pessoa. Você pode buscá-lo na Wikidata ou escrevê-lo.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setSearching(!searching)} aria-pressed={searching} className={BUTTON}>Buscar o perfil</button>
+            <button type="button" onClick={() => setEditing(true)} className={BUTTON}>Escrever o perfil</button>
+          </div>
+        </section>
+        {searching && <ProfileSearch person={person} onClose={() => setSearching(false)} />}
+      </div>
     );
   }
 
@@ -192,6 +319,7 @@ export function PersonProfile({ person }) {
   const hiddenNote = profile.hidden ? 'O perfil está oculto: só quem administra o vê.' : null;
 
   return (
+    <div className="flex flex-col gap-3">
     <section aria-label="Perfil" className={`flex flex-col gap-4 rounded-xl border border-border-hairline bg-white p-4 sm:flex-row ${profile.hidden ? 'opacity-70' : ''}`}>
       {image && (
         <figure className="w-32 shrink-0 sm:w-40">
@@ -240,6 +368,7 @@ export function PersonProfile({ person }) {
             >
               {profile.hidden ? 'Mostrar o perfil' : 'Ocultar o perfil'}
             </button>
+            <button type="button" onClick={() => setSearching(!searching)} aria-pressed={searching} className={BUTTON}>Buscar o perfil</button>
             <button type="button" onClick={() => setEditing(true)} className={BUTTON}>Editar o perfil</button>
             <button type="button" onClick={() => setDiscarding(!discarding)} aria-pressed={discarding} className={BUTTON}>Descartar o perfil</button>
             {image && (
@@ -280,5 +409,7 @@ export function PersonProfile({ person }) {
         {set.isError && <p role="alert" className="text-[12px] text-danger">Não foi possível salvar a escolha.</p>}
       </div>
     </section>
+    {staff && searching && <ProfileSearch person={person} onClose={() => setSearching(false)} />}
+    </div>
   );
 }

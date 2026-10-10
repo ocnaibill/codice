@@ -13,6 +13,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/people"
 	"github.com/ocnaibill/codice/backend/internal/profile"
 	"github.com/ocnaibill/codice/backend/internal/reading"
+	"github.com/redis/go-redis/v9"
 )
 
 // PeopleHandler lets owner and admin review people who may be the same person ("Herbert, Frank" and "Frank
@@ -21,6 +22,8 @@ type PeopleHandler struct {
 	DB *sql.DB
 	// CoversDir is where the photos of the people are kept (DEC-167), next to the covers of the works.
 	CoversDir string
+	// RedisClient wakes the workers when a search of Wikidata is asked for (DEC-168); nil only means they find it on their next poll.
+	RedisClient *redis.Client
 }
 
 // List returns the pairs waiting for a decision.

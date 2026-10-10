@@ -15,6 +15,7 @@ from providers.gate import asks_providers, db_gate, report_keys
 from providers.health import install as report_provider_health
 from rematch import MetadataRematch
 from providertest import ProviderTester
+from profilesearch import ProfileSearcher
 from authority import resolve_pending
 from profiles import resolve_pending as resolve_profiles
 from maintenance import repair_descriptions
@@ -123,11 +124,13 @@ def wait_for_work(client, last_id):
 def build_runner(db, client, heartbeat=None):
     extractors = register_extractors()
     # Only the providers the owner turned on are asked (#68): the title of a work goes to no one else.
-    provider_registry = ProviderRegistry(enabled=db_gate(db))
+    gate = db_gate(db)
+    provider_registry = ProviderRegistry(enabled=gate)
     report_provider_health(db, provider_registry)   # the administration says how each provider answers
     analyzer = Analyzer(db)
     rematch = MetadataRematch(db, analyzer, provider_registry)
     provider_tester = ProviderTester(db, provider_registry)
+    profile_searcher = ProfileSearcher(db, gate)
 
     storage_path = storage_root()
     covers_dir = os.path.join(storage_path, 'covers')
@@ -162,6 +165,10 @@ def build_runner(db, client, heartbeat=None):
             # The owner asked to see whether a provider answers: one fixed, public question, whether it is on or not. It never touches a work.
             print(f"\n🧪 Provider test {job['id']} ({job['payload'].get('provider')}, attempt {job['attempts']}/{job['max_attempts']})")
             return provider_tester.run(job['id'], job['payload'].get('provider'), checkpoint=checkpoint)
+        if job.get('type') == 'profile_search':
+            # Staff asked to look a person up on Wikidata by name: the candidates are kept for them to choose from, and nothing is linked.
+            print(f"\n🔎 Profile search {job['id']} (person {job['payload'].get('person')}, attempt {job['attempts']}/{job['max_attempts']})")
+            return profile_searcher.run(job['id'], job['payload'].get('person'), job['payload'].get('query'), checkpoint=checkpoint)
         if job.get('type') == 'match_metadata':
             # Someone from the staff asked to search the providers again for this work: the answers come back as suggestions, and the
             # work is left as it is (it never changes the status of the work).
