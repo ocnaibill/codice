@@ -458,6 +458,39 @@ describe('WorkPage: the page of the work (DEC-149)', () => {
     expect(container.textContent).toContain('primavera de 1990');
   });
 
+  it('shows the table of contents of the file it leads with and opens the reader at a chapter', async () => {
+    const outline = {
+      fileId: 10, current: 1,
+      chapters: [
+        { title: 'Capítulo 1', depth: 0, part: 'body', hasChildren: false, locator: { type: 'epub', href: 'c1.xhtml' }, percent: 0 },
+        { title: 'Capítulo 2', depth: 0, part: 'body', hasChildren: false, locator: { type: 'epub', href: 'c2.xhtml' }, percent: 40 },
+      ],
+    };
+    api.get.mockImplementation(async (url) => ({ data: url.endsWith('/outline') ? outline : { ...work } }));
+    useGlobalStore.setState({ sheetWorkId: 7, activeBookId: null, activeFileId: null, fromStart: false });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
+    await flush();
+    await flush(); // the outline is asked for when the work has arrived
+    expect(api.get).toHaveBeenCalledWith('/progress/files/10/outline');
+    const section = container.querySelector('section[aria-label="Sumário da obra"]');
+    expect(section.textContent).toContain('2 capítulos');
+    await act(async () => { [...section.querySelectorAll('button')].find((b) => b.textContent.includes('Capítulo 1')).click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 10, fromStart: false });
+    expect(useGlobalStore.getState().seek).toMatchObject({ locator: { type: 'epub', href: 'c1.xhtml' }, context: { kind: 'chapter', quote: 'Capítulo 1' } });
+  });
+
+  it('asks for no table of contents of a file that has no text to have one (a comic, an audiobook)', async () => {
+    api.get.mockResolvedValue({ data: { ...work, editions: [{ id: 1, isPrimary: true, language: 'en', files: [{ id: 30, format: 'cbz', availability: 'available', url: '/f/30', percentComplete: 0, completed: false }] }] } });
+    useGlobalStore.setState({ sheetWorkId: 7 });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    api.get.mockClear();
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
+    await flush();
+    expect(api.get.mock.calls.map((c) => c[0]).filter((u) => String(u).includes('outline'))).toEqual([]);
+    expect(container.querySelector('section[aria-label="Sumário da obra"]')).toBeNull();
+  });
+
   it('is left by a search: the results are what the person asked for', () => {
     useGlobalStore.setState({ sheetWorkId: 7, searchQuery: '' });
     useGlobalStore.getState().setSearchQuery('duna');

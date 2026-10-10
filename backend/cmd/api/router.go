@@ -94,6 +94,7 @@ func newRouter(d routerDeps) http.Handler {
 	progressHandler := &handlers.ProgressHandler{DB: db}
 	searchHandler := &handlers.SearchHandler{DB: db}
 	equivalenceHandler := &handlers.EquivalenceHandler{DB: db}
+	outlineHandler := &handlers.OutlineHandler{DB: db}
 	embeddingsAdmin := &handlers.EmbeddingsAdminHandler{DB: db}
 	dictionaryAdmin := &handlers.DictionaryAdminHandler{DB: db, RedisClient: d.RedisClient}
 	dictionaryLookup := &handlers.DictionaryLookupHandler{DB: db}
@@ -198,6 +199,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Post("/progress/files/{id}/opened", progressHandler.Opened)
 	r.With(auth).Put("/progress/works/{id}/finished", progressHandler.SetWorkFinished)
 	r.With(auth).Get("/progress/files/{id}/equivalent", equivalenceHandler.Find)
+	r.With(auth).Get("/progress/files/{id}/outline", outlineHandler.Get)
 	r.With(auth).Post("/progress/files/{id}/equivalent/accept", equivalenceHandler.Accept)
 	r.With(auth).Post("/works/{id}/reading-heartbeat", libHandler.ReadingHeartbeat)
 

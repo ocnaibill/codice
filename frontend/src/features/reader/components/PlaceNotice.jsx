@@ -3,6 +3,7 @@ import React from 'react';
 const TITLES = {
   note: 'Não foi possível abrir o ponto da anotação',
   search: 'Não foi possível abrir o trecho encontrado',
+  chapter: 'Não foi possível abrir o capítulo',
   equivalent: 'Não foi possível abrir a posição equivalente',
   saved: 'Sua posição salva não existe mais neste arquivo',
 };
