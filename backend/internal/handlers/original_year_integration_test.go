@@ -128,3 +128,23 @@ func TestOriginalYear_IsAtMostNextYear(t *testing.T) {
 		t.Errorf("the year after that: %d", code)
 	}
 }
+
+func TestOriginalYear_IsInTheListsOfWorksSoThatTheyCanBeSortedByIt(t *testing.T) {
+	s := newCatalogStack(t)
+	known := s.addWork("Duna", "Frank Herbert", "d.epub", "epub")
+	s.addWork("Sem ano", "Frank Herbert", "e.epub", "epub")
+	s.exec(`UPDATE works SET original_year = 1965 WHERE id = $1`, known)
+	got := map[string]*int{}
+	for _, w := range s.list(ana, "?limit=50").Data {
+		got[w.Title] = w.OriginalYear
+	}
+	if got["Duna"] == nil || *got["Duna"] != 1965 {
+		t.Errorf("Duna: %v", got["Duna"])
+	}
+	if got["Sem ano"] != nil {
+		t.Errorf("a work that nobody dated: %v", *got["Sem ano"])
+	}
+	if w, _ := s.detail(ana, known); w.OriginalYear == nil || *w.OriginalYear != 1965 {
+		t.Errorf("the detail: %v", w.OriginalYear)
+	}
+}

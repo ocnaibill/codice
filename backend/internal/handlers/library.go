@@ -35,12 +35,14 @@ type Work struct {
 	Authors  []WorkAuthor `json:"authors"`
 	CoverURL string       `json:"coverUrl"`
 	// Collapsed: this work stands for its whole series in a grid (#187): the work is the newest of the series, and the card is the series'.
-	Collapsed       *SeriesCard   `json:"collapsed,omitempty"`
-	FileURL         string        `json:"fileUrl,omitempty"`
-	FileID          *int64        `json:"fileId,omitempty"`
-	Format          string        `json:"format,omitempty"`
-	Series          string        `json:"series,omitempty"`
-	SeriesIndex     float64       `json:"seriesIndex,omitempty"`
+	Collapsed   *SeriesCard `json:"collapsed,omitempty"`
+	FileURL     string      `json:"fileUrl,omitempty"`
+	FileID      *int64      `json:"fileId,omitempty"`
+	Format      string      `json:"format,omitempty"`
+	Series      string      `json:"series,omitempty"`
+	SeriesIndex float64     `json:"seriesIndex,omitempty"`
+	// OriginalYear is the year the work was first published (DEC-156), absent when nobody knows: what a list is sorted by in "chronological".
+	OriginalYear    *int          `json:"originalYear,omitempty"`
 	MediaStatus     string        `json:"mediaStatus,omitempty"`
 	Tags            []string      `json:"tags"`
 	ReadingProgress string        `json:"readingProgress,omitempty"`
@@ -214,6 +216,7 @@ const cardColumns = `
 	COALESCE(wp.file_format, ''),
 	COALESCE(w.series, ''),
 	COALESCE(w.series_index, 0),
+	w.original_year,
 	COALESCE(w.media_status, 'READY'),
 	COALESCE((SELECT array_agg(t.name ORDER BY t.name) FROM work_tags wt JOIN tags t ON t.id = wt.tag_id WHERE wt.work_id = w.id), '{}'),
 	COALESCE(rp.position, ''),
@@ -282,9 +285,10 @@ func scanWork(row rowScanner) (Work, error) {
 	var finished bool
 	var authorIDs pq.Int64Array
 	var authorNames pq.StringArray
+	var originalYear sql.NullInt64
 	err := row.Scan(
 		&work.ID, &work.Title, &work.Author, &work.CoverURL, &filePath, &work.Format,
-		&work.Series, &work.SeriesIndex, &work.MediaStatus, pq.Array(&work.Tags),
+		&work.Series, &work.SeriesIndex, &originalYear, &work.MediaStatus, pq.Array(&work.Tags),
 		&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
 		&fileID, &work.Retired, &mode,
 		&lastFile, &last.Format, &lastPath, &lastMode, &last.Position, &last.PercentComplete, &last.Completed,
@@ -294,6 +298,10 @@ func scanWork(row rowScanner) (Work, error) {
 		return work, err
 	}
 	work.FileURL = fileHref(fileID, mode, filePath.String)
+	if originalYear.Valid {
+		y := int(originalYear.Int64)
+		work.OriginalYear = &y
+	}
 	if lastFile.Valid {
 		last.FileID = lastFile.Int64
 		last.URL = fileHref(lastFile, lastMode, lastPath.String)
