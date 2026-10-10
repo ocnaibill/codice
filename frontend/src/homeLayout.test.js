@@ -10,11 +10,26 @@ const rule = (selector) => {
 };
 
 describe('the layout of the home', () => {
-  it('puts the reading and the favorites side by side, the catalog across the whole width, and the notes under it', () => {
+  it('puts the reading and, beside it, the favorites with the notes right under them, and the catalog across the whole width under both', () => {
     const columns = rule('.home-columns');
-    expect(columns).toContain("'continue favorites'");
+    expect(columns).toContain("'continue rail'");
     expect(columns).toContain("'catalog catalog'");
-    expect(columns).toContain("'notes notes'");
+    expect(columns).not.toContain("'notes");
+    // the rail is one column that holds the favorites and the notes, in the width of the column
+    const rail = rule('.home-rail');
+    expect(rail).toContain('grid-area: rail');
+    expect(rail).toContain('flex-direction: column');
+    // the notes are one under the other, not two side by side, in a column that narrow
+    expect(rule('.home-notes-list')).toContain('grid-template-columns: minmax(0, 1fr)');
+    expect(css).not.toMatch(/\.home-notes-list \{\s*grid-template-columns: repeat\(2/);
+  });
+
+  it('is one column when there is no room: the reading, the favorites and the notes, then the catalog', () => {
+    const narrow = css.slice(css.indexOf('@media (max-width: 1199px)'));
+    const columns = narrow.slice(narrow.indexOf('.home-columns'), narrow.indexOf('}', narrow.indexOf('.home-columns')));
+    expect(columns).toContain("'continue'");
+    expect(columns.indexOf("'continue'")).toBeLessThan(columns.indexOf("'rail'"));
+    expect(columns.indexOf("'rail'")).toBeLessThan(columns.indexOf("'catalog'"));
   });
 
   it('makes the cards of a shelf as tall as the tallest of them', () => {

@@ -398,39 +398,36 @@
   text-transform: uppercase;
   color: var(--color-ink-soft);
 }
-/* The body: the reading and the favorites side by side, the catalog across the whole width under them (the shelf of the latest goes
-   as far as there is room), and the person's notes under it. It is one column when there is no room. */
+/* The body: the reading on one side and, in the column beside it, what is the person's (the favorites and, right under them, the notes),
+   with the catalog across the whole width under both (the shelf of the latest goes as far as there is room). It is one column when there
+   is no room: the reading, the favorites, the notes, the catalog. */
 .home-columns {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   grid-template-areas:
-    'continue favorites'
-    'catalog catalog'
-    'notes notes';
+    'continue rail'
+    'catalog catalog';
   gap: 36px 24px;
   align-items: start;
 }
 .home-rail {
-  display: contents;
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
 }
-/* The notes of the person, two beside the other when there is room. */
+/* The notes of the person (two at most), one under the other, in the width of the favorites. */
 .home-notes-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 24px;
-}
-@media (min-width: 900px) {
-  .home-notes-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 24px 40px;
-  }
 }
 .home-continue {
   grid-area: continue;
   min-width: 0;
 }
 .home-favorites {
-  grid-area: favorites;
   min-width: 0;
 }
 .home-catalog {
@@ -438,7 +435,6 @@
   min-width: 0;
 }
 .home-notes {
-  grid-area: notes;
   min-width: 0;
 }
 .library-shelf {
@@ -919,9 +915,8 @@
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       'continue'
-      'favorites'
-      'catalog'
-      'notes';
+      'rail'
+      'catalog';
   }
   .library-sidebar {
     width: 218px;

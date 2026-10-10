@@ -37,6 +37,38 @@ afterEach(() => {
   container.remove();
 });
 
+describe('ContinueReading: "& ouvindo" is there only for who is listening', () => {
+  const book = { ...plain, id: 20, title: 'Livro', format: 'epub', continue: null };
+  const audio = { id: 21, title: 'Audiolivro', author: 'Y', coverUrl: '/c.jpg', tags: [], format: 'm4b', readingProgress: '600', percentComplete: 10, fileId: 30, continue: null };
+  const heading = () => container.querySelector('h2').textContent;
+
+  it('says only "Continuar lendo" when nothing in hand is an audiobook', async () => {
+    await render([book, plain]);
+    expect(heading()).toBe('Continuar lendo');
+    expect(container.querySelector('section').getAttribute('aria-label')).toBe('Continuar lendo');
+  });
+
+  it('adds "& ouvindo" when one of them is an audiobook', async () => {
+    await render([book, audio]);
+    expect(heading()).toBe('Continuar lendo & ouvindo');
+    expect(container.querySelector('section').getAttribute('aria-label')).toBe('Continuar lendo e ouvindo');
+  });
+
+  it('goes by the file read last, which is not always the main one', async () => {
+    const readAsAudio = { ...book, continue: { fileId: 31, format: 'mp3', position: '90', percentComplete: 5, completed: false } };
+    await render([readAsAudio]);
+    expect(heading()).toBe('Continuar lendo & ouvindo');
+    const listenedAsBook = { ...audio, continue: { fileId: 32, format: 'epub', position: 'epubcfi(/6/2)', percentComplete: 5, completed: false } };
+    await render([listenedAsBook]);
+    expect(heading()).toBe('Continuar lendo');
+  });
+
+  it('says only "Continuar lendo" while nothing is in hand', async () => {
+    await render([]);
+    expect(heading()).toBe('Continuar lendo');
+  });
+});
+
 describe('ContinueReading: the cover and the name open the page of the work', () => {
   beforeEach(() => { useGlobalStore.setState({ sheetWorkId: null }); });
 
