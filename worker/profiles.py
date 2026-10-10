@@ -70,7 +70,35 @@ def parse_entity(entity):
     image = next((_value(c) for c in _claims(entity, 'P18') if isinstance(_value(c), str) and _value(c).strip()), None)
     sitelinks = entity.get('sitelinks') or {}
     pages = {l: sitelinks[f'{l}wiki']['title'] for l in LANGUAGES if (sitelinks.get(f'{l}wiki') or {}).get('title')}
-    return {'description': description.strip(), 'born': when(_claims(entity, 'P569')), 'died': when(_claims(entity, 'P570')), 'image': image, 'pages': pages}
+    place = next((_value(c).get('id') for c in _claims(entity, 'P19') if isinstance(_value(c), dict) and QID.fullmatch(str(_value(c).get('id') or ''))), None)
+    return {'description': description.strip(), 'born': when(_claims(entity, 'P569')), 'died': when(_claims(entity, 'P570')), 'image': image, 'pages': pages,
+            'place_id': place}
+
+
+def parse_place(data, qid):
+    """The name of a place, from a wbgetentities answer: in Portuguese when it has one, else in English. None when it has no label."""
+    entities = (data or {}).get('entities') if isinstance(data, dict) else None
+    entity = (entities or {}).get(qid) if isinstance(entities, dict) else None
+    labels = (entity or {}).get('labels') or {}
+    for language in ('pt-br', 'pt', 'en'):
+        value = (labels.get(language) or {}).get('value')
+        if isinstance(value, str) and value.strip():
+            return ' '.join(value.split())[:255]
+    return None
+
+
+def _born_place(profile):
+    """Puts the name of the place of birth in the profile: `born_place`, and `place_read` saying whether the answer is final (a place the entity
+    does not have is final; a request that failed is not, and is asked again)."""
+    profile['born_place'], profile['place_read'] = None, True
+    qid = profile.get('place_id')
+    if not qid:
+        return
+    reply = get_json('Wikidata', ENTITIES, params={'action': 'wbgetentities', 'ids': qid, 'props': 'labels', 'languages': 'pt|pt-br|en', 'format': 'json'})
+    if not reply.ok:
+        profile['place_read'] = False
+        return
+    profile['born_place'] = parse_place(reply.data, qid)
 
 
 def _plain(html):
@@ -149,6 +177,7 @@ def fetch_profile(qid, covers_dir, allow_bio, allow_image=True):
     if profile is None:
         return 'missing', None
     profile['bio'], profile['bio_state'], profile['photo'] = None, 'pending', None
+    _born_place(profile)
     if allow_bio:
         profile['bio'] = _biography(profile['pages'])
         profile['bio_state'] = 'done' if profile['bio'] else 'none'
@@ -160,10 +189,11 @@ def fetch_profile(qid, covers_dir, allow_bio, allow_image=True):
 # A person holds a profile for each Wikidata identifier it holds: one statement, so what was read is never marked read without being kept.
 _KEEP = """
     INSERT INTO person_profile (person_id, wikidata_id, description, born, died, bio, bio_language, bio_title, bio_url, bio_state,
-                                image_path, image_credit, image_license, image_license_url, image_page_url, fetched_at)
-    SELECT person_id, value, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now()
+                                image_path, image_credit, image_license, image_license_url, image_page_url, born_place, place_read, fetched_at)
+    SELECT person_id, value, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now()
     FROM person_authority WHERE scheme = 'wikidata' AND value = %s
     ON CONFLICT (person_id) DO UPDATE SET wikidata_id = EXCLUDED.wikidata_id, description = EXCLUDED.description, born = EXCLUDED.born,
+        born_place = EXCLUDED.born_place, place_read = EXCLUDED.place_read,
         died = EXCLUDED.died, bio = EXCLUDED.bio, bio_language = EXCLUDED.bio_language, bio_title = EXCLUDED.bio_title, bio_url = EXCLUDED.bio_url,
         bio_state = EXCLUDED.bio_state, image_path = EXCLUDED.image_path, image_credit = EXCLUDED.image_credit, image_license = EXCLUDED.image_license,
         image_license_url = EXCLUDED.image_license_url, image_page_url = EXCLUDED.image_page_url, fetched_at = now();"""
@@ -178,13 +208,15 @@ _PENDING = """
         WHERE l.source = 'wikidata' AND l.key = a.value
           AND (l.state <> 'failed' OR l.attempts >= %s OR l.attempted_at > now() - interval '1 day'))
     ORDER BY a.value LIMIT %s"""
+# A profile read before the place of birth was kept: asked again, once, for the place alone.
+_PLACE_PENDING = "SELECT DISTINCT wikidata_id FROM person_profile WHERE NOT place_read ORDER BY wikidata_id LIMIT %s"
 _BIO_PENDING = "SELECT DISTINCT wikidata_id FROM person_profile WHERE bio_state = 'pending' ORDER BY wikidata_id LIMIT %s"
 # Another person with the same identifier (an author written two ways, not merged yet) has the profile already: no request for it.
 _SHARE = """
     INSERT INTO person_profile (person_id, wikidata_id, description, born, died, bio, bio_language, bio_title, bio_url, bio_state,
-                                image_path, image_credit, image_license, image_license_url, image_page_url, fetched_at)
+                                image_path, image_credit, image_license, image_license_url, image_page_url, born_place, place_read, fetched_at)
     SELECT a.person_id, p.wikidata_id, p.description, p.born, p.died, p.bio, p.bio_language, p.bio_title, p.bio_url, p.bio_state,
-           p.image_path, p.image_credit, p.image_license, p.image_license_url, p.image_page_url, p.fetched_at
+           p.image_path, p.image_credit, p.image_license, p.image_license_url, p.image_page_url, p.born_place, p.place_read, p.fetched_at
     FROM person_authority a
     JOIN (SELECT DISTINCT ON (wikidata_id) * FROM person_profile ORDER BY wikidata_id, fetched_at DESC) p ON p.wikidata_id = a.value
     WHERE a.scheme = 'wikidata' AND NOT EXISTS (SELECT 1 FROM person_profile q WHERE q.person_id = a.person_id)
@@ -194,7 +226,8 @@ _SHARE = """
 def _keep_params(profile, qid):
     bio, photo = profile['bio'] or (None, None, None, ''), profile['photo'] or {}
     return (profile['description'], profile['born'], profile['died'], bio[3], bio[0], bio[1], bio[2], profile['bio_state'],
-            photo.get('path'), photo.get('credit'), photo.get('license'), photo.get('license_url'), photo.get('page'), qid)
+            photo.get('path'), photo.get('credit'), photo.get('license'), photo.get('license_url'), photo.get('page'),
+            profile.get('born_place'), bool(profile.get('place_read')), qid)
 
 
 def resolve_pending(db, allowed, covers_dir, limit=3, fetch=fetch_profile, sleep=time.sleep):
@@ -216,6 +249,17 @@ def resolve_pending(db, allowed, covers_dir, limit=3, fetch=fetch_profile, sleep
         else:
             db.execute(_KEEP + _REMEMBER, _keep_params(profile, qid) + (qid, 'done'))
             answered += 1
+        sleep(0.5)
+    for (qid,) in db.fetchall(_PLACE_PENDING, (limit,)) or []:
+        if not allowed(SOURCE):
+            break
+        status, profile = fetch(qid, covers_dir, allow_bio=False, allow_image=False)
+        if status == 'ok' and profile.get('place_read'):
+            db.execute("UPDATE person_profile SET born_place = %s, place_read = TRUE WHERE wikidata_id = %s AND NOT place_read",
+                       (profile.get('born_place'), qid))
+            answered += 1
+        elif status == 'missing':
+            db.execute("UPDATE person_profile SET place_read = TRUE WHERE wikidata_id = %s AND NOT place_read", (qid,))   # no such person: no place to wait for
         sleep(0.5)
     if allowed('wikipedia'):
         for (qid,) in db.fetchall(_BIO_PENDING, (limit,)) or []:

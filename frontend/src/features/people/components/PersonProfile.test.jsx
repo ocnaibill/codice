@@ -84,6 +84,16 @@ describe('PersonProfile: what Wikidata and Wikipedia say about an author (DEC-14
     expect(container.textContent).not.toContain('Nasceu');
   });
 
+  it('says where they were born, with the date or alone', async () => {
+    await show(profile({ bornPlace: 'Tacoma, Washington' }));
+    expect(container.textContent).toContain('Nasceu em 8 de outubro de 1920, em Tacoma, Washington · Morreu em 11 de fevereiro de 1986');
+    await show(profile({ born: undefined, bornPlace: 'Tacoma', died: undefined }));
+    expect(container.textContent).toContain('Nasceu em Tacoma');
+    expect(container.textContent).not.toContain('Morreu');
+    await show(profile({ bornPlace: undefined }));
+    expect(container.textContent).not.toContain(', em ');
+  });
+
   it('says a photo without credit or license by what it has', async () => {
     await show(profile({ image: { url: '/covers/x.jpg' } }));
     expect(container.querySelector('figcaption').textContent).toBe('Foto');
