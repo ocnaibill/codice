@@ -139,6 +139,17 @@ describe('WorkPreview', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
+  it('is not taller than a few lines of the text, which scrolls inside, and is not held back in the full screen', async () => {
+    await render();
+    expect(article().className).toContain('max-h-72');
+    expect(article().className).toContain('overflow-y-auto');
+    const section = container.querySelector('section');
+    section.requestFullscreen = () => { Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => section }); document.dispatchEvent(new Event('fullscreenchange')); };
+    await act(async () => { button('Tela cheia').click(); });
+    expect(article().className).toContain('max-h-none');
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => null });
+  });
+
   it('says nothing when the file has no text in the index', async () => {
     await render({ data: { fileId: 10, total: 0, segments: [] } });
     expect(container.querySelector('section')).toBeNull();

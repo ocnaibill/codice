@@ -97,7 +97,7 @@ export function WorkPreview({ title, data, onPrev, onNext, onOpen, busy = false 
       </div>
 
       <article
-        className={`mx-auto w-full max-w-prose rounded-lg px-2 py-3 leading-relaxed ${style.mono ? 'font-mono' : 'font-display'} ${busy ? 'opacity-60' : ''}`}
+        className={`mx-auto w-full max-w-prose overflow-y-auto rounded-lg px-2 py-3 leading-relaxed ${full ? 'max-h-none' : 'max-h-72'} ${style.mono ? 'font-mono' : 'font-display'} ${busy ? 'opacity-60' : ''}`}
         style={{ fontSize: `${SIZES[style.size]}px` }}
         aria-busy={busy}
       >

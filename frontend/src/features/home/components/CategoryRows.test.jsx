@@ -71,7 +71,7 @@ describe('CategoryRows', () => {
     await flush();
     expect(headings()).toHaveLength(MAX_ROWS);
     expect(worksAsked()).toHaveLength(MAX_ROWS);
-    expect(MAX_ROWS).toBe(6);
+    expect(MAX_ROWS).toBe(24); // no index at the end of the home any more: all the categories a page can carry have a shelf
   });
 
   it('asks for the works of a shelf only when it comes near the screen', async () => {

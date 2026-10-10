@@ -9,7 +9,7 @@ import { useGlobalStore } from '../../../store/useGlobalStore';
 import { AuthorLinks } from '../../people/components/AuthorLinks';
 import { authenticatedUrl } from '../../../lib/api';
 import { readLabel, readTarget } from '../../reader/readTarget';
-import { formatBadge, formatCount } from '../utils/format';
+import { formatBadge, formatCount, countWordFor } from '../utils/format';
 import { goOnText, newText, seriesCounts } from '../../collections/text';
 import { cardTitle } from '../../reader/titles';
 
@@ -171,7 +171,7 @@ export function LibraryGrid({
         <h2>{title}</h2>
         {total != null && (
           <span className="library-eyebrow">
-            [ {formatCount(total)} {countWord} ]
+            [ {formatCount(total)} {countWordFor(total, countWord)} ]
           </span>
         )}
       </div>

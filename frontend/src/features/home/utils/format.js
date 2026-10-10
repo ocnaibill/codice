@@ -61,3 +61,10 @@ export function formatBadge(item) {
   return item.formatCount > 1 ? `${item.formatCount} formatos` : item.format.toUpperCase();
 }
 
+
+const SINGULAR = { obras: 'obra', itens: 'item', 'volumes no acervo': 'volume no acervo' };
+
+/** The word of a count, in the singular for one: "[ 1 obra ]", "[ 2 obras ]". A word it does not know is left as it was. */
+export function countWordFor(n, plural) {
+  return n === 1 ? SINGULAR[plural] ?? plural : plural;
+}

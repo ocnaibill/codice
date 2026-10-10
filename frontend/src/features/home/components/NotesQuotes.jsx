@@ -25,7 +25,7 @@ export function NotesQuotes({ notes, isLoading }) {
       ) : notes.length === 0 ? (
         <EmptyState>Nenhuma anotação ainda. Use o botão "Notas" no leitor para guardar trechos e ideias.</EmptyState>
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="home-notes-list">
           {notes.map((note) => (
             <blockquote key={note.id} className="rounded-l-sm bg-gradient-to-r from-brand/10 to-transparent py-1 pl-3">
               <p className="font-display text-xl italic leading-[29px] tracking-[-0.12px] text-ink">

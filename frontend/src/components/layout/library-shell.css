@@ -356,10 +356,14 @@
   gap: 24px;
   align-items: center;
 }
+.home-greeting {
+  min-width: 0;
+}
 .home-greeting h1 {
-  font: 500 clamp(28px, 3vw, 40px)/1.2 var(--font-display);
-  letter-spacing: -0.8px;
+  font: 500 clamp(22px, 2.1vw, 30px)/1.2 var(--font-display);
+  letter-spacing: -0.5px;
   margin: 8px 0 4px;
+  overflow-wrap: anywhere;
 }
 .home-greeting h1 span {
   color: var(--color-brand);
@@ -394,33 +398,32 @@
   text-transform: uppercase;
   color: var(--color-ink-soft);
 }
-/* The body: the reading and the catalog on the left, what is the person's on the right, one under the other with no hole between them
-   (the favorites grow with what the person has). It is one column when there is no room. */
+/* The body: the reading and the favorites side by side, the catalog across the whole width under them (the shelf of the latest goes
+   as far as there is room), and the person's notes under it. It is one column when there is no room. */
 .home-columns {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   grid-template-areas:
-    'continue rail'
-    'catalog rail';
+    'continue favorites'
+    'catalog catalog'
+    'notes notes';
   gap: 36px 24px;
   align-items: start;
 }
 .home-rail {
-  grid-area: rail;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-}
-/* In the paginated catalog the catalog takes the whole width: what is the person's goes above it and below it. */
-.home-columns[data-catalog='full'] {
-  grid-template-areas:
-    'continue favorites'
-    'catalog catalog'
-    'notes notes';
-}
-.home-columns[data-catalog='full'] .home-rail {
   display: contents;
+}
+/* The notes of the person, two beside the other when there is room. */
+.home-notes-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+}
+@media (min-width: 900px) {
+  .home-notes-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px 40px;
+  }
 }
 .home-continue {
   grid-area: continue;
@@ -460,6 +463,12 @@
   flex: 0 0 176px;
   min-width: 0;
   scroll-snap-align: start;
+  /* the cards of a shelf are as tall as the tallest of them */
+  display: flex;
+}
+.library-carousel-item > * {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .library-carousel--reading .library-carousel-item {
   flex-basis: min(100%, 340px);
@@ -885,17 +894,13 @@
   .home-metrics-error {
     grid-column: 1;
   }
-  .home-columns,
-  .home-columns[data-catalog='full'] {
+  .home-columns {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       'continue'
       'favorites'
       'catalog'
       'notes';
-  }
-  .home-columns .home-rail {
-    display: contents;
   }
   .library-sidebar {
     width: 218px;

@@ -523,6 +523,13 @@ export function WorkPage() {
             onFinish={(finished) => setWorkFinished.mutate({ workId: work.id, finished })}
           />
 
+          {leadFile && (
+            <WorkOutline
+              outline={outline}
+              onOpen={(locator, title) => openBook(work.id, leadFile.id, { locator, context: { kind: 'chapter', quote: title } })}
+            />
+          )}
+
           {leadFile && PREVIEW_FORMATS.has((leadFile.format || '').toLowerCase()) && (
             <WorkPreview
               title={shownTitle}
@@ -531,13 +538,6 @@ export function WorkPage() {
               onPrev={setPreviewFrom}
               onNext={setPreviewFrom}
               onOpen={(segment) => openBook(work.id, leadFile.id, { locator: segment.locator, context: { kind: 'chapter', quote: segment.chapter || shownTitle } })}
-            />
-          )}
-
-          {leadFile && (
-            <WorkOutline
-              outline={outline}
-              onOpen={(locator, title) => openBook(work.id, leadFile.id, { locator, context: { kind: 'chapter', quote: title } })}
             />
           )}
           {notice && (

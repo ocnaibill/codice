@@ -62,15 +62,18 @@ describe('the categories on the home (DEC-140)', () => {
   };
   beforeEach(() => useGlobalStore.setState({ categoryPageId: null, libraryPage: 1 }));
 
-  it('puts a row of them under the shelf of the library, and opens a page from it', async () => {
+  it('has a shelf for each of them, with a way to the page of the category, and no index of them at the end', async () => {
     withCategories();
     view = await mount(<HomePage />);
     await flush();
     const text = view.text();
-    expect(text).toContain('Explorar por categoria');
-    expect(text.indexOf('Adicionados recentemente')).toBeLessThan(text.indexOf('Explorar por categoria'));
-    const card = [...document.body.querySelectorAll('section[aria-label="Explorar por categoria"] button')].find((b) => b.textContent.includes('Mangá'));
-    await view.click(card);
+    expect(text).not.toContain('Explorar por categoria');
+    expect(document.body.querySelector('section[aria-label="Explorar por categoria"]')).toBeNull();
+    const headings = [...view.container.querySelectorAll('h2')].map((h) => h.textContent);
+    expect(headings.indexOf('Adicionados recentemente')).toBeLessThan(headings.indexOf('Mangá'));
+    const see = [...document.body.querySelectorAll('button')].filter((b) => b.textContent.includes('Ver categoria'));
+    expect(see.length).toBeGreaterThan(0);
+    await view.click(see[0]); // the one with most works comes first
     expect(useGlobalStore.getState().categoryPageId).toBe(2);
   });
 
@@ -360,7 +363,6 @@ describe('the home as shelves (the plain home) and as the catalog (everything el
 
   it('is the paginated catalog in another kind too, and the categories are only for all the works', async () => {
     await mountHome();
-    expect(view.text()).toContain('Explorar por categoria');
     await view.click(view.buttonMatching(/^Quadrinhos/));
     expect(columns().dataset.catalog).toBe('full'); // another kind is the paginated catalog of that kind
     expect(view.container.querySelector('#library-catalog .library-books')).not.toBeNull();

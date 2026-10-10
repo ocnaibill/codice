@@ -600,6 +600,20 @@ describe('WorkPage: the page of the work (DEC-149)', () => {
     expect(container.textContent).not.toContain('1ª publicação');
   });
 
+  it('puts the table of contents before the preview of the text', async () => {
+    const outline = { fileId: 10, current: null, chapters: [{ title: 'Capítulo 1', depth: 0, part: 'body', hasChildren: false, locator: { type: 'epub', href: 'c1.xhtml' }, percent: 0 }] };
+    const preview = { fileId: 10, total: 4, from: 0, prevFrom: null, nextFrom: null, current: null, segments: [{ sequence: 0, text: 'Texto.', chapter: 'Capítulo 1', part: 'body', locator: { type: 'epub', href: 'c1.xhtml' } }] };
+    api.get.mockImplementation(async (url) => ({ data: url.endsWith('/outline') ? outline : url.endsWith('/preview') ? preview : { ...work } }));
+    useGlobalStore.setState({ sheetWorkId: 7, activeBookId: null, activeFileId: null, fromStart: false });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
+    await flush();
+    await flush();
+    const labels = [...container.querySelectorAll('section[aria-label]')].map((s) => s.getAttribute('aria-label'));
+    expect(labels.indexOf('Sumário da obra')).toBeGreaterThan(-1);
+    expect(labels.indexOf('Pré-visualização do texto')).toBeGreaterThan(labels.indexOf('Sumário da obra'));
+  });
+
   it('is left by a search: the results are what the person asked for', () => {
     useGlobalStore.setState({ sheetWorkId: 7, searchQuery: '' });
     useGlobalStore.getState().setSearchQuery('duna');
