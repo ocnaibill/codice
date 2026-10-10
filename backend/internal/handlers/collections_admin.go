@@ -43,10 +43,21 @@ func describeCollection(ctx context.Context, tx *sql.Tx, id int64, text string) 
 	return err
 }
 
-// setReadingDirection sets how a series is read; empty takes it away.
-func setReadingDirection(ctx context.Context, tx *sql.Tx, id int64, direction string) error {
-	_, err := tx.ExecContext(ctx, `UPDATE collections SET reading_direction = NULLIF($2, '') WHERE id = $1`, id, direction)
-	return err
+// setSeriesData writes what an edit says of the series: the direction it is read in, how it stands in publication and its title in the script
+// of its language. What is not in the edit is left; empty takes it away.
+func setSeriesData(ctx context.Context, tx *sql.Tx, id int64, e collectionEdit) error {
+	for _, f := range []struct {
+		column string
+		value  *string
+	}{{"reading_direction", e.direction}, {"publication_status", e.status}, {"original_title", e.originalTitle}} {
+		if f.value == nil {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE collections SET `+f.column+` = NULLIF($2, '') WHERE id = $1`, id, *f.value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // lockOfficial reads and locks an official collection of the library for the transaction.
@@ -120,23 +131,40 @@ type collectionEdit struct {
 	description *string
 	// direction is how the series is read ("ltr", "rtl", "webtoon"), or "" to take it away (DEC-166); only an official collection has one.
 	direction *string
+	// status is how the series stands in publication and originalTitle its title in the script of its language (DEC-170), or "" to take them
+	// away; only an official collection has them.
+	status        *string
+	originalTitle *string
 }
+
+// seriesData says whether the edit has something that belongs to a series and not to a list (DEC-166, DEC-170).
+func (e collectionEdit) seriesData() bool {
+	return e.direction != nil || e.status != nil || e.originalTitle != nil
+}
+
+// publicationStatuses are how a series can stand in publication.
+var publicationStatuses = map[string]bool{"ongoing": true, "finished": true, "hiatus": true, "cancelled": true}
+
+// maxOriginalTitle is how long the title in the script of the language of a series can be.
+const maxOriginalTitle = 255
 
 // decodeEdit reads the body of a PATCH of a collection, with the same name rules as decodeName. The description keeps its line
 // breaks (it is a few lines of text) and loses the spaces around it.
 func decodeEdit(w http.ResponseWriter, r *http.Request) (collectionEdit, bool) {
 	var req struct {
-		Name             *string `json:"name"`
-		Description      *string `json:"description"`
-		ReadingDirection *string `json:"readingDirection"`
+		Name              *string `json:"name"`
+		Description       *string `json:"description"`
+		ReadingDirection  *string `json:"readingDirection"`
+		PublicationStatus *string `json:"publicationStatus"`
+		OriginalTitle     *string `json:"originalTitle"`
 	}
 	var e collectionEdit
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
 		return e, false
 	}
-	if req.Name == nil && req.Description == nil && req.ReadingDirection == nil {
-		http.Error(w, "Diga o nome, a descrição ou a direção de leitura.", http.StatusBadRequest)
+	if req.Name == nil && req.Description == nil && req.ReadingDirection == nil && req.PublicationStatus == nil && req.OriginalTitle == nil {
+		http.Error(w, "Diga o nome, a descrição, a direção de leitura, a situação ou o título original.", http.StatusBadRequest)
 		return e, false
 	}
 	if req.Name != nil {
@@ -163,6 +191,21 @@ func decodeEdit(w http.ResponseWriter, r *http.Request) (collectionEdit, bool) {
 			http.Error(w, "A direção é esquerda para a direita, direita para a esquerda ou tira para rolar.", http.StatusBadRequest)
 			return e, false
 		}
+	}
+	if req.PublicationStatus != nil {
+		if *req.PublicationStatus != "" && !publicationStatuses[*req.PublicationStatus] {
+			http.Error(w, "A situação é em andamento, concluída, em hiato ou cancelada.", http.StatusBadRequest)
+			return e, false
+		}
+		e.status = req.PublicationStatus
+	}
+	if req.OriginalTitle != nil {
+		title := cleanLine(*req.OriginalTitle)
+		if utf8.RuneCountInString(title) > maxOriginalTitle {
+			http.Error(w, "O título original tem até 255 caracteres.", http.StatusBadRequest)
+			return e, false
+		}
+		e.originalTitle = &title
 	}
 	return e, true
 }
@@ -269,13 +312,16 @@ func (h *CollectionsAdminHandler) Rename(w http.ResponseWriter, r *http.Request)
 			details["length"] = utf8.RuneCountInString(*edit.description)
 			out["description"] = *edit.description
 		}
-		if edit.direction != nil {
-			if err := setReadingDirection(r.Context(), tx, id, *edit.direction); err != nil {
+		if edit.seriesData() {
+			if err := setSeriesData(r.Context(), tx, id, edit); err != nil {
 				h.fail(w, "describe", err)
 				return
 			}
-			details["readingDirection"] = *edit.direction
-			out["readingDirection"] = *edit.direction
+			for key, v := range map[string]*string{"readingDirection": edit.direction, "publicationStatus": edit.status, "originalTitle": edit.originalTitle} {
+				if v != nil {
+					details[key], out[key] = *v, *v
+				}
+			}
 		}
 		if err := audit.Record(r.Context(), tx, actor, "collection.describe", "collection", strconv.FormatInt(id, 10), details); err != nil {
 			h.fail(w, "describe", err)
@@ -315,8 +361,8 @@ func (h *CollectionsAdminHandler) Rename(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	if edit.direction != nil {
-		if err := setReadingDirection(r.Context(), tx, id, *edit.direction); err != nil {
+	if edit.seriesData() {
+		if err := setSeriesData(r.Context(), tx, id, edit); err != nil {
 			h.fail(w, "rename", err)
 			return
 		}
