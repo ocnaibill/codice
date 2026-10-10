@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, newText, numberText, seriesCounts, stepText, UNITS, unitLabel, wordsOf, worksText } from './text';
+import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, newText, numberText, seriesCounts, sequenceWord, stepText, UNITS, unitLabel, wordsOf, worksText } from './text';
 
 describe('the text of a collection', () => {
   it('counts the works, in the singular too', () => {
@@ -130,5 +130,27 @@ describe('newText, the new ones of a series (#187)', () => {
     expect(newText(1)).toBe('1 novo');
     expect(newText(2)).toBe('2 novos');
     expect(newText(121)).toBe('121 novos');
+  });
+});
+
+describe('sequenceWord, what the sequence of a series is called (DEC-165)', () => {
+  const w = (unit, extra = {}) => ({ unit, available: true, ...extra });
+  it('names the unit when every work of the sequence is of one, in the singular for one', () => {
+    expect(sequenceWord([w('chapter'), w('chapter')])).toEqual({ noun: 'capítulos', read: 'lidos' });
+    expect(sequenceWord([w('volume')])).toEqual({ noun: 'volume', read: 'lido' });
+    expect(sequenceWord([w('oneshot'), w('oneshot')])).toEqual({ noun: 'únicos', read: 'lidos' });
+  });
+  it('counts the number it is given, which is the works of the sequence the server counted', () => {
+    expect(sequenceWord([w('chapter'), w('chapter')], 1)).toEqual({ noun: 'capítulo', read: 'lido' });
+  });
+  it('leaves out the complementary works and the ones gone from the library', () => {
+    expect(sequenceWord([w('volume'), w('extra'), w('chapter', { available: false })], 1)).toEqual({ noun: 'volume', read: 'lido' });
+  });
+  it('says nothing when the units are mixed, when there is none, or when nothing is in the sequence', () => {
+    expect(sequenceWord([w('volume'), w('chapter')])).toBeNull();
+    expect(sequenceWord([w(''), w(undefined)])).toBeNull();
+    expect(sequenceWord([w('volume'), w('')])).toBeNull();
+    expect(sequenceWord([w('extra')])).toBeNull();
+    expect(sequenceWord([])).toBeNull();
   });
 });

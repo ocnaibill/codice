@@ -88,6 +88,19 @@ export function goOnText(step) {
   return `${step.started ? 'Continuar' : step.begun ? 'Próximo' : 'Começar'}: ${stepText(step)}`;
 }
 
+/**
+ * What the works of the sequence of a series are, in the one word of their unit ("capítulos", "volumes", "únicos"), when all of them are of
+ * the same unit; null when they are mixed or have none (DEC-165). The complementary works and those gone from the library are not the
+ * sequence. `lidos` is the participle that goes with the word.
+ */
+export function sequenceWord(works, count = works.length) {
+  const sequence = works.filter((w) => w.available !== false && w.unit !== 'extra');
+  const units = new Set(sequence.map((w) => w.unit || ''));
+  if (units.size !== 1) return null;
+  const words = { volume: ['volume', 'volumes'], chapter: ['capítulo', 'capítulos'], oneshot: ['único', 'únicos'] }[[...units][0]];
+  return words ? { noun: words[count === 1 ? 0 : 1], read: count === 1 ? 'lido' : 'lidos' } : null;
+}
+
 /** The new ones of a series, as the badge of its card says it (#187): "1 novo", "3 novos". */
 export const newText = (n) => `${n} ${n === 1 ? 'novo' : 'novos'}`;
 

@@ -738,9 +738,9 @@ describe('CollectionPage: the page of a series (DEC-162)', () => {
     await show();
     const box = container.querySelector('[aria-label="Seu progresso"]');
     expect(box.textContent).toContain('55%');
-    expect(box.textContent).toContain('1 de 3 lidas');
+    expect(box.textContent).toContain('1 de 3 volumes lidos');
     expect(box.textContent).toContain('1 em andamento');
-    expect(box.textContent).toMatch(/3.*lidas/);
+    expect(box.textContent).toMatch(/3.*lidas/); // the hours, apart from the works
   });
 
   it('continues the series with how far it is and where it stopped', async () => {
@@ -985,7 +985,7 @@ describe('CollectionPage: the complementary works (DEC-164)', () => {
     const rows = [...extra.querySelectorAll('ol li')].map((li) => li.textContent);
     expect(rows[0]).toContain('Compl.');
     expect(rows[0]).toContain('Animais Fantásticos');
-    expect(labelled('Seu progresso').textContent).toContain('0 de 2 lidas');
+    expect(labelled('Seu progresso').textContent).toContain('0 de 2 volumes lidos');
   });
 
   it('is offered in the classification, next to the other units', async () => {
@@ -999,5 +999,136 @@ describe('CollectionPage: the complementary works (DEC-164)', () => {
     await open({ role: 'admin', data });
     await click(container.querySelector('button[aria-label="Descer “Animais Fantásticos”"]'));
     expect(api.put).toHaveBeenCalledWith('/collections/5/order', { workIds: [8, 7], unit: 'extra' });
+  });
+});
+
+describe('CollectionPage: a series of chapters (DEC-165)', () => {
+  const chapter = (n, extra = {}) => ({
+    entryId: n * 10, id: n, title: `Capítulo ${n}`, author: 'Kentarō Miura', coverUrl: `/c/${n}.jpg`, position: n, completed: false, available: true,
+    unit: 'chapter', comicKind: 'manga', percent: 0, started: false, formats: ['cbz'], rating: 0, notes: 0, bookmarks: 0, ...extra,
+  });
+  const chapters = [
+    chapter(1, { title: 'O Espadachim Negro', completed: true, percent: 100, completedAt: '2024-10-12T10:00:00Z' }),
+    chapter(2, { title: 'O Eclipse', completed: true, percent: 100, bookmarks: 4 }),
+    chapter(3, { title: 'O Nascimento', started: true, percent: 40, notes: 2, readFormat: 'cbz', unitIndex: 3, unitTotal: 8 }),
+    chapter(4, { title: 'O Despertar' }),
+    chapter(5, { title: 'A Marca' }),
+    chapter(6, { title: 'Os Apóstolos' }),
+  ];
+  const data = (works = chapters, summary = {}) => ({
+    collection: { id: 5, kind: 'official', name: 'Berserk', workCount: works.length, completedCount: 2, coverUrl: '/c/1.jpg' },
+    works,
+    continue: { id: 3, title: 'O Nascimento', unit: 'chapter', position: 3, started: true, begun: true },
+    summary: {
+      works: works.length, finished: 2, inProgress: 1, percent: 40, readingSeconds: 7200, notes: 2, bookmarks: 4, remainingSeconds: 34 * 3600,
+      missing: [], authors: [], translators: [], tags: [], ...summary,
+    },
+  });
+  const titles = () => [...container.querySelectorAll('ol li')].map((li) => li.querySelector('.font-display')?.textContent);
+  const typeInSearch = async (value) => {
+    const input = container.querySelector('input[type="search"]');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+
+  it('says how many of the chapters were read, in the word of the unit, and the volumes in theirs', async () => {
+    await open({ role: 'reader', data: data() });
+    expect(labelled('Seu progresso').textContent).toContain('2 de 6 capítulos lidos');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ role: 'reader', data: data([chapter(1, { unit: 'volume', completed: true })], { works: 1, finished: 1 }) });
+    expect(labelled('Seu progresso').textContent).toContain('1 de 1 volume lido');
+  });
+
+  it('keeps "lidas" when the works are of more than one unit', async () => {
+    const mixed = [chapter(1, { completed: true }), chapter(2, { unit: 'volume' })];
+    await open({ role: 'reader', data: data(mixed, { works: 2, finished: 1 }) });
+    expect(labelled('Seu progresso').textContent).toContain('1 de 2 lidas');
+  });
+
+  it('says how long is left, the marked places and the notes, with the way to the notes', async () => {
+    await open({ role: 'reader', data: data() });
+    const box = labelled('Seu progresso').textContent;
+    expect(box).toContain('~34 h restantes');
+    expect(box).toContain('4 marcadores · 2 anotações suas');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ role: 'reader', data: data(chapters, { remainingSeconds: 0, bookmarks: 1, notes: 0 }) });
+    const text = labelled('Seu progresso').textContent;
+    expect(text).not.toContain('restantes');
+    expect(text).toContain('1 marcador');
+    expect(text).not.toContain('1 marcadores');
+    expect(button('Ver notas')).toBeUndefined();
+  });
+
+  it('filters by name or by number, and says when nothing is left, with a way to clear it', async () => {
+    await open({ role: 'reader', data: data() });
+    await typeInSearch('eclipse');
+    expect(titles()).toEqual(['O Eclipse']);
+    await typeInSearch('cap. 5');
+    expect(titles()).toEqual(['A Marca']);
+    await typeInSearch('zzz');
+    expect(container.querySelector('ol')).toBeNull();
+    expect(container.textContent).toContain('Nenhuma obra com esse filtro.');
+    await click(button('Limpar o filtro'));
+    expect(titles()).toHaveLength(6);
+    expect(container.querySelector('input[type="search"]').value).toBe('');
+  });
+
+  it('filters by what was read, with how many there are of each, and by the ones with something saved', async () => {
+    await open({ role: 'reader', data: data() });
+    const chip = (text) => [...container.querySelectorAll('[aria-label="Situação"] button')].find((b) => b.textContent.startsWith(text));
+    expect(chip('Todas').textContent).toBe('Todas (6)');
+    expect(chip('Não lidas').textContent).toBe('Não lidas (4)');
+    expect(chip('Lidas').textContent).toBe('Lidas (2)');
+    expect(chip('Salvas').textContent).toBe('Salvas (2)'); // one with marks and one with notes
+    await click(chip('Lidas'));
+    expect(titles()).toEqual(['O Espadachim Negro', 'O Eclipse']);
+    await click(chip('Não lidas'));
+    expect(titles()).toEqual(['O Nascimento', 'O Despertar', 'A Marca', 'Os Apóstolos']);
+    await click(chip('Salvas'));
+    expect(titles()).toEqual(['O Eclipse', 'O Nascimento']);
+    expect(chip('Salvas').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('shows the order the other way without changing the collection, and gives no moving while it is a view', async () => {
+    await open({ role: 'admin', data: data() });
+    expect(container.querySelector('button[aria-label="Subir “O Eclipse”"]')).toBeTruthy();
+    await click(button('Ordem crescente'));
+    expect(titles()).toEqual(['Os Apóstolos', 'A Marca', 'O Despertar', 'O Nascimento', 'O Eclipse', 'O Espadachim Negro']);
+    expect(button('Ordem decrescente').getAttribute('aria-pressed')).toBe('true');
+    expect(container.querySelector('button[aria-label="Subir “O Eclipse”"]')).toBeNull();
+    await click(button('Ordem decrescente'));
+    expect(container.querySelector('button[aria-label="Subir “O Eclipse”"]')).toBeTruthy();
+    await typeInSearch('o');
+    expect(container.querySelector('button[aria-label="Subir “O Eclipse”"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="Tirar “O Eclipse” da coleção"]')).toBeTruthy(); // taking out is not a matter of order
+  });
+
+  it('has no filters for a series of a few works', async () => {
+    await open({ role: 'reader', data: data(chapters.slice(0, 5), { works: 5 }) });
+    expect(container.querySelector('[aria-label="Filtrar as obras"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="Subir “O Eclipse”"]')).toBeNull(); // a reader moves nothing
+  });
+
+  it('offers to read again a work that was finished, and not one that was not', async () => {
+    await open({ role: 'reader', data: data() });
+    const rows = [...container.querySelectorAll('ol li')];
+    expect([...rows[0].querySelectorAll('button')].some((b) => b.textContent === 'Reler')).toBe(true);
+    expect([...rows[3].querySelectorAll('button')].some((b) => b.textContent === 'Reler')).toBe(false);
+    await click([...rows[0].querySelectorAll('button')].find((b) => b.textContent === 'Reler'));
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 1 });
+  });
+
+  it('forgets the filters when another collection is opened', async () => {
+    await open({ role: 'reader', data: data() });
+    await typeInSearch('eclipse');
+    await act(async () => { useGlobalStore.setState({ collectionSheetId: 6 }); });
+    await flush();
+    await act(async () => { useGlobalStore.setState({ collectionSheetId: 5 }); });
+    await flush();
+    expect(container.querySelector('input[type="search"]')?.value ?? '').toBe('');
   });
 });

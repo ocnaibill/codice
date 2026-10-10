@@ -137,23 +137,28 @@ func (h *CollectionsHandler) summarize(ctx context.Context, userID, order string
 		}
 	}
 
-	// The notes and highlights of the caller on each work, those with a passage of the book: what the page lists (a bookmark is a place).
+	// The notes and highlights of the caller on each work, those with a passage of the book (what the page lists), and the places
+	// they marked, which are counted apart.
 	noteRows, err := h.DB.QueryContext(ctx, `
-		SELECT n.source_work_id, count(*) FROM notes n
-		WHERE n.user_id = $1::uuid AND n.source_work_id = ANY($2) AND n.kind <> 'bookmark' AND COALESCE(n.quote, '') <> ''
+		SELECT n.source_work_id,
+		       count(*) FILTER (WHERE n.kind <> 'bookmark' AND COALESCE(n.quote, '') <> ''),
+		       count(*) FILTER (WHERE n.kind = 'bookmark')
+		FROM notes n
+		WHERE n.user_id = $1::uuid AND n.source_work_id = ANY($2)
 		GROUP BY n.source_work_id`, userID, pq.Array(ids))
 	if err != nil {
 		return sum, err
 	}
 	for noteRows.Next() {
-		var id, n int
-		if err := noteRows.Scan(&id, &n); err != nil {
+		var id, n, marks int
+		if err := noteRows.Scan(&id, &n, &marks); err != nil {
 			noteRows.Close()
 			return sum, err
 		}
 		if i, ok := index[id]; ok {
-			works[i].Notes = n
+			works[i].Notes, works[i].Bookmarks = n, marks
 			sum.Notes += n
+			sum.Bookmarks += marks
 		}
 	}
 	noteRows.Close()
@@ -161,12 +166,31 @@ func (h *CollectionsHandler) summarize(ctx context.Context, userID, order string
 		return sum, err
 	}
 
-	if err := h.DB.QueryRowContext(ctx, `
-		SELECT COALESCE(sum(r.reading_seconds), 0)
+	// The time the caller spent in each work, which is the hours of the whole and the pace for what is left (DEC-165).
+	timeRows, err := h.DB.QueryContext(ctx, `
+		SELECT e.work_id, COALESCE(sum(r.reading_seconds), 0)
 		FROM reading_progress r JOIN files f ON f.id = r.file_id JOIN editions e ON e.id = f.edition_id
-		WHERE r.user_id = $1::uuid AND e.work_id = ANY($2)`, userID, pq.Array(ids)).Scan(&sum.ReadingSeconds); err != nil {
+		WHERE r.user_id = $1::uuid AND e.work_id = ANY($2)
+		GROUP BY e.work_id`, userID, pq.Array(ids))
+	if err != nil {
 		return sum, err
 	}
+	for timeRows.Next() {
+		var id, seconds int
+		if err := timeRows.Scan(&id, &seconds); err != nil {
+			timeRows.Close()
+			return sum, err
+		}
+		if i, ok := index[id]; ok {
+			works[i].seconds = seconds
+			sum.ReadingSeconds += seconds
+		}
+	}
+	timeRows.Close()
+	if err := timeRows.Err(); err != nil {
+		return sum, err
+	}
+	sum.RemainingSeconds = seriesRemaining(works)
 
 	for _, role := range []struct {
 		name string
@@ -237,4 +261,68 @@ func skippedNumbers(numbers []float64) []float64 {
 		}
 	}
 	return missing
+}
+
+// minPaceWorks and minPaceSeconds say when a pace is worth saying: two works of the unit finished, with at least ten minutes of reading
+// between them (the same floor as the work, DEC-155).
+const (
+	minPaceWorks   = 2
+	minPaceSeconds = remainingMinSeconds
+)
+
+// seriesRemaining is how long is left of the sequence of a collection at the pace of the caller in it (DEC-165): for each unit, the time
+// they took on average for a work of it that they finished, times the works of the unit not begun, plus what is left of the one they
+// are in (by its own pace if it is worth saying, else by the average). The complementary works are not in the sequence. It says 0
+// whenever it cannot say it for everything that is left: a unit with works to read and no pace yet, or nothing left to read.
+func seriesRemaining(works []CollectionWork) int {
+	type group struct {
+		done, doneSeconds int
+		left              []CollectionWork
+	}
+	groups := map[string]*group{}
+	for _, w := range works {
+		if !w.Available || w.ID == 0 || w.Unit == unitExtra {
+			continue
+		}
+		g := groups[w.Unit]
+		if g == nil {
+			g = &group{}
+			groups[w.Unit] = g
+		}
+		switch {
+		case w.Completed:
+			if w.seconds > 0 {
+				g.done++
+				g.doneSeconds += w.seconds
+			}
+		default:
+			g.left = append(g.left, w)
+		}
+	}
+	total, any := 0.0, false
+	for _, g := range groups {
+		if len(g.left) == 0 {
+			continue
+		}
+		if g.done < minPaceWorks || g.doneSeconds < minPaceSeconds {
+			return 0
+		}
+		pace := float64(g.doneSeconds) / float64(g.done)
+		for _, w := range g.left {
+			any = true
+			if w.Started {
+				if own := estimateRemaining(w.seconds, w.Percent); own > 0 {
+					total += float64(own)
+					continue
+				}
+				total += pace * (100 - w.Percent) / 100
+				continue
+			}
+			total += pace
+		}
+	}
+	if !any || total > 3600*1000 {
+		return 0
+	}
+	return int(total + 0.5)
 }
