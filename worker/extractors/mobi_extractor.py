@@ -5,6 +5,7 @@ Parses the PalmDB + MOBI + EXTH headers directly from the binary file.
 No external dependencies required beyond stdlib.
 """
 import os
+import re
 import struct
 from typing import Optional
 from .base import BaseExtractor, ExtractedMetadata
@@ -58,6 +59,7 @@ class MobiExtractor(BaseExtractor):
                     meta.title = mobi['title']
 
                 # 4. Parse EXTH header if present
+                exth_data = {}
                 if mobi.get('has_exth'):
                     exth_offset = first_record_offset + 16 + mobi['header_length']
                     exth_data = self._parse_exth(content, exth_offset)
@@ -73,22 +75,29 @@ class MobiExtractor(BaseExtractor):
                     if 'isbn' in exth_data:
                         meta.isbn = exth_data['isbn']
                     if 'publication_date' in exth_data:
-                        meta.publication_date = exth_data['publication_date']
+                        meta.publication_date = self._clean_date(exth_data['publication_date'])
                     if 'language' in exth_data:
                         meta.language = exth_data['language']
                     if 'tags' in exth_data:
                         tags = exth_data['tags']
 
-                # 5. Extract cover image
+                # 5. Extract the cover image: the one the EXTH says (counted from the first image), else the first image
                 first_image = mobi.get('first_image_index')
-                if first_image and first_image < len(records):
-                    img_start = records[first_image]
-                    img_end = records[first_image + 1] if first_image + 1 < len(records) else len(content)
-                    image_data = content[img_start:img_end]
-
-                    # Verify it's actually an image (JPEG or PNG magic bytes)
-                    if image_data[:2] == b'\xff\xd8' or image_data[:4] == b'\x89PNG':
-                        meta.cover_path = self._save_cover(image_data, file_path, covers_dir)
+                if first_image is not None:
+                    candidates = []
+                    if 'cover_offset' in exth_data:
+                        candidates.append(first_image + exth_data['cover_offset'])
+                    candidates.append(first_image)
+                    for index in candidates:
+                        if index >= len(records):
+                            continue
+                        img_start = records[index]
+                        img_end = records[index + 1] if index + 1 < len(records) else len(content)
+                        image_data = content[img_start:img_end]
+                        # Verify it's actually an image (JPEG, PNG or GIF magic bytes)
+                        if image_data[:2] == b'\xff\xd8' or image_data[:4] == b'\x89PNG' or image_data[:4] == b'GIF8':
+                            meta.cover_path = self._save_cover(image_data, file_path, covers_dir)
+                            break
 
         except Exception as e:
             print(f"   ⚠️ MOBI extraction error: {e}")
@@ -101,6 +110,13 @@ class MobiExtractor(BaseExtractor):
             meta.tags = tags
 
         return meta
+
+    @staticmethod
+    def _clean_date(text: str) -> str:
+        """The date of an EXTH is a timestamp ("2024-03-15 03:00:00+00:00"); what the library keeps of a publication is the date, as far
+        as it is one: "2024-03-15", "2024-03" or "2024". Anything that does not begin with one is kept as it came."""
+        match = re.match(r'^\d{4}(?:-\d{2}(?:-\d{2})?)?', text.strip())
+        return match.group(0) if match else text.strip()
 
     def _parse_palm_header(self, content: bytes) -> Optional[dict]:
         """Parse PalmDB header to get record offsets."""
@@ -121,51 +137,41 @@ class MobiExtractor(BaseExtractor):
         return {'num_records': num_records, 'records': records}
 
     def _parse_mobi_header(self, content: bytes, offset: int) -> dict:
-        """Parse MOBI header for title and image index."""
+        """Parse the MOBI header: the text encoding, the full title, the first image and whether there is an EXTH.
+
+        `offset` is where record 0 begins. It holds the PalmDOC header (16 bytes) and then the MOBI header, which begins with the magic
+        'MOBI'. The fields, by their place from the magic (the MobileRead wiki gives them from the start of the record, 16 more):
+        +4 header length, +12 text encoding, +68 and +72 the offset (from the start of record 0) and the length of the full title,
+        +92 the index of the first image record, +112 the EXTH flags (bit 0x40: an EXTH header follows). A header shorter than a field
+        does not have it (the early versions of the format)."""
         result = {}
-
-        # PalmDOC header: compression(2) + unused(2) + text_length(4) + record_count(2) + ...
-        # MOBI header starts at offset + 16
         mobi_offset = offset + 16
-
-        if mobi_offset + 132 > len(content):
+        if mobi_offset + 8 > len(content) or content[mobi_offset:mobi_offset + 4] != b'MOBI':
             return result
 
-        # Check 'MOBI' magic at mobi_offset
-        magic = content[mobi_offset:mobi_offset + 4]
-        if magic != b'MOBI':
-            return result
+        def u32(at: int, default=None):
+            return struct.unpack_from('>I', content, mobi_offset + at)[0] if at + 4 <= header_length and mobi_offset + at + 4 <= len(content) else default
 
-        # Header length: offset+4, 4 bytes
         header_length = struct.unpack_from('>I', content, mobi_offset + 4)[0]
         result['header_length'] = header_length
 
-        # Encoding: offset+8, 4 bytes (1252=cp1252, 65001=utf-8)
-        encoding_raw = struct.unpack_from('>I', content, mobi_offset + 8)[0]
-        result['encoding'] = 'utf-8' if encoding_raw == 65001 else 'cp1252'
+        # 65001 is UTF-8; 1252 is Windows-1252, which is what the older files are.
+        result['encoding'] = 'utf-8' if u32(12) == 65001 else 'cp1252'
 
-        # Full title offset: mobi_offset+84, 4 bytes (relative to first record)
-        title_offset = struct.unpack_from('>I', content, mobi_offset + 84)[0]
-        title_length = struct.unpack_from('>I', content, mobi_offset + 88)[0]
+        title_offset, title_length = u32(68), u32(72)
+        if title_offset and title_length and offset + title_offset + title_length <= len(content):
+            raw_title = content[offset + title_offset:offset + title_offset + title_length]
+            try:
+                result['title'] = raw_title.decode(result['encoding']).strip()
+            except (UnicodeDecodeError, LookupError):
+                result['title'] = raw_title.decode('utf-8', errors='replace').strip()
 
-        if title_offset and title_length:
-            abs_title_offset = offset + title_offset
-            if abs_title_offset + title_length <= len(content):
-                raw_title = content[abs_title_offset:abs_title_offset + title_length]
-                try:
-                    result['title'] = raw_title.decode(result['encoding']).strip()
-                except (UnicodeDecodeError, LookupError):
-                    result['title'] = raw_title.decode('utf-8', errors='replace').strip()
+        flags = u32(112, 0)
+        result['has_exth'] = bool(flags & 0x40)
 
-        # EXTH flags: mobi_offset+128, 4 bytes
-        exth_flags = struct.unpack_from('>I', content, mobi_offset + 128)[0]
-        result['has_exth'] = bool(exth_flags & 0x40)
-
-        # First image index: mobi_offset+108, 4 bytes
-        if mobi_offset + 112 <= len(content):
-            first_image = struct.unpack_from('>I', content, mobi_offset + 108)[0]
-            if first_image != 0xFFFFFFFF:
-                result['first_image_index'] = first_image
+        first_image = u32(92)
+        if first_image is not None and first_image != 0xFFFFFFFF:
+            result['first_image_index'] = first_image
 
         return result
 
@@ -200,6 +206,10 @@ class MobiExtractor(BaseExtractor):
                 break
 
             raw_data = content[pos + 8:pos + 8 + data_length]
+
+            if record_type == 201 and data_length == 4:
+                # The cover: which image, counted from the first image of the book (it is rarely the first one).
+                result['cover_offset'] = struct.unpack('>I', raw_data)[0]
 
             if record_type in self.EXTH_FIELDS:
                 field_name = self.EXTH_FIELDS[record_type]
