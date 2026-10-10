@@ -8,10 +8,12 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/audit"
 	"github.com/ocnaibill/codice/backend/internal/jobs"
+	"github.com/ocnaibill/codice/backend/internal/metaproviders"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -143,4 +145,99 @@ func (h *JobsHandler) ExtractText(w http.ResponseWriter, r *http.Request) {
 		log.Println("Could not audit text.reprocess", err)
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"queued": true, "jobId": jobID.Int64})
+}
+
+// RefreshMetadata asks for the providers to be searched again for a work (DEC-143): what the work says now (its title, its author, the
+// ISBN of its edition, which a person may have corrected) is asked of the providers the owner turned on, and the answers come back as
+// suggestions for the owner or an admin to decide on. Nothing changes until someone accepts. Asking twice while one is waiting or running
+// is one request, and with no provider on nothing is queued: nothing would leave the instance anyway (DEC-045).
+func (h *JobsHandler) RefreshMetadata(w http.ResponseWriter, r *http.Request) {
+	workID, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
+	var exists bool
+	if err := h.DB.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM works WHERE id = $1 AND retired_at IS NULL)`, workID).Scan(&exists); err != nil {
+		log.Println("Error reading the work:", err)
+		http.Error(w, "Error reading the book", http.StatusInternalServerError)
+		return
+	}
+	if !exists {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
+	on, err := metaproviders.AnyEnabled(r.Context(), h.DB)
+	if err != nil {
+		log.Println("Error reading the providers:", err)
+		http.Error(w, "Error reading the providers", http.StatusInternalServerError)
+		return
+	}
+	if !on {
+		writeJSON(w, http.StatusOK, map[string]any{"queued": false, "providersOff": true})
+		return
+	}
+	var jobID sql.NullInt64
+	err = h.DB.QueryRowContext(r.Context(), `
+		INSERT INTO jobs (type, work_id, payload, priority, created_by)
+		VALUES ('match_metadata', $1, '{}', 5, NULLIF($2, '')::uuid)
+		ON CONFLICT (type, work_id) WHERE state IN ('pending', 'running') DO NOTHING
+		RETURNING id`, workID, currentUserID(r)).Scan(&jobID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeJSON(w, http.StatusOK, map[string]any{"queued": true, "alreadyQueued": true})
+		return
+	}
+	if err != nil {
+		log.Println("Error queueing the metadata search:", err)
+		http.Error(w, "Error queueing the job", http.StatusInternalServerError)
+		return
+	}
+	if err := audit.Record(r.Context(), h.DB, currentUserID(r), "metadata.refresh", "work", strconv.Itoa(workID), nil); err != nil {
+		log.Println("Could not audit metadata.refresh", err)
+	}
+	// Wake the workers; a failure only means they will find it on their next poll.
+	jobs.Notify(r.Context(), h.RedisClient, jobID.Int64)
+	writeJSON(w, http.StatusAccepted, map[string]any{"queued": true, "jobId": jobID.Int64})
+}
+
+// MetadataRefreshStatus says how the last search of the providers for a work went: waiting, running, done (with what it found and how many
+// of its suggestions were new) or failed. The page of the work asks it while it waits.
+func (h *JobsHandler) MetadataRefreshStatus(w http.ResponseWriter, r *http.Request) {
+	workID, ok := workIDParam(r)
+	if !ok {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
+	var (
+		id       int64
+		state    string
+		lastErr  sql.NullString
+		payload  []byte
+		created  time.Time
+		finished sql.NullTime
+	)
+	err := h.DB.QueryRowContext(r.Context(), `
+		SELECT id, state, last_error, payload, created_at, finished_at FROM jobs
+		WHERE type = 'match_metadata' AND work_id = $1 ORDER BY id DESC LIMIT 1`, workID).Scan(&id, &state, &lastErr, &payload, &created, &finished)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeJSON(w, http.StatusOK, map[string]any{"job": nil})
+		return
+	}
+	if err != nil {
+		log.Println("Error reading the metadata search:", err)
+		http.Error(w, "Error reading the job", http.StatusInternalServerError)
+		return
+	}
+	var body struct {
+		Result map[string]any `json:"result"`
+	}
+	_ = json.Unmarshal(payload, &body)
+	job := map[string]any{"id": id, "state": state, "createdAt": created, "result": body.Result}
+	if lastErr.Valid && state == "failed" {
+		job["error"] = lastErr.String
+	}
+	if finished.Valid {
+		job["finishedAt"] = finished.Time
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"job": job})
 }

@@ -9,6 +9,7 @@ import { useWork } from '../../reader/api/useWork';
 import { useCandidates } from '../../reader/api/useCandidates';
 import { reasonOf } from '../../reader/api/useVersions';
 import { WorkSuggestions } from '../../reader/components/WorkSuggestions';
+import { RefreshMetadata } from '../../reader/components/RefreshMetadata';
 import { ConfirmDialog } from '../../admin/components/ConfirmDialog';
 import { useDialog } from '../../../lib/useDialog';
 import { languageName } from '../../reader/files';
@@ -536,7 +537,12 @@ export function EditBookModal({ workId, tab: initialTab = 'suggestions', onClose
         <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6">
           {isLoading && <p className="animate-pulse text-sm text-ink-faint">Carregando a obra…</p>}
           {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta obra.</LoadError>}
-          {work && tab === 'suggestions' && <WorkSuggestions workId={work.id} emptyText="Nenhuma sugestão esperando decisão." />}
+          {work && tab === 'suggestions' && (
+            <>
+              <RefreshMetadata workId={work.id} />
+              <WorkSuggestions workId={work.id} emptyText="Nenhuma sugestão esperando decisão." />
+            </>
+          )}
           {work && tab === 'edit' && <EditForm work={work} onClose={onClose} />}
           {work && tab === 'titles' && <TitlesAndPeople work={work} />}
           {work && tab === 'categories' && <WorkCategoriesEditor work={work} />}

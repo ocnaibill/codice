@@ -46,6 +46,7 @@ async function render({ candidates = [], tab: initial, work = record } = {}) {
   api.get.mockImplementation(async (url) => {
     if (url === '/works/7') return { data: work };
     if (url === '/works/7/candidates') return { data: { data: candidates } };
+    if (url === '/admin/works/7/metadata-refresh') return { data: { job: null } };
     throw new Error(`unexpected GET ${url}`);
   });
   api.put.mockResolvedValue({});
@@ -74,6 +75,15 @@ afterEach(() => {
 });
 
 describe('EditBookModal: the metadata of a work (#70)', () => {
+  it('puts the button that searches the providers again on the suggestions, above them, and not on the other tabs', async () => {
+    await render({ candidates: [isbn] });
+    const search = button('Buscar metadados de novo');
+    expect(search).toBeTruthy();
+    expect(container.querySelector('section[aria-label="Sugestões dos provedores"]').compareDocumentPosition(search) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    await click(tab('Editar'));
+    expect(button('Buscar metadados de novo')).toBeUndefined();
+  });
+
   it('opens on the suggestions, says how many wait, and says so when none does', async () => {
     await render({ candidates: [isbn] });
     expect(tab('Sugestões (1)').getAttribute('aria-selected')).toBe('true');

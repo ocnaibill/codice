@@ -303,13 +303,15 @@ class Analyzer:
     CANDIDATE_FIELDS = ['title', 'author', 'series', 'series_index', 'isbn', 'language',
                         'publisher', 'publication_date', 'description']
 
-    def save_candidates(self, work_id: int, record: dict, source: str, evidence: Optional[dict] = None) -> int:
+    def save_candidates(self, work_id: int, record: dict, source: str, evidence: Optional[dict] = None, include_locked: bool = False) -> int:
         """Store a provider's suggestions for an admin to accept or reject.
 
         Nothing is applied to the work. A field is skipped when it is locked,
         when the provider has no value, or when it equals the current value. The
         (work, field, source, value) key makes a repeated or previously rejected
-        suggestion a no-op. Returns how many suggestions were stored."""
+        suggestion a no-op. Returns how many suggestions were new. `include_locked`
+        proposes for the fields a person confirmed too, for whoever asked to search
+        again (accepting changes a confirmed field, as it always did)."""
         import json
         state = self._load_state(work_id)
         evidence_json = json.dumps(evidence or {})
@@ -317,19 +319,19 @@ class Analyzer:
 
         def propose(field: str, value: str):
             nonlocal stored
-            self.db.execute(
+            added = self.db.execute(
                 """INSERT INTO metadata_candidates (work_id, field, value, source, evidence)
                    VALUES (%s, %s, %s, %s, %s::jsonb)
                    ON CONFLICT (work_id, field, source, value) DO NOTHING""",
                 (work_id, field, value, source, evidence_json))
-            stored += 1
+            stored += 0 if added == 0 else 1   # the database says how many rows went in; a repeated or rejected suggestion did not
 
         for field in self.CANDIDATE_FIELDS:
             value = record.get(field)
             if value in (None, '', 0):
                 continue
             lock_name = 'series' if field == 'series_index' else field
-            if state['locks'].get(lock_name):
+            if state['locks'].get(lock_name) and not include_locked:
                 continue
             text = fit_field(field, str(value)) if field != 'series_index' else str(value)
             if text is None:
@@ -345,7 +347,7 @@ class Analyzer:
                 continue
             propose(field, text)
 
-        extra = self._missing_contributors(work_id, record, state)
+        extra = self._missing_contributors(work_id, record, state, include_locked)
         if extra:
             propose('contributors', json.dumps(extra, ensure_ascii=False))
 
@@ -358,10 +360,10 @@ class Analyzer:
                 propose('tags', json.dumps(sorted(tags)))
         return stored
 
-    def _missing_contributors(self, work_id: int, record: dict, state: dict) -> list:
+    def _missing_contributors(self, work_id: int, record: dict, state: dict, include_locked: bool = False) -> list:
         """The people the provider credits besides the author it suggests (a co-author, an illustrator, a
         translator), with the role of each, leaving out whoever the work already has in that role. The first
-        author is the `author` suggestion's business, not this one's. A locked author is not given co-authors."""
+        author is the `author` suggestion's business, not this one's. A locked author is not given co-authors (unless `include_locked`)."""
         credits = record.get('credits') or []
         if len(credits) == 0:
             return []
@@ -369,7 +371,7 @@ class Analyzer:
             """SELECT p.name, c.role FROM work_contributors c JOIN person p ON p.id = c.person_id
                WHERE c.work_id = %s""", (work_id,)) or [])}
         first = name_key(record.get('author') or '')
-        author_locked = bool(state['locks'].get('author'))
+        author_locked = bool(state['locks'].get('author')) and not include_locked
         out, seen = [], set()
         for credit in credits:
             name = ' '.join(str(credit.get('name') or '').split())
