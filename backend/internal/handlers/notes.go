@@ -278,7 +278,9 @@ func (h *NotesHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 // noteFilter is what the list and the export both accept.
 type noteFilter struct {
 	workID, fileID int64
-	kind, tag, q   string
+	// personID: the notes on works the person has a hand in, in any role (the page of a person, DEC-158).
+	personID     int64
+	kind, tag, q string
 }
 
 func parseNoteFilter(r *http.Request) (noteFilter, error) {
@@ -288,6 +290,11 @@ func parseNoteFilter(r *http.Request) (noteFilter, error) {
 	if v := q.Get("workId"); v != "" {
 		if f.workID, err = strconv.ParseInt(v, 10, 64); err != nil || f.workID <= 0 {
 			return f, errors.New("workId is a number")
+		}
+	}
+	if v := q.Get("personId"); v != "" {
+		if f.personID, err = strconv.ParseInt(v, 10, 64); err != nil || f.personID <= 0 {
+			return f, errors.New("personId is a number")
 		}
 	}
 	if v := q.Get("fileId"); v != "" {
@@ -323,6 +330,9 @@ func (f noteFilter) where(userID string) (string, []any) {
 	}
 	if f.fileID > 0 {
 		add("n.file_id = ?", f.fileID)
+	}
+	if f.personID > 0 {
+		add("EXISTS (SELECT 1 FROM work_contributors pc WHERE pc.work_id = n.source_work_id AND pc.person_id = ?)", f.personID)
 	}
 	if f.kind != "" {
 		add("n.kind = ?", f.kind)

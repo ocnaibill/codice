@@ -24,7 +24,7 @@ function whereLine(note) {
  * One of the person's highlights, chosen when the page opens, to put under the tags: "alguma que a pessoa tenha salvo durante sua leitura".
  * Another visit may bring another. Only a passage of a length that reads well alone is chosen.
  */
-export function FeaturedQuote({ notes, workId, onOpen }) {
+export function FeaturedQuote({ notes, workId, onOpen, showWork = false }) {
   const chosen = React.useMemo(() => {
     const candidates = highlightsOf(notes).filter((note) => {
       const length = note.quote.trim().length;
@@ -41,7 +41,10 @@ export function FeaturedQuote({ notes, workId, onOpen }) {
     <figure className="max-w-2xl rounded-xl border-l-4 border-brand bg-white p-4 shadow-sm" aria-label="Um destaque seu">
       <blockquote className="font-display text-lg italic leading-relaxed text-ink sm:text-xl">“{chosen.quote.trim()}”</blockquote>
       <figcaption className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-soft">
-        <span>{where || 'Um trecho que você destacou'}</span>
+        <span>
+          {showWork && chosen.workTitle ? `${chosen.workTitle}${where ? ' · ' : ''}` : ''}
+          {where || (showWork && chosen.workTitle ? '' : 'Um trecho que você destacou')}
+        </span>
         <button type="button" onClick={() => onOpen(chosen)} className="underline decoration-dotted underline-offset-4 hover:text-ink">
           Abrir no livro
         </button>
@@ -51,22 +54,22 @@ export function FeaturedQuote({ notes, workId, onOpen }) {
 }
 
 /** The person's highlights and notes in the work, each opening the reader at its place. */
-export function WorkHighlights({ notes, onOpen }) {
+export function WorkHighlights({ notes, onOpen, title = 'Seus destaques', showWork = false }) {
   const [all, setAll] = React.useState(false);
   const list = highlightsOf(notes);
   if (list.length === 0) return null;
   const shown = all ? list : list.slice(0, SHOWN);
   return (
-    <section aria-label="Seus destaques" className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
+    <section aria-label={title} className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <h2 className="font-display text-2xl text-ink">Seus destaques</h2>
+        <h2 className="font-display text-2xl text-ink">{title}</h2>
         <span className="font-mono text-[11px] uppercase tracking-widest text-ink-faint">
           {list.length} {list.length === 1 ? 'anotação salva' : 'anotações salvas'}
         </span>
       </div>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {shown.map((note) => {
-          const where = whereLine(note);
+          const where = [showWork ? note.workTitle : '', whereLine(note)].filter(Boolean).join(' · ');
           return (
             <li key={note.id} className="flex flex-col gap-2 rounded-lg bg-surface p-3">
               <button type="button" onClick={() => onOpen(note)} className="text-left" title="Abrir no livro">
