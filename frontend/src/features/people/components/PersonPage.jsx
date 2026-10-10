@@ -6,6 +6,9 @@ import { formatCount, formatReadingTime } from '../../home/utils/format';
 import { useWorks } from '../../library/api/useWorks';
 import { ROLES } from '../../reader/credits';
 import { usePerson } from '../api/usePerson';
+import { usePersonHighlights } from '../api/usePersonHighlights';
+import { FeaturedQuote, WorkHighlights } from '../../library/components/WorkHighlights';
+import { isStaff, useMe } from '../../auth/api/useMe';
 import { PersonProfile } from './PersonProfile';
 
 // A person's works come in one request of this many: a person with more is paged, and the series shelves are of the page.
@@ -40,6 +43,27 @@ export function shelvesOf(works) {
   return { series, loose };
 }
 
+/** For staff: the names of the people are corrected in the administration, in the tab of the duplicates (DEC-093). */
+function CorrectNameButton() {
+  const staff = isStaff(useMe().data);
+  const openAdmin = useGlobalStore((state) => state.openAdmin);
+  const setAdminTab = useGlobalStore((state) => state.setAdminTab);
+  if (!staff) return null;
+  return (
+    <button
+      type="button"
+      className="library-button"
+      title="O nome e as formas em que ele aparece se corrigem na administração"
+      onClick={() => {
+        openAdmin();
+        setAdminTab('duplicates');
+      }}
+    >
+      Corrigir o nome
+    </button>
+  );
+}
+
 function Stat({ label, value }) {
   return (
     <div className="library-stat">
@@ -59,11 +83,13 @@ export function PersonPage() {
   const close = useGlobalStore((state) => state.closePerson);
   const openCollection = useGlobalStore((state) => state.openCollection);
   const setView = useGlobalStore((state) => state.setLibraryView);
+  const openBook = useGlobalStore((state) => state.openBook);
   const headingRef = React.useRef(null);
   const pageRef = React.useRef(null);
   const [chosen, setChosen] = React.useState(null);
   const [page, setPage] = React.useState(1);
   const { data: person, isLoading, isError, error, refetch, isRefetching } = usePerson(id);
+  const notes = usePersonHighlights(id).data?.data;
 
   // Another person, or another role, starts at the first page.
   React.useEffect(() => {
@@ -93,6 +119,7 @@ export function PersonPage() {
   const collectionOf = (name) => (person?.collections ?? []).find((c) => keyOf(c.name) === keyOf(name));
   const stats = person?.stats;
   const tags = person?.tags ?? [];
+  const openNote = (note) => openBook(note.workId, note.fileId, { locator: note.locator, context: { kind: 'note', quote: note.quote } });
 
   return (
     <div ref={pageRef} className="library-dashboard" role="region" aria-label="Pessoa">
@@ -109,7 +136,10 @@ export function PersonPage() {
       {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta página.</LoadError>}
       {person && (
         <div className="mt-4 flex flex-col gap-6">
-          <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl leading-tight text-ink outline-none sm:text-5xl">{person.displayName}</h1>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl leading-tight text-ink outline-none sm:text-5xl">{person.displayName}</h1>
+            <CorrectNameButton />
+          </div>
           <PersonProfile person={person} />
 
           {person.aliases.length > 0 && (
@@ -134,6 +164,8 @@ export function PersonPage() {
               ))}
             </ul>
           )}
+
+          <FeaturedQuote notes={notes} workId={id} showWork onOpen={openNote} />
 
           {roles.length === 0 ? (
             <p className="rounded-lg border border-dashed border-surface-alt bg-surface/50 px-4 py-8 text-center text-sm text-ink-faint">
@@ -196,6 +228,8 @@ export function PersonPage() {
               )}
             </>
           )}
+
+          <WorkHighlights notes={notes} onOpen={openNote} title="Seus destaques nas obras dele" showWork />
         </div>
       )}
     </div>

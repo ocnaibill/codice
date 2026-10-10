@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -263,5 +264,50 @@ func TestNotes_SayTheChapterTheirPlaceIsInWhenAskedAndTheFileHasAnOutline(t *tes
 	// The notes are the caller's.
 	if got := s.notesWithChapters(bob, fmt.Sprintf("workId=%d&limit=50&chapters=true", work)); len(got.Data) != 0 {
 		t.Errorf("bob sees ana's notes: %+v", got.Data)
+	}
+}
+
+func TestNotes_CanBeAskedForByThePersonWhoseWorksTheyAreOn(t *testing.T) {
+	s := newCatalogStack(t)
+	duna := s.addWork("Duna", "Frank Herbert", "a.epub", "epub")
+	messias := s.addWork("Messias", "Frank Herbert", "b.epub", "epub")
+	solaris := s.addWork("Solaris", "Stanisław Lem", "c.epub", "epub")
+	s.credit(admin, solaris, "Frank Herbert", "translator") // another role of the same person counts
+	note := func(a actor, work int, quote string) {
+		t.Helper()
+		if rec := s.do(a, "POST", fmt.Sprintf("/works/%d/notes", work), `{"kind":"highlight","quote":"`+quote+`"}`); rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+			t.Fatalf("%d %s", rec.Code, rec.Body.String())
+		}
+	}
+	note(ana, duna, "do Duna")
+	note(ana, messias, "do Messias")
+	note(ana, solaris, "do Solaris")
+	note(bob, duna, "do Duna do Bob")
+	other := s.personID("Stanisław Lem")
+	frank := s.personID("Frank Herbert")
+
+	quotes := func(a actor, person int) string {
+		var out []string
+		for _, n := range s.notesWithChapters(a, fmt.Sprintf("personId=%d&limit=50", person)).Data {
+			out = append(out, n.Quote)
+		}
+		sort.Strings(out)
+		return strings.Join(out, "|")
+	}
+	if got := quotes(ana, frank); got != "do Duna|do Messias|do Solaris" {
+		t.Errorf("ana, Frank: %s", got)
+	}
+	if got := quotes(ana, other); got != "do Solaris" {
+		t.Errorf("ana, Lem: %s", got)
+	}
+	// Only the caller's own.
+	if got := quotes(bob, frank); got != "do Duna do Bob" {
+		t.Errorf("bob: %s", got)
+	}
+	// What is not a person.
+	for _, bad := range []string{"personId=abc", "personId=0", "personId=-3"} {
+		if rec := s.do(ana, "GET", "/notes?"+bad, ""); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", bad, rec.Code)
+		}
 	}
 }

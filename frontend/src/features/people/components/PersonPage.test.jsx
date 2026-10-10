@@ -31,10 +31,11 @@ const click = async (el) => { await act(async () => { el.click(); }); await flus
 const button = (text) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
 const chip = (label) => [...container.querySelectorAll('[aria-label="Função na obra"] button')].find((b) => b.textContent.startsWith(label));
 
-async function open({ data = person(), works = { data: [work(1, 'Duna'), work(2, 'Messias')], total: 2, totalPages: 1 }, id = 9 } = {}) {
+async function open({ role = 'reader', notes = { data: [], total: 0 }, data = person(), works = { data: [work(1, 'Duna'), work(2, 'Messias')], total: 2, totalPages: 1 }, id = 9 } = {}) {
   asked = [];
   api.get.mockImplementation(async (url) => {
-    if (url === '/auth/me') return { data: { id: 'u', role: 'reader' } };
+    if (url === '/auth/me') return { data: { id: 'u', role } };
+    if (url === '/notes') return { data: notes };
     if (url === `/people/${id}`) {
       if (data instanceof Error) throw data;
       return { data };
@@ -225,6 +226,39 @@ describe('PersonPage: the page of a person (#186)', () => {
     expect(useGlobalStore.getState().personSheetId).toBe(9);
     await click(button('← Voltar'));
     expect(useGlobalStore.getState().personSheetId).toBeNull();
+  });
+
+  it('puts one of the highlights on the works of the person at the top and all of them at the bottom, each opening the reader there', async () => {
+    const notes = { total: 2, data: [
+      { id: 1, kind: 'highlight', quote: 'Não terei medo. O medo é o assassino da mente, a pequena morte.', body: '', tags: [], workId: 1, workTitle: 'Duna', fileId: 10, chapter: 'Capítulo 1', locator: { type: 'epub', href: 'c1.xhtml' } },
+      { id: 2, kind: 'bookmark', quote: '', body: '', tags: [], workId: 1, workTitle: 'Duna', fileId: 10, locator: { type: 'epub', href: 'c2.xhtml' } },
+    ] };
+    await open({ notes });
+    expect(api.get).toHaveBeenCalledWith('/notes', { params: { personId: 9, limit: 200, chapters: true } });
+    expect(container.querySelector('figure[aria-label="Um destaque seu"]').textContent).toContain('Duna · Capítulo 1');
+    const section = container.querySelector('section[aria-label="Seus destaques nas obras dele"]');
+    expect(section.textContent).toContain('1 anotação salva');
+    expect(section.textContent).toContain('Duna · Capítulo 1'); // each says which work it is of
+    await click(section.querySelector('li button'));
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 1, activeFileId: 10 });
+    expect(useGlobalStore.getState().seek).toMatchObject({ locator: { type: 'epub', href: 'c1.xhtml' }, context: { kind: 'note' } });
+  });
+
+  it('has no marginalia when the person kept none on the works', async () => {
+    await open();
+    expect(container.querySelector('section[aria-label="Seus destaques nas obras dele"]')).toBeNull();
+    expect(container.querySelector('figure[aria-label="Um destaque seu"]')).toBeNull();
+  });
+
+  it('gives staff a way to the correction of the name, and nobody else', async () => {
+    await open({ role: 'admin' });
+    await click(button('Corrigir o nome'));
+    expect(useGlobalStore.getState()).toMatchObject({ adminOpen: true, adminTab: 'duplicates', personSheetId: null });
+    act(() => root.unmount());
+    root = createRoot(container);
+    useGlobalStore.setState({ adminOpen: false });
+    await open({ role: 'reader' });
+    expect(button('Corrigir o nome')).toBeUndefined();
   });
 
   it('goes to the library from the trail', async () => {
