@@ -38,6 +38,9 @@ type WorkMetadata struct {
 	// manga. Empty when nobody said.
 	Unit      string `json:"unit"`
 	ComicKind string `json:"comicKind"`
+	// VolumeNumber is the bound volume that collected a chapter and StoryArc the arc it is in (DEC-169); empty when nobody said.
+	VolumeNumber *float64 `json:"volumeNumber"`
+	StoryArc     string   `json:"storyArc"`
 	// SeriesDirection is how the official collection the work is in says it is read (DEC-166): "ltr", "rtl" or "webtoon"; empty when
 	// the work is in none or nobody said.
 	SeriesDirection string `json:"seriesDirection"`
@@ -63,7 +66,7 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int, order string) (*W
 	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(e.isbn, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.language, ''), COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(a.name, ''),
-		       COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.original_year,
+		       COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.original_year, w.volume_number, COALESCE(w.story_arc, ''),
 		       COALESCE((SELECT c.reading_direction FROM collection_works cw JOIN collections c ON c.id = cw.collection_id
 		                 WHERE cw.work_id = w.id AND cw.official AND c.retired_at IS NULL LIMIT 1), ''),
 		       w.title_lock, w.author_lock, w.series_lock, w.cover_lock,
@@ -72,7 +75,7 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int, order string) (*W
 		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1`, workID).Scan(
 		&m.Series, &m.SeriesIndex, &m.ISBN, &m.Publisher, &m.Language, &m.PublicationDate, &m.Description, &m.FirstAuthor,
-		&m.Unit, &m.ComicKind, &year, &m.SeriesDirection,
+		&m.Unit, &m.ComicKind, &year, &m.VolumeNumber, &m.StoryArc, &m.SeriesDirection,
 		&titleL, &authorL, &seriesL, &coverL, &isbnL, &pubL, &langL, &dateL, &descL, &yearL)
 	if err != nil {
 		return nil, err
@@ -128,6 +131,9 @@ type workFields struct {
 	// Either may be empty.
 	Unit      string
 	ComicKind string
+	// VolumeNumber and StoryArc say where a chapter sits in its series (DEC-169): "" when nobody said. The number is kept as text, as it is written.
+	VolumeNumber string
+	StoryArc     string
 }
 
 // validYear says whether a text is a year a work can have been first published in: whole, not zero (there is no year 0), from 3000 before the
@@ -163,13 +169,13 @@ func readWorkFields(tx *sql.Tx, workID int) (workFields, bool, error) {
 		SELECT w.original_title, COALESCE(a.name, 'Unknown Author'), COALESCE(w.series, ''), COALESCE(w.series_index, 0),
 		       COALESCE(e.isbn, ''), COALESCE(e.publisher, ''), COALESCE(e.language, ''),
 		       COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.retired_at IS NOT NULL,
-		       COALESCE(w.original_year::text, '')
+		       COALESCE(w.original_year::text, ''), COALESCE(w.volume_number::text, ''), COALESCE(w.story_arc, '')
 		FROM works w
 		LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
 		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1 FOR UPDATE OF w`, workID).Scan(
 		&f.Title, &f.Author, &f.Series, &f.SeriesIndex, &f.ISBN, &f.Publisher, &f.Language,
-		&f.PublicationDate, &f.Description, &f.Unit, &f.ComicKind, &retired, &f.OriginalYear)
+		&f.PublicationDate, &f.Description, &f.Unit, &f.ComicKind, &retired, &f.OriginalYear, &f.VolumeNumber, &f.StoryArc)
 	return f, retired, err
 }
 
@@ -232,6 +238,8 @@ func applyWorkFields(ctx context.Context, tx *sql.Tx, workID int, actor, source 
 	for _, f := range []struct{ name, from, to string }{
 		{"unit", cur.Unit, next.Unit},
 		{"comic_kind", cur.ComicKind, next.ComicKind},
+		{"volume_number", cur.VolumeNumber, next.VolumeNumber},
+		{"story_arc", cur.StoryArc, next.StoryArc},
 	} {
 		if f.to != f.from {
 			add(f.name, sql.NullString{String: f.to, Valid: f.to != ""})

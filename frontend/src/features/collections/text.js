@@ -128,3 +128,76 @@ export function groupByUnit(works) {
     .filter((g) => g.works.length > 0);
   return { groups, headings: groups.some((g) => g.key !== '') };
 }
+
+/**
+ * The works of a collection by volume (DEC-169): a bound volume holds the chapters that were collected in it, with the volume file of that number
+ * first when the library has one; the works that no volume says are in a group of their own, at the end. Volumes go in numeric order.
+ */
+export function groupByVolume(works) {
+  const sequence = works.filter((w) => w.unit !== 'extra');
+  const byNumber = new Map();
+  const loose = [];
+  for (const w of sequence) {
+    const n = w.unit === 'volume' ? w.position : w.volumeNumber;
+    if (n == null) loose.push(w);
+    else (byNumber.get(n) ?? byNumber.set(n, []).get(n)).push(w);
+  }
+  const groups = [...byNumber.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([n, list]) => {
+      // The volume file first, then the chapters in the order of the collection.
+      const ordered = [...list.filter((w) => w.unit === 'volume'), ...list.filter((w) => w.unit !== 'volume')];
+      const chapters = list.filter((w) => w.unit === 'chapter').length;
+      return {
+        key: `volume:${n}`,
+        heading: `Volume ${numberText(n)}`,
+        note: chapters > 0 ? `${chapters} ${chapters === 1 ? 'capítulo' : 'capítulos'}` : null,
+        works: ordered,
+      };
+    });
+  if (loose.length > 0) groups.push({ key: 'volume:none', heading: 'Sem volume', note: null, works: loose });
+  return groups;
+}
+
+/**
+ * The works of a collection by story arc (DEC-169), in the order of the first chapter of each arc, with the numbers it spans; the works with no
+ * arc are in a group of their own, at the end.
+ */
+export function groupByArc(works) {
+  const sequence = works.filter((w) => w.unit !== 'extra');
+  const byArc = new Map();
+  const loose = [];
+  for (const w of sequence) {
+    if (!w.storyArc) loose.push(w);
+    else (byArc.get(w.storyArc) ?? byArc.set(w.storyArc, []).get(w.storyArc)).push(w);
+  }
+  const first = (list) => Math.min(...list.map((w) => (w.position == null ? Infinity : w.position)));
+  const groups = [...byArc.entries()]
+    .sort((a, b) => first(a[1]) - first(b[1]) || a[0].localeCompare(b[0], 'pt-BR'))
+    .map(([arc, list]) => {
+      const numbers = list.filter((w) => w.position != null).map((w) => w.position);
+      const span = numbers.length === 0 ? '' : Math.min(...numbers) === Math.max(...numbers) ? ` ${numberText(numbers[0])}` : `s ${numberText(Math.min(...numbers))} a ${numberText(Math.max(...numbers))}`;
+      const kind = list.every((w) => w.unit === 'volume') ? 'Volume' : list.every((w) => w.unit === 'chapter') ? 'Capítulo' : 'Obra';
+      const total = `${list.length} ${list.length === 1 ? 'obra' : 'obras'}`;
+      return { key: `arc:${arc}`, heading: arc, note: `${span ? `${kind}${span} · ` : ''}${total}`, works: list };
+    });
+  if (loose.length > 0) groups.push({ key: 'arc:none', heading: 'Sem arco', note: null, works: loose });
+  return groups;
+}
+
+/** The complementary works, as the group that ends every view (DEC-164). */
+export function extraGroup(works) {
+  const extras = works.filter((w) => w.unit === 'extra');
+  const unit = UNITS.find((u) => u.key === 'extra');
+  return extras.length > 0 ? [{ key: 'extra', heading: unit.heading, works: extras }] : [];
+}
+
+/** The views the page of a series offers (DEC-169): the ones the works have data for. "Capítulos" is the way it was and is always there. */
+export function viewsOf(works) {
+  const sequence = works.filter((w) => w.unit !== 'extra');
+  return [
+    { key: 'units', label: 'Todas' },
+    ...(sequence.some((w) => w.volumeNumber != null) ? [{ key: 'volumes', label: 'Por volumes' }] : []),
+    ...(sequence.some((w) => w.storyArc) ? [{ key: 'arcs', label: 'Por arcos' }] : []),
+  ];
+}

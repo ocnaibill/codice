@@ -28,6 +28,7 @@ let container;
 let root;
 let reply;
 let notesReply = { data: [] };
+let lastClient; // the client of the page that was opened last, to make it read again
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 const wait = (ms) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
 const button = (text) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
@@ -55,6 +56,7 @@ async function open({ role = 'admin', data = detail(trio) } = {}) {
   api.delete.mockResolvedValue({});
   useGlobalStore.setState({ collectionSheetId: 5, sheetWorkId: null });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  lastClient = client;
   await act(async () => { root.render(<QueryClientProvider client={client}><CollectionPage /></QueryClientProvider>); });
   await flush();
   await flush();
@@ -1192,5 +1194,162 @@ describe('CollectionPage: how the series is read (DEC-166)', () => {
   it('is not offered on a list of the person, which is not a series', async () => {
     await open({ role: 'reader', data: shelf({ kind: 'personal' }) });
     expect(button('Direção de leitura')).toBeUndefined();
+  });
+});
+
+describe('CollectionPage: by volume and by arc, and grouping the chapters (DEC-169)', () => {
+  const ch = (n, extra = {}) => ({
+    entryId: n * 10, id: n, title: `Capítulo ${n}`, author: 'Miura', coverUrl: `/c/${n}.jpg`, position: n, completed: false, available: true,
+    unit: 'chapter', comicKind: 'manga', percent: 0, started: false, formats: ['cbz'], rating: 0, notes: 0, bookmarks: 0, ...extra,
+  });
+  const grouped = [
+    ch(1, { volumeNumber: 1, storyArc: 'Espadachim Negro' }), ch(2, { volumeNumber: 1, storyArc: 'Espadachim Negro' }),
+    ch(3, { volumeNumber: 2, storyArc: 'Era de Ouro' }), ch(4, { volumeNumber: 2, storyArc: 'Era de Ouro' }),
+    ch(5, { storyArc: 'Era de Ouro' }), ch(6),
+    ch(7, { unit: 'extra', position: 1 }),
+  ];
+  const data = (works = grouped) => ({
+    collection: { id: 5, kind: 'official', name: 'Berserk', workCount: works.length, completedCount: 0, coverUrl: '/c/1.jpg' },
+    works, continue: null,
+    summary: { works: works.length, finished: 0, inProgress: 0, percent: 0, readingSeconds: 0, notes: 0, bookmarks: 0, missing: [], authors: [], translators: [], tags: [] },
+  });
+  const sectionNames = () => [...container.querySelectorAll('section[data-group]')].map((s) => s.getAttribute('aria-label'));
+  const tab = (name) => [...container.querySelectorAll('[role="tab"]')].find((t) => t.textContent === name);
+
+  it('offers no views when no chapter says its volume or arc', async () => {
+    await open({ role: 'reader', data: data(grouped.map((w) => ({ ...w, volumeNumber: undefined, storyArc: undefined }))) });
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
+  });
+
+  it('offers the views the data allows, with the way it was as the first', async () => {
+    await open({ role: 'reader', data: data() });
+    expect([...container.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Todas', 'Por volumes', 'Por arcos']);
+    expect(tab('Todas').getAttribute('aria-selected')).toBe('true');
+    expect(sectionNames()).toEqual(['Capítulos', 'Complementares']);
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ role: 'reader', data: data(grouped.map((w) => ({ ...w, storyArc: undefined }))) });
+    expect([...container.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Todas', 'Por volumes']);
+  });
+
+  it('shows the chapters by the volume that collected them, with the ones with no volume apart and the complementary ones last', async () => {
+    await open({ role: 'reader', data: data() });
+    await click(tab('Por volumes'));
+    expect(sectionNames()).toEqual(['Volume 1', 'Volume 2', 'Sem volume', 'Complementares']);
+    const volume2 = container.querySelector('section[data-group="volume:2"]');
+    expect(volume2.textContent).toContain('2 capítulos');
+    expect([...volume2.querySelectorAll('ol li')].map((li) => li.querySelector('.font-display').textContent)).toEqual(['Capítulo 3', 'Capítulo 4']);
+    expect(tab('Por volumes').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('shows them by arc, in the order they begin, with the numbers each spans, and jumps to one', async () => {
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      await open({ role: 'reader', data: data() });
+      await click(tab('Por arcos'));
+      expect(sectionNames()).toEqual(['Espadachim Negro', 'Era de Ouro', 'Sem arco', 'Complementares']);
+      expect(container.querySelector('section[data-group="arc:Era de Ouro"]').textContent).toContain('Capítulos 3 a 5 · 3 obras');
+      const jump = container.querySelector('nav[aria-label="Saltar para o arco"]');
+      expect([...jump.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Espadachim Negro', 'Era de Ouro']);
+      scroll.mockClear();
+      await click([...jump.querySelectorAll('button')].find((b) => b.textContent === 'Era de Ouro'));
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll.mock.contexts[0].getAttribute('data-group')).toBe('arc:Era de Ouro');
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it('has no jump with a single arc, and goes back to the units with "Todas"', async () => {
+    await open({ role: 'reader', data: data(grouped.map((w) => ({ ...w, storyArc: w.unit === 'extra' ? undefined : 'Único arco' }))) });
+    await click(tab('Por arcos'));
+    expect(container.querySelector('nav[aria-label="Saltar para o arco"]')).toBeNull();
+    await click(tab('Todas'));
+    expect(sectionNames()).toEqual(['Capítulos', 'Complementares']);
+  });
+
+  it('gives no moving in a view that is not the order of the collection, and filters inside it', async () => {
+    await open({ role: 'admin', data: data() });
+    expect(container.querySelector('button[aria-label="Subir “Capítulo 2”"]')).toBeTruthy();
+    await click(tab('Por volumes'));
+    expect(container.querySelector('button[aria-label="Subir “Capítulo 2”"]')).toBeNull();
+    const input = container.querySelector('input[type="search"]');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, 'capítulo 4');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(sectionNames()).toEqual(['Volume 2']);
+  });
+
+  it('falls back to the units when the data of the view goes away', async () => {
+    await open({ role: 'reader', data: data() });
+    await click(tab('Por arcos'));
+    // The arcs are taken away (by another person, or by "Tirar o arco") and the page is read again, on the same collection.
+    reply = data(grouped.map((w) => ({ ...w, storyArc: undefined })));
+    await act(async () => { await lastClient.invalidateQueries({ queryKey: ['collection', 5] }); });
+    await flush();
+    expect([...container.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Todas', 'Por volumes']);
+    expect(sectionNames()).toEqual(['Capítulos', 'Complementares']);
+  });
+
+  it('is offered to the staff only: "Agrupar capítulos", not for a list', async () => {
+    await open({ role: 'reader', data: data() });
+    expect(button('Agrupar capítulos')).toBeUndefined();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ role: 'admin', data: data() });
+    expect(button('Agrupar capítulos')).toBeTruthy();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ role: 'reader', data: data().collection ? { ...data(), collection: { ...data().collection, kind: 'personal' } } : data() });
+    expect(button('Agrupar capítulos')).toBeUndefined();
+  });
+
+  it('sends the range, the arc and the volume, and says what changed', async () => {
+    await open({ role: 'admin', data: data() });
+    await click(button('Agrupar capítulos'));
+    const form = labelled('Agrupar capítulos');
+    const field = (label) => [...form.querySelectorAll('label')].find((l) => l.textContent.startsWith(label)).querySelector('input, select');
+    const type = async (el, v) => act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(el, v);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(field('Unidade').value).toBe('chapter');
+    expect(button('Aplicar').disabled).toBe(true); // nothing to say yet
+    await type(field('Do número'), '9');
+    await type(field('Até o número'), '94');
+    await type(field('Arco'), ' A Era de Ouro ');
+    await type(field('Volume encadernado'), '12');
+    api.put.mockResolvedValueOnce({ data: { works: 86, changed: { story_arc: 80, volume_number: 86 } } });
+    await click(button('Aplicar'));
+    expect(api.put).toHaveBeenCalledWith('/collections/5/grouping', { unit: 'chapter', from: 9, to: 94, storyArc: 'A Era de Ouro', volumeNumber: '12' });
+    expect(form.textContent).toContain('86 obras na faixa: arco mudou em 80, volume mudou em 86.');
+  });
+
+  it('takes the arc or the volume away with its box, and sends only that', async () => {
+    await open({ role: 'admin', data: data() });
+    await click(button('Agrupar capítulos'));
+    const form = labelled('Agrupar capítulos');
+    const box = [...form.querySelectorAll('label')].find((l) => l.textContent.includes('Tirar o arco')).querySelector('input');
+    await click(box);
+    expect(button('Aplicar').disabled).toBe(false);
+    await click(button('Aplicar'));
+    expect(api.put).toHaveBeenCalledWith('/collections/5/grouping', { unit: 'chapter', storyArc: '' });
+  });
+
+  it('says what the server refused and keeps the form', async () => {
+    await open({ role: 'admin', data: data() });
+    await click(button('Agrupar capítulos'));
+    const form = labelled('Agrupar capítulos');
+    const arc = [...form.querySelectorAll('label')].find((l) => l.textContent.startsWith('Arco')).querySelector('input');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(arc, 'X');
+      arc.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    api.put.mockRejectedValueOnce(Object.assign(new Error('x'), { response: { status: 409, data: { error: 'A coleção está aposentada: restaure antes de mudar.', collectionId: 5 } } }));
+    await click(button('Aplicar'));
+    expect(form.textContent).toContain('A coleção está aposentada: restaure antes de mudar.');
   });
 });

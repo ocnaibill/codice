@@ -8,6 +8,7 @@ import {
   collectionReason,
   useAddToCollection,
   useClassifyCollection,
+  useGroupCollection,
   useCollection,
   useOrderCollection,
   useRemoveFromCollection,
@@ -15,7 +16,7 @@ import {
   useRestoreCollection,
   useRetireCollection,
 } from '../api/useCollections';
-import { collectionLine, COMIC_KINDS, groupByUnit, numberText, goOnText, sequenceWord, UNITS, unitLabel, wordsOf, worksText } from '../text';
+import { collectionLine, COMIC_KINDS, extraGroup, groupByArc, groupByUnit, groupByVolume, numberText, goOnText, sequenceWord, UNITS, unitLabel, viewsOf, wordsOf, worksText } from '../text';
 import { CollectionFavoriteButton } from './CollectionFavoriteButton';
 import { ProgressBar } from '../../../components/ui/ProgressBar';
 import { formatReadingTime } from '../../home/utils/format';
@@ -273,11 +274,11 @@ function WorkRow({ work, label, index, count, staff, movable, confirming, busy, 
 const SHOWN = 50;
 
 /** One group of the works of a collection (the volumes, the chapters…), of which the first are shown and the rest come when asked. */
-function WorkGroup({ group, heading, note, words, official, rowProps, onMove }) {
+function WorkGroup({ group, heading, note, groupKey, words, official, rowProps, onMove }) {
   const [shown, setShown] = React.useState(SHOWN);
   const visible = group.works.slice(0, shown);
   return (
-    <section aria-label={heading ?? undefined} className="flex flex-col gap-2">
+    <section aria-label={heading ?? undefined} data-group={groupKey} className="flex scroll-mt-4 flex-col gap-2">
       {heading && (
         <h3 className="font-mono text-[11px] font-semibold uppercase tracking-widest text-ink-faint">
           {heading} <span className="font-normal">({group.works.length})</span>
@@ -307,6 +308,93 @@ function WorkGroup({ group, heading, note, words, official, rowProps, onMove }) 
 }
 
 const SELECT = 'min-h-11 rounded-lg border border-border-hairline bg-surface px-3 text-sm text-ink';
+
+/**
+ * Says, for a range of the chapters of a series, the bound volume that collected them and the story arc they are in (DEC-169). The range is by
+ * number in the series, both ends in; with none, every work of the unit. What is left empty is left alone, unless its box says to take it away.
+ */
+function GroupPanel({ collection, onDone }) {
+  const group = useGroupCollection();
+  const [unit, setUnit] = React.useState('chapter');
+  const [from, setFrom] = React.useState('');
+  const [to, setTo] = React.useState('');
+  const [arc, setArc] = React.useState('');
+  const [volume, setVolume] = React.useState('');
+  const [dropArc, setDropArc] = React.useState(false);
+  const [dropVolume, setDropVolume] = React.useState(false);
+  const [message, setMessage] = React.useState('');
+  const number = (v) => (v.trim() === '' ? undefined : Number(v.replace(',', '.')));
+  const storyArc = dropArc ? '' : arc.trim() || undefined;
+  const volumeNumber = dropVolume ? '' : volume.trim() || undefined;
+  const nothing = storyArc === undefined && volumeNumber === undefined;
+  const submit = (event) => {
+    event.preventDefault();
+    if (nothing) return;
+    setMessage('');
+    group.mutate(
+      { id: collection.id, unit, from: number(from), to: number(to), storyArc, volumeNumber },
+      {
+        onSuccess: (done) => {
+          const arcs = done?.changed?.story_arc ?? 0;
+          const volumes = done?.changed?.volume_number ?? 0;
+          const works = done?.works ?? 0;
+          setMessage(`${works} ${works === 1 ? 'obra na faixa' : 'obras na faixa'}: ${[storyArc !== undefined && `arco mudou em ${arcs}`, volumeNumber !== undefined && `volume mudou em ${volumes}`].filter(Boolean).join(', ')}.`);
+        },
+        onError: (error) => setMessage(collectionReason(error, 'Não foi possível agrupar as obras.')),
+      }
+    );
+  };
+  const field = 'min-h-11 w-28 rounded-lg border border-border-hairline bg-surface px-3 text-sm text-ink';
+  return (
+    <form onSubmit={submit} aria-label="Agrupar capítulos" className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-sm text-ink-soft">
+          Unidade
+          <select className={SELECT} value={unit} onChange={(e) => setUnit(e.target.value)} disabled={group.isPending}>
+            <option value="">Todas</option>
+            {UNITS.map((u) => <option key={u.key} value={u.key}>{u.one}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-ink-soft">
+          Do número
+          <input className={field} inputMode="decimal" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="1" disabled={group.isPending} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-ink-soft">
+          Até o número
+          <input className={field} inputMode="decimal" value={to} onChange={(e) => setTo(e.target.value)} placeholder="94" disabled={group.isPending} />
+        </label>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-sm text-ink-soft">
+          Arco
+          <input className={SELECT} value={arc} maxLength={255} onChange={(e) => setArc(e.target.value)} placeholder="Ex.: A Era de Ouro" disabled={group.isPending || dropArc} />
+        </label>
+        <label className="flex min-h-11 items-center gap-2 text-sm text-ink-soft">
+          <input type="checkbox" checked={dropArc} onChange={(e) => setDropArc(e.target.checked)} disabled={group.isPending} />
+          Tirar o arco
+        </label>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-sm text-ink-soft">
+          Volume encadernado
+          <input className={field} inputMode="decimal" value={volume} onChange={(e) => setVolume(e.target.value)} placeholder="12" disabled={group.isPending || dropVolume} />
+        </label>
+        <label className="flex min-h-11 items-center gap-2 text-sm text-ink-soft">
+          <input type="checkbox" checked={dropVolume} onChange={(e) => setDropVolume(e.target.checked)} disabled={group.isPending} />
+          Tirar o volume
+        </label>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={group.isPending || nothing} className={PRIMARY}>Aplicar</button>
+        <button type="button" onClick={onDone} className={BUTTON}>Fechar</button>
+      </div>
+      <p className="text-xs text-ink-faint">
+        Vale para as obras da faixa que não estão na lixeira. Sem número, vale para todas da unidade. Cada obra também se corrige à parte na edição dela.
+      </p>
+      {message && <p role="status" className="text-sm text-ink">{message}</p>}
+    </form>
+  );
+}
 
 /**
  * Says what the works of a collection are, all at once (#187, DEC-134): the unit (volume, chapter, one-shot) and whether it is a manga
@@ -390,13 +478,14 @@ export function CollectionPage() {
   const remove = useRemoveFromCollection();
   const retire = useRetireCollection();
   const restore = useRestoreCollection();
-  const [mode, setMode] = React.useState(null); // 'rename' | 'describe' | 'direction' | 'add' | 'classify' | 'retire'
+  const [mode, setMode] = React.useState(null); // 'rename' | 'describe' | 'direction' | 'add' | 'classify' | 'group' | 'retire'
   const [removing, setRemoving] = React.useState(null); // the place waiting for a yes
   const [message, setMessage] = React.useState('');
   const notesRef = React.useRef(null);
   const [query, setQuery] = React.useState('');
   const [status, setStatus] = React.useState('all'); // 'all' | 'unread' | 'read' | 'saved'
   const [descending, setDescending] = React.useState(false);
+  const [groupView, setGroupView] = React.useState('units'); // 'units' | 'volumes' | 'arcs' (DEC-169)
 
   React.useEffect(() => {
     setMode(null);
@@ -405,6 +494,7 @@ export function CollectionPage() {
     setQuery('');
     setStatus('all');
     setDescending(false);
+    setGroupView('units');
   }, [id]);
 
   // A page that opens starts at its top, with the focus on what it is about.
@@ -427,7 +517,13 @@ export function CollectionPage() {
   const fail = (fallback) => (err) => setMessage(collectionReason(err, fallback));
   // An official collection shows its works in groups by unit (#187); a list of the person is one row of places.
   const official = kind === 'official';
-  const { groups: allGroups, headings } = official ? groupByUnit(works) : { groups: [{ key: '', heading: '', works }], headings: false };
+  const views = official ? viewsOf(works) : [{ key: 'units', label: 'Todas' }];
+  const shownView = views.some((v) => v.key === groupView) ? groupView : 'units';
+  const byUnit = official ? groupByUnit(works) : { groups: [{ key: '', heading: '', works }], headings: false };
+  // The views by volume and by arc (DEC-169) put the works in other groups; the complementary ones end every view.
+  const regrouped = shownView === 'volumes' ? groupByVolume(works) : shownView === 'arcs' ? groupByArc(works) : null;
+  const allGroups = regrouped ? [...regrouped, ...extraGroup(works)] : byUnit.groups;
+  const headings = regrouped ? true : byUnit.headings;
   // The filters and the order of the list (DEC-165): a view over the groups, which never changes the order of the collection.
   const isSaved = (w) => (w.notes ?? 0) > 0 || (w.bookmarks ?? 0) > 0;
   const counts = {
@@ -449,7 +545,7 @@ export function CollectionPage() {
   const groups = allGroups
     .map((g) => ({ ...g, works: (descending ? [...g.works].reverse() : g.works).filter(matches) }))
     .filter((g) => g.works.length > 0);
-  const movable = !filtering && !descending;
+  const movable = !filtering && !descending && shownView === 'units';
   const showFilters = works.length > 5;
   const move = (group, index, delta) => {
     const items = [...group.works];
@@ -604,6 +700,7 @@ export function CollectionPage() {
                 )}
                 <button onClick={() => setMode(mode === 'add' ? null : 'add')} aria-pressed={mode === 'add'} className={BUTTON}>Acrescentar obra</button>
                 {official && <button onClick={() => setMode(mode === 'classify' ? null : 'classify')} aria-pressed={mode === 'classify'} className={BUTTON}>Classificar obras</button>}
+                {official && <button onClick={() => setMode(mode === 'group' ? null : 'group')} aria-pressed={mode === 'group'} className={BUTTON}>Agrupar capítulos</button>}
                 {!collection.system && <button onClick={() => setMode(mode === 'retire' ? null : 'retire')} aria-pressed={mode === 'retire'} className={BUTTON}>Aposentar</button>}
               </div>
             )}
@@ -622,6 +719,7 @@ export function CollectionPage() {
           {staff && official && mode === 'direction' && <DirectionForm collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'describe' && <DescribeForm collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'add' && <AddWorkPanel collection={collection} members={works} onDone={() => setMode(null)} />}
+          {staff && official && mode === 'group' && <GroupPanel collection={collection} onDone={() => setMode(null)} />}
           {staff && official && mode === 'classify' && <ClassifyPanel collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'retire' && (
             <div role="alertdialog" aria-label={`Aposentar a ${words.thing}`} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-hairline bg-white p-4 text-sm text-ink-soft">
@@ -634,6 +732,33 @@ export function CollectionPage() {
           )}
           {message && <p role="alert" className="text-sm text-danger">{message}</p>}
 
+          {views.length > 1 && (
+            <div role="tablist" aria-label="Como agrupar as obras" className="flex flex-wrap items-center gap-2">
+              {views.map((v) => (
+                <button key={v.key} type="button" role="tab" aria-selected={shownView === v.key} onClick={() => setGroupView(v.key)} className={BUTTON}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {shownView === 'arcs' && groups.filter((g) => g.key.startsWith('arc:') && g.key !== 'arc:none').length > 1 && (
+            <nav aria-label="Saltar para o arco" className="flex flex-wrap items-center gap-2 text-xs text-ink-soft">
+              Saltar para:
+              {groups.filter((g) => g.key.startsWith('arc:') && g.key !== 'arc:none').map((g) => (
+                <button
+                  key={g.key}
+                  type="button"
+                  className={BUTTON}
+                  onClick={() => {
+                    const target = [...(pageRef.current?.querySelectorAll('[data-group]') ?? [])].find((el) => el.getAttribute('data-group') === g.key);
+                    target?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+                  }}
+                >
+                  {g.heading}
+                </button>
+              ))}
+            </nav>
+          )}
           {showFilters && (
             <div role="search" aria-label="Filtrar as obras" className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-3 shadow-sm">
               <label className="flex flex-col gap-1 text-xs text-ink-soft">
@@ -684,7 +809,8 @@ export function CollectionPage() {
                   key={group.key || 'all'}
                   group={group}
                   heading={headings ? group.heading : null}
-                  note={group.key === 'extra' ? 'Fora da sequência: não entram no progresso, nem em "Continuar", nem nos números que faltam.' : null}
+                  note={group.key === 'extra' ? 'Fora da sequência: não entram no progresso, nem em "Continuar", nem nos números que faltam.' : group.note ?? null}
+                  groupKey={group.key}
                   words={words}
                   official={official}
                   onMove={move}

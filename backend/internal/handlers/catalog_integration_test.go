@@ -222,6 +222,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Delete("/collections/{id}/works/{workId}", colsAdmin.RemoveWork)
 	r.Put("/collections/{id}/order", colsAdmin.Order)
 	r.Put("/collections/{id}/classification", colsAdmin.Classify)
+	r.Put("/collections/{id}/grouping", colsAdmin.Group)
 	mine := &PersonalCollectionsHandler{DB: db}
 	r.Post("/my/collections", mine.Create)
 	r.Patch("/my/collections/{id}", mine.Rename)

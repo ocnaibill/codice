@@ -183,6 +183,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Delete("/collections/{id}/works/{workId}", collectionsAdmin.RemoveWork)
 	r.With(staff).Put("/collections/{id}/order", collectionsAdmin.Order)
 	r.With(staff).Put("/collections/{id}/classification", collectionsAdmin.Classify)
+	r.With(staff).Put("/collections/{id}/grouping", collectionsAdmin.Group)
 	// The lists of a person: anyone signed in keeps their own (RN-006), and nobody reaches another person's.
 	r.With(auth).Post("/my/collections", personalCollections.Create)
 	r.With(auth).Patch("/my/collections/{id}", personalCollections.Rename)

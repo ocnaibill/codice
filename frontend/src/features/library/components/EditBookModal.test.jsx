@@ -301,4 +301,26 @@ describe('EditBookModal: the metadata of a work (#70)', () => {
     await click(button('Salvar'));
     expect(api.put).toHaveBeenCalledWith('/works/7', expect.objectContaining({ unit: 'volume', comic_kind: 'comic' }));
   });
+
+  it('says where a chapter sits: the bound volume that collected it and its arc (DEC-169)', async () => {
+    await render({ tab: 'edit', work: { ...record, metadata: { ...record.metadata, volumeNumber: 12, storyArc: 'A Era de Ouro' } } });
+    const input = (label) => [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith(label)).querySelector('input');
+    expect(input('Volume encadernado').value).toBe('12');
+    expect(input('Arco').value).toBe('A Era de Ouro');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(input('Volume encadernado'), '13');
+      input('Volume encadernado').dispatchEvent(new Event('input', { bubbles: true }));
+      setter.call(input('Arco'), '');
+      input('Arco').dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click(button('Salvar'));
+    expect(api.put).toHaveBeenCalledWith('/works/7', expect.objectContaining({ volume_number: '13', story_arc: '' }));
+  });
+
+  it('sends none of them, empty, for a work that has neither', async () => {
+    await render({ tab: 'edit' });
+    await click(button('Salvar'));
+    expect(api.put).toHaveBeenCalledWith('/works/7', expect.objectContaining({ volume_number: '', story_arc: '' }));
+  });
 });
