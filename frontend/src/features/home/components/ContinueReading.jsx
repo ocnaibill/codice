@@ -16,7 +16,7 @@ import { COMIC_FORMATS, placeLabel } from '../../reader/placeInWords';
 
 const AUDIO_FORMATS = new Set(['mp3', 'm4a', 'm4b', 'ogg', 'wav', 'flac']);
 
-function InProgressCard({ item, onOpen }) {
+function InProgressCard({ item, onOpen, onSheet }) {
   const title = cardTitle(item); // the name of the edition being read, when someone wrote one for it
   // What to continue is the file read last, which is not always the book's primary one: someone
   // reading the English EPUB of a book whose main file is the Portuguese one continues that.
@@ -38,7 +38,12 @@ function InProgressCard({ item, onOpen }) {
   return (
     <article className="library-reading-card relative flex flex-col justify-between">
       <div className="flex w-full items-start gap-4">
-        <div className="relative h-36 w-24 shrink-0 overflow-hidden rounded-sm bg-surface-alt shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]">
+        <button
+          type="button"
+          onClick={() => onSheet(item.id)}
+          aria-label={`Abrir a página: ${title}`}
+          className="relative block h-36 w-24 shrink-0 cursor-pointer overflow-hidden rounded-sm bg-surface-alt p-0 text-left shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
+        >
           <WorkCover item={{ ...item, title }} className="h-full w-full object-cover" />
           {(last?.format || item.format) && (
             <span className="absolute left-1 top-1 rounded-sm bg-[rgba(26,28,31,0.85)] px-1.5 py-0.5 font-body text-[10px] font-bold text-white">
@@ -46,7 +51,7 @@ function InProgressCard({ item, onOpen }) {
               {last?.language ? ` · ${last.language.toUpperCase()}` : ''}
             </span>
           )}
-        </div>
+        </button>
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center justify-between">
             {genre && (
@@ -56,7 +61,11 @@ function InProgressCard({ item, onOpen }) {
             )}
             {item.isFavorite && <img src={iconPin} alt="Favorito" className="size-[9px]" />}
           </div>
-          <h3 className="pt-1 font-body text-xl font-bold tracking-[-0.2px] text-ink" title={title}><MarqueeText>{title}</MarqueeText></h3>
+          <h3 className="pt-1 font-body text-xl font-bold tracking-[-0.2px] text-ink" title={title}>
+            <button type="button" className="library-book-title" onClick={() => onSheet(item.id)} aria-label={`Abrir a página: ${title}`}>
+              <MarqueeText>{title}</MarqueeText>
+            </button>
+          </h3>
           <p className="font-body text-[13px] tracking-[0.065px] text-ink-soft"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
           {(chapter || location) && (
             <ul className="mt-3 flex min-w-0 flex-col gap-1">
@@ -102,6 +111,7 @@ function InProgressCard({ item, onOpen }) {
 
 export function ContinueReading({ items, isLoading, onViewAll }) {
   const openBook = useGlobalStore((state) => state.openBook);
+  const openWork = useGlobalStore((state) => state.openWork);
 
   return (
     <section className="min-w-0" aria-label="Continuar lendo e ouvindo">
@@ -121,7 +131,7 @@ export function ContinueReading({ items, isLoading, onViewAll }) {
       ) : (
         <Carousel label="Leituras em andamento" className="library-carousel--reading">
           {items.map((item) => (
-            <InProgressCard key={item.id} item={item} onOpen={openBook} />
+            <InProgressCard key={item.id} item={item} onOpen={openBook} onSheet={openWork} />
           ))}
         </Carousel>
       )}
