@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from providers import ProviderRegistry
 from providers.gate import db_gate
+from providers.health import install as report_provider_health
 from db import CodiceDatabase
 from dotenv import load_dotenv
 
@@ -82,7 +83,9 @@ class SearchHandler(BaseHTTPRequestHandler):
 
 def run_server(host="0.0.0.0", port=5000):
     # Same rule as the analysis: only the providers the owner turned on are asked (#68).
-    SearchHandler.registry = ProviderRegistry(enabled=db_gate(CodiceDatabase()))
+    _db = CodiceDatabase()
+    SearchHandler.registry = ProviderRegistry(enabled=db_gate(_db))
+    report_provider_health(_db, SearchHandler.registry)
     print(f"   🌐 Worker search server starting on {host}:{port}")
     server = HTTPServer((host, port), SearchHandler)
     print(f"   ✅ Worker search server ready on http://{host}:{port}/search")

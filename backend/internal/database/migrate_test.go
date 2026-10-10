@@ -166,6 +166,43 @@ func TestMigrate_TheOriginOfASuggestionHasRoomForEveryProviderThatTookPart(t *te
 	}
 }
 
+// How each provider answered the last time is kept one row per provider (DEC-144), and only a state the page knows how to say is accepted.
+func TestMigrate_TheHealthOfAProviderIsOneRowWithAKnownState(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	insert := `INSERT INTO provider_health (provider, state, status) VALUES ($1, $2, 200)`
+	for _, state := range []string{"ok", "key", "quota", "down", "error"} {
+		if _, err := db.Exec(insert, "p-"+state, state); err != nil {
+			t.Errorf("%s: %v", state, err)
+		}
+	}
+	if _, err := db.Exec(insert, "p-bad", "fine"); err == nil {
+		t.Error("a state the page does not know was accepted")
+	}
+	if _, err := db.Exec(insert, "p-ok", "ok"); err == nil {
+		t.Error("a provider was given two rows")
+	}
+	var streak int
+	var problem string
+	if err := db.QueryRow(`SELECT empty_streak, problem FROM provider_health WHERE provider = 'p-ok'`).Scan(&streak, &problem); err != nil || streak != 0 || problem != "" {
+		t.Errorf("defaults: %d %q %v", streak, problem, err)
+	}
+	if err := database.RollbackTo(db, 62); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	if tableExists(t, db, "provider_health") {
+		t.Error("the table stayed after going back")
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("reapply: %v", err)
+	}
+	if !tableExists(t, db, "provider_health") {
+		t.Error("the table did not come back")
+	}
+}
+
 func itoa(n int) string { return fmt.Sprint(n) }
 
 // The names that were stored before #36 are fixed by the migration with the same rule as

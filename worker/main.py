@@ -12,6 +12,7 @@ from extractors import EpubExtractor, PdfExtractor, CbzExtractor, CbrExtractor, 
 from extractors.base import BaseExtractor
 from providers import ProviderRegistry
 from providers.gate import asks_providers, db_gate, report_keys
+from providers.health import install as report_provider_health
 from rematch import MetadataRematch
 from authority import resolve_pending
 from maintenance import repair_descriptions
@@ -121,6 +122,7 @@ def build_runner(db, client, heartbeat=None):
     extractors = register_extractors()
     # Only the providers the owner turned on are asked (#68): the title of a work goes to no one else.
     provider_registry = ProviderRegistry(enabled=db_gate(db))
+    report_provider_health(db, provider_registry)   # the administration says how each provider answers
     analyzer = Analyzer(db)
     rematch = MetadataRematch(db, analyzer, provider_registry)
 
