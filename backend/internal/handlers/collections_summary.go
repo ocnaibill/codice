@@ -127,6 +127,30 @@ func (h *CollectionsHandler) summarize(ctx context.Context, userID, order string
 		}
 	}
 
+	// The notes and highlights of the caller on each work, those with a passage of the book: what the page lists (a bookmark is a place).
+	noteRows, err := h.DB.QueryContext(ctx, `
+		SELECT n.source_work_id, count(*) FROM notes n
+		WHERE n.user_id = $1::uuid AND n.source_work_id = ANY($2) AND n.kind <> 'bookmark' AND COALESCE(n.quote, '') <> ''
+		GROUP BY n.source_work_id`, userID, pq.Array(ids))
+	if err != nil {
+		return sum, err
+	}
+	for noteRows.Next() {
+		var id, n int
+		if err := noteRows.Scan(&id, &n); err != nil {
+			noteRows.Close()
+			return sum, err
+		}
+		if i, ok := index[id]; ok {
+			works[i].Notes = n
+			sum.Notes += n
+		}
+	}
+	noteRows.Close()
+	if err := noteRows.Err(); err != nil {
+		return sum, err
+	}
+
 	if err := h.DB.QueryRowContext(ctx, `
 		SELECT COALESCE(sum(r.reading_seconds), 0)
 		FROM reading_progress r JOIN files f ON f.id = r.file_id JOIN editions e ON e.id = f.edition_id

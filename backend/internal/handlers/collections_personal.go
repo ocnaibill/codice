@@ -92,14 +92,14 @@ func (h *PersonalCollectionsHandler) Create(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(map[string]any{"id": id, "name": name})
 }
 
-// Rename answers PATCH /my/collections/{id} {"name": "..."}.
+// Rename answers PATCH /my/collections/{id} {"name": "...", "description": "..."}, either one or both.
 func (h *PersonalCollectionsHandler) Rename(w http.ResponseWriter, r *http.Request) {
 	id, ok := collectionIDParam(r, "id")
 	if !ok {
 		http.Error(w, "Collection not found", http.StatusNotFound)
 		return
 	}
-	name, ok := decodeName(w, r)
+	edit, ok := decodeEdit(w, r)
 	if !ok {
 		return
 	}
@@ -121,10 +121,23 @@ func (h *PersonalCollectionsHandler) Rename(w http.ResponseWriter, r *http.Reque
 		h.fail(w, "rename", err)
 		return
 	} else if system {
-		conflict(w, "Essa lista é do Códice: ela não muda de nome.", id)
+		conflict(w, "Essa lista é do Códice: ela não muda de nome nem de descrição.", id)
 		return
 	}
-	if _, err := tx.ExecContext(r.Context(), `UPDATE collections SET name = $2, edited_at = now() WHERE id = $1`, id, name); err != nil {
+	if edit.name != nil {
+		if _, err := tx.ExecContext(r.Context(), `UPDATE collections SET name = $2, edited_at = now() WHERE id = $1`, id, *edit.name); err != nil {
+			h.fail(w, "rename", err)
+			return
+		}
+	}
+	if edit.description != nil {
+		if err := describeCollection(r.Context(), tx, id, *edit.description); err != nil {
+			h.fail(w, "rename", err)
+			return
+		}
+	}
+	var name, description string
+	if err := tx.QueryRowContext(r.Context(), `SELECT name, COALESCE(description, '') FROM collections WHERE id = $1`, id).Scan(&name, &description); err != nil {
 		h.fail(w, "rename", err)
 		return
 	}
@@ -133,7 +146,7 @@ func (h *PersonalCollectionsHandler) Rename(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"id": id, "name": name})
+	json.NewEncoder(w).Encode(map[string]any{"id": id, "name": name, "description": description})
 }
 
 // AddWork answers PUT /my/collections/{id}/works/{workId} {"position": 3}: the work goes into the list, at the end unless a

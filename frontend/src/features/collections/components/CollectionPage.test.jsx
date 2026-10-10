@@ -27,6 +27,7 @@ const found = { id: 9, title: 'Animais Fantásticos', author: 'J. K. Rowling', c
 let container;
 let root;
 let reply;
+let notesReply = { data: [] };
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 const wait = (ms) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
 const button = (text) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
@@ -37,6 +38,7 @@ async function open({ role = 'admin', data = detail(trio) } = {}) {
   reply = data;
   api.get.mockImplementation(async (url, options) => {
     if (url === '/collections/5') return { data: reply };
+    if (url === '/notes') return { data: notesReply };
     if (url === '/auth/me') return { data: { role } };
     if (url === '/collections/6') return { data: { collection: { id: 6, kind: 'official', name: 'Outra', workCount: 0, completedCount: 0, coverUrl: '/c/x.jpg' }, works: [] } };
     if (url === '/works') {
@@ -70,6 +72,7 @@ async function type(input, value) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  notesReply = { data: [] };
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -811,5 +814,143 @@ describe('CollectionPage: the page of a series (DEC-162)', () => {
   it('says no summary for a collection with no work to say it of', async () => {
     await show({ collection: full().collection, works: [], continue: null, summary: { ...full().summary, works: 0, authors: [], translators: [], tags: [], missing: [] } });
     expect(container.querySelector('[aria-label="Seu progresso"]')).toBeNull();
+  });
+});
+
+describe('CollectionPage: the notes and the description (DEC-163)', () => {
+  const row = (entryId, id, title, extra = {}) => ({
+    entryId, id, title, author: 'J. K. Rowling', coverUrl: `/c/${id}.jpg`, position: id, completed: false, available: true, unit: 'volume', comicKind: '',
+    percent: 0, started: false, formats: ['epub'], rating: 0, notes: 0, ...extra,
+  });
+  const works = [row(10, 1, 'Pedra Filosofal', { notes: 3 }), row(20, 2, 'Câmara Secreta', { notes: 1 }), row(30, 3, 'Cálice de Fogo')];
+  const full = (extra = {}, notes = 4) => ({
+    collection: { id: 5, kind: 'official', name: 'Harry Potter', workCount: 3, completedCount: 0, coverUrl: '/c/1.jpg', ...extra },
+    works,
+    continue: null,
+    summary: { works: 3, finished: 0, inProgress: 0, percent: 0, readingSeconds: 0, notes, missing: [], authors: [], translators: [], tags: [] },
+  });
+  const note = (id, workId, workTitle, quote) => ({ id, kind: 'highlight', workId, fileId: workId * 100, workTitle, quote, body: '', locator: { type: 'epub', cfi: `c${id}` }, chapter: 'Capítulo 2' });
+  const typeInto = async (el, value) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+
+  it('says how many notes the person has on the collection and on each work, in the singular too', async () => {
+    notesReply = { data: [note(1, 1, 'Pedra Filosofal', 'Um trecho.')] };
+    await open({ role: 'reader', data: full() });
+    const box = labelled('Seu progresso');
+    expect(box.textContent).toContain('4 anotações suas');
+    const rows = [...container.querySelectorAll('ol li')].map((li) => li.textContent);
+    expect(rows[0]).toContain('3 anotações');
+    expect(rows[1]).toContain('1 anotação');
+    expect(rows[1]).not.toContain('1 anotações');
+    expect(rows[2]).not.toContain('anotaç');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ role: 'reader', data: full({}, 1) });
+    expect(labelled('Seu progresso').textContent).toContain('1 anotação sua');
+  });
+
+  it('asks for the notes of the collection, and lists them with the work each one is of, opening the reader at its place', async () => {
+    notesReply = { data: [note(1, 1, 'Pedra Filosofal', 'Um trecho do primeiro.'), note(2, 2, 'Câmara Secreta', 'Um trecho do segundo.')] };
+    await open({ role: 'reader', data: full() });
+    expect(api.get).toHaveBeenCalledWith('/notes', { params: { collectionId: 5, limit: 200, chapters: true } });
+    const section = labelled('Suas anotações nesta coleção');
+    expect(section.textContent).toContain('Um trecho do primeiro.');
+    expect(section.textContent).toContain('Câmara Secreta · Capítulo 2');
+    await click(section.querySelector('button[title="Abrir no livro"]'));
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 1 });
+  });
+
+  it('takes the person to the notes from "Ver notas"', async () => {
+    notesReply = { data: [note(1, 1, 'Pedra Filosofal', 'Um trecho.')] };
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      await open({ role: 'reader', data: full() });
+      scroll.mockClear();
+      await click(button('Ver notas'));
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll.mock.contexts[0].contains(labelled('Suas anotações nesta coleção'))).toBe(true);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it('asks for no notes, and has no section or link, when the person has none there', async () => {
+    await open({ role: 'reader', data: full({}, 0) });
+    expect(api.get).not.toHaveBeenCalledWith('/notes', expect.anything());
+    expect(button('Ver notas')).toBeUndefined();
+    expect(labelled('Suas anotações nesta coleção')).toBeNull();
+  });
+
+  it('calls the section of a list by its name', async () => {
+    notesReply = { data: [note(1, 1, 'Pedra Filosofal', 'Um trecho.')] };
+    await open({ role: 'reader', data: full({ kind: 'personal' }) });
+    expect(labelled('Suas anotações nesta lista')).toBeTruthy();
+  });
+
+  it('shows the description under the name, with its line breaks', async () => {
+    await open({ role: 'reader', data: full({ description: 'Sete livros.\nUma saga.' }, 0) });
+    const hero = labelled('Sobre a coleção');
+    const text = [...hero.querySelectorAll('p')].find((p) => p.textContent.startsWith('Sete livros.'));
+    expect(text.textContent).toBe('Sete livros.\nUma saga.');
+    expect(text.className).toContain('whitespace-pre-line');
+    expect(button('Escrever descrição')).toBeUndefined(); // a reader writes nothing
+    expect(button('Editar descrição')).toBeUndefined();
+  });
+
+  it('writes the description for the first time: only the description is sent, and the form closes', async () => {
+    await open({ role: 'admin', data: full({}, 0) });
+    await click(button('Escrever descrição'));
+    const area = container.querySelector('textarea');
+    expect(area.value).toBe('');
+    await typeInto(area, 'Uma saga de bruxos.');
+    expect(container.textContent).toContain('19 de 2000');
+    await click(button('Salvar'));
+    expect(api.patch).toHaveBeenCalledWith('/collections/5', { description: 'Uma saga de bruxos.' });
+    await flush();
+    expect(container.querySelector('textarea')).toBeNull();
+  });
+
+  it('edits the description it has, and clears it when saved empty', async () => {
+    await open({ role: 'admin', data: full({ description: 'Antiga.' }, 0) });
+    await click(button('Editar descrição'));
+    const area = container.querySelector('textarea');
+    expect(area.value).toBe('Antiga.');
+    await typeInto(area, '');
+    await click(button('Salvar'));
+    expect(api.patch).toHaveBeenCalledWith('/collections/5', { description: '' });
+  });
+
+  it('says what the server refused and keeps the form', async () => {
+    await open({ role: 'admin', data: full({}, 0) });
+    await click(button('Escrever descrição'));
+    api.patch.mockRejectedValueOnce(Object.assign(new Error('x'), { response: { status: 409, data: { error: 'A coleção está aposentada: restaure antes de mudar.', collectionId: 5 } } }));
+    await click(button('Salvar'));
+    expect(container.querySelector('[role="alert"]').textContent).toBe('A coleção está aposentada: restaure antes de mudar.');
+    expect(container.querySelector('textarea')).toBeTruthy();
+  });
+
+  it('writes the description of a list through its own route, and not of the list the Códice keeps', async () => {
+    await open({ role: 'reader', data: full({ kind: 'personal' }, 0) });
+    await click(button('Escrever descrição'));
+    await typeInto(container.querySelector('textarea'), 'Para o fim de semana.');
+    await click(button('Salvar'));
+    expect(api.patch).toHaveBeenCalledWith('/my/collections/5', { description: 'Para o fim de semana.' });
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ role: 'reader', data: full({ kind: 'personal', system: 'read_later' }, 0) });
+    expect(button('Escrever descrição')).toBeUndefined();
+    expect(button('Editar descrição')).toBeUndefined();
+  });
+
+  it('offers no description to write on a collection that was put away', async () => {
+    await open({ role: 'admin', data: full({ retired: true }, 0) });
+    expect(button('Escrever descrição')).toBeUndefined();
   });
 });

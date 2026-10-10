@@ -36,6 +36,13 @@ func collectionName(s string) (string, bool) {
 	return name, name != "" && utf8.RuneCountInString(name) <= maxCollectionName
 }
 
+// describeCollection sets the description of a collection (empty clears it). The collection counts as made the person's own, so
+// it is shown even with no works in it.
+func describeCollection(ctx context.Context, tx *sql.Tx, id int64, text string) error {
+	_, err := tx.ExecContext(ctx, `UPDATE collections SET description = NULLIF($2, ''), edited_at = now() WHERE id = $1`, id, text)
+	return err
+}
+
 // lockOfficial reads and locks an official collection of the library for the transaction.
 func lockOfficial(ctx context.Context, tx *sql.Tx, id int64) (name string, retired bool, err error) {
 	var gone sql.NullTime
@@ -97,6 +104,49 @@ func conflict(w http.ResponseWriter, message string, id int64) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusConflict)
 	json.NewEncoder(w).Encode(map[string]any{"error": message, "collectionId": id})
+}
+
+const maxCollectionDescription = 2000
+
+// collectionEdit is what PATCH of a collection carries (DEC-163): a name, a description, or both. A description sent empty clears it.
+type collectionEdit struct {
+	name        *string
+	description *string
+}
+
+// decodeEdit reads the body of a PATCH of a collection, with the same name rules as decodeName. The description keeps its line
+// breaks (it is a few lines of text) and loses the spaces around it.
+func decodeEdit(w http.ResponseWriter, r *http.Request) (collectionEdit, bool) {
+	var req struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+	}
+	var e collectionEdit
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return e, false
+	}
+	if req.Name == nil && req.Description == nil {
+		http.Error(w, "Diga o nome ou a descrição.", http.StatusBadRequest)
+		return e, false
+	}
+	if req.Name != nil {
+		name, ok := collectionName(*req.Name)
+		if !ok {
+			http.Error(w, "O nome da coleção é obrigatório e tem até 512 caracteres.", http.StatusBadRequest)
+			return e, false
+		}
+		e.name = &name
+	}
+	if req.Description != nil {
+		text := strings.TrimSpace(strings.ReplaceAll(*req.Description, "\r\n", "\n"))
+		if utf8.RuneCountInString(text) > maxCollectionDescription {
+			http.Error(w, "A descrição tem até 2000 caracteres.", http.StatusBadRequest)
+			return e, false
+		}
+		e.description = &text
+	}
+	return e, true
 }
 
 func decodeName(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -161,7 +211,7 @@ func (h *CollectionsAdminHandler) Create(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(map[string]any{"id": id, "name": name})
 }
 
-// Rename answers PATCH /collections/{id} {"name": "..."}: the name is the person's from now on. The text the collection was
+// Rename answers PATCH /collections/{id} {"name": "...", "description": "..."}, either one or both: the name is the person's from now on. The text the collection was
 // born from stays attached to it (a work that comes with it still joins), and the works in it get the new name as their
 // series, so what a work says and what the collection says do not part.
 func (h *CollectionsAdminHandler) Rename(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +220,7 @@ func (h *CollectionsAdminHandler) Rename(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Collection not found", http.StatusNotFound)
 		return
 	}
-	name, ok := decodeName(w, r)
+	edit, ok := decodeEdit(w, r)
 	if !ok {
 		return
 	}
@@ -188,6 +238,27 @@ func (h *CollectionsAdminHandler) Rename(w http.ResponseWriter, r *http.Request)
 		conflict(w, "A coleção está aposentada: restaure antes de mudar.", id)
 		return
 	}
+	if edit.name == nil {
+		// Only the description: no series is touched.
+		actor := currentUserID(r)
+		if err := describeCollection(r.Context(), tx, id, *edit.description); err != nil {
+			h.fail(w, "describe", err)
+			return
+		}
+		if err := audit.Record(r.Context(), tx, actor, "collection.describe", "collection", strconv.FormatInt(id, 10),
+			map[string]any{"name": old, "length": utf8.RuneCountInString(*edit.description)}); err != nil {
+			h.fail(w, "describe", err)
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			h.fail(w, "describe", err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": id, "name": old, "description": *edit.description})
+		return
+	}
+	name := *edit.name
 	if _, err := tx.ExecContext(r.Context(), `SELECT pg_advisory_xact_lock(hashtextextended('collection:' || series_key($1), 0))`, name); err != nil {
 		h.fail(w, "rename", err)
 		return
@@ -206,6 +277,12 @@ func (h *CollectionsAdminHandler) Rename(w http.ResponseWriter, r *http.Request)
 	if _, err := tx.ExecContext(r.Context(), `UPDATE collections SET name = $2, edited_at = now() WHERE id = $1`, id, name); err != nil {
 		h.fail(w, "rename", err)
 		return
+	}
+	if edit.description != nil {
+		if err := describeCollection(r.Context(), tx, id, *edit.description); err != nil {
+			h.fail(w, "rename", err)
+			return
+		}
 	}
 	rows, err := tx.QueryContext(r.Context(), `
 		SELECT cw.work_id, COALESCE(w.series_index, 0) FROM collection_works cw JOIN works w ON w.id = cw.work_id

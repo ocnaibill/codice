@@ -20,6 +20,8 @@ import { CollectionFavoriteButton } from './CollectionFavoriteButton';
 import { ProgressBar } from '../../../components/ui/ProgressBar';
 import { formatReadingTime } from '../../home/utils/format';
 import { placeLabel } from '../../reader/placeInWords';
+import { WorkHighlights } from '../../library/components/WorkHighlights';
+import { useCollectionNotes } from '../api/useCollectionNotes';
 
 const BUTTON = 'min-h-10 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40';
 const PRIMARY = 'min-h-10 rounded-lg bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40';
@@ -48,6 +50,44 @@ function RenameForm({ collection, onDone }) {
       <button type="button" onClick={onDone} className={BUTTON}>Cancelar</button>
       <p className="basis-full text-xs text-ink-faint">{words.renameNote}</p>
       {message && <p role="alert" className="basis-full text-sm text-danger">{message}</p>}
+    </form>
+  );
+}
+
+const DESCRIPTION_MAX = 2000;
+
+/** What the collection is, in the person's words (DEC-163): a few lines under the name. Saving it empty takes it away. */
+function DescribeForm({ collection, onDone }) {
+  const [text, setText] = React.useState(collection.description ?? '');
+  const [message, setMessage] = React.useState('');
+  const save = useRenameCollection();
+  const submit = (event) => {
+    event.preventDefault();
+    setMessage('');
+    save.mutate(
+      { id: collection.id, description: text, kind: collection.kind },
+      { onSuccess: onDone, onError: (error) => setMessage(collectionReason(error, 'Não foi possível salvar a descrição.')) }
+    );
+  };
+  return (
+    <form onSubmit={submit} aria-label="Descrição da coleção" className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
+      <label className="flex flex-col gap-1 text-sm text-ink-soft">
+        Descrição
+        <textarea
+          autoFocus
+          rows={4}
+          value={text}
+          maxLength={DESCRIPTION_MAX}
+          onChange={(event) => setText(event.target.value)}
+          className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-ink"
+        />
+      </label>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={save.isPending} className={PRIMARY}>Salvar</button>
+        <button type="button" onClick={onDone} className={BUTTON}>Cancelar</button>
+        <span className="font-mono text-[11px] text-ink-faint">{text.length} de {DESCRIPTION_MAX}</span>
+      </div>
+      {message && <p role="alert" className="text-sm text-danger">{message}</p>}
     </form>
   );
 }
@@ -142,6 +182,7 @@ function WorkRow({ work, label, index, count, staff, confirming, busy, words, ri
                 {work.formats?.length > 0 && <span>{work.formats.map((f) => f.toUpperCase()).join(' · ')}</span>}
                 {work.rating > 0 && <span aria-label={`${work.rating} de 5 estrelas`} title={`${work.rating} de 5 estrelas`}>{STARS(work.rating)}</span>}
                 {work.completedAt && <span>Lida em {monthYear.format(new Date(work.completedAt))}</span>}
+                {work.notes > 0 && <span>{work.notes} {work.notes === 1 ? 'anotação' : 'anotações'}</span>}
               </span>
             )}
           </span>
@@ -294,13 +335,16 @@ export function CollectionPage() {
   const pageRef = React.useRef(null);
   const [rich, setRich] = React.useState(true); // "Cartões ricos" or "Lista compacta"
   const { data, isLoading, isError, error, refetch, isRefetching } = useCollection(id);
+  // The notes are asked for only when the collection says there are some.
+  const notes = useCollectionNotes(id, (data?.summary?.notes ?? 0) > 0).data?.data;
   const order = useOrderCollection();
   const remove = useRemoveFromCollection();
   const retire = useRetireCollection();
   const restore = useRestoreCollection();
-  const [mode, setMode] = React.useState(null); // 'rename' | 'add' | 'retire'
+  const [mode, setMode] = React.useState(null); // 'rename' | 'describe' | 'add' | 'classify' | 'retire'
   const [removing, setRemoving] = React.useState(null); // the place waiting for a yes
   const [message, setMessage] = React.useState('');
+  const notesRef = React.useRef(null);
 
   React.useEffect(() => {
     setMode(null);
@@ -345,6 +389,7 @@ export function CollectionPage() {
   };
 
   const summary = data?.summary ?? null;
+  const openNote = (note) => openBook(note.workId, note.fileId, { locator: note.locator, context: { kind: 'note', quote: note.quote } });
   const goOnWork = goOn ? works.find((w) => w.id === goOn.id) : null;
   const years = summary?.yearFrom != null ? (summary.yearTo !== summary.yearFrom ? `${summary.yearFrom}–${summary.yearTo}` : String(summary.yearFrom)) : null;
   const missing = (summary?.missing ?? []).map((m) => unitLabel(m.unit, m.number));
@@ -409,6 +454,7 @@ export function CollectionPage() {
                     </p>
                   )}
                 </div>
+                {collection.description && <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink-soft">{collection.description}</p>}
                 {summary?.tags?.length > 0 && (
                   <ul aria-label="Etiquetas" className="flex flex-wrap gap-x-3 gap-y-1">
                     {summary.tags.map((t) => <li key={t.name} className="font-mono text-[11px] text-ink-soft">#{t.name}</li>)}
@@ -426,6 +472,15 @@ export function CollectionPage() {
                       {summary.inProgress > 0 ? ` · ${summary.inProgress} em andamento` : ''}
                       {summary.readingSeconds > 0 ? ` · ${formatReadingTime(summary.readingSeconds)} lidas` : ''}
                     </p>
+                    {summary.notes > 0 && (
+                      <p className="mt-1 font-mono text-[11px] text-ink-soft">
+                        {summary.notes} {summary.notes === 1 ? 'anotação sua' : 'anotações suas'}
+                        {' · '}
+                        <button type="button" onClick={() => notesRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })} className="text-brand underline decoration-dotted underline-offset-4 hover:text-ink">
+                          Ver notas
+                        </button>
+                      </p>
+                    )}
                   </div>
                 )}
                 {goOn && !collection.retired && (
@@ -450,6 +505,11 @@ export function CollectionPage() {
             {staff && !collection.retired && (
               <div className="flex flex-wrap items-center gap-2">
                 {!collection.system && <button onClick={() => setMode(mode === 'rename' ? null : 'rename')} aria-pressed={mode === 'rename'} className={BUTTON}>Renomear</button>}
+                {!collection.system && (
+                  <button onClick={() => setMode(mode === 'describe' ? null : 'describe')} aria-pressed={mode === 'describe'} className={BUTTON}>
+                    {collection.description ? 'Editar descrição' : 'Escrever descrição'}
+                  </button>
+                )}
                 <button onClick={() => setMode(mode === 'add' ? null : 'add')} aria-pressed={mode === 'add'} className={BUTTON}>Acrescentar obra</button>
                 {official && <button onClick={() => setMode(mode === 'classify' ? null : 'classify')} aria-pressed={mode === 'classify'} className={BUTTON}>Classificar obras</button>}
                 {!collection.system && <button onClick={() => setMode(mode === 'retire' ? null : 'retire')} aria-pressed={mode === 'retire'} className={BUTTON}>Aposentar</button>}
@@ -467,6 +527,7 @@ export function CollectionPage() {
           )}
 
           {staff && mode === 'rename' && <RenameForm collection={collection} onDone={() => setMode(null)} />}
+          {staff && mode === 'describe' && <DescribeForm collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'add' && <AddWorkPanel collection={collection} members={works} onDone={() => setMode(null)} />}
           {staff && official && mode === 'classify' && <ClassifyPanel collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'retire' && (
@@ -517,6 +578,12 @@ export function CollectionPage() {
                   })}
                 />
               ))}
+            </div>
+          )}
+
+          {summary?.notes > 0 && (
+            <div ref={notesRef} className="scroll-mt-4">
+              <WorkHighlights notes={notes} onOpen={openNote} title={`Suas anotações ${official ? 'nesta coleção' : 'nesta lista'}`} showWork />
             </div>
           )}
         </div>
