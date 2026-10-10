@@ -103,6 +103,10 @@ func (h *PersonalCollectionsHandler) Rename(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
+	if edit.direction != nil {
+		http.Error(w, "A direção de leitura é de uma coleção, não de uma lista.", http.StatusBadRequest)
+		return
+	}
 	tx, ok := h.begin(w, r)
 	if !ok {
 		return

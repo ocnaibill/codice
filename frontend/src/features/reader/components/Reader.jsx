@@ -252,7 +252,7 @@ export function Reader() {
         return <EpubViewer fileUrl={fileUrl} title={book.title} onSelection={setSelection} marks={marks} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'cbz':
       case 'cbr':
-        return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} declaredMode={file.declaredMode} comicKind={book.metadata?.comicKind} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
+        return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} declaredMode={file.declaredMode} seriesDirection={book.metadata?.seriesDirection} comicKind={book.metadata?.comicKind} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'txt':
         return <TextViewer fileUrl={fileUrl} onSelection={setSelection} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'md':
