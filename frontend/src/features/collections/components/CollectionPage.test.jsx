@@ -1353,3 +1353,82 @@ describe('CollectionPage: by volume and by arc, and grouping the chapters (DEC-1
     expect(form.textContent).toContain('A coleção está aposentada: restaure antes de mudar.');
   });
 });
+
+describe('CollectionPage: the title in the script of the language and how the series stands (DEC-170)', () => {
+  const shelf = (extra = {}) => ({
+    collection: { id: 5, kind: 'official', name: 'Berserk', workCount: 1, completedCount: 0, coverUrl: '/c/1.jpg', ...extra },
+    works: [{ entryId: 10, id: 1, title: 'Capítulo 1', author: 'Miura', coverUrl: '/c/1.jpg', position: 1, completed: false, available: true, unit: 'chapter' }],
+  });
+
+  it('shows the title in the original script beside the name, and how the series stands, to everybody', async () => {
+    await open({ role: 'reader', data: shelf({ originalTitle: 'ベルセルク', publicationStatus: 'hiatus' }) });
+    const hero = labelled('Sobre a coleção');
+    expect(hero.querySelector('h1').textContent).toBe('Berserkベルセルク');
+    expect(hero.textContent).toContain('Publicação: Em hiato');
+    expect(button('Dados da série')).toBeUndefined();
+  });
+
+  it('says nothing of what nobody said', async () => {
+    await open({ role: 'reader', data: shelf() });
+    expect(labelled('Sobre a coleção').textContent).not.toContain('Publicação:');
+    expect(labelled('Sobre a coleção').querySelector('h1').textContent).toBe('Berserk');
+  });
+
+  it('names each state in words', async () => {
+    for (const [key, text] of [['ongoing', 'Em andamento'], ['finished', 'Concluída'], ['hiatus', 'Em hiato'], ['cancelled', 'Cancelada']]) {
+      await open({ role: 'reader', data: shelf({ publicationStatus: key }) });
+      expect(labelled('Sobre a coleção').textContent).toContain(`Publicação: ${text}`);
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+  });
+
+  it('is written by the staff: both are sent, and what is there starts the form', async () => {
+    await open({ role: 'admin', data: shelf({ originalTitle: 'ベルセルク', publicationStatus: 'ongoing' }) });
+    await click(button('Dados da série'));
+    const form = labelled('Dados da série');
+    const input = form.querySelector('input');
+    const select = form.querySelector('select');
+    expect(input.value).toBe('ベルセルク');
+    expect(select.value).toBe('ongoing');
+    expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
+      ['', 'Não informada'], ['ongoing', 'Em andamento'], ['finished', 'Concluída'], ['hiatus', 'Em hiato'], ['cancelled', 'Cancelada'],
+    ]);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'finished');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await click(button('Salvar'));
+    expect(api.patch).toHaveBeenCalledWith('/collections/5', { publicationStatus: 'finished', originalTitle: 'ベルセルク' });
+    await flush();
+    expect(labelled('Dados da série')).toBeNull();
+  });
+
+  it('takes both away when they are left empty', async () => {
+    await open({ role: 'admin', data: shelf({ originalTitle: 'ベルセルク', publicationStatus: 'ongoing' }) });
+    await click(button('Dados da série'));
+    const form = labelled('Dados da série');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(form.querySelector('input'), '');
+      form.querySelector('input').dispatchEvent(new Event('input', { bubbles: true }));
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(form.querySelector('select'), '');
+      form.querySelector('select').dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await click(button('Salvar'));
+    expect(api.patch).toHaveBeenCalledWith('/collections/5', { publicationStatus: '', originalTitle: '' });
+  });
+
+  it('says what the server refused and keeps the form', async () => {
+    await open({ role: 'admin', data: shelf() });
+    await click(button('Dados da série'));
+    api.patch.mockRejectedValueOnce(Object.assign(new Error('x'), { response: { status: 409, data: { error: 'A coleção está aposentada: restaure antes de mudar.', collectionId: 5 } } }));
+    await click(button('Salvar'));
+    expect(container.querySelector('[role="alert"]').textContent).toBe('A coleção está aposentada: restaure antes de mudar.');
+    expect(labelled('Dados da série')).toBeTruthy();
+  });
+
+  it('is not offered on a list, which is not a series', async () => {
+    await open({ role: 'reader', data: shelf({ kind: 'personal' }) });
+    expect(button('Dados da série')).toBeUndefined();
+  });
+});
