@@ -68,6 +68,8 @@ type Work struct {
 	Completions *CompletionSummary `json:"completions,omitempty"`
 	// ReadLater, only in the detail: the caller put it aside in their list "Ler depois" (DEC-152).
 	ReadLater bool `json:"readLater"`
+	// Rating, only in the detail: the stars the caller gave it, from 1 to 5, or 0 when they gave none (DEC-154).
+	Rating int `json:"rating"`
 }
 
 // CompletionSummary is the history of finishing a work (DEC-080): "finished 2 times, 1 in EPUB and
@@ -553,6 +555,12 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 		               WHERE c.owner_id = $1::uuid AND c.system_key = $2 AND cw.work_id = $3)`,
 		userID, readLaterKey, id).Scan(&work.ReadLater); err != nil {
 		log.Println("Error fetching the read-later mark:", err)
+		http.Error(w, "Error fetching book", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.DB.QueryRowContext(r.Context(), `SELECT COALESCE((SELECT stars FROM work_ratings WHERE user_id = $1::uuid AND work_id = $2), 0)`, userID, id).Scan(&work.Rating); err != nil {
+		log.Println("Error fetching the rating:", err)
 		http.Error(w, "Error fetching book", http.StatusInternalServerError)
 		return
 	}

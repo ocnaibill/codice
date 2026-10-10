@@ -10,6 +10,7 @@ import { useFileOutline } from '../../reader/api/useFileOutline';
 import { useReadLaterToggle } from '../../reader/api/useReadLaterToggle';
 import { WorkOutline } from './WorkOutline';
 import { WorkPreview } from './WorkPreview';
+import { WorkRating } from './WorkRating';
 import { useFilePreview } from '../../reader/api/useFilePreview';
 import { FeaturedQuote, WorkHighlights } from './WorkHighlights';
 import { useWorkHighlights } from '../api/useWorkHighlights';
@@ -481,6 +482,7 @@ export function WorkPage() {
                     ))}
                   </ul>
                 )}
+                <WorkRating workId={work.id} rating={work.rating || 0} />
                 <FeaturedQuote notes={notes} workId={work.id} onOpen={openNote} />
                 {meta?.description ? <Description text={meta.description} /> : <p className="text-sm text-ink-soft">Escolha uma edição abaixo ou abra o arquivo em que você estava lendo.</p>}
                 <div className="flex flex-wrap items-center gap-3">

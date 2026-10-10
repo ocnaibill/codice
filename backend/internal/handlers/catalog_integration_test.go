@@ -226,6 +226,9 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Delete("/my/collections/{id}/entries/{entryId}", mine.RemoveEntry)
 	r.Put("/my/collections/{id}/order", mine.Order)
 	r.Put("/works/{id}/read-later", mine.AddReadLater)
+	ratings := &RatingsHandler{DB: db}
+	r.Put("/works/{id}/rating", ratings.Put)
+	r.Delete("/works/{id}/rating", ratings.Delete)
 	r.Delete("/works/{id}/read-later", mine.RemoveReadLater)
 	r.Post("/works/{id}/notes", notes.CreateNote)
 	r.Get("/notes", notes.ListNotes)
