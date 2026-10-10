@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -60,58 +61,14 @@ func (h *OutlineHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := OutlineResponse{FileID: fileID, Chapters: []OutlineChapter{}}
-	var structure []byte
-	err := h.DB.QueryRowContext(r.Context(), `SELECT structure FROM text_extractions WHERE file_id = $1`, fileID).Scan(&structure)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	nodes, segments, chars, err := loadOutlineIndex(r.Context(), h.DB, fileID)
+	if err != nil {
 		log.Println("Error reading the outline:", err)
 		http.Error(w, "Error reading the outline", http.StatusInternalServerError)
 		return
 	}
-	var nodes []equivalence.Node
-	if len(structure) > 0 && json.Unmarshal(structure, &nodes) != nil {
-		nodes = nil // an outline that cannot be read is no outline
-	}
 	if len(nodes) == 0 {
 		writeJSON(w, http.StatusOK, out)
-		return
-	}
-
-	// Only what the outline needs from the segments: where each starts (the text itself stays where it is).
-	rows, err := h.DB.QueryContext(r.Context(), `
-		SELECT s.sequence, s.node, s.locator, length(s.text)
-		FROM document_segments s
-		JOIN text_extractions te ON te.file_id = s.file_id AND te.generation = s.generation
-		WHERE s.file_id = $1
-		ORDER BY s.sequence`, fileID)
-	if err != nil {
-		log.Println("Error reading the segments of the outline:", err)
-		http.Error(w, "Error reading the outline", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-	var segments []equivalence.Segment
-	var chars []int // how many characters each segment holds, in the same order
-	for rows.Next() {
-		var seg equivalence.Segment
-		var node sql.NullInt64
-		var loc []byte
-		var length int
-		if err := rows.Scan(&seg.Sequence, &node, &loc, &length); err != nil {
-			log.Println("Error reading a segment of the outline:", err)
-			http.Error(w, "Error reading the outline", http.StatusInternalServerError)
-			return
-		}
-		seg.Locator = json.RawMessage(loc)
-		seg.Node = equivalence.NoNode
-		if node.Valid && int(node.Int64) < len(nodes) {
-			seg.Node = int(node.Int64)
-		}
-		segments = append(segments, seg)
-		chars = append(chars, length)
-	}
-	if err := rows.Err(); err != nil {
-		log.Println("Error reading the segments of the outline:", err)
-		http.Error(w, "Error reading the outline", http.StatusInternalServerError)
 		return
 	}
 
@@ -133,6 +90,52 @@ func (h *OutlineHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// loadOutlineIndex reads what the text index has of a file's outline: its nodes, and for each segment, in reading order, the node it is in, where it
+// opens and how many characters it holds (the text itself is left where it is). A file with no index or no outline has no nodes.
+func loadOutlineIndex(ctx context.Context, db *sql.DB, fileID int64) ([]equivalence.Node, []equivalence.Segment, []int, error) {
+	var structure []byte
+	err := db.QueryRowContext(ctx, `SELECT structure FROM text_extractions WHERE file_id = $1`, fileID).Scan(&structure)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, nil, err
+	}
+	var nodes []equivalence.Node
+	if len(structure) > 0 && json.Unmarshal(structure, &nodes) != nil {
+		nodes = nil // an outline that cannot be read is no outline
+	}
+	if len(nodes) == 0 {
+		return nil, nil, nil, nil
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT s.sequence, s.node, s.locator, length(s.text)
+		FROM document_segments s
+		JOIN text_extractions te ON te.file_id = s.file_id AND te.generation = s.generation
+		WHERE s.file_id = $1
+		ORDER BY s.sequence`, fileID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows.Close()
+	var segments []equivalence.Segment
+	var chars []int
+	for rows.Next() {
+		var seg equivalence.Segment
+		var node sql.NullInt64
+		var loc []byte
+		var length int
+		if err := rows.Scan(&seg.Sequence, &node, &loc, &length); err != nil {
+			return nil, nil, nil, err
+		}
+		seg.Locator = json.RawMessage(loc)
+		seg.Node = equivalence.NoNode
+		if node.Valid && int(node.Int64) < len(nodes) {
+			seg.Node = int(node.Int64)
+		}
+		segments = append(segments, seg)
+		chars = append(chars, length)
+	}
+	return nodes, segments, chars, rows.Err()
 }
 
 // outlineOf puts the nodes of an outline in the form the page shows: whether each is a group, where it opens and how far through

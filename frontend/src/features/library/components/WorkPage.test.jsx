@@ -491,6 +491,27 @@ describe('WorkPage: the page of the work (DEC-149)', () => {
     expect(container.querySelector('section[aria-label="Sumário da obra"]')).toBeNull();
   });
 
+  it('puts one of the person\'s highlights at the top and all of them at the bottom, each opening the reader at its place', async () => {
+    const notes = [
+      { id: 1, kind: 'highlight', quote: 'Não terei medo. O medo é o assassino da mente, a pequena morte.', body: '', tags: ['medo'], chapter: 'Capítulo 2', fileId: 10, locator: { type: 'epub', href: 'c2.xhtml' } },
+      { id: 2, kind: 'bookmark', quote: '', body: '', tags: [], fileId: 10, locator: { type: 'epub', href: 'c1.xhtml' } },
+    ];
+    api.get.mockImplementation(async (url) => ({ data: url === '/notes' ? { data: notes, total: 2 } : { ...work } }));
+    useGlobalStore.setState({ sheetWorkId: 7, activeBookId: null, activeFileId: null, fromStart: false });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
+    await flush();
+    await flush();
+    expect(api.get).toHaveBeenCalledWith('/notes', { params: { workId: 7, limit: 200, chapters: true } });
+    expect(container.querySelector('figure[aria-label="Um destaque seu"]').textContent).toContain('Não terei medo');
+    const section = container.querySelector('section[aria-label="Seus destaques"]');
+    expect(section.textContent).toContain('1 anotação salva'); // the bookmark is not one
+    expect(section.textContent).toContain('Capítulo 2');
+    await act(async () => { section.querySelector('li button').click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 10 });
+    expect(useGlobalStore.getState().seek).toMatchObject({ locator: { type: 'epub', href: 'c2.xhtml' }, context: { kind: 'note' } });
+  });
+
   it('is left by a search: the results are what the person asked for', () => {
     useGlobalStore.setState({ sheetWorkId: 7, searchQuery: '' });
     useGlobalStore.getState().setSearchQuery('duna');

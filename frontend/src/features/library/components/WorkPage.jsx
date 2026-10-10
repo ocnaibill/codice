@@ -8,6 +8,8 @@ import { useSetCompletion, useSetWorkFinished } from '../../reader/api/useComple
 import { useFavoriteToggle } from '../../reader/api/useFavoriteToggle';
 import { useFileOutline } from '../../reader/api/useFileOutline';
 import { WorkOutline } from './WorkOutline';
+import { FeaturedQuote, WorkHighlights } from './WorkHighlights';
+import { useWorkHighlights } from '../api/useWorkHighlights';
 import { reasonOf, useSplitEdition } from '../../reader/api/useVersions';
 import { isStaff, useMe } from '../../auth/api/useMe';
 import { JoinVersionsDialog } from '../../reader/components/JoinVersionsDialog';
@@ -313,6 +315,7 @@ export function WorkPage() {
   // The official collection of the series the work is in, to open it from the name of the series (#187).
   const seriesCollection = useWorkSeries(workId).data?.collection ?? null;
   const leadFile = work ? leadFileOf(work) : undefined;
+  const notes = useWorkHighlights(workId).data?.data;
   const outline = useFileOutline(leadFile?.id, { enabled: !!leadFile && OUTLINED_FORMATS.has((leadFile.format || '').toLowerCase()) }).data;
   const splitEdition = useSplitEdition();
   const [joining, setJoining] = React.useState(false);
@@ -352,6 +355,7 @@ export function WorkPage() {
     leadFile?.format?.toUpperCase(),
   ].filter(Boolean);
   const category = meta?.categories?.[0] ?? null;
+  const openNote = (note) => openBook(work.id, note.fileId, { locator: note.locator, context: { kind: 'note', quote: note.quote } });
   // Where the person stopped, in the file that counts: the chapter and the place in it (DEC-148), and how far through the file.
   const last = work?.continue ?? null;
   const started = !!last && (last.percentComplete > 0 || last.completed || !!last.position);
@@ -450,6 +454,7 @@ export function WorkPage() {
                     ))}
                   </ul>
                 )}
+                <FeaturedQuote notes={notes} workId={work.id} onOpen={openNote} />
                 {meta?.description ? <Description text={meta.description} /> : <p className="text-sm text-ink-soft">Escolha uma edição abaixo ou abra o arquivo em que você estava lendo.</p>}
                 <div className="flex flex-wrap items-center gap-3">
                   {leadFile && (
@@ -591,6 +596,8 @@ export function WorkPage() {
               </section>
             );
           })}
+
+          <WorkHighlights notes={notes} onOpen={openNote} />
         </div>
       )}
       {joining && work && (
