@@ -59,11 +59,13 @@ export function useRenameCollection() {
   const refresh = useRefreshing();
   return useMutation({
     // The name, the description or both: what is not given is not touched (an empty description clears it, DEC-163).
-    mutationFn: async ({ id, name, description, readingDirection, kind }) => {
+    mutationFn: async ({ id, name, description, readingDirection, publicationStatus, originalTitle, kind }) => {
       const body = {};
       if (name !== undefined) body.name = name;
       if (description !== undefined) body.description = description;
       if (readingDirection !== undefined) body.readingDirection = readingDirection;
+      if (publicationStatus !== undefined) body.publicationStatus = publicationStatus;
+      if (originalTitle !== undefined) body.originalTitle = originalTitle;
       return (await api.patch(`${base(kind)}/${id}`, body)).data;
     },
     onSuccess: refresh,

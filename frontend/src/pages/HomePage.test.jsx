@@ -321,7 +321,7 @@ describe('the home as shelves (the plain home) and as the catalog (everything el
 
   it('puts what is the person\'s beside the reading and the catalog: the favorites first and the notes after', async () => {
     await mountHome();
-    const areas = ['.home-continue', '.home-catalog', '.home-favorites', '.home-notes'].map((selector) => columns().querySelector(selector));
+    const areas = ['.home-continue', '.home-catalog', '.home-rail > .home-favorites', '.home-rail > .home-notes'].map((selector) => columns().querySelector(selector));
     expect(areas.every(Boolean)).toBe(true);
     expect(columns().querySelector('.home-continue').textContent).toContain('Continuar lendo');
     expect(columns().querySelector('.home-favorites').textContent).toContain('Seus favoritos');
@@ -329,6 +329,28 @@ describe('the home as shelves (the plain home) and as the catalog (everything el
     // across the page: the greeting, the columns, then the shelves of the categories
     const order = ['library-heading', 'library-catalog'].map((id) => document.getElementById(id));
     expect(order[0].compareDocumentPosition(order[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('says how many notes the person has and goes to all of them when they kept more than the two shown', async () => {
+    const before = api.get.getMockImplementation();
+    api.get.mockImplementation(async (url, config) => (url.startsWith('/notes?')
+      ? { data: { data: [{ id: 1, quote: 'Um trecho', workTitle: 'Duna', workAuthor: 'Frank Herbert' }, { id: 2, quote: 'Outro', workTitle: 'Duna', workAuthor: 'Frank Herbert' }], total: 9 } }
+      : before(url, config)));
+    await mountHome();
+    const seeAll = [...columns().querySelectorAll('.home-rail .home-notes button')].find((b) => b.textContent === 'Ver todas (9)');
+    expect(seeAll).toBeTruthy();
+    await view.click(seeAll);
+    expect(useGlobalStore.getState().notesOpen).toBe(true);
+  });
+
+  it('reads the reading, then the favorites with the notes right under them, then the catalog', async () => {
+    await mountHome();
+    const order = ['.home-continue', '.home-rail', '.home-catalog'].map((selector) => columns().querySelector(selector));
+    expect(order.every(Boolean)).toBe(true);
+    expect(order[0].compareDocumentPosition(order[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(order[1].compareDocumentPosition(order[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // the notes are in the rail, not under the catalog
+    expect(order[2].querySelector('.home-notes')).toBeNull();
   });
 
   it('asks for two of the notes at random, and keeps the favorites and the notes together, with nothing between them', async () => {
