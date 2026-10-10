@@ -92,6 +92,45 @@ function DescribeForm({ collection, onDone }) {
   );
 }
 
+const DIRECTIONS = [
+  { key: 'ltr', text: 'Esquerda para a direita' },
+  { key: 'rtl', text: 'Direita para a esquerda' },
+  { key: 'webtoon', text: 'Tira para rolar' },
+];
+const directionText = (key) => DIRECTIONS.find((d) => d.key === key)?.text ?? null;
+
+/** How the series is read (DEC-166): where the reader opens a work of it when its file does not say. */
+function DirectionForm({ collection, onDone }) {
+  const [value, setValue] = React.useState(collection.readingDirection ?? '');
+  const [message, setMessage] = React.useState('');
+  const save = useRenameCollection();
+  const submit = (event) => {
+    event.preventDefault();
+    setMessage('');
+    save.mutate(
+      { id: collection.id, readingDirection: value, kind: collection.kind },
+      { onSuccess: onDone, onError: (error) => setMessage(collectionReason(error, 'Não foi possível salvar a direção.')) }
+    );
+  };
+  return (
+    <form onSubmit={submit} aria-label="Direção de leitura da série" className="flex flex-wrap items-end gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
+      <label className="flex min-w-[220px] flex-col gap-1 text-sm text-ink-soft">
+        Direção de leitura
+        <select autoFocus value={value} onChange={(event) => setValue(event.target.value)} className="min-h-11 rounded-lg border border-border-hairline bg-surface px-3 text-ink">
+          <option value="">Pelo arquivo e pelo tipo da obra</option>
+          {DIRECTIONS.map((d) => <option key={d.key} value={d.key}>{d.text}</option>)}
+        </select>
+      </label>
+      <button type="submit" disabled={save.isPending} className={PRIMARY}>Salvar</button>
+      <button type="button" onClick={onDone} className={BUTTON}>Cancelar</button>
+      <p className="basis-full text-xs text-ink-faint">
+        Vale para as obras da série quando o arquivo não declara como se lê. Quem lê ainda muda o modo no leitor, e o que o arquivo declara vence.
+      </p>
+      {message && <p role="alert" className="basis-full text-sm text-danger">{message}</p>}
+    </form>
+  );
+}
+
 function AddWorkPanel({ collection, members, onDone }) {
   const words = wordsOf(collection.kind);
   const [term, setTerm] = React.useState('');
@@ -351,7 +390,7 @@ export function CollectionPage() {
   const remove = useRemoveFromCollection();
   const retire = useRetireCollection();
   const restore = useRestoreCollection();
-  const [mode, setMode] = React.useState(null); // 'rename' | 'describe' | 'add' | 'classify' | 'retire'
+  const [mode, setMode] = React.useState(null); // 'rename' | 'describe' | 'direction' | 'add' | 'classify' | 'retire'
   const [removing, setRemoving] = React.useState(null); // the place waiting for a yes
   const [message, setMessage] = React.useState('');
   const notesRef = React.useRef(null);
@@ -494,6 +533,9 @@ export function CollectionPage() {
                     </p>
                   )}
                 </div>
+                {directionText(collection.readingDirection) && (
+                  <p className="font-mono text-[11px] uppercase tracking-widest text-ink-soft">Leitura: {directionText(collection.readingDirection)}</p>
+                )}
                 {collection.description && <p className="max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink-soft">{collection.description}</p>}
                 {summary?.tags?.length > 0 && (
                   <ul aria-label="Etiquetas" className="flex flex-wrap gap-x-3 gap-y-1">
@@ -552,6 +594,9 @@ export function CollectionPage() {
             {staff && !collection.retired && (
               <div className="flex flex-wrap items-center gap-2">
                 {!collection.system && <button onClick={() => setMode(mode === 'rename' ? null : 'rename')} aria-pressed={mode === 'rename'} className={BUTTON}>Renomear</button>}
+                {official && (
+                  <button onClick={() => setMode(mode === 'direction' ? null : 'direction')} aria-pressed={mode === 'direction'} className={BUTTON}>Direção de leitura</button>
+                )}
                 {!collection.system && (
                   <button onClick={() => setMode(mode === 'describe' ? null : 'describe')} aria-pressed={mode === 'describe'} className={BUTTON}>
                     {collection.description ? 'Editar descrição' : 'Escrever descrição'}
@@ -574,6 +619,7 @@ export function CollectionPage() {
           )}
 
           {staff && mode === 'rename' && <RenameForm collection={collection} onDone={() => setMode(null)} />}
+          {staff && official && mode === 'direction' && <DirectionForm collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'describe' && <DescribeForm collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'add' && <AddWorkPanel collection={collection} members={works} onDone={() => setMode(null)} />}
           {staff && official && mode === 'classify' && <ClassifyPanel collection={collection} onDone={() => setMode(null)} />}

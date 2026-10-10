@@ -43,6 +43,12 @@ func describeCollection(ctx context.Context, tx *sql.Tx, id int64, text string) 
 	return err
 }
 
+// setReadingDirection sets how a series is read; empty takes it away.
+func setReadingDirection(ctx context.Context, tx *sql.Tx, id int64, direction string) error {
+	_, err := tx.ExecContext(ctx, `UPDATE collections SET reading_direction = NULLIF($2, '') WHERE id = $1`, id, direction)
+	return err
+}
+
 // lockOfficial reads and locks an official collection of the library for the transaction.
 func lockOfficial(ctx context.Context, tx *sql.Tx, id int64) (name string, retired bool, err error) {
 	var gone sql.NullTime
@@ -112,22 +118,25 @@ const maxCollectionDescription = 2000
 type collectionEdit struct {
 	name        *string
 	description *string
+	// direction is how the series is read ("ltr", "rtl", "webtoon"), or "" to take it away (DEC-166); only an official collection has one.
+	direction *string
 }
 
 // decodeEdit reads the body of a PATCH of a collection, with the same name rules as decodeName. The description keeps its line
 // breaks (it is a few lines of text) and loses the spaces around it.
 func decodeEdit(w http.ResponseWriter, r *http.Request) (collectionEdit, bool) {
 	var req struct {
-		Name        *string `json:"name"`
-		Description *string `json:"description"`
+		Name             *string `json:"name"`
+		Description      *string `json:"description"`
+		ReadingDirection *string `json:"readingDirection"`
 	}
 	var e collectionEdit
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
 		return e, false
 	}
-	if req.Name == nil && req.Description == nil {
-		http.Error(w, "Diga o nome ou a descrição.", http.StatusBadRequest)
+	if req.Name == nil && req.Description == nil && req.ReadingDirection == nil {
+		http.Error(w, "Diga o nome, a descrição ou a direção de leitura.", http.StatusBadRequest)
 		return e, false
 	}
 	if req.Name != nil {
@@ -145,6 +154,15 @@ func decodeEdit(w http.ResponseWriter, r *http.Request) (collectionEdit, bool) {
 			return e, false
 		}
 		e.description = &text
+	}
+	if req.ReadingDirection != nil {
+		switch *req.ReadingDirection {
+		case "", "ltr", "rtl", "webtoon":
+			e.direction = req.ReadingDirection
+		default:
+			http.Error(w, "A direção é esquerda para a direita, direita para a esquerda ou tira para rolar.", http.StatusBadRequest)
+			return e, false
+		}
 	}
 	return e, true
 }
@@ -211,7 +229,7 @@ func (h *CollectionsAdminHandler) Create(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(map[string]any{"id": id, "name": name})
 }
 
-// Rename answers PATCH /collections/{id} {"name": "...", "description": "..."}, either one or both: the name is the person's from now on. The text the collection was
+// Rename answers PATCH /collections/{id} {"name": "...", "description": "...", "readingDirection": "rtl"}, any of them: the name is the person's from now on. The text the collection was
 // born from stays attached to it (a work that comes with it still joins), and the works in it get the new name as their
 // series, so what a work says and what the collection says do not part.
 func (h *CollectionsAdminHandler) Rename(w http.ResponseWriter, r *http.Request) {
@@ -239,14 +257,27 @@ func (h *CollectionsAdminHandler) Rename(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if edit.name == nil {
-		// Only the description: no series is touched.
+		// No name: the description or the direction, and no series is touched.
 		actor := currentUserID(r)
-		if err := describeCollection(r.Context(), tx, id, *edit.description); err != nil {
-			h.fail(w, "describe", err)
-			return
+		details := map[string]any{"name": old}
+		out := map[string]any{"id": id, "name": old}
+		if edit.description != nil {
+			if err := describeCollection(r.Context(), tx, id, *edit.description); err != nil {
+				h.fail(w, "describe", err)
+				return
+			}
+			details["length"] = utf8.RuneCountInString(*edit.description)
+			out["description"] = *edit.description
 		}
-		if err := audit.Record(r.Context(), tx, actor, "collection.describe", "collection", strconv.FormatInt(id, 10),
-			map[string]any{"name": old, "length": utf8.RuneCountInString(*edit.description)}); err != nil {
+		if edit.direction != nil {
+			if err := setReadingDirection(r.Context(), tx, id, *edit.direction); err != nil {
+				h.fail(w, "describe", err)
+				return
+			}
+			details["readingDirection"] = *edit.direction
+			out["readingDirection"] = *edit.direction
+		}
+		if err := audit.Record(r.Context(), tx, actor, "collection.describe", "collection", strconv.FormatInt(id, 10), details); err != nil {
 			h.fail(w, "describe", err)
 			return
 		}
@@ -255,7 +286,7 @@ func (h *CollectionsAdminHandler) Rename(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"id": id, "name": old, "description": *edit.description})
+		json.NewEncoder(w).Encode(out)
 		return
 	}
 	name := *edit.name
@@ -280,6 +311,12 @@ func (h *CollectionsAdminHandler) Rename(w http.ResponseWriter, r *http.Request)
 	}
 	if edit.description != nil {
 		if err := describeCollection(r.Context(), tx, id, *edit.description); err != nil {
+			h.fail(w, "rename", err)
+			return
+		}
+	}
+	if edit.direction != nil {
+		if err := setReadingDirection(r.Context(), tx, id, *edit.direction); err != nil {
 			h.fail(w, "rename", err)
 			return
 		}

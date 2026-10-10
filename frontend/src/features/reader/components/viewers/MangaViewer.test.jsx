@@ -219,3 +219,54 @@ describe('MangaViewer: a work marked as a manga (#187)', () => {
     }
   });
 });
+
+describe('MangaViewer: a series that says how it is read (DEC-166)', () => {
+  it('opens in the direction of the series, whatever was remembered and whatever the type of the work says', async () => {
+    for (const [direction, comicKind] of [['ltr', 'manga'], ['rtl', 'comic'], ['webtoon', ''], ['rtl', undefined]]) {
+      localStorage.setItem('codice:comic-mode:ana', 'double');
+      await open({ seriesDirection: direction, comicKind });
+      expect(modeNow(), `${direction} ${comicKind}`).toBe(direction);
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+  });
+
+  it('lets what the file declares win over the series', async () => {
+    await open({ seriesDirection: 'ltr', declaredMode: 'webtoon' });
+    expect(modeNow()).toBe('webtoon');
+    expect(noteText()).toContain('pelo arquivo');
+    expect(noteText()).not.toContain('pela série');
+  });
+
+  it('says it came from the series, until the person changes it, and remembers only that choice', async () => {
+    await open({ seriesDirection: 'rtl' });
+    expect(remembered()).toBeNull();
+    expect(noteText()).toContain('pela série');
+    const chip = [...container.querySelectorAll('span')].find((s) => s.textContent.includes('pela série'));
+    expect(chip.title).toBe('A série está marcada para ler da direita para a esquerda.');
+    await choose('double');
+    expect(noteText()).not.toContain('pela série');
+    expect(remembered()).toBe('double');
+  });
+
+  it('says what each direction of the series means', async () => {
+    for (const [direction, said] of [['ltr', 'esquerda para a direita'], ['webtoon', 'tira para rolar']]) {
+      await open({ seriesDirection: direction });
+      const chip = [...container.querySelectorAll('span')].find((s) => s.textContent.includes('pela série'));
+      expect(chip.title.toLowerCase()).toContain(said);
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+  });
+
+  it('ignores a direction it does not know, and the page layout "double", which is not a direction', async () => {
+    for (const seriesDirection of ['double', 'sideways', '', null, undefined]) {
+      localStorage.setItem('codice:comic-mode:ana', 'ltr');
+      await open({ seriesDirection });
+      expect(modeNow(), String(seriesDirection)).toBe('ltr');
+      expect(noteText()).not.toContain('pela série');
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
+  });
+});

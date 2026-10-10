@@ -1132,3 +1132,65 @@ describe('CollectionPage: a series of chapters (DEC-165)', () => {
     expect(container.querySelector('input[type="search"]')?.value ?? '').toBe('');
   });
 });
+
+describe('CollectionPage: how the series is read (DEC-166)', () => {
+  const shelf = (extra = {}) => ({
+    collection: { id: 5, kind: 'official', name: 'Berserk', workCount: 1, completedCount: 0, coverUrl: '/c/1.jpg', ...extra },
+    works: [{ entryId: 10, id: 1, title: 'Capítulo 1', author: 'Miura', coverUrl: '/c/1.jpg', position: 1, completed: false, available: true, unit: 'chapter' }],
+  });
+
+  it('says the direction the series is read in, for everybody', async () => {
+    await open({ role: 'reader', data: shelf({ readingDirection: 'rtl' }) });
+    expect(labelled('Sobre a coleção').textContent).toContain('Leitura: Direita para a esquerda');
+    expect(button('Direção de leitura')).toBeUndefined(); // a reader chooses nothing here
+  });
+
+  it('says nothing of a direction nobody chose', async () => {
+    await open({ role: 'reader', data: shelf() });
+    expect(labelled('Sobre a coleção').textContent).not.toContain('Leitura:');
+  });
+
+  it('is chosen by the staff, and only the direction is sent', async () => {
+    await open({ role: 'admin', data: shelf({ readingDirection: 'rtl' }) });
+    await click(button('Direção de leitura'));
+    const select = labelled('Direção de leitura da série').querySelector('select');
+    expect(select.value).toBe('rtl');
+    expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
+      ['', 'Pelo arquivo e pelo tipo da obra'], ['ltr', 'Esquerda para a direita'], ['rtl', 'Direita para a esquerda'], ['webtoon', 'Tira para rolar'],
+    ]);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'webtoon');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await click(button('Salvar'));
+    expect(api.patch).toHaveBeenCalledWith('/collections/5', { readingDirection: 'webtoon' });
+    await flush();
+    expect(labelled('Direção de leitura da série')).toBeNull();
+  });
+
+  it('takes the direction away with the first option, which sends an empty one', async () => {
+    await open({ role: 'admin', data: shelf({ readingDirection: 'ltr' }) });
+    await click(button('Direção de leitura'));
+    const select = labelled('Direção de leitura da série').querySelector('select');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, '');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await click(button('Salvar'));
+    expect(api.patch).toHaveBeenCalledWith('/collections/5', { readingDirection: '' });
+  });
+
+  it('says what the server refused and keeps the form', async () => {
+    await open({ role: 'admin', data: shelf() });
+    await click(button('Direção de leitura'));
+    api.patch.mockRejectedValueOnce(Object.assign(new Error('x'), { response: { status: 409, data: { error: 'A coleção está aposentada: restaure antes de mudar.', collectionId: 5 } } }));
+    await click(button('Salvar'));
+    expect(container.querySelector('[role="alert"]').textContent).toBe('A coleção está aposentada: restaure antes de mudar.');
+    expect(labelled('Direção de leitura da série')).toBeTruthy();
+  });
+
+  it('is not offered on a list of the person, which is not a series', async () => {
+    await open({ role: 'reader', data: shelf({ kind: 'personal' }) });
+    expect(button('Direção de leitura')).toBeUndefined();
+  });
+});

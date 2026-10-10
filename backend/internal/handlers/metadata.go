@@ -38,6 +38,9 @@ type WorkMetadata struct {
 	// manga. Empty when nobody said.
 	Unit      string `json:"unit"`
 	ComicKind string `json:"comicKind"`
+	// SeriesDirection is how the official collection the work is in says it is read (DEC-166): "ltr", "rtl" or "webtoon"; empty when
+	// the work is in none or nobody said.
+	SeriesDirection string `json:"seriesDirection"`
 	// FirstAuthor is the name of the work's first author as it is stored, not as an account is shown it
 	// (a work with two authors is shown "A, B", and "Herbert, Frank" is how a surname-first account sees
 	// "Frank Herbert"): what an edit of the author starts from.
@@ -61,13 +64,15 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int, order string) (*W
 		SELECT COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(e.isbn, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.language, ''), COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(a.name, ''),
 		       COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.original_year,
+		       COALESCE((SELECT c.reading_direction FROM collection_works cw JOIN collections c ON c.id = cw.collection_id
+		                 WHERE cw.work_id = w.id AND cw.official AND c.retired_at IS NULL LIMIT 1), ''),
 		       w.title_lock, w.author_lock, w.series_lock, w.cover_lock,
 		       w.isbn_lock, w.publisher_lock, w.language_lock, w.publication_date_lock, w.description_lock, w.original_year_lock
 		FROM works w LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
 		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1`, workID).Scan(
 		&m.Series, &m.SeriesIndex, &m.ISBN, &m.Publisher, &m.Language, &m.PublicationDate, &m.Description, &m.FirstAuthor,
-		&m.Unit, &m.ComicKind, &year,
+		&m.Unit, &m.ComicKind, &year, &m.SeriesDirection,
 		&titleL, &authorL, &seriesL, &coverL, &isbnL, &pubL, &langL, &dateL, &descL, &yearL)
 	if err != nil {
 		return nil, err
