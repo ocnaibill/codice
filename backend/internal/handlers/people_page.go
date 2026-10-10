@@ -27,6 +27,31 @@ type PersonPage struct {
 	// Profile is what Wikidata and Wikipedia say about the person (DEC-146): null when nothing was read, or when staff hid it (staff still see it,
 	// marked hidden, to be able to show it again).
 	Profile *PersonProfile `json:"profile"`
+	// Stats are the works of the person in the library and how far the caller is in them (DEC-157): private to the caller, like their reading.
+	Stats PersonStats `json:"stats"`
+	// Tags are the tags the works of the person carry most, with how many works each, for "themes" (at most personTags).
+	Tags []PersonTag `json:"tags"`
+}
+
+// personTags is how many tags a page of a person lists.
+const personTags = 8
+
+// PersonStats are numbers about the works of a person. Works is the library's; the rest is the caller's own.
+type PersonStats struct {
+	// Works is how many works the library has with the person in any role (a work in the trash does not count).
+	Works int `json:"works"`
+	// Finished is how many of them the caller finished: marked as finished, or with a file read to the end.
+	Finished int `json:"finished"`
+	// InProgress is how many they have begun and not finished.
+	InProgress int `json:"inProgress"`
+	// ReadingSeconds is the time they spent reading those works, in all their files.
+	ReadingSeconds int `json:"readingSeconds"`
+}
+
+// PersonTag is a tag, and how many works of the person carry it.
+type PersonTag struct {
+	Name  string `json:"name"`
+	Works int    `json:"works"`
 }
 
 // PersonProfile is the profile of a person: a short description, the years, a biography with where it came from, and a photo with its credit.
@@ -196,6 +221,51 @@ func (h *PeopleHandler) Page(w http.ResponseWriter, r *http.Request) {
 		}
 		page.Collections = append(page.Collections, pc)
 	}
+	if err := h.DB.QueryRowContext(r.Context(), `
+		WITH pw AS (
+			SELECT DISTINCT c.work_id FROM work_contributors c JOIN works w ON w.id = c.work_id AND w.retired_at IS NULL WHERE c.person_id = $1
+		), st AS (
+			SELECT pw.work_id,
+			       EXISTS (SELECT 1 FROM work_reading_state s WHERE s.user_id = $2::uuid AND s.work_id = pw.work_id)
+			         OR EXISTS (SELECT 1 FROM reading_progress r JOIN files f ON f.id = r.file_id JOIN editions e ON e.id = f.edition_id
+			                    WHERE e.work_id = pw.work_id AND r.user_id = $2::uuid AND r.completed_at IS NOT NULL) AS finished,
+			       EXISTS (SELECT 1 FROM reading_progress r JOIN files f ON f.id = r.file_id JOIN editions e ON e.id = f.edition_id
+			               WHERE e.work_id = pw.work_id AND r.user_id = $2::uuid AND `+hasPosition("r")+`) AS begun
+			FROM pw
+		)
+		SELECT count(*), count(*) FILTER (WHERE finished), count(*) FILTER (WHERE begun AND NOT finished),
+		       COALESCE((SELECT sum(r.reading_seconds) FROM reading_progress r JOIN files f ON f.id = r.file_id JOIN editions e ON e.id = f.edition_id
+		                 WHERE r.user_id = $2::uuid AND e.work_id IN (SELECT work_id FROM pw)), 0)
+		FROM st`, id, currentUserID(r)).Scan(&page.Stats.Works, &page.Stats.Finished, &page.Stats.InProgress, &page.Stats.ReadingSeconds); err != nil {
+		log.Println("Error reading the numbers of a person:", err)
+		http.Error(w, "Error reading the person", http.StatusInternalServerError)
+		return
+	}
+
+	page.Tags = []PersonTag{}
+	trows, err := h.DB.QueryContext(r.Context(), `
+		SELECT t.name, count(DISTINCT wt.work_id) AS works
+		FROM work_contributors c
+		JOIN works w ON w.id = c.work_id AND w.retired_at IS NULL
+		JOIN work_tags wt ON wt.work_id = w.id JOIN tags t ON t.id = wt.tag_id
+		WHERE c.person_id = $1
+		GROUP BY t.name ORDER BY works DESC, lower(t.name), t.name LIMIT $2`, id, personTags)
+	if err != nil {
+		log.Println("Error reading the tags of a person:", err)
+		http.Error(w, "Error reading the person", http.StatusInternalServerError)
+		return
+	}
+	for trows.Next() {
+		var pt PersonTag
+		if err := trows.Scan(&pt.Name, &pt.Works); err != nil {
+			trows.Close()
+			http.Error(w, "Error reading the person", http.StatusInternalServerError)
+			return
+		}
+		page.Tags = append(page.Tags, pt)
+	}
+	trows.Close()
+
 	if page.Profile, err = readProfile(r, h.DB, id); err != nil {
 		log.Println("Error reading the profile of a person:", err)
 		http.Error(w, "Error reading the person", http.StatusInternalServerError)
