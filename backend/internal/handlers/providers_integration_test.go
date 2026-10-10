@@ -26,6 +26,15 @@ type providerRow struct {
 		LastOkAt  *string
 		Empty     bool
 	}
+	Test *struct {
+		OK       bool
+		State    string
+		Status   int
+		Results  int
+		Ms       int
+		TestedAt string
+	}
+	Testing bool
 }
 
 func (s *catalogStack) providers() []providerRow {
@@ -338,6 +347,118 @@ func TestProviders_SayHowEachOneAnsweredTheLastTimeAndNothingElse(t *testing.T) 
 	for _, secret := range []string{"api_key", "apikey", "key=", "query"} {
 		if strings.Contains(strings.ToLower(raw), secret) {
 			t.Errorf("the list says %q: %s", secret, raw)
+		}
+	}
+}
+
+func (s *catalogStack) testProvider(id string) *httptest.ResponseRecorder {
+	s.t.Helper()
+	return s.do(admin, "POST", "/admin/metadata-providers/"+id+"/test", "")
+}
+
+func TestProviders_TheOwnerCanAskForOneToBeTestedAndTheLastTestIsInTheList(t *testing.T) {
+	s := newCatalogStack(t)
+	s.exec(`DELETE FROM jobs`)
+	for _, r := range s.providers() {
+		if r.Test != nil || r.Testing {
+			t.Errorf("%s: never tested: %+v %v", r.ID, r.Test, r.Testing)
+		}
+	}
+	rec := s.testProvider("google_books")
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("queued: %d %s", rec.Code, rec.Body)
+	}
+	// A provider that is off is tested too: the question is fixed and public, and the owner asked.
+	if got := s.scalar(`SELECT type || ':' || (payload->>'provider') || ':' || priority || ':' || (work_id IS NULL) || ':' || (created_by IS NOT NULL) FROM jobs WHERE state = 'pending'`); got != "provider_test:google_books:5:true:true" {
+		t.Errorf("the job: %q", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM audit_log WHERE action = 'providers.test' AND target_id = 'google_books'`); got != "1" {
+		t.Errorf("audited %s times", got)
+	}
+	by := map[string]providerRow{}
+	for _, r := range s.providers() {
+		by[r.ID] = r
+	}
+	if !by["google_books"].Testing || by["openlibrary"].Testing || by["google_books"].Enabled {
+		t.Errorf("only the one that was asked is being tested, and testing does not turn it on: %+v", by)
+	}
+	// Asking again while it waits is the same request.
+	if rec := s.testProvider("google_books"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "alreadyQueued") {
+		t.Errorf("twice: %d %s", rec.Code, rec.Body)
+	}
+	// Another provider has a test of its own.
+	if rec := s.testProvider("openlibrary"); rec.Code != http.StatusAccepted {
+		t.Errorf("another provider: %d", rec.Code)
+	}
+	if got := s.scalar(`SELECT count(*) FROM jobs WHERE type = 'provider_test'`); got != "2" {
+		t.Errorf("jobs: %s", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM audit_log WHERE action = 'providers.test'`); got != "2" {
+		t.Errorf("a request that was the same as another was audited: %s", got)
+	}
+	// A running test counts as one, and a finished one is not "testing" and does not stop another.
+	s.exec(`UPDATE jobs SET state = 'running' WHERE payload->>'provider' = 'google_books'`)
+	if rec := s.testProvider("google_books"); rec.Code != http.StatusOK {
+		t.Errorf("while it runs: %d", rec.Code)
+	}
+	s.exec(`UPDATE jobs SET state = 'succeeded', finished_at = now() WHERE payload->>'provider' = 'google_books'`)
+	if s.providers()[0].Testing {
+		t.Errorf("a finished test is not a test under way")
+	}
+	if rec := s.testProvider("google_books"); rec.Code != http.StatusAccepted {
+		t.Errorf("again, after it ended: %d", rec.Code)
+	}
+}
+
+func TestProviders_ThereIsNoSuchProviderToTest(t *testing.T) {
+	s := newCatalogStack(t)
+	s.exec(`DELETE FROM jobs`)
+	for _, id := range []string{"nobody", "GOOGLE_BOOKS", "google_books;"} {
+		if rec := s.testProvider(id); rec.Code != http.StatusNotFound {
+			t.Errorf("%q: %d", id, rec.Code)
+		}
+	}
+	if got := s.scalar(`SELECT count(*) FROM jobs`); got != "0" {
+		t.Errorf("jobs for nothing: %s", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM audit_log WHERE action = 'providers.test'`); got != "0" {
+		t.Errorf("audited: %s", got)
+	}
+}
+
+func TestProviders_ThePageIsToldHowTheLastTestCameOutAndNothingElse(t *testing.T) {
+	s := newCatalogStack(t)
+	s.exec(`INSERT INTO settings (key, value) VALUES ('metadata.providers.tests', $1::jsonb)`, `{
+		"google_books": {"ok": false, "state": "key", "status": 400, "results": 0, "ms": 310, "at": "2026-10-10T01:00:00Z"},
+		"openlibrary": {"ok": true, "state": "ok", "status": 200, "results": 12, "ms": 840, "at": "2026-10-10T01:01:00Z"},
+		"comicvine": {"ok": false, "state": "nokey", "status": 0, "results": 0, "ms": 0, "at": "2026-10-10T01:02:00Z"},
+		"anilist": {"ok": true, "state": "ok", "at": "not a time"},
+		"mangadex": {"ok": true, "at": "2026-10-10T01:03:00Z"},
+		"nobody": {"ok": true, "state": "ok", "at": "2026-10-10T01:04:00Z"}}`)
+	by := map[string]providerRow{}
+	for _, r := range s.providers() {
+		by[r.ID] = r
+	}
+	g, o, c := by["google_books"].Test, by["openlibrary"].Test, by["comicvine"].Test
+	if g == nil || g.OK || g.State != "key" || g.Status != 400 || g.Ms != 310 || g.TestedAt != "2026-10-10T01:00:00Z" {
+		t.Errorf("Google Books: %+v", g)
+	}
+	if o == nil || !o.OK || o.State != "ok" || o.Results != 12 || o.Ms != 840 {
+		t.Errorf("Open Library: %+v", o)
+	}
+	if c == nil || c.OK || c.State != "nokey" {
+		t.Errorf("ComicVine: %+v", c)
+	}
+	// What the worker could not have written is left out, and so is a provider the library does not have.
+	if by["anilist"].Test != nil || by["mangadex"].Test != nil || by["wikidata"].Test != nil || len(by) != 7 {
+		t.Errorf("a test with no time or no state, or for nobody: %+v %+v", by["anilist"].Test, by["mangadex"].Test)
+	}
+	for _, setting := range []string{`"text"`, `[1]`, `{"google_books": "x"}`, `5`} {
+		s.exec(`UPDATE settings SET value = $1::jsonb WHERE key = 'metadata.providers.tests'`, setting)
+		for _, r := range s.providers() {
+			if r.Test != nil {
+				t.Errorf("%s: a setting that is not a report says %+v", setting, r.Test)
+			}
 		}
 	}
 }

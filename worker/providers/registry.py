@@ -171,6 +171,10 @@ class ProviderRegistry:
         self._complete(best, format)
         return best
 
+    def provider(self, provider_id):
+        """The provider with this id, or none."""
+        return next((p for providers in self._providers.values() for p in providers if p.id == provider_id), None)
+
     def names(self):
         """What each provider calls itself in the log, and its id: ("Google Books", "google_books")."""
         return {p.name: p.id for providers in self._providers.values() for p in providers}

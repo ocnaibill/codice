@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeHealth, TONE_CLASS } from './providerHealth';
+import { describeHealth, describeTest, TONE_CLASS } from './providerHealth';
 
 const NOW = new Date('2026-10-10T12:00:00Z').getTime();
 const minutes = (n) => new Date(NOW - n * 60000).toISOString();
@@ -53,5 +53,39 @@ describe('describeHealth: how a provider answered the last time (DEC-144)', () =
 
   it('has a color for every tone', () => {
     expect(TONE_CLASS).toEqual({ ok: 'text-success', warn: 'text-warning', danger: 'text-danger', faint: 'text-ink-faint' });
+  });
+});
+
+describe('describeTest: how the last test of a provider came out (DEC-145)', () => {
+  const tested = (state, over = {}, id = 'openlibrary') => ({ id, name: 'X', enabled: true, test: { ok: state === 'ok', state, status: 0, results: 0, ms: 840, testedAt: minutes(2), ...over } });
+
+  it('says nothing when it never was tested', () => {
+    expect(describeTest({ id: 'openlibrary', test: null }, NOW)).toBeNull();
+    expect(describeTest({ id: 'openlibrary' }, NOW)).toBeNull();
+  });
+
+  it('says it answered, how fast and with how many results', () => {
+    expect(describeTest(tested('ok', { results: 12 }), NOW)).toEqual({ tone: 'ok', text: 'Teste há 2 minutos: respondeu em 0,8 s, com 12 resultados.' });
+    expect(describeTest(tested('ok', { results: 1, ms: 2400 }), NOW).text).toBe('Teste há 2 minutos: respondeu em 2,4 s, com 1 resultado.');
+    expect(describeTest(tested('ok', { results: 3, ms: 12 }), NOW).text).toContain('em 0,0 s');
+  });
+
+  it('says a key that was refused, where to look, and when there is nothing to look for', () => {
+    const got = describeTest(tested('key', { status: 403 }, 'google_books'), NOW);
+    expect(got).toEqual({ tone: 'danger', text: 'Teste há 2 minutos: a chave foi recusada (HTTP 403). Confira GOOGLE_BOOKS_API_KEY no ambiente do worker e reinicie-o.' });
+    expect(describeTest(tested('key', { status: 401 }, 'openlibrary'), NOW).text).toBe('Teste há 2 minutos: a chave foi recusada (HTTP 401).');
+  });
+
+  it('says there was no key to ask with', () => {
+    expect(describeTest(tested('nokey', {}, 'comicvine'), NOW)).toEqual({
+      tone: 'warn', text: 'Teste há 2 minutos: faltou a chave de API, então nada foi perguntado. Defina COMICVINE_API_KEY no ambiente do worker e reinicie-o.' });
+    expect(describeTest(tested('nokey', {}, 'wikidata'), NOW).text).toBe('Teste há 2 minutos: faltou a chave de API, então nada foi perguntado.');
+  });
+
+  it('says the quota, the service that is down, the answer with nothing and any other error', () => {
+    expect(describeTest(tested('quota', { status: 429 }), NOW)).toEqual({ tone: 'warn', text: 'Teste há 2 minutos: o limite de uso foi atingido (HTTP 429). Espere, ou use uma chave com cota maior.' });
+    expect(describeTest(tested('down'), NOW)).toEqual({ tone: 'danger', text: 'Teste há 2 minutos: não respondeu (rede ou serviço fora do ar).' });
+    expect(describeTest(tested('empty', { status: 200 }), NOW)).toEqual({ tone: 'warn', text: 'Teste há 2 minutos: respondeu em 0,8 s, mas sem nada para uma pergunta que tem resposta.' });
+    expect(describeTest(tested('error', { status: 404 }), NOW)).toEqual({ tone: 'warn', text: 'Teste há 2 minutos: respondeu com erro (HTTP 404).' });
   });
 });

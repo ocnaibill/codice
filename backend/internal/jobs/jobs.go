@@ -18,6 +18,9 @@ import (
 // Job types.
 const TypeIngest = "ingest" // analyze a file: extract metadata, cover, pages
 
+// TypeProviderTest asks one metadata provider a fixed, public question to see whether it answers (DEC-145).
+const TypeProviderTest = "provider_test"
+
 // Priorities: manual work is served before batch scans (DEC-069).
 const (
 	PriorityBatch  = 0

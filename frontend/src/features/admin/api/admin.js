@@ -83,7 +83,19 @@ export function useDuplicates() {
   });
 }
 export const useSuggestionQueue = list('suggestion-queue', '/admin/suggestions');
-export const useMetadataProviders = list('metadata-providers', '/admin/metadata-providers');
+/** Asks again every few seconds while a test of a provider is waiting or running, and never otherwise. */
+export const pollWhileTesting = (query) => (query.state.data?.data?.some((provider) => provider.testing) ? POLL_MS : false);
+
+/** The external metadata providers, with how each answered and how its last test came out. While a test is waiting or running it asks again
+ *  every few seconds, so the screen follows it to the end (DEC-145). */
+export function useMetadataProviders() {
+  return useQuery({
+    queryKey: ['admin', 'metadata-providers', null],
+    queryFn: async () => (await api.get('/admin/metadata-providers')).data,
+    staleTime: 0,
+    refetchInterval: pollWhileTesting,
+  });
+}
 export const usePeopleMerges = list('people-merges', '/admin/people/merges');
 /** Whether OCR is on, which engine there is and what it is doing. While it is on, it asks again every few seconds: the
  *  service takes a moment to notice that it was turned on, and then to say it is working. */
@@ -184,6 +196,9 @@ function useAdminAction(run) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin'] }),
   });
 }
+
+/** Asks for one provider to be tested: a fixed, public question, whether it is on or not (owner, DEC-145). */
+export const useTestMetadataProvider = () => useAdminAction((id) => api.post(`/admin/metadata-providers/${id}/test`));
 
 /** Turns an external metadata provider on or off (owner). */
 export const useSetMetadataProvider = () =>

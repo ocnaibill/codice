@@ -1,10 +1,13 @@
+import { act } from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-vi.mock('../../../lib/api', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
+vi.mock('../../../lib/api', () => ({ api: { get: vi.fn(), put: vi.fn(), post: vi.fn() } }));
 
 import { api } from '../../../lib/api';
 import { mount } from '../testUtils';
 import { ProvidersTab } from './ProvidersTab';
+import { pollWhileTesting } from '../api/admin';
+import { POLL_MS } from '../systemLimits';
 
 const provider = (id, name, enabled, over = {}) => ({ id, name, enabled, sends: ['title'], key: '', keyConfigured: null, ...over });
 const providers = [
@@ -23,6 +26,7 @@ async function open(props = { isOwner: true }, data = providers) {
     throw new Error(`unexpected GET ${url}`);
   });
   api.put.mockResolvedValue({});
+  api.post.mockResolvedValue({ data: { queued: true } });
   view = await mount(<ProvidersTab {...props} />);
 }
 const box = (name) => document.body.querySelector(`input[aria-label^="${name}:"]`);
@@ -96,6 +100,137 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
       expect(noteOf('none').textContent).toBe('Ainda não foi perguntado: nada a dizer sobre ele.');
       // a provider that is off and was never asked has nothing to say
       expect(document.body.querySelectorAll('[data-health]')).toHaveLength(5);
+    });
+  });
+
+  describe('testing a provider (DEC-145)', () => {
+    const testButton = (name) => document.body.querySelector(`button[aria-label="Testar ${name}"]`);
+    const test = (state, over = {}) => ({ ok: state === 'ok', state, status: state === 'ok' ? 200 : 0, results: 0, ms: 840, testedAt: new Date().toISOString(), ...over });
+    const noteOf = (state) => document.body.querySelector(`[data-test="${state}"]`);
+
+    it('lets the owner test each provider, and nobody else', async () => {
+      await open({ isOwner: true });
+      expect(testButton('Google Books')).not.toBeNull();
+      expect(testButton('Open Library').textContent).toBe('Testar');
+      view.unmount();
+      await open({ isOwner: false });
+      expect(testButton('Open Library')).toBeNull();
+    });
+
+    it('asks at once for a provider that is on: it is already sent what it is asked', async () => {
+      await open();
+      await view.click(testButton('Open Library'));
+      expect(api.post).toHaveBeenCalledWith('/admin/metadata-providers/openlibrary/test');
+      expect(confirmDialog()).toBeNull();
+    });
+
+    it('says what the test asks before testing one that is off, and does nothing if the owner backs out', async () => {
+      await open();
+      await view.click(testButton('Google Books'));
+      expect(api.post).not.toHaveBeenCalled();
+      const text = confirmDialog().textContent;
+      expect(text).toContain('Testar Google Books?');
+      expect(text).toContain('googleapis.com (Google)');
+      expect(text).toContain('um título fixo e público, “Dune”');
+      expect(text).toContain('Nada da sua biblioteca é enviado. O provedor continua desligado.');
+      expect(confirmDialog().textContent).not.toContain('chave de API configurada no worker vai junto');
+      const cancel = [...confirmDialog().querySelectorAll('button')].find((b) => /cancelar/i.test(b.textContent));
+      await view.click(cancel);
+      expect(api.post).not.toHaveBeenCalled();
+      expect(confirmDialog()).toBeNull();
+      await view.click(testButton('Google Books'));
+      await view.click([...confirmDialog().querySelectorAll('button')].find((b) => b.textContent === 'Testar'));
+      expect(api.post).toHaveBeenCalledWith('/admin/metadata-providers/google_books/test');
+      expect(api.put).not.toHaveBeenCalled(); // testing does not turn it on
+    });
+
+    it('says a test was asked for while the server has not answered yet, and only for that provider', async () => {
+      await open();
+      api.post.mockReturnValue(new Promise(() => {}));
+      await view.click(testButton('Open Library'));
+      expect(testButton('Open Library').disabled).toBe(true);
+      expect(testButton('Open Library').textContent).toBe('Testando…');
+      expect(testButton('Google Books').textContent).toBe('Testar');
+      expect(testButton('ComicVine').textContent).toBe('Testar');
+    });
+
+    it('follows a test to its end: it asks again every few seconds while it runs, and stops when it is over', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval'], shouldAdvanceTime: true });
+      try {
+        const rows = [provider('openlibrary', 'Open Library', true, { testing: true })];
+        await open({ isOwner: true }, rows);
+        const asked = () => api.get.mock.calls.filter(([url]) => url === '/admin/metadata-providers').length;
+        const before = asked();
+        await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS + 100); });
+        expect(asked()).toBeGreaterThan(before);
+        rows[0] = { ...rows[0], testing: false, test: { ok: true, state: 'ok', status: 200, results: 3, ms: 500, testedAt: new Date().toISOString() } };
+        await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS + 100); });
+        const settled = asked();
+        await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS * 3); });
+        expect(asked()).toBe(settled);
+        expect(document.body.querySelector('[data-test="ok"]')).not.toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('says the key goes along when the one that is off has a key', async () => {
+      await open({ isOwner: true }, [provider('comicvine', 'ComicVine', false, { key: 'required', keyConfigured: true })]);
+      await view.click(testButton('ComicVine'));
+      expect(confirmDialog().textContent).toContain('“Absolute Batman”');
+      expect(confirmDialog().textContent).toContain('A chave de API configurada no worker vai junto.');
+    });
+
+    it('says what is being asked of each: the page of Wikipedia, the title of a manga', async () => {
+      await open({ isOwner: true }, [provider('wikipedia', 'Wikipedia', false, { sends: ['page_title'] }), provider('anilist', 'AniList', false)]);
+      await view.click(testButton('Wikipedia'));
+      expect(confirmDialog().textContent).toContain('a página “Dune (novel)”');
+    });
+
+    it('says a test is under way, and does not let it be asked twice', async () => {
+      await open({ isOwner: true }, [provider('openlibrary', 'Open Library', true, { testing: true, test: test('ok', { results: 5 }) })]);
+      expect(testButton('Open Library').disabled).toBe(true);
+      expect(testButton('Open Library').textContent).toBe('Testando…');
+      expect(view.text()).toContain('Testando…');
+      expect(noteOf('ok')).toBeNull(); // the last one is not told while a new one runs
+    });
+
+    it('says how the last test came out, for each way it can', async () => {
+      await open({ isOwner: true }, [
+        provider('openlibrary', 'Open Library', true, { test: test('ok', { results: 12 }) }),
+        provider('google_books', 'Google Books', true, { key: 'required', keyConfigured: true, test: test('key', { status: 400 }) }),
+        provider('comicvine', 'ComicVine', true, { key: 'required', keyConfigured: true, test: test('nokey', { ms: 0 }) }),
+        provider('anilist', 'AniList', true, { test: test('quota', { status: 429 }) }),
+        provider('mangadex', 'MangaDex', true, { test: test('down') }),
+        provider('wikidata', 'Wikidata', true, { test: test('empty', { status: 200 }) }),
+        provider('wikipedia', 'Wikipedia', true, { test: test('error', { status: 404 }) }),
+      ]);
+      expect(noteOf('ok').textContent).toBe('Teste agora há pouco: respondeu em 0,8 s, com 12 resultados.');
+      expect(noteOf('key').textContent).toContain('a chave foi recusada (HTTP 400). Confira GOOGLE_BOOKS_API_KEY');
+      expect(noteOf('key').className).toContain('text-danger');
+      expect(noteOf('nokey').textContent).toContain('faltou a chave de API, então nada foi perguntado. Defina COMICVINE_API_KEY');
+      expect(noteOf('quota').textContent).toContain('o limite de uso foi atingido (HTTP 429)');
+      expect(noteOf('down').textContent).toContain('não respondeu (rede ou serviço fora do ar)');
+      expect(noteOf('empty').textContent).toContain('mas sem nada para uma pergunta que tem resposta');
+      expect(noteOf('error').textContent).toContain('respondeu com erro (HTTP 404)');
+    });
+
+    it('says an error of the request', async () => {
+      await open();
+      api.post.mockRejectedValue({ response: { status: 404, data: 'Provedor não encontrado.' } });
+      await view.click(testButton('Open Library'));
+      expect(view.text()).toContain('Provedor não encontrado.');
+      api.post.mockRejectedValue({ response: { status: 500, data: 'Error queueing the test' } });
+      await view.click(testButton('Open Library'));
+      expect(view.text()).toContain('Algo deu errado.');
+    });
+
+    it('asks again every few seconds while some provider is being tested, and never otherwise', () => {
+      const data = (rows) => ({ state: { data: { data: rows } } });
+      expect(pollWhileTesting(data([{ testing: false }, { testing: true }]))).toBeGreaterThan(0);
+      expect(pollWhileTesting(data([{ testing: false }]))).toBe(false);
+      expect(pollWhileTesting(data([]))).toBe(false);
+      expect(pollWhileTesting({ state: {} })).toBe(false);
     });
   });
 

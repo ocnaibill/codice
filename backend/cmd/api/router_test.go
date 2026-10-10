@@ -143,6 +143,8 @@ var staffRoutes = []route{
 	{"GET", "/admin/storage/transfers?ids=1"},
 	{"GET", "/admin/suggestions"},
 	{"GET", "/admin/metadata-providers"},
+	{"POST", "/admin/works/1/metadata-refresh"},
+	{"GET", "/admin/works/1/metadata-refresh"},
 	{"GET", "/admin/people/merges"},
 	{"GET", "/admin/people/names"},
 	{"GET", "/admin/ocr"},
@@ -230,6 +232,24 @@ func TestOwnerRoutes_OnlyOwnerPasses(t *testing.T) {
 		if rec := do(h, rt.method, rt.path, tokenFor(t, "owner"), `{"role":"owner"}`); rec.Code != http.StatusBadRequest {
 			t.Errorf("%s %s as owner with role=owner: got %d, want 400", rt.method, rt.path, rec.Code)
 		}
+	}
+}
+
+// Testing a provider is the owner's, like turning it on: the question goes to a third party even if the provider is off (DEC-145). The handler
+// asks the database, which this router has none of, so what is checked is who gets past the middleware.
+func TestProviderTest_OnlyTheOwnerGetsToTheHandler(t *testing.T) {
+	h := testRouter(t)
+	path := "/admin/metadata-providers/openlibrary/test"
+	for _, role := range []string{"admin", "reader"} {
+		if rec := do(h, "POST", path, tokenFor(t, role), ""); rec.Code != http.StatusForbidden {
+			t.Errorf("as %s: got %d, want 403", role, rec.Code)
+		}
+	}
+	if rec := do(h, "POST", path, "", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("without a token: got %d, want 401", rec.Code)
+	}
+	if rec := do(h, "POST", path, tokenFor(t, "owner"), ""); rec.Code == http.StatusForbidden || rec.Code == http.StatusUnauthorized {
+		t.Errorf("as owner: got %d, the middleware stopped the owner", rec.Code)
 	}
 }
 
