@@ -1,5 +1,8 @@
 import { languageName } from './files';
 
+// How a series stands in publication (DEC-170), as a reader reads it.
+export const PUBLICATION_LABELS = { ongoing: 'Em andamento', finished: 'Concluída', hiatus: 'Em hiato', cancelled: 'Cancelada' };
+
 const ROLE_LABELS = { author: 'autor', illustrator: 'ilustrador', translator: 'tradutor', editor: 'editor', narrator: 'narrador' };
 const roleLabel = (role) => ROLE_LABELS[role] || role;
 
@@ -18,6 +21,7 @@ export function suggestionText(candidate) {
     // not JSON: shown as it is
   }
   if (field === 'language') return languageName(value) || value;
+  if (field === 'series_status') return PUBLICATION_LABELS[value] || value;
   return value;
 }
 

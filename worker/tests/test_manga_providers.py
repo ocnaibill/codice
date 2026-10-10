@@ -76,6 +76,7 @@ class TestAniList:
         assert r.cover_url == 'https://s4.anilist.co/x-xl.jpg'
         assert r.raw['anilist_id'] == 30002 and r.raw['alt_titles'] == ['Berserk', 'ベルセルク', 'Berserk: Hunter']
         assert (r.raw['volumes'], r.raw['status'], r.raw['country'], r.raw['format']) == (42, 'RELEASING', 'JP', 'MANGA')
+        assert r.raw['native_title'] == 'ベルセルク'   # the title in its own script, for the series (DEC-171)
         assert 9 < r.prior <= 9.5 and r.series_index is None
 
     @patch('providers.http.requests.post')
@@ -184,6 +185,7 @@ class TestMangaDex:
         assert r.cover_url == 'https://uploads.mangadex.org/covers/abc-1/cover.jpg.512.jpg'
         assert r.raw['mangadex_id'] == 'abc-1' and r.raw['alt_titles'] == ['ベルセルク', 'Berserk (BR)'] and r.raw['demographic'] == 'seinen'
         assert r.raw['status'] == 'ongoing' and r.raw['language'] == 'ja'
+        assert r.raw['native_title'] == 'ベルセルク'   # the alternative title in the language the series was written in
 
     @patch('providers.http.requests.get')
     def test_less_in_the_answer_is_less_in_the_record(self, mock_get):
@@ -192,6 +194,17 @@ class TestMangaDex:
         (r,) = self.provider.lookup(read_file_title('x', None, 'cbz'))
         assert r.title == 'Sakuhin' and r.description is None and r.cover_url is None and r.publication_date is None and r.tags == []
         assert r.author == 'Desenhista' and r.credits[0].role == 'illustrator'
+
+    @patch('providers.http.requests.get')
+    def test_no_title_in_the_original_language_is_no_native_title(self, mock_get):
+        only_en = {'id': 'w', 'attributes': {'title': {'en': 'Attack on Titan'}, 'altTitles': [{'pt-br': 'Ataque dos Titãs'}], 'originalLanguage': 'ja'}, 'relationships': []}
+        mock_get.return_value = reply(200, {'data': [only_en]})
+        (r,) = self.provider.lookup(read_file_title('x', None, 'cbz'))
+        assert r.raw['native_title'] is None
+        no_language = {'id': 'v', 'attributes': {'title': {'en': 'X'}, 'altTitles': [{'ja': 'エックス'}]}, 'relationships': []}
+        mock_get.return_value = reply(200, {'data': [no_language]})
+        (r,) = self.provider.lookup(read_file_title('x', None, 'cbz'))
+        assert r.raw['native_title'] is None   # without knowing the language, no title is the native one
 
     @patch('providers.http.requests.get')
     def test_the_other_names_of_the_title_count(self, mock_get):

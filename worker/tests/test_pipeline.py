@@ -250,3 +250,32 @@ def test_the_work_is_ready_and_says_when_its_file_asks_for_a_password():
     assert work_ready_event(7, meta(title='Duna')) == {'type': 'WORK_READY', 'work_id': 7, 'title': 'Duna'}
     assert work_ready_event(7, meta(title='Duna', protected=False)) == {'type': 'WORK_READY', 'work_id': 7, 'title': 'Duna'}
     assert work_ready_event(7, meta(title='trancado', protected=True)) == {'type': 'WORK_READY', 'work_id': 7, 'title': 'trancado', 'protected': True}
+
+
+class TestTheSeriesFieldsOfTheRecord:
+    def test_a_providers_state_and_native_title_go_with_the_record_as_the_librarys_words(self):
+        from pipeline import suggest
+        calls = {}
+
+        class Spy:
+            def save_candidates(self, work_id, record, source, evidence, include_locked=False):
+                calls['record'] = record
+                return 0
+        enriched = SimpleNamespace(title='Berserk', author='Miura', series='Berserk', series_index=None, isbn=None, publisher=None, publication_date=None,
+                                   description=None, tags=[], credits=[], source='AniList', match=None,
+                                   raw={'status': 'RELEASING', 'native_title': 'ベルセルク'})
+        suggest(Spy(), 7, enriched, 'Berserk')
+        assert (calls['record']['series_status'], calls['record']['series_original_title']) == ('ongoing', 'ベルセルク')
+
+    def test_nothing_is_none(self):
+        from pipeline import suggest
+        calls = {}
+
+        class Spy:
+            def save_candidates(self, work_id, record, source, evidence, include_locked=False):
+                calls['record'] = record
+                return 0
+        enriched = SimpleNamespace(title='Duna', author='Frank Herbert', series=None, series_index=None, isbn=None, publisher=None, publication_date=None,
+                                   description=None, tags=[], credits=[], source='Open Library', match=None, raw={})
+        suggest(Spy(), 7, enriched, 'Duna')
+        assert (calls['record']['series_status'], calls['record']['series_original_title']) == (None, None)

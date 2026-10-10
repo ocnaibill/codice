@@ -3,13 +3,14 @@ import { useCandidates, useDecideCandidate } from '../api/useCandidates';
 import { reasonOf } from '../api/useVersions';
 import { keyLabel } from '../../../lib/authority';
 import { languageName } from '../files';
-import { localizeRoles, suggestionText } from '../suggestionText';
+import { localizeRoles, PUBLICATION_LABELS, suggestionText } from '../suggestionText';
 import { FIELD_LABELS, FIELD_ORDER } from '../../../lib/suggestionFields';
 
 function Suggestion({ candidate, onDecide, busy }) {
   let current = candidate.current;
   if (candidate.field === 'contributors') current = localizeRoles(current || '');
   if (candidate.field === 'language') current = languageName(current) || current;
+  if (candidate.field === 'series_status') current = PUBLICATION_LABELS[current] || current;
   const keys = candidate.keys || [];
   return (
     <li className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between">
