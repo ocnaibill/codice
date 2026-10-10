@@ -778,3 +778,81 @@ func TestList_CarriesHowManyDifferentFormatsThereAre(t *testing.T) {
 		t.Errorf("a missing file still counts: %v", list[work])
 	}
 }
+
+func TestFileProgress_SaysWhereTheLocatorIsInWordsAndItMovesWithIt(t *testing.T) {
+	s := newCatalogStack(t)
+	work, epub, pdf := s.bookWithTwoFiles()
+	continues := func(want int64) *ContinueFile {
+		t.Helper()
+		got := s.list(ana, "?inProgress=true")
+		if len(got.Data) != 1 || got.Data[0].ID != work || got.Data[0].Continue == nil || got.Data[0].Continue.FileID != want {
+			t.Fatalf("the work to continue: %+v", got.Data)
+		}
+		return got.Data[0].Continue
+	}
+
+	// A PDF: the chapter and "page 42 of 310".
+	code, _ := s.progress(ana, "PUT", pdf, `{"locator":{"type":"pdf","page":41},"percent":13.5,"chapter":"  Part II:\n  The   Desert ","unitIndex":42,"unitTotal":310}`)
+	if code != 200 {
+		t.Fatalf("save: %d", code)
+	}
+	c := continues(pdf)
+	if c.Chapter != "Part II: The Desert" || c.UnitIndex != 42 || c.UnitTotal != 310 {
+		t.Errorf("the card says where, in words, on one line: %+v", c)
+	}
+
+	// The place moved and the reader sent no words for it: the old ones are not what the new place is.
+	s.progress(ana, "PUT", pdf, `{"locator":{"type":"pdf","page":50},"percent":16}`)
+	if c := continues(pdf); c.Chapter != "" || c.UnitIndex != 0 || c.UnitTotal != 0 {
+		t.Errorf("a stale chapter and page would say a place the person left: %+v", c)
+	}
+
+	// A title is as long as a title is, and one a little over is cut like one far over.
+	long := strings.Repeat("ç", 230)
+	s.progress(ana, "PUT", epub, `{"locator":{"type":"epub","href":"ch2.xhtml"},"chapter":"`+long+`","unitIndex":12,"unitTotal":12}`)
+	if c := continues(epub); len([]rune(c.Chapter)) != 200 || c.UnitIndex != 12 || c.UnitTotal != 12 {
+		t.Errorf("the chapter is cut at 200 characters: %d %+v", len([]rune(c.Chapter)), c)
+	}
+
+	// Reading it again from the start leaves neither.
+	rec := s.do(ana, "PUT", fmt.Sprintf("/progress/files/%d/completion", epub), `{"completed":false,"restart":true}`)
+	if rec.Code != 200 {
+		t.Fatalf("restart: %d", rec.Code)
+	}
+	if got := s.list(ana, "?inProgress=true"); len(got.Data) != 1 || got.Data[0].Continue.FileID != pdf {
+		t.Fatalf("the restarted file is nobody's to continue: %+v", got.Data)
+	}
+	if n := mustInt(s, `SELECT count(*) FROM reading_progress WHERE file_id = $1 AND (chapter IS NOT NULL OR unit_index IS NOT NULL OR unit_total IS NOT NULL)`, epub); n != 0 {
+		t.Errorf("a restarted file keeps no place in words: %d", n)
+	}
+
+	// The plain-text write of the first readers replaces the locator, and with it what the locator was said to be.
+	s.progress(ana, "PUT", epub, `{"locator":{"type":"epub","href":"ch3.xhtml"},"chapter":"Três","unitIndex":3,"unitTotal":9}`)
+	if rec := s.do(ana, "PATCH", fmt.Sprintf("/works/%d/progress", work), `{"progress":"epubcfi(/6/8)","fileId":`+fmt.Sprint(epub)+`}`); rec.Code != 200 {
+		t.Fatalf("legacy write: %d", rec.Code)
+	}
+	if c := continues(epub); c.Chapter != "" || c.UnitTotal != 0 {
+		t.Errorf("the legacy write is another place: %+v", c)
+	}
+}
+
+func TestFileProgress_RefusesAPlaceInWordsThatIsNotOne(t *testing.T) {
+	s := newCatalogStack(t)
+	_, _, pdf := s.bookWithTwoFiles()
+	for _, extra := range []string{
+		`"unitIndex":3`,                      // one without the other
+		`"unitTotal":3`,                      //
+		`"unitIndex":0,"unitTotal":10`,       // from 1
+		`"unitIndex":11,"unitTotal":10`,      // not past the end
+		`"unitIndex":1,"unitTotal":10000001`, // not past what a file can have
+		`"unitIndex":-2,"unitTotal":-1`,      //
+	} {
+		code, _ := s.progress(ana, "PUT", pdf, `{"locator":{"type":"pdf","page":1},`+extra+`}`)
+		if code != http.StatusBadRequest {
+			t.Errorf("%s: %d", extra, code)
+		}
+	}
+	if _, st := s.progress(ana, "GET", pdf, ""); st.Revision != 0 {
+		t.Errorf("a refused save stores nothing: %+v", st)
+	}
+}

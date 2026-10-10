@@ -98,6 +98,21 @@ describe('PdfViewer: the outline of the PDF (#14)', () => {
     expect(onProgress.mock.calls.at(-1)[0]).toEqual({ type: 'pdf', page: 3 });
   });
 
+  it('saves with the page the chapter it is in and which page of how many (DEC-148)', async () => {
+    const onProgress = vi.fn().mockResolvedValue({});
+    await open({ onProgress });
+    const saveAt = async (typed) => {
+      await typeIn(jumpField(), typed);
+      await enter();
+      await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+      return onProgress.mock.calls.at(-1)[1];
+    };
+    expect(await saveAt('2')).toMatchObject({ unitIndex: 2, unitTotal: 12 });
+    expect(await saveAt('2')).not.toHaveProperty('chapter'); // before the first entry
+    expect(await saveAt('5')).toMatchObject({ chapter: 'Capítulo 1', unitIndex: 5, unitTotal: 12 });
+    expect(await saveAt('9')).toMatchObject({ chapter: 'Parte II', unitIndex: 9, unitTotal: 12 });
+  });
+
   it('does not offer an entry that goes nowhere', async () => {
     pdf = withOutline([{ title: 'Link', url: 'https://x.org' }, { title: 'Bom', dest: at(2) }, { title: 'Longe', dest: at(99) }]);
     await open();

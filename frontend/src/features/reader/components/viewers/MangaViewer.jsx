@@ -3,6 +3,7 @@ import { useDialog } from '../../../../lib/useDialog';
 import { authenticatedUrl } from '../../../../lib/api';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { completionFor } from '../../progressRules';
+import { pageUnit, whereExtras } from '../../placeInWords';
 import { imagePlaceProblem } from '../../placeCheck';
 import { getComicMode, saveComicMode } from '../../preferences';
 import { preloadOrder } from '../../comicPreload';
@@ -181,7 +182,7 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
       timeoutRef.current = setTimeout(() => {
         const percent = pages.length ? ((clampedPage + 1) / pages.length) * 100 : undefined;
         const completed = completionFor(percent);
-        onProgress({ type: 'image', index: clampedPage }, { percent, completed })
+        onProgress({ type: 'image', index: clampedPage }, { percent, completed, ...whereExtras({ unit: pageUnit(clampedPage + 1, pages.length) }) })
           ?.catch?.((err) => console.error('Failed to save reading progress:', err));
       }, 1000);
     }

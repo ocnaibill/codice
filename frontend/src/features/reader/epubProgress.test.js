@@ -51,4 +51,13 @@ describe('buildEpubProgress', () => {
     expect(buildEpubProgress(location(), () => 1.7).extras.percent).toBe(100);
     expect(buildEpubProgress(location(), () => -0.2).extras.percent).toBe(0);
   });
+
+  it('carries where the person is in words, and nothing when it is not known', () => {
+    const where = { chapter: 'Capítulo 3', unit: { index: 120, total: 840 } };
+    expect(buildEpubProgress(location(), () => 0.5, where).extras).toMatchObject({ chapter: 'Capítulo 3', unitIndex: 120, unitTotal: 840 });
+    const bare = buildEpubProgress(location(), () => 0.5, { chapter: undefined, unit: undefined }).extras;
+    expect(bare).not.toHaveProperty('chapter');
+    expect(bare).not.toHaveProperty('unitIndex');
+    expect(bare).not.toHaveProperty('unitTotal');
+  });
 });

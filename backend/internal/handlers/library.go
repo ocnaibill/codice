@@ -87,6 +87,11 @@ type ContinueFile struct {
 	Position        string  `json:"position,omitempty"`
 	PercentComplete float64 `json:"percentComplete"`
 	Completed       bool    `json:"completed"`
+	// Chapter, UnitIndex and UnitTotal say where that position is in words (DEC-148): the chapter's title, and which unit of how many (the
+	// page of a PDF or a comic, the position of an EPUB). The reader that saved the position sent them, and a position saved without them has none.
+	Chapter   string `json:"chapter,omitempty"`
+	UnitIndex int    `json:"unitIndex,omitempty"`
+	UnitTotal int    `json:"unitTotal,omitempty"`
 }
 
 // Edition is one publication of a work: its language, publisher and date, and
@@ -195,6 +200,7 @@ const cardColumns = `
 	lastrp.file_id, COALESCE(lastrp.format, ''), lastrp.path, COALESCE(lastrp.mode, ''),
 	COALESCE(lastrp.position, ''), COALESCE(lastrp.percent_complete, 0), (lastrp.completed_at IS NOT NULL),
 	COALESCE(lastrp.language, ''), COALESCE(lastrp.title, ''), (wrs.work_id IS NOT NULL),
+	COALESCE(lastrp.chapter, ''), COALESCE(lastrp.unit_index, 0), COALESCE(lastrp.unit_total, 0),
 	(SELECT count(*) FROM files fc JOIN editions ec ON ec.id = fc.edition_id
 	  WHERE ec.work_id = w.id AND fc.availability = 'available'),
 	(SELECT count(DISTINCT lower(fc.format)) FROM files fc JOIN editions ec ON ec.id = fc.edition_id
@@ -221,7 +227,7 @@ var cardJoins = `
 var lastReadJoin = `
 	LEFT JOIN work_reading_state wrs ON wrs.work_id = w.id AND wrs.user_id = $1
 	LEFT JOIN LATERAL (
-		SELECT r.file_id, r.position, r.percent_complete, r.completed_at, f2.format, e2.language, l.path, l.mode,
+		SELECT r.file_id, r.position, r.percent_complete, r.completed_at, r.chapter, r.unit_index, r.unit_total, f2.format, e2.language, l.path, l.mode,
 		       CASE WHEN e2.title_manual THEN e2.title END AS title
 		FROM reading_progress r
 		JOIN files f2 ON f2.id = r.file_id
@@ -256,7 +262,7 @@ func scanWork(row rowScanner) (Work, error) {
 		&work.ReadingProgress, &work.PercentComplete, &work.Completed, &work.IsFavorite,
 		&fileID, &work.Retired, &mode,
 		&lastFile, &last.Format, &lastPath, &lastMode, &last.Position, &last.PercentComplete, &last.Completed,
-		&last.Language, &last.Title, &finished, &work.FileCount, &work.FormatCount, &authorIDs, &authorNames,
+		&last.Language, &last.Title, &finished, &last.Chapter, &last.UnitIndex, &last.UnitTotal, &work.FileCount, &work.FormatCount, &authorIDs, &authorNames,
 	)
 	if err != nil {
 		return work, err
@@ -889,6 +895,9 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 			-- A plain-text position says nothing a saved locator could still be right about.
 			locator = NULL,
 			locator_version = NULL,
+			chapter = NULL,
+			unit_index = NULL,
+			unit_total = NULL,
 			percent_complete = CASE WHEN $6 THEN EXCLUDED.percent_complete ELSE reading_progress.percent_complete END,
 			completed_at = CASE
 				WHEN $5 THEN COALESCE(reading_progress.completed_at, now())

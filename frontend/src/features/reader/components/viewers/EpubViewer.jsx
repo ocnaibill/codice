@@ -4,6 +4,7 @@ import ePub from 'epubjs';
 import { api } from '../../../../lib/api';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { buildEpubProgress } from '../../epubProgress';
+import { chapterAt, epubChapterEntries, epubUnit } from '../../placeInWords';
 import { applyEpubSettings, fontFaceCss, marginStyle, sanitizeSettings, READING_THEMES } from '../../epubThemes';
 import { cleanQuote } from '../../selection';
 import { MOUSE_DELAY, TOUCH_DELAY } from '../../useSelectionWatcher';
@@ -244,11 +245,20 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
         let lastLocation = null;
         const percentageFromCfi = (cfi) =>
           book.locations.length() > 0 ? book.locations.percentageFromCfi(cfi) : null;
+        // The chapter the person is in and which position of how many: said with the place, for the card of "continue reading".
+        let chapters = null;
+        const whereIs = (location) => {
+          chapters ??= epubChapterEntries(flattenToc(nav.toc), book.spine);
+          return {
+            chapter: chapterAt(chapters, location.start.index, 'first'),
+            unit: epubUnit(book.locations, location.start.cfi),
+          };
+        };
         const report = (location) => {
           if (timeoutRef.current) clearTimeout(timeoutRef.current);
           if (!onProgress) return;
           timeoutRef.current = setTimeout(() => {
-            const progress = buildEpubProgress(location, percentageFromCfi);
+            const progress = buildEpubProgress(location, percentageFromCfi, whereIs(location));
             if (progress) {
               onProgress(progress.locator, progress.extras)
                 ?.catch?.((err) => console.error('Failed to save progress:', err));

@@ -87,3 +87,63 @@ describe('ContinueReading: the title of the edition being read (#185)', () => {
     expect(container.querySelector('article [role="img"]').getAttribute('aria-label')).toBe('Dune');
   });
 });
+
+describe('ContinueReading: where the person is, in words (DEC-148)', () => {
+  const epub = { ...work, continue: { ...work.continue, chapter: 'Capítulo 3: O Deserto', unitIndex: 1204, unitTotal: 9120 } };
+  const pdf = {
+    ...work, id: 12, title: 'Manual', continue: { fileId: 30, format: 'pdf', position: '42', percentComplete: 13, completed: false, chapter: 'Parte II', unitIndex: 42, unitTotal: 310 },
+  };
+
+  it('says the chapter and, for an EPUB, the position of how many (it has no pages)', async () => {
+    await render([epub]);
+    const text = card('Duna').textContent;
+    expect(text).toContain('Capítulo 3: O Deserto');
+    expect(text).toContain('Pos. 1.204 de 9.120');
+    expect(text).not.toContain('Página');
+  });
+
+  it('says the whole word to who hovers the position of an EPUB', async () => {
+    await render([epub]);
+    expect([...card('Duna').querySelectorAll('li')].map((li) => li.getAttribute('title'))).toContain('Posição 1.204 de 9.120');
+  });
+
+  it('says the page of how many for a PDF and for a comic', async () => {
+    const comic = { ...plain, continue: { fileId: 40, format: 'cbz', position: '4', percentComplete: 50, completed: false, unitIndex: 5, unitTotal: 32 } };
+    await render([pdf, comic]);
+    expect(card('Manual').textContent).toContain('Página 42 de 310');
+    expect(card('Manual').textContent).toContain('Parte II');
+    expect(card('Outro').textContent).toContain('Página 5 de 32');
+  });
+
+  it('keeps what an older save gives: the page of a PDF or a comic, and nothing for the rest', async () => {
+    const old = { ...pdf, continue: { fileId: 30, format: 'pdf', position: '42', percentComplete: 13, completed: false } };
+    const text = { ...work, id: 13, title: 'Texto', continue: { fileId: 50, format: 'txt', position: '1534', percentComplete: 8, completed: false } };
+    await render([old, text, work]);
+    expect(card('Manual').textContent).toContain('Página 42');
+    expect(card('Manual').textContent).not.toContain(' de ');
+    // the position of a plain text is a number of characters, and an EPUB's is a place in its code: neither is a page
+    expect(card('Texto').textContent).not.toContain('Página');
+    expect(card('Duna').textContent).not.toMatch(/Página|Pos\./);
+  });
+
+  it('does not say a place that is past the end of the file', async () => {
+    const wrong = { ...pdf, continue: { ...pdf.continue, position: '42', unitIndex: 400, unitTotal: 310 } };
+    await render([wrong]);
+    expect(card('Manual').textContent).not.toContain('400');
+    expect(card('Manual').textContent).toContain('Página 42'); // what the older save says
+  });
+
+  it('says a long chapter whole to who reads it, and shortened to who sees it', async () => {
+    const long = 'Capítulo 12: ' + 'uma travessia muito longa '.repeat(8);
+    await render([{ ...epub, continue: { ...epub.continue, chapter: long } }]);
+    const item = card('Duna').querySelector('li[title]');
+    expect(item.getAttribute('title')).toBe(long);
+    expect(item.querySelector('span:last-child').className).toContain('truncate');
+  });
+
+  it('says no chapter for an audio file', async () => {
+    const audio = { ...work, id: 14, title: 'Audio', continue: { fileId: 60, format: 'm4b', position: '3600', percentComplete: 20, completed: false, chapter: 'Faixa 2' } };
+    await render([audio]);
+    expect(card('Audio').textContent).not.toContain('Faixa 2');
+  });
+});

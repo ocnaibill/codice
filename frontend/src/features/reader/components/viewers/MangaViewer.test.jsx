@@ -70,10 +70,13 @@ describe('MangaViewer reading mode', () => {
     const [atEnd, endExtras] = await lastSaved('ArrowRight'); // page index 2 of 3: the last one
     expect(atEnd).toEqual({ type: 'image', index: 2 });
     expect(endExtras.completed).toBe(true);
+    expect(endExtras).toMatchObject({ unitIndex: 3, unitTotal: 3 }); // the page, from 1, of how many
 
     const [back, backExtras] = await lastSaved('ArrowLeft');
     expect(back).toEqual({ type: 'image', index: 1 });
     expect(backExtras.completed).toBeUndefined(); // going back says nothing about finishing
+    expect(backExtras).toMatchObject({ unitIndex: 2, unitTotal: 3 });
+    expect(backExtras).not.toHaveProperty('chapter'); // a comic's images have no chapter to name
   });
 });
 
