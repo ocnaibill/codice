@@ -45,7 +45,7 @@ export const useGlobalStore = create((set) => ({
 
   // Actions
   isUploadModalOpen: false,
-  setSearchQuery: (query) => set({ searchQuery: query, ...(query.trim() ? { adminOpen: false, notesOpen: false, categoryPageId: null, sheetWorkId: null, personSheetId: null } : {}) }),
+  setSearchQuery: (query) => set({ searchQuery: query, ...(query.trim() ? { adminOpen: false, notesOpen: false, categoryPageId: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null } : {}) }),
   // The page of a work (DEC-149) takes the place of whatever is on screen, the notes included, and going back finds it as it was.
   openWork: (id) => set({ sheetWorkId: id, activeBookId: null, activeFileId: null, adminOpen: false }),
   closeSheet: () => set({ sheetWorkId: null }),
@@ -69,7 +69,7 @@ export const useGlobalStore = create((set) => ({
   // The tab of the administration that is open (#182): in the store so that the address can say it.
   adminTab: 'jobs',
   setAdminTab: (adminTab) => set({ adminTab }),
-  openAdmin: () => set({ adminOpen: true, adminTab: 'jobs', notesOpen: false, categoryPageId: null, activeBookId: null, activeFileId: null, sheetWorkId: null, personSheetId: null }),
+  openAdmin: () => set({ adminOpen: true, adminTab: 'jobs', notesOpen: false, categoryPageId: null, activeBookId: null, activeFileId: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null }),
   // The dialogs of the account that are open ('senha', 'preferencias', 'aplicativos', 'sobre', 'sessoes'), the last over the others (#182):
   // they are in the store so that the address says them, and the back button closes them.
   accountDialogs: [],
@@ -77,7 +77,7 @@ export const useGlobalStore = create((set) => ({
   closeAccountDialog: (name) => set((state) => (state.accountDialogs.includes(name) ? { accountDialogs: state.accountDialogs.filter((open) => open !== name) } : state)),
   // All of the person's own notes, highlights and bookmarks (#13).
   notesOpen: false,
-  openNotes: () => set({ notesOpen: true, adminOpen: false, categoryPageId: null, searchQuery: '', activeBookId: null, activeFileId: null, sheetWorkId: null, personSheetId: null }),
+  openNotes: () => set({ notesOpen: true, adminOpen: false, categoryPageId: null, searchQuery: '', activeBookId: null, activeFileId: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null }),
   setBooks: (books) => set({ books }),
   openUploadModal: () => set({ isUploadModalOpen: true }),
   closeUploadModal: () => set({ isUploadModalOpen: false }),

@@ -10,7 +10,7 @@ vi.mock('../../../lib/api', () => ({
 import { api } from '../../../lib/api';
 import { mount, flush } from '../../admin/testUtils';
 import { useGlobalStore } from '../../../store/useGlobalStore';
-import { CollectionSheet } from './CollectionSheet';
+import { CollectionPage } from './CollectionPage';
 import { CollectionsGrid } from './CollectionsGrid';
 
 // What axe finds on the screens of the collections (the same rules as the other screens: names of the controls, roles, lists).
@@ -43,7 +43,7 @@ describe('what axe finds on the collections', () => {
   it('on the page of a collection, for the staff, with the rename form, the question of taking one out and the search', async () => {
     serve();
     useGlobalStore.setState({ collectionSheetId: 5 });
-    view = await mount(<CollectionSheet />);
+    view = await mount(<CollectionPage />);
     await flush();
     expect(await audit(document.body)).toEqual([]);
     await view.click(view.button('Renomear'));
@@ -81,7 +81,7 @@ describe('what axe finds on the collections', () => {
       throw new Error(`unexpected GET ${url}`);
     });
     useGlobalStore.setState({ collectionSheetId: 7 });
-    view = await mount(<CollectionSheet />);
+    view = await mount(<CollectionPage />);
     await flush();
     expect(await audit(document.body)).toEqual([]);
     await view.click(view.button('Renomear'));

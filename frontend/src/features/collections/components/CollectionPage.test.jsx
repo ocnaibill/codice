@@ -10,7 +10,7 @@ vi.mock('../../../lib/api', () => ({
 
 import { api } from '../../../lib/api';
 import { useGlobalStore } from '../../../store/useGlobalStore';
-import { CollectionSheet } from './CollectionSheet';
+import { CollectionPage } from './CollectionPage';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -53,7 +53,7 @@ async function open({ role = 'admin', data = detail(trio) } = {}) {
   api.delete.mockResolvedValue({});
   useGlobalStore.setState({ collectionSheetId: 5, sheetWorkId: null });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await act(async () => { root.render(<QueryClientProvider client={client}><CollectionSheet /></QueryClientProvider>); });
+  await act(async () => { root.render(<QueryClientProvider client={client}><CollectionPage /></QueryClientProvider>); });
   await flush();
   await flush();
 }
@@ -80,7 +80,7 @@ afterEach(() => {
   useGlobalStore.setState({ collectionSheetId: null, sheetWorkId: null });
 });
 
-describe('CollectionSheet: what everybody sees', () => {
+describe('CollectionPage: what everybody sees', () => {
   it('shows the works in order, with their numbers and which were read, and says how much was read', async () => {
     await open({ role: 'reader' });
     const rows = [...container.querySelectorAll('ol li')].map((li) => li.textContent);
@@ -90,9 +90,9 @@ describe('CollectionSheet: what everybody sees', () => {
     expect(rows[1]).toContain('Câmara Secreta');
     expect(rows[2]).toContain('Contos');
     expect(container.textContent).toContain('3 obras · Leu 1 de 3');
-    expect(container.querySelector('[role="dialog"]').getAttribute('aria-label')).toBe('Coleção');
+    expect(container.querySelector('[role="region"]').getAttribute('aria-label')).toBe('Coleção');
     expect(labelled('Obras da coleção').tagName).toBe('OL');
-    expect(container.querySelector('h2').textContent).toBe('Harry Potter');
+    expect(container.querySelector('h1').textContent).toBe('Harry Potter');
     // the work with no number says so, and the others say theirs
     const numbers = [...container.querySelectorAll('ol li > div > span:first-child')].map((n) => n.textContent);
     expect(numbers).toEqual(['1', '2', '—']);
@@ -105,13 +105,18 @@ describe('CollectionSheet: what everybody sees', () => {
     expect(useGlobalStore.getState().collectionSheetId).toBe(5);
   });
 
-  it('closes with the button and with Escape', async () => {
-    await open({ role: 'reader' });
-    await click(labelled('Fechar'));
-    expect(useGlobalStore.getState().collectionSheetId).toBeNull();
+  it('goes back with its button, and is a page: Escape does not leave it', async () => {
     await open({ role: 'reader' });
     await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(useGlobalStore.getState().collectionSheetId).toBe(5);
+    await click(button('← Voltar'));
     expect(useGlobalStore.getState().collectionSheetId).toBeNull();
+  });
+
+  it('goes to the library from the trail', async () => {
+    await open({ role: 'reader' });
+    await click(button('Biblioteca'));
+    expect(useGlobalStore.getState()).toMatchObject({ collectionSheetId: null, libraryView: 'all' });
   });
 
   it('offers a reader nothing to manage', async () => {
@@ -135,7 +140,7 @@ describe('CollectionSheet: what everybody sees', () => {
     });
     useGlobalStore.setState({ collectionSheetId: null });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionSheet /></QueryClientProvider>); });
+    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionPage /></QueryClientProvider>); });
     await flush();
     expect(api.get.mock.calls.filter(([url]) => String(url).startsWith('/collections'))).toEqual([]);
   });
@@ -149,13 +154,13 @@ describe('CollectionSheet: what everybody sees', () => {
     api.get.mockRejectedValue(Object.assign(new Error('x'), { response: { status: 404, data: 'Collection not found' } }));
     useGlobalStore.setState({ collectionSheetId: 5 });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionSheet /></QueryClientProvider>); });
+    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionPage /></QueryClientProvider>); });
     await flush();
     expect(container.textContent).toContain('Não foi possível abrir esta coleção.');
   });
 });
 
-describe('CollectionSheet: what owner and admin do', () => {
+describe('CollectionPage: what owner and admin do', () => {
   it('moves a work up and down by sending the whole new order', async () => {
     await open();
     expect(labelled('Subir “Pedra Filosofal”').disabled).toBe(true);
@@ -202,7 +207,7 @@ describe('CollectionSheet: what owner and admin do', () => {
     expect(container.querySelector('form')).not.toBeNull();
     await act(async () => { useGlobalStore.setState({ collectionSheetId: 6 }); });
     await flush();
-    expect(container.querySelector('h2').textContent).toBe('Outra');
+    expect(container.querySelector('h1').textContent).toBe('Outra');
     expect(container.querySelector('form')).toBeNull();
   });
 
@@ -309,7 +314,7 @@ describe('CollectionSheet: what owner and admin do', () => {
   });
 });
 
-describe('CollectionSheet: a list of the person', () => {
+describe('CollectionPage: a list of the person', () => {
   const entry = (entryId, id, title, extra = {}) => ({ entryId, id, title, author: 'x', coverUrl: '/c/1.jpg', position: entryId, completed: false, available: true, ...extra });
   const gone = entry(30, 0, 'Obra que saiu', { available: false, coverUrl: '/covers/placeholder.svg' });
   const list = (works, extra = {}) => ({
@@ -331,7 +336,7 @@ describe('CollectionSheet: a list of the person', () => {
     api.delete.mockResolvedValue({});
     useGlobalStore.setState({ collectionSheetId: 7, sheetWorkId: null });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionSheet /></QueryClientProvider>); });
+    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionPage /></QueryClientProvider>); });
     await flush();
     await flush();
   }
@@ -346,8 +351,8 @@ describe('CollectionSheet: a list of the person', () => {
 
   it('is managed by the person who reads it: no staff needed', async () => {
     await openList({ role: 'reader' });
-    expect(container.querySelector('[role="dialog"]').getAttribute('aria-label')).toBe('Lista');
-    expect(container.textContent).toContain('Biblioteca / Lista');
+    expect(container.querySelector('[role="region"]').getAttribute('aria-label')).toBe('Lista');
+    expect(container.querySelector('nav[aria-label="Onde você está"]').textContent).toContain('Lista');
     for (const text of ['Renomear', 'Acrescentar obra', 'Aposentar']) expect(button(text)).toBeTruthy();
     expect(labelled('Obras da lista').tagName).toBe('OL');
   });
@@ -442,7 +447,7 @@ describe('CollectionSheet: a list of the person', () => {
   });
 });
 
-describe('CollectionSheet: favoriting', () => {
+describe('CollectionPage: favoriting', () => {
   it('has a heart in the header, filled when it is a favorite, for a reader too', async () => {
     await open({ role: 'reader', data: detail(trio, { isFavorite: true }) });
     const heart = labelled('Remover dos favoritos: Harry Potter');
@@ -467,7 +472,7 @@ describe('CollectionSheet: favoriting', () => {
   });
 });
 
-describe('CollectionSheet: the works in groups by unit (#187)', () => {
+describe('CollectionPage: the works in groups by unit (#187)', () => {
   const w = (id, title, position, unit, extra = {}) => ({ ...work(id, title, position), unit, comicKind: '', ...extra });
   const mixed = [
     w(1, 'Vol 1', 1, 'volume'), w(2, 'Vol 2', 2, 'volume'),
@@ -537,7 +542,7 @@ describe('CollectionSheet: the works in groups by unit (#187)', () => {
     });
     useGlobalStore.setState({ collectionSheetId: 7 });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionSheet /></QueryClientProvider>); });
+    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionPage /></QueryClientProvider>); });
     await flush();
     await flush();
     expect(container.querySelector('section h3')).toBeNull();
@@ -545,7 +550,7 @@ describe('CollectionSheet: the works in groups by unit (#187)', () => {
   });
 });
 
-describe('CollectionSheet: classifying the works of a collection (#187)', () => {
+describe('CollectionPage: classifying the works of a collection (#187)', () => {
   const select = (label) => [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith(label)).querySelector('select');
   const choose = (el, value) => act(async () => {
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, value);
@@ -571,7 +576,7 @@ describe('CollectionSheet: classifying the works of a collection (#187)', () => 
     });
     useGlobalStore.setState({ collectionSheetId: 7 });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionSheet /></QueryClientProvider>); });
+    await act(async () => { root.render(<QueryClientProvider client={client}><CollectionPage /></QueryClientProvider>); });
     await flush();
     await flush();
     expect(button('Renomear')).toBeTruthy();
@@ -642,7 +647,7 @@ describe('CollectionSheet: classifying the works of a collection (#187)', () => 
   });
 });
 
-describe('CollectionSheet: where to go on in a series (#187)', () => {
+describe('CollectionPage: where to go on in a series (#187)', () => {
   const step = (over = {}) => ({ id: 2, title: 'Câmara Secreta', unit: 'chapter', position: 2, started: false, begun: true, ...over });
   const goOnButton = () => [...container.querySelectorAll('button')].find((b) => /^(Continuar|Próximo|Começar):/.test(b.textContent.trim()));
 
@@ -686,5 +691,125 @@ describe('CollectionSheet: where to go on in a series (#187)', () => {
     await open({ role: 'reader', data: { ...detail(trio), continue: step() } });
     expect(goOnButton()).toBeDefined();
     expect(button('Renomear')).toBeUndefined();
+  });
+});
+
+describe('CollectionPage: the page of a series (DEC-162)', () => {
+  const row = (entryId, id, title, extra = {}) => ({
+    entryId, id, title, author: 'J. K. Rowling', coverUrl: `/c/${id}.jpg`, position: id, completed: false, available: true, unit: 'volume', comicKind: '',
+    percent: 0, started: false, formats: ['epub'], rating: 0, ...extra,
+  });
+  const works = [
+    row(10, 1, 'Pedra Filosofal', { completed: true, percent: 100, originalYear: 1997, synopsis: 'Um menino descobre que é bruxo.', completedAt: '2023-09-12T10:00:00Z', rating: 5, formats: ['epub', 'm4b'] }),
+    row(20, 2, 'Câmara Secreta', { started: true, percent: 64, chapter: 'Capítulo 14', unitIndex: 204, unitTotal: 318, readFormat: 'epub', originalYear: 1998 }),
+    row(30, 4, 'Cálice de Fogo', {}),
+  ];
+  const full = (extra = {}) => ({
+    collection: { id: 5, kind: 'official', name: 'Harry Potter', workCount: 3, completedCount: 1, coverUrl: '/c/1.jpg' },
+    works,
+    continue: { id: 2, title: 'Câmara Secreta', unit: 'volume', position: 2, started: true, begun: true },
+    summary: {
+      works: 3, finished: 1, inProgress: 1, percent: 54.7, readingSeconds: 3 * 3600 + 20 * 60, yearFrom: 1997, yearTo: 2000,
+      missing: [{ unit: 'volume', number: 3 }],
+      authors: [{ id: 9, name: 'J. K. Rowling', works: 3 }], translators: [{ id: 11, name: 'Lia Wyler', works: 3 }],
+      tags: [{ name: 'magia', works: 3 }, { name: 'escola', works: 2 }],
+    },
+    ...extra,
+  });
+  const show = async (data = full(), role = 'reader') => {
+    await open({ role, data });
+  };
+
+  it('says who wrote and translated it, the years, and the tags, with a way to the page of each person', async () => {
+    await show();
+    const hero = container.querySelector('section[aria-label="Sobre a coleção"]');
+    expect(hero.textContent).toContain('1997–2000 · 3 obras');
+    expect(hero.textContent).toContain('J. K. Rowling');
+    expect(hero.textContent).toContain('Trad.: Lia Wyler');
+    expect([...hero.querySelectorAll('ul[aria-label="Etiquetas"] li')].map((li) => li.textContent)).toEqual(['#magia', '#escola']);
+    await click([...hero.querySelectorAll('button')].find((b) => b.textContent === 'Lia Wyler'));
+    expect(useGlobalStore.getState().personSheetId).toBe(11);
+  });
+
+  it('says how far the person is in the whole, the hours and how many are in progress', async () => {
+    await show();
+    const box = container.querySelector('[aria-label="Seu progresso"]');
+    expect(box.textContent).toContain('55%');
+    expect(box.textContent).toContain('1 de 3 lidas');
+    expect(box.textContent).toContain('1 em andamento');
+    expect(box.textContent).toMatch(/3.*lidas/);
+  });
+
+  it('continues the series with how far it is and where it stopped', async () => {
+    await show();
+    const go = [...container.querySelectorAll('button')].find((b) => b.textContent.includes('(64%)'));
+    expect(go).toBeTruthy();
+    expect(container.textContent).toContain('Parou em Capítulo 14');
+    await click(go);
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 2 });
+  });
+
+  it('says the numbers of the series that are not in the library', async () => {
+    await show();
+    expect(container.querySelector('[role="status"]').textContent).toBe('Falta no acervo: Vol. 3.');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await open({ role: 'reader', data: full({ summary: { ...full().summary, missing: [{ unit: 'volume', number: 3 }, { unit: 'volume', number: 5 }] } }) });
+    expect(container.querySelector('[role="status"]').textContent).toBe('Faltam no acervo: Vol. 3, Vol. 5.');
+  });
+
+  it('says nothing of what is missing in a collection that was put away', async () => {
+    await show(full({ collection: { ...full().collection, retired: true } }), 'admin');
+    expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('says nothing of what is missing when nothing is', async () => {
+    await show(full({ summary: { ...full().summary, missing: [] } }));
+    expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('says of each work what it is and what the person did: the year, the formats, the stars, when it was finished and how far they are', async () => {
+    await show();
+    const rows = [...container.querySelectorAll('ol li')].map((li) => li.textContent);
+    expect(rows[0]).toContain('Publicado em 1997');
+    expect(rows[0]).toContain('EPUB · M4B');
+    expect(rows[0]).toContain('★★★★★');
+    expect(rows[0]).toContain('Lida em setembro de 2023');
+    expect(rows[0]).toContain('Um menino descobre que é bruxo.');
+    expect(rows[1]).toContain('Em leitura 64%');
+    expect(rows[1]).toContain('Capítulo 14');
+    expect(rows[1]).toContain('Pos. 204 de 318');
+    expect(rows[1]).toContain('Retomar');
+    expect(rows[2]).not.toContain('Retomar');
+  });
+
+  it('says which one is next, and no more of the rest', async () => {
+    await show(full({ continue: { id: 4, title: 'Cálice de Fogo', unit: 'volume', position: 4, started: false, begun: true } }));
+    const rows = [...container.querySelectorAll('ol li')].map((li) => li.textContent);
+    expect(rows[2]).toContain('Próxima da fila');
+    expect(rows[0]).not.toContain('Próxima da fila');
+  });
+
+  it('opens the reader at the work from "Retomar"', async () => {
+    await show();
+    await click(button('Retomar'));
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 2 });
+  });
+
+  it('can be seen as a compact list, with none of the details of the cards', async () => {
+    await show();
+    await click(button('Lista compacta'));
+    const rows = [...container.querySelectorAll('ol li')].map((li) => li.textContent);
+    expect(rows[0]).not.toContain('Publicado em');
+    expect(rows[0]).not.toContain('Um menino');
+    expect(rows[1]).not.toContain('Retomar');
+    expect(rows[1]).toContain('Em leitura 64%'); // what it is stays
+    await click(button('Cartões ricos'));
+    expect([...container.querySelectorAll('ol li')][0].textContent).toContain('Publicado em 1997');
+  });
+
+  it('says no summary for a collection with no work to say it of', async () => {
+    await show({ collection: full().collection, works: [], continue: null, summary: { ...full().summary, works: 0, authors: [], translators: [], tags: [], missing: [] } });
+    expect(container.querySelector('[aria-label="Seu progresso"]')).toBeNull();
   });
 });

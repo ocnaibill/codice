@@ -1,7 +1,6 @@
 import React from 'react';
 import { LoadError } from '../../../components/ui/LoadError';
 import { WorkCover } from '../../../components/ui/WorkCover';
-import { useDialog } from '../../../lib/useDialog';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { isStaff, useMe } from '../../auth/api/useMe';
 import { useWorkSearch } from '../../reader/api/useVersions';
@@ -16,8 +15,11 @@ import {
   useRestoreCollection,
   useRetireCollection,
 } from '../api/useCollections';
-import { collectionLine, COMIC_KINDS, groupByUnit, numberText, goOnText, UNITS, unitLabel, wordsOf } from '../text';
+import { collectionLine, COMIC_KINDS, groupByUnit, numberText, goOnText, UNITS, unitLabel, wordsOf, worksText } from '../text';
 import { CollectionFavoriteButton } from './CollectionFavoriteButton';
+import { ProgressBar } from '../../../components/ui/ProgressBar';
+import { formatReadingTime } from '../../home/utils/format';
+import { placeLabel } from '../../reader/placeInWords';
 
 const BUTTON = 'min-h-10 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40';
 const PRIMARY = 'min-h-10 rounded-lg bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40';
@@ -108,8 +110,21 @@ function AddWorkPanel({ collection, members, onDone }) {
   );
 }
 
-function WorkRow({ work, label, index, count, staff, confirming, busy, words, onOpen, onMove, onAskRemove, onRemove, onCancel }) {
+const STARS = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+const monthYear = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' });
+
+/** What the caller has done of a work of the collection, in a word: finished, in progress with how far, the next one, or nothing. */
+function statusOf(work, nextId) {
+  if (work.completed) return { text: 'Lida', tone: 'text-success bg-success/10' };
+  if (work.started) return { text: `Em leitura ${Math.round(work.percent)}%`, tone: 'text-brand bg-brand/10' };
+  if (nextId != null && work.id === nextId) return { text: 'Próxima da fila', tone: 'text-ink-soft bg-surface-alt' };
+  return null;
+}
+
+function WorkRow({ work, label, index, count, staff, confirming, busy, words, rich, nextId, onOpen, onRead, onMove, onAskRemove, onRemove, onCancel }) {
   const gone = !work.available;
+  const status = gone ? null : statusOf(work, nextId);
+  const place = work.started ? placeLabel(work.readFormat, { unitIndex: work.unitIndex, unitTotal: work.unitTotal }) : null;
   return (
     <li className="flex flex-col gap-2 rounded-xl border border-border-hairline bg-white p-3 shadow-sm">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -117,14 +132,22 @@ function WorkRow({ work, label, index, count, staff, confirming, busy, words, on
           {label}
         </span>
         <button onClick={() => onOpen(work)} disabled={gone} className="flex min-w-0 flex-1 basis-[180px] items-center gap-3 text-left disabled:cursor-default" aria-label={gone ? undefined : `Abrir a obra ${work.title}`}>
-          <WorkCover item={work} className="h-16 w-11 shrink-0 rounded-sm object-cover" />
+          <WorkCover item={work} className={`${rich ? 'h-24 w-16' : 'h-16 w-11'} shrink-0 rounded-sm object-cover`} />
           <span className="min-w-0">
             <span className="line-clamp-2 block font-display text-lg leading-snug text-ink">{work.title}</span>
             <span className="block truncate text-xs text-ink-soft">{work.author}</span>
+            {rich && !gone && (
+              <span className="mt-1 flex flex-wrap items-center gap-x-2 font-mono text-[10px] text-ink-faint">
+                {work.originalYear != null && <span>Publicado em {work.originalYear}</span>}
+                {work.formats?.length > 0 && <span>{work.formats.map((f) => f.toUpperCase()).join(' · ')}</span>}
+                {work.rating > 0 && <span aria-label={`${work.rating} de 5 estrelas`} title={`${work.rating} de 5 estrelas`}>{STARS(work.rating)}</span>}
+                {work.completedAt && <span>Lida em {monthYear.format(new Date(work.completedAt))}</span>}
+              </span>
+            )}
           </span>
         </button>
         {gone && <span className="shrink-0 rounded-full bg-surface-alt px-2 py-0.5 font-mono text-[10px] text-ink-soft" title="A obra saiu do acervo: a lista guarda o que ela era">Fora do acervo</span>}
-        {work.completed && <span className="shrink-0 rounded-full bg-success/10 px-2 py-0.5 font-mono text-[10px] text-success">Lida</span>}
+        {status && <span className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] ${status.tone}`}>{status.text}</span>}
         {staff && (
           <div className="flex shrink-0 basis-full items-center justify-end gap-1 sm:basis-auto">
             <button onClick={() => onMove(index, -1)} disabled={busy || index === 0} className={BUTTON} aria-label={`Subir “${work.title}”`}>↑</button>
@@ -133,6 +156,20 @@ function WorkRow({ work, label, index, count, staff, confirming, busy, words, on
           </div>
         )}
       </div>
+      {rich && !gone && work.synopsis && <p className="line-clamp-2 pl-[68px] text-sm text-ink-soft">{work.synopsis}</p>}
+      {rich && !gone && work.started && (
+        <div className="flex flex-wrap items-center gap-3 pl-[68px]">
+          <div className="min-w-[160px] flex-1">
+            <ProgressBar percent={work.percent} color="brand" />
+            <p className="mt-1 font-mono text-[11px] text-ink-soft">
+              {work.chapter ? `${work.chapter}` : ''}
+              {work.chapter && place ? ' · ' : ''}
+              {place ?? ''}
+            </p>
+          </div>
+          <button onClick={() => onRead(work)} className={PRIMARY}>Retomar</button>
+        </div>
+      )}
       {confirming && (
         <div role="alertdialog" aria-label={`Tirar “${work.title}” da ${words.thing}`} className="flex flex-wrap items-center gap-3 rounded-lg bg-surface px-3 py-2 text-xs text-ink-soft">
           <span className="min-w-[200px] flex-1">{words.removeNote}</span>
@@ -245,14 +282,17 @@ function ClassifyPanel({ collection, onDone }) {
  * put works in and take them out, change the order and retire it. Everything is reversible: nothing is deleted, and a
  * retired collection is restored from the list of the retired ones.
  */
-export function CollectionSheet() {
+export function CollectionPage() {
   const id = useGlobalStore((state) => state.collectionSheetId);
   const close = useGlobalStore((state) => state.closeCollection);
   const openWork = useGlobalStore((state) => state.openWork);
   const openBook = useGlobalStore((state) => state.openBook);
   const staffMember = isStaff(useMe().data);
-  const dialogRef = React.useRef(null);
-  const closeRef = React.useRef(null);
+  const openPerson = useGlobalStore((state) => state.openPerson);
+  const setView = useGlobalStore((state) => state.setLibraryView);
+  const headingRef = React.useRef(null);
+  const pageRef = React.useRef(null);
+  const [rich, setRich] = React.useState(true); // "Cartões ricos" or "Lista compacta"
   const { data, isLoading, isError, error, refetch, isRefetching } = useCollection(id);
   const order = useOrderCollection();
   const remove = useRemoveFromCollection();
@@ -268,7 +308,12 @@ export function CollectionSheet() {
     setMessage('');
   }, [id]);
 
-  useDialog(dialogRef, { active: !!id, initialFocus: closeRef, onEscape: close });
+  // A page that opens starts at its top, with the focus on what it is about.
+  React.useEffect(() => {
+    if (!id) return;
+    pageRef.current?.scrollIntoView?.({ block: 'start' });
+    headingRef.current?.focus?.({ preventScroll: true });
+  }, [id, !!data]);
 
   if (!id) return null;
 
@@ -299,103 +344,183 @@ export function CollectionSheet() {
     retire.mutate({ id, kind }, { onSuccess: close, onError: fail('Não foi possível aposentar a coleção.') });
   };
 
-  return (
-    <div ref={dialogRef} className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label={words.dialog}>
-      <div className="flex h-full w-full flex-col overflow-hidden bg-[#faf8f4] shadow-2xl sm:max-h-[92vh] sm:h-auto sm:max-w-4xl sm:rounded-2xl">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border-hairline bg-[#faf8f4] px-4 py-3 sm:px-6">
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">{words.eyebrow}</p>
-            <h2 className="truncate font-display text-2xl text-ink sm:text-3xl">{collection?.name ?? 'Carregando…'}</h2>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {collection && !collection.retired && (
-              <CollectionFavoriteButton
-                collection={collection}
-                className="library-favorite flex min-h-11 min-w-11 items-center justify-center rounded-lg text-ink-soft hover:bg-surface-alt hover:text-brand"
-              />
-            )}
-            <button ref={closeRef} onClick={close} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-xl text-ink-soft hover:bg-surface-alt hover:text-brand" aria-label="Fechar">✕</button>
-          </div>
-        </div>
+  const summary = data?.summary ?? null;
+  const goOnWork = goOn ? works.find((w) => w.id === goOn.id) : null;
+  const years = summary?.yearFrom != null ? (summary.yearTo !== summary.yearFrom ? `${summary.yearFrom}–${summary.yearTo}` : String(summary.yearFrom)) : null;
+  const missing = (summary?.missing ?? []).map((m) => unitLabel(m.unit, m.number));
+  const read = (work) => openBook(work.id);
 
-        <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
-          {isLoading && <p className="animate-pulse text-sm text-ink-faint">Carregando a coleção…</p>}
-          {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta coleção.</LoadError>}
-          {collection && (
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-ink-soft">
-                  {collection.retired ? `${words.retired}. ` : ''}
-                  {collectionLine(collection)}
-                  {collection.system ? ' É uma lista do Códice: ela guarda o que você deixou para ler depois.' : ''}
-                </p>
-                {staff && !collection.retired && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {!collection.system && <button onClick={() => setMode(mode === 'rename' ? null : 'rename')} aria-pressed={mode === 'rename'} className={BUTTON}>Renomear</button>}
-                    <button onClick={() => setMode(mode === 'add' ? null : 'add')} aria-pressed={mode === 'add'} className={BUTTON}>Acrescentar obra</button>
-                    {official && <button onClick={() => setMode(mode === 'classify' ? null : 'classify')} aria-pressed={mode === 'classify'} className={BUTTON}>Classificar obras</button>}
-                    {!collection.system && <button onClick={() => setMode(mode === 'retire' ? null : 'retire')} aria-pressed={mode === 'retire'} className={BUTTON}>Aposentar</button>}
+  return (
+    <div ref={pageRef} className="library-dashboard" role="region" aria-label={words.dialog}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <nav aria-label="Onde você está" className="flex min-w-0 flex-wrap items-center gap-2 text-[13px] text-ink-soft">
+          <button className="library-button" onClick={close}>← Voltar</button>
+          <button className="library-text-link" style={{ marginLeft: 0 }} onClick={() => setView('all')}>Biblioteca</button>
+          <span aria-hidden="true">›</span>
+          <span className="text-ink-faint">{official ? 'Coleção' : 'Lista'}</span>
+          <span aria-hidden="true">›</span>
+          <span aria-current="page" className="min-w-0 truncate text-ink">{collection?.name ?? 'Carregando…'}</span>
+        </nav>
+        {collection && !collection.retired && (
+          <CollectionFavoriteButton
+            collection={collection}
+            className="library-favorite flex min-h-11 min-w-11 items-center justify-center rounded-lg text-ink-soft hover:bg-surface-alt hover:text-brand"
+          />
+        )}
+      </div>
+
+      {isLoading && <p className="animate-pulse py-6 text-sm text-ink-faint">Carregando a coleção…</p>}
+      {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta coleção.</LoadError>}
+      {collection && (
+        <div className="mt-4 flex flex-col gap-6">
+          <section className="relative overflow-hidden rounded-2xl bg-surface-alt p-4 shadow-sm sm:p-6" aria-label="Sobre a coleção">
+            <div className="relative grid gap-5 md:grid-cols-[minmax(140px,200px)_minmax(0,1fr)] md:gap-8">
+              <div className="mx-auto w-32 md:mx-0 md:w-full">
+                <div className="relative">
+                  <WorkCover item={{ title: collection.name, coverUrl: collection.coverUrl }} className="aspect-[2/3] w-full rounded-lg object-cover shadow-lg" />
+                  <span className="absolute left-1.5 top-1.5 rounded-sm bg-ink/90 px-1.5 py-1 font-mono text-[9px] uppercase text-white">{official ? 'Coleção' : 'Lista'}</span>
+                </div>
+              </div>
+              <div className="min-w-0 space-y-4">
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-widest text-brand">
+                    {[years, collection.workCount > 0 ? worksText(collection.workCount) : null].filter(Boolean).join(' · ') || words.eyebrow}
+                  </p>
+                  <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl leading-tight text-ink outline-none sm:text-5xl">{collection.name}</h1>
+                  {(summary?.authors?.length > 0 || summary?.translators?.length > 0) && (
+                    <p className="mt-1 text-sm text-ink-soft">
+                      {summary.authors.map((p, i) => (
+                        <React.Fragment key={p.id}>
+                          {i > 0 && ', '}
+                          <button type="button" onClick={() => openPerson(p.id)} className="font-semibold text-brand hover:underline">{p.name}</button>
+                        </React.Fragment>
+                      ))}
+                      {summary.translators.length > 0 && (
+                        <>
+                          {summary.authors.length > 0 && ' · '}Trad.:{' '}
+                          {summary.translators.map((p, i) => (
+                            <React.Fragment key={p.id}>
+                              {i > 0 && ', '}
+                              <button type="button" onClick={() => openPerson(p.id)} className="hover:underline">{p.name}</button>
+                            </React.Fragment>
+                          ))}
+                        </>
+                      )}
+                    </p>
+                  )}
+                </div>
+                {summary?.tags?.length > 0 && (
+                  <ul aria-label="Etiquetas" className="flex flex-wrap gap-x-3 gap-y-1">
+                    {summary.tags.map((t) => <li key={t.name} className="font-mono text-[11px] text-ink-soft">#{t.name}</li>)}
+                  </ul>
+                )}
+                {summary && summary.works > 0 && (
+                  <div className="max-w-xl rounded-xl bg-white p-4 shadow-sm" aria-label="Seu progresso">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="font-mono text-[11px] uppercase tracking-widest text-ink-faint">{official ? 'Progresso na série' : 'Seu progresso'}</span>
+                      <span className="font-display text-xl text-brand">{Math.round(summary.percent)}%</span>
+                    </div>
+                    <ProgressBar percent={summary.percent} color="brand" />
+                    <p className="mt-2 font-mono text-[11px] text-ink-soft">
+                      {summary.finished} de {summary.works} {summary.works === 1 ? 'lida' : 'lidas'}
+                      {summary.inProgress > 0 ? ` · ${summary.inProgress} em andamento` : ''}
+                      {summary.readingSeconds > 0 ? ` · ${formatReadingTime(summary.readingSeconds)} lidas` : ''}
+                    </p>
                   </div>
                 )}
-                {staff && collection.retired && (
-                  <button onClick={() => restore.mutate({ id, kind }, { onError: fail('Não foi possível restaurar.') })} disabled={busy} className={PRIMARY}>Restaurar a {words.thing}</button>
+                {goOn && !collection.retired && (
+                  <div>
+                    <button onClick={() => openBook(goOn.id)} className={PRIMARY} title={goOn.title}>
+                      {goOnText(goOn)}
+                      {goOnWork?.started ? ` (${Math.round(goOnWork.percent)}%)` : ''}
+                    </button>
+                    {goOnWork?.started && goOnWork.chapter && <p className="mt-1 text-xs text-ink-soft">Parou em {goOnWork.chapter}</p>}
+                  </div>
                 )}
               </div>
+            </div>
+          </section>
 
-              {goOn && !collection.retired && (
-                <div>
-                  <button onClick={() => openBook(goOn.id)} className={PRIMARY} title={goOn.title}>
-                    {goOnText(goOn)}
-                  </button>
-                </div>
-              )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-ink-soft">
+              {collection.retired ? `${words.retired}. ` : ''}
+              {collectionLine(collection)}
+              {collection.system ? ' É uma lista do Códice: ela guarda o que você deixou para ler depois.' : ''}
+            </p>
+            {staff && !collection.retired && (
+              <div className="flex flex-wrap items-center gap-2">
+                {!collection.system && <button onClick={() => setMode(mode === 'rename' ? null : 'rename')} aria-pressed={mode === 'rename'} className={BUTTON}>Renomear</button>}
+                <button onClick={() => setMode(mode === 'add' ? null : 'add')} aria-pressed={mode === 'add'} className={BUTTON}>Acrescentar obra</button>
+                {official && <button onClick={() => setMode(mode === 'classify' ? null : 'classify')} aria-pressed={mode === 'classify'} className={BUTTON}>Classificar obras</button>}
+                {!collection.system && <button onClick={() => setMode(mode === 'retire' ? null : 'retire')} aria-pressed={mode === 'retire'} className={BUTTON}>Aposentar</button>}
+              </div>
+            )}
+            {staff && collection.retired && (
+              <button onClick={() => restore.mutate({ id, kind }, { onError: fail('Não foi possível restaurar.') })} disabled={busy} className={PRIMARY}>Restaurar a {words.thing}</button>
+            )}
+          </div>
 
-              {staff && mode === 'rename' && <RenameForm collection={collection} onDone={() => setMode(null)} />}
-              {staff && mode === 'add' && <AddWorkPanel collection={collection} members={works} onDone={() => setMode(null)} />}
-              {staff && official && mode === 'classify' && <ClassifyPanel collection={collection} onDone={() => setMode(null)} />}
-              {staff && mode === 'retire' && (
-                <div role="alertdialog" aria-label={`Aposentar a ${words.thing}`} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-hairline bg-white p-4 text-sm text-ink-soft shadow-sm">
-                  <span className="min-w-[220px] flex-1">
-                    Aposentar “{collection.name}”? {words.retireNote}
-                  </span>
-                  <button onClick={retireIt} disabled={busy} className={PRIMARY}>Aposentar</button>
-                  <button onClick={() => setMode(null)} className={BUTTON}>Cancelar</button>
-                </div>
-              )}
-              {message && <p role="alert" className="text-sm text-danger">{message}</p>}
+          {missing.length > 0 && !collection.retired && (
+            <p role="status" className="rounded-lg border border-border-hairline bg-white px-4 py-2 text-sm text-ink-soft">
+              {missing.length === 1 ? `Falta no acervo: ${missing[0]}.` : `Faltam no acervo: ${missing.join(', ')}.`}
+            </p>
+          )}
 
-              {works.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-surface-alt bg-surface/50 px-4 py-8 text-center text-sm text-ink-faint">
-                  {collection.retired ? words.restoreHint : words.nowhere}
-                </p>
-              ) : (
-                <div className="flex flex-col gap-5">
-                  {groups.map((group) => (
-                    <WorkGroup
-                      key={group.key || 'all'}
-                      group={group}
-                      heading={headings ? group.heading : null}
-                      words={words}
-                      official={official}
-                      onMove={move}
-                      rowProps={(work) => ({
-                        staff: staff && !collection.retired,
-                        confirming: removing === work.entryId,
-                        busy,
-                        words,
-                        onOpen: (w) => openWork(w.id),
-                        onAskRemove: setRemoving,
-                        onRemove: take,
-                        onCancel: () => setRemoving(null),
-                      })}
-                    />
-                  ))}
-                </div>
-              )}
+          {staff && mode === 'rename' && <RenameForm collection={collection} onDone={() => setMode(null)} />}
+          {staff && mode === 'add' && <AddWorkPanel collection={collection} members={works} onDone={() => setMode(null)} />}
+          {staff && official && mode === 'classify' && <ClassifyPanel collection={collection} onDone={() => setMode(null)} />}
+          {staff && mode === 'retire' && (
+            <div role="alertdialog" aria-label={`Aposentar a ${words.thing}`} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-hairline bg-white p-4 text-sm text-ink-soft">
+              <span className="min-w-[220px] flex-1">
+                Aposentar “{collection.name}”? {words.retireNote}
+              </span>
+              <button onClick={retireIt} disabled={busy} className={PRIMARY}>Aposentar</button>
+              <button onClick={() => setMode(null)} className={BUTTON}>Cancelar</button>
+            </div>
+          )}
+          {message && <p role="alert" className="text-sm text-danger">{message}</p>}
+
+          {works.length > 0 && (
+            <div role="group" aria-label="Como ver as obras" className="flex items-center gap-2 text-xs text-ink-soft">
+              Exibir:
+              <button type="button" aria-pressed={rich} onClick={() => setRich(true)} className={BUTTON}>Cartões ricos</button>
+              <button type="button" aria-pressed={!rich} onClick={() => setRich(false)} className={BUTTON}>Lista compacta</button>
+            </div>
+          )}
+
+          {works.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-surface-alt bg-surface/50 px-4 py-8 text-center text-sm text-ink-faint">
+              {collection.retired ? words.restoreHint : words.nowhere}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-5">
+              {groups.map((group) => (
+                <WorkGroup
+                  key={group.key || 'all'}
+                  group={group}
+                  heading={headings ? group.heading : null}
+                  words={words}
+                  official={official}
+                  onMove={move}
+                  rowProps={(work) => ({
+                    staff: staff && !collection.retired,
+                    confirming: removing === work.entryId,
+                    busy,
+                    words,
+                    rich,
+                    nextId: goOn?.id ?? null,
+                    onOpen: (w) => openWork(w.id),
+                    onRead: read,
+                    onAskRemove: setRemoving,
+                    onRemove: take,
+                    onCancel: () => setRemoving(null),
+                  })}
+                />
+              ))}
             </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
