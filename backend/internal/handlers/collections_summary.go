@@ -23,7 +23,12 @@ func (h *CollectionsHandler) summarize(ctx context.Context, userID, order string
 			index[works[i].ID] = i
 		}
 	}
-	sum.Works = len(ids)
+	// The sequence of the series: the complementary works (DEC-164) have a section of their own and are not in its progress.
+	for _, i := range index {
+		if works[i].Unit != unitExtra {
+			sum.Works++
+		}
+	}
 	if len(ids) == 0 {
 		return sum, nil
 	}
@@ -84,6 +89,9 @@ func (h *CollectionsHandler) summarize(ctx context.Context, userID, order string
 		if cw.Started {
 			cw.Chapter, cw.UnitIndex, cw.UnitTotal, cw.ReadFormat = chapter, unitIndex, unitTotal, format
 		}
+		if cw.Unit == unitExtra {
+			continue
+		}
 		percents += cw.Percent
 		if over {
 			sum.Finished++
@@ -95,7 +103,9 @@ func (h *CollectionsHandler) summarize(ctx context.Context, userID, order string
 	if err := rows.Err(); err != nil {
 		return sum, err
 	}
-	sum.Percent = float64(int(percents/float64(sum.Works)*10+0.5)) / 10
+	if sum.Works > 0 {
+		sum.Percent = float64(int(percents/float64(sum.Works)*10+0.5)) / 10
+	}
 
 	// The years the works span, the numbers the series skips (only whole numbers, and only from the first to the last).
 	numbers := map[string][]float64{}
@@ -112,7 +122,7 @@ func (h *CollectionsHandler) summarize(ctx context.Context, userID, order string
 				sum.YearTo = &y
 			}
 		}
-		if cw.Position != nil && cw.Unit != "oneshot" {
+		if cw.Position != nil && cw.Unit != "oneshot" && cw.Unit != unitExtra {
 			numbers[cw.Unit] = append(numbers[cw.Unit], *cw.Position)
 		}
 	}

@@ -280,7 +280,7 @@ describe('EditBookModal: the metadata of a work (#70)', () => {
     await render({ tab: 'edit' });
     const unit = [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith('Unidade na série')).querySelector('select');
     const kind = [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith('Quadrinho ou mangá')).querySelector('select');
-    expect([...unit.options].map((o) => [o.value, o.textContent])).toEqual([['', 'Não informada'], ['volume', 'Volume'], ['chapter', 'Capítulo'], ['oneshot', 'Único']]);
+    expect([...unit.options].map((o) => [o.value, o.textContent])).toEqual([['', 'Não informada'], ['volume', 'Volume'], ['chapter', 'Capítulo'], ['oneshot', 'Único'], ['extra', 'Complementar']]);
     expect([...kind.options].map((o) => [o.value, o.textContent])).toEqual([['', 'Não informado'], ['manga', 'Mangá'], ['comic', 'Quadrinho']]);
     expect(unit.value).toBe('');
     await act(async () => {

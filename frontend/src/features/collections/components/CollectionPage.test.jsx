@@ -954,3 +954,50 @@ describe('CollectionPage: the notes and the description (DEC-163)', () => {
     expect(button('Escrever descrição')).toBeUndefined();
   });
 });
+
+describe('CollectionPage: the complementary works (DEC-164)', () => {
+  const row = (entryId, id, title, unit, position, extra = {}) => ({
+    entryId, id, title, author: 'J. K. Rowling', coverUrl: `/c/${id}.jpg`, position, completed: false, available: true, unit, comicKind: '',
+    percent: 0, started: false, formats: ['epub'], rating: 0, notes: 0, ...extra,
+  });
+  const works = [
+    row(10, 1, 'Pedra Filosofal', 'volume', 1),
+    row(20, 2, 'Câmara Secreta', 'volume', 2),
+    row(30, 7, 'Animais Fantásticos', 'extra', 1),
+    row(40, 8, 'Quadribol Através dos Séculos', 'extra', 2),
+  ];
+  const data = {
+    collection: { id: 5, kind: 'official', name: 'Harry Potter', workCount: 4, completedCount: 0, coverUrl: '/c/1.jpg' },
+    works,
+    continue: null,
+    summary: { works: 2, finished: 0, inProgress: 0, percent: 0, readingSeconds: 0, notes: 0, missing: [], authors: [], translators: [], tags: [] },
+  };
+
+  it('puts them in a section of their own, after the sequence, and says they are not in the progress', async () => {
+    await open({ role: 'reader', data });
+    const sections = [...container.querySelectorAll('section[aria-label]')].map((s) => s.getAttribute('aria-label')).filter((l) => l !== 'Sobre a coleção');
+    expect(sections).toEqual(['Volumes', 'Complementares']);
+    const extra = labelled('Complementares');
+    expect(extra.querySelector('h3').textContent).toContain('Complementares (2)');
+    expect(extra.textContent).toContain('Fora da sequência: não entram no progresso');
+    expect(labelled('Volumes').textContent).not.toContain('Fora da sequência');
+    // No number in the sequence: they are called by the word, and the progress counts the volumes only.
+    const rows = [...extra.querySelectorAll('ol li')].map((li) => li.textContent);
+    expect(rows[0]).toContain('Compl.');
+    expect(rows[0]).toContain('Animais Fantásticos');
+    expect(labelled('Seu progresso').textContent).toContain('0 de 2 lidas');
+  });
+
+  it('is offered in the classification, next to the other units', async () => {
+    await open({ role: 'admin', data });
+    await click(button('Classificar obras'));
+    const options = [...labelled('Classificar as obras').querySelectorAll('option')].map((o) => o.textContent);
+    expect(options).toContain('Complementar');
+  });
+
+  it('is moved inside its own group, with the unit said', async () => {
+    await open({ role: 'admin', data });
+    await click(container.querySelector('button[aria-label="Descer “Animais Fantásticos”"]'));
+    expect(api.put).toHaveBeenCalledWith('/collections/5/order', { workIds: [8, 7], unit: 'extra' });
+  });
+});

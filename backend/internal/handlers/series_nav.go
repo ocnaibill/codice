@@ -42,6 +42,10 @@ const seriesNewDays = 7
 // read anything yet: volumes, chapters, one-shots, and the works with no unit last.
 var unitOrder = []string{"volume", "chapter", "oneshot", ""}
 
+// unitExtra is the unit of a work that belongs to a collection but not to its sequence (DEC-164, "Complementar"): it is left out of the
+// progress of the series, of the numbers that are missing and of "go on".
+const unitExtra = "extra"
+
 // loadSeries reads the works of an official collection the caller can open, in the order of the collection, with the caller's
 // state on each: finished (the work marked as finished, or every version they began read to the end) or begun. A work in the
 // trash, or with no file that is on the disk, is not a step.
@@ -104,12 +108,16 @@ func nextInSeries(entries []seriesEntry, workID int) *SeriesStep {
 
 // continueSeries is the work to go on with: in the group of what the caller read last (or, if they read nothing, in the
 // first group that has something left), the one they have begun, else the first they have not finished. When everything
-// is finished it is nil. Begun says whether the caller has read anything of the series at all.
+// is finished it is nil. Begun says whether the caller has read anything of the series at all. The complementary works (DEC-164) are not
+// part of the sequence: they are never the one to go on with.
 func continueSeries(entries []seriesEntry) *SeriesStep {
 	var last *seriesEntry
 	begun := false
 	for i := range entries {
 		e := &entries[i]
+		if e.Unit == unitExtra {
+			continue // a complementary work is not the sequence: reading it does not begin the series, and it is not where to go on
+		}
 		if e.Done || e.Started {
 			begun = true
 		}

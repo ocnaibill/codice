@@ -470,7 +470,7 @@ func (h *CollectionsAdminHandler) Order(w http.ResponseWriter, r *http.Request) 
 	}
 	var req struct {
 		WorkIDs []int `json:"workIds"`
-		// Unit, when it is there, says the list is of one group of the collection (#187): "volume", "chapter", "oneshot", or ""
+		// Unit, when it is there, says the list is of one group of the collection (#187): "volume", "chapter", "oneshot", "extra", or ""
 		// for the works with no unit. The numbers are only of that group; the rest of the collection is left as it is.
 		Unit *string `json:"unit"`
 	}
@@ -493,7 +493,7 @@ func (h *CollectionsAdminHandler) Order(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if req.Unit != nil && !validUnit(*req.Unit) {
-		http.Error(w, "A unidade é volume, capítulo ou único.", http.StatusBadRequest)
+		http.Error(w, "A unidade é volume, capítulo, único ou complementar.", http.StatusBadRequest)
 		return
 	}
 	// Every work of the collection, or only those of the group that was asked for.
@@ -656,7 +656,7 @@ func (h *CollectionsAdminHandler) Classify(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if req.Unit != nil && !validUnit(*req.Unit) {
-		http.Error(w, "A unidade é volume, capítulo ou único.", http.StatusBadRequest)
+		http.Error(w, "A unidade é volume, capítulo, único ou complementar.", http.StatusBadRequest)
 		return
 	}
 	if req.ComicKind != nil && !validComicKind(*req.ComicKind) {

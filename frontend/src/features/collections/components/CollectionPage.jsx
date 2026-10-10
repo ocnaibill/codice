@@ -225,7 +225,7 @@ function WorkRow({ work, label, index, count, staff, confirming, busy, words, ri
 const SHOWN = 50;
 
 /** One group of the works of a collection (the volumes, the chapters…), of which the first are shown and the rest come when asked. */
-function WorkGroup({ group, heading, words, official, rowProps, onMove }) {
+function WorkGroup({ group, heading, note, words, official, rowProps, onMove }) {
   const [shown, setShown] = React.useState(SHOWN);
   const visible = group.works.slice(0, shown);
   return (
@@ -235,6 +235,7 @@ function WorkGroup({ group, heading, words, official, rowProps, onMove }) {
           {heading} <span className="font-normal">({group.works.length})</span>
         </h3>
       )}
+      {note && <p className="text-xs text-ink-faint">{note}</p>}
       <ol aria-label={heading ? `${heading} da ${words.thing}` : `Obras da ${words.thing}`} className="flex flex-col gap-2">
         {visible.map((work, index) => (
           <WorkRow
@@ -560,6 +561,7 @@ export function CollectionPage() {
                   key={group.key || 'all'}
                   group={group}
                   heading={headings ? group.heading : null}
+                  note={group.key === 'extra' ? 'Fora da sequência: não entram no progresso, nem em "Continuar", nem nos números que faltam.' : null}
                   words={words}
                   official={official}
                   onMove={move}
