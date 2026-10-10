@@ -92,6 +92,9 @@ var exportQueries = []struct {
 	{"favoritos.json", `
 		SELECT w.original_title AS title, ` + authorsOf + ` AS authors, f.created_at AS "addedAt", (w.retired_at IS NULL) AS "inLibrary"
 		FROM favorites f JOIN works w ON w.id = f.work_id WHERE f.user_id = $1 ORDER BY f.created_at, w.original_title`},
+	{"avaliacoes.json", `
+		SELECT w.original_title AS title, ` + authorsOf + ` AS authors, r.stars, r.updated_at AS "updatedAt", (w.retired_at IS NULL) AS "inLibrary"
+		FROM work_ratings r JOIN works w ON w.id = r.work_id WHERE r.user_id = $1 ORDER BY r.updated_at, w.original_title`},
 	{"conceitos.json", `
 		SELECT name, description, to_jsonb(aliases) AS aliases, created_at AS "createdAt", updated_at AS "updatedAt"
 		FROM concepts WHERE user_id = $1 ORDER BY lower(name)`},
@@ -123,6 +126,7 @@ O que está aqui (tudo é seu, e só você pôde pedir este arquivo):
   anotacoes.md       as suas anotações, destaques e marcadores, para ler
   anotacoes.json     o mesmo, com todos os campos (posição exata no livro, cor, tags)
   favoritos.json     as obras que você favoritou
+  avaliacoes.json    as estrelas que você deu às obras
   leitura.json       o seu progresso em cada livro, as conclusões e as posições equivalentes que você aceitou
   conceitos.json     os conceitos que você criou
   relacoes.json      as relações entre os seus conceitos e anotações

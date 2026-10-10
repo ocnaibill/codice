@@ -96,6 +96,7 @@ func newRouter(d routerDeps) http.Handler {
 	equivalenceHandler := &handlers.EquivalenceHandler{DB: db}
 	outlineHandler := &handlers.OutlineHandler{DB: db}
 	previewHandler := &handlers.PreviewHandler{DB: db}
+	ratingsHandler := &handlers.RatingsHandler{DB: db}
 	embeddingsAdmin := &handlers.EmbeddingsAdminHandler{DB: db}
 	dictionaryAdmin := &handlers.DictionaryAdminHandler{DB: db, RedisClient: d.RedisClient}
 	dictionaryLookup := &handlers.DictionaryLookupHandler{DB: db}
@@ -190,6 +191,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Put("/my/collections/{id}/works/{workId}", personalCollections.AddWork)
 	r.With(auth).Delete("/my/collections/{id}/entries/{entryId}", personalCollections.RemoveEntry)
 	r.With(auth).Put("/my/collections/{id}/order", personalCollections.Order)
+	r.With(auth).Put("/works/{id}/rating", ratingsHandler.Put)
+	r.With(auth).Delete("/works/{id}/rating", ratingsHandler.Delete)
 	r.With(auth).Put("/works/{id}/read-later", personalCollections.AddReadLater)
 	r.With(auth).Delete("/works/{id}/read-later", personalCollections.RemoveReadLater)
 	r.With(auth).Get("/works/{id}", libHandler.GetWorkByID)

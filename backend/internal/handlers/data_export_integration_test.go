@@ -29,6 +29,7 @@ func (s *authStack) seedPerson(t *testing.T, name string, id string, tag string,
 		}
 	}
 	exec(`INSERT INTO favorites (user_id, work_id) VALUES ($1, $2)`, id, work)
+	exec(`INSERT INTO work_ratings (user_id, work_id, stars) VALUES ($1, $2, 4)`, id, work)
 	exec(`INSERT INTO notes (user_id, work_id, source_title, source_author, file_id, kind, quote, body, tags, color, locator, locator_version)
 		VALUES ($1, $2, $3, $4, $5, 'note', $6, $7, ARRAY[$8, 'comum'], 'sage', '{"type":"epub","href":"c1.xhtml","cfi":"epubcfi(/6/2)"}', 1)`,
 		id, work, "Livro de "+name, "Autor de "+name, file, "Citação de "+name, "Minha nota "+name, tag)
@@ -78,7 +79,7 @@ func buildFor(t *testing.T, s *authStack, userID string) map[string]string {
 }
 
 var exportFiles = []string{
-	"LEIA-ME.txt", "anotacoes.json", "anotacoes.md", "aplicativos.json", "conceitos.json", "conta.json", "entradas.json",
+	"LEIA-ME.txt", "anotacoes.json", "anotacoes.md", "aplicativos.json", "avaliacoes.json", "conceitos.json", "conta.json", "entradas.json",
 	"favoritos.json", "leitura.json", "relacoes.json", "sessoes.json", "tags.json",
 }
 
@@ -118,6 +119,7 @@ func TestDataExport_HoldsEverythingThatIsThePersonsAndNothingOfAnyoneElse(t *tes
 		"anotacoes.md":     {"Livro de ana", "Minha nota ana", "Citação de ana", "#etiqueta-da-ana"},
 		"anotacoes.json":   {`"body": "Minha nota ana"`, `"color": "sage"`, `"count": 1`, `"cfi": "epubcfi(/6/2)"`},
 		"favoritos.json":   {`"title": "Livro de ana"`, `"authors": "Autor de ana"`, `"inLibrary": true`},
+		"avaliacoes.json":  {`"title": "Livro de ana"`, `"stars": 4`, `"inLibrary": true`},
 		"leitura.json":     {`"percent": 42.5`, `"readingSeconds": 600`, `"device": "Celular de ana"`, `"title": "Livro de ana"`, `"completedAt"`, `"finishedAt"`, `"obrasFinalizadas"`, `"conclusoes"`, `"href": "c3.xhtml"`},
 		"conceitos.json":   {`"name": "Conceito de ana"`, `"apelido"`},
 		"tags.json":        {`"name": "etiqueta-da-ana"`, `"name": "comum"`},
@@ -153,7 +155,7 @@ func TestDataExport_ForAnAccountWithNothingEveryListIsEmptyNotMissing(t *testing
 	s := newAuthStack(t)
 	id := s.addUserWithPassword(t, "nova", "reader", "s3cret")
 	files := buildFor(t, s, id)
-	for _, name := range []string{"favoritos.json", "conceitos.json", "relacoes.json", "tags.json", "sessoes.json", "aplicativos.json", "entradas.json"} {
+	for _, name := range []string{"favoritos.json", "avaliacoes.json", "conceitos.json", "relacoes.json", "tags.json", "sessoes.json", "aplicativos.json", "entradas.json"} {
 		if strings.TrimSpace(files[name]) != "[]" {
 			t.Errorf("%s = %q, want []", name, files[name])
 		}
