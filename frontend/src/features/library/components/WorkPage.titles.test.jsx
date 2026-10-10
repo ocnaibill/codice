@@ -10,7 +10,7 @@ vi.mock('../../../lib/api', () => ({
 
 import { api } from '../../../lib/api';
 import { useGlobalStore } from '../../../store/useGlobalStore';
-import { WorkSheet } from './WorkSheet';
+import { WorkPage } from './WorkPage';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,7 +35,7 @@ async function open(titles, contributors, extraMeta, series = { collection: null
   });
   useGlobalStore.setState({ sheetWorkId: 7 });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await act(async () => { root.render(<QueryClientProvider client={client}><WorkSheet /></QueryClientProvider>); });
+  await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
   await flush();
   await flush();
 }
@@ -52,7 +52,7 @@ afterEach(() => {
   useGlobalStore.setState({ sheetWorkId: null });
 });
 
-describe('WorkSheet: the people on the work, each opening a page (#186)', () => {
+describe('WorkPage: the people on the work, each opening a page (#186)', () => {
   const credits = [
     { personId: 1, name: 'Frank Herbert', displayName: 'Herbert, Frank', role: 'author', position: 0 },
     { personId: 2, name: 'Brian Herbert', displayName: 'Brian Herbert', role: 'author', position: 1 },
@@ -89,9 +89,9 @@ describe('WorkSheet: the people on the work, each opening a page (#186)', () => 
   });
 });
 
-describe('WorkSheet: the other names of the work (#185)', () => {
+describe('WorkPage: the other names of the work (#185)', () => {
   const otherLines = () => [...container.querySelectorAll('[aria-label="Outros títulos"] p')].map((p) => p.textContent);
-  const heading = () => container.querySelector('h3').textContent;
+  const heading = () => container.querySelector('h1').textContent;
   // Two editions: the Portuguese one, and an English one that someone gave a title and that the person is reading.
   const twoEditions = (english) => ({
     editions: [
@@ -114,7 +114,7 @@ describe('WorkSheet: the other names of the work (#185)', () => {
   it('goes by the title written for the edition being read, and the other names are the rest, the main title first', async () => {
     await open([{ id: 3, title: 'Arrakis', language: '', source: 'manual' }, { id: 0, title: 'Dune', language: 'en', source: 'edition', editionId: 2 }], [], {}, undefined, twoEditions());
     expect(heading()).toBe('Dune');
-    expect(container.querySelector('h2').textContent).toBe('Dune');
+    expect(container.querySelector('[aria-current="page"]').textContent).toBe('Dune'); // and in the trail above it
     expect(otherLines()).toEqual(['Duna', 'Arrakis']); // not "Dune" again
   });
 
@@ -206,7 +206,7 @@ describe('WorkSheet: the other names of the work (#185)', () => {
   });
 });
 
-describe('WorkSheet: what a comic or manga work is of its series (#187)', () => {
+describe('WorkPage: what a comic or manga work is of its series (#187)', () => {
   const seriesLine = () => [...container.querySelectorAll('p')].find((p) => p.textContent.startsWith('One Piece'));
 
   it('says the unit and the number in the series, and whether it is a manga', async () => {
@@ -237,7 +237,7 @@ describe('WorkSheet: what a comic or manga work is of its series (#187)', () => 
   });
 });
 
-describe('WorkSheet: the name of the series opens the series (#187)', () => {
+describe('WorkPage: the name of the series opens the series (#187)', () => {
   const inSeries = { collection: { id: 4, name: 'Scythe' }, next: null };
   const line = () => [...container.querySelectorAll('p')].find((p) => p.textContent.startsWith('Scythe'));
   const link = () => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Scythe');

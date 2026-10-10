@@ -10,7 +10,7 @@ vi.mock('../../../lib/api', () => ({
 
 import { api } from '../../../lib/api';
 import { useGlobalStore } from '../../../store/useGlobalStore';
-import { WorkSheet } from './WorkSheet';
+import { WorkPage } from './WorkPage';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -44,7 +44,7 @@ async function open({ role = 'admin', detail = twoEditions, results = [dune] } =
   });
   useGlobalStore.setState({ sheetWorkId: 7 });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await act(async () => { root.render(<QueryClientProvider client={client}><WorkSheet /></QueryClientProvider>); });
+  await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
   await flush();
   await flush();
 }
@@ -71,7 +71,7 @@ afterEach(() => {
   useGlobalStore.setState({ sheetWorkId: null });
 });
 
-describe('WorkSheet: putting the files of one book under one work (#37)', () => {
+describe('WorkPage: putting the files of one book under one work (#37)', () => {
   it('offers to join only to the owner and the admin', async () => {
     await open({ role: 'admin' });
     expect(button('Juntar com outra obra…')).toBeTruthy();

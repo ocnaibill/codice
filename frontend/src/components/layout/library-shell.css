@@ -776,6 +776,22 @@
 .library-favorite:disabled {
   opacity: 0.5;
 }
+/* The same heart on the page of a work: a button of its own, beside the one that opens the reader. */
+.library-favorite--page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-hairline);
+  background: var(--color-white, #fff);
+  color: var(--color-ink-soft);
+}
+.library-favorite--page:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-brand);
+}
 .library-books[data-view='list'] {
   grid-template-columns: minmax(0, 1fr);
 }

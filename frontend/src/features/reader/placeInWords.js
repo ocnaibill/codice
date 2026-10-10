@@ -60,3 +60,23 @@ export function whereExtras({ chapter, unit } = {}) {
   }
   return extras;
 }
+
+export const COMIC_FORMATS = new Set(['cbz', 'cbr']);
+const PAGED_FORMATS = new Set(['pdf', ...COMIC_FORMATS]);
+
+/**
+ * Where the person is, as a short line: "Página 42 de 310" for a PDF or a comic, "Pos. 3.412 de 5.018" for an EPUB (which has no pages; the
+ * word is the one in the maintainer's drawing, and a title says it whole). A position saved before the reader said how many (DEC-148) still
+ * gives the page of a PDF or a comic, and says nothing for the other formats: the text of a plain file is a place in characters, an EPUB's a
+ * place in its code, and neither is a page.
+ */
+export function placeLabel(format, last, legacyProgress) {
+  const { unitIndex, unitTotal } = last || {};
+  if (unitIndex > 0 && unitTotal >= unitIndex) {
+    return `${PAGED_FORMATS.has(format) ? 'Página' : 'Pos.'} ${unitIndex.toLocaleString('pt-BR')} de ${unitTotal.toLocaleString('pt-BR')}`;
+  }
+  if (!PAGED_FORMATS.has(format)) return null;
+  const pageNum = Number.parseInt(legacyProgress, 10);
+  if (Number.isNaN(pageNum)) return null;
+  return `Página ${COMIC_FORMATS.has(format) ? pageNum + 1 : pageNum}`;
+}

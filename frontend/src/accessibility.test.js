@@ -128,7 +128,7 @@ describe('the dialogs', () => {
 
   it('never close on Escape by their own listener (the one on top is the only one that answers)', () => {
     const own = sources.filter((f) => /role="dialog"/.test(readFileSync(f, 'utf8')))
-      .filter((f) => /key === 'Escape'/.test(readFileSync(f, 'utf8')) && !/WorkSheet\.jsx$/.test(f));
+      .filter((f) => /key === 'Escape'/.test(readFileSync(f, 'utf8')));
     expect(own).toEqual([]);
   });
 });

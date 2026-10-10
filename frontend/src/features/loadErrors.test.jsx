@@ -15,7 +15,7 @@ import { NotesPage } from './notes/NotesPage';
 import { NotesPanel } from './reader/components/NotesPanel';
 import { SearchPage } from './search/SearchPage';
 import { PreferencesModal } from '../components/layout/PreferencesModal';
-import { WorkSheet } from './reader/components/WorkSheet';
+import { WorkPage } from './library/components/WorkPage';
 import { EditBookModal } from './library/components/EditBookModal';
 import { JoinVersionsDialog } from './reader/components/JoinVersionsDialog';
 
@@ -47,7 +47,7 @@ const CASES = [
   ['as passagens da busca', () => <SearchPage query="duna" />, 'Não foi possível buscar passagens.', { data: [], total: 0 }],
   ['as anotações da busca', () => <SearchPage query="duna" />, 'Não foi possível buscar anotações.', { data: [], total: 0 }],
   ['as preferências', () => <PreferencesModal onClose={vi.fn()} />, 'Não foi possível carregar as preferências.', { nameOrder: 'given_first', libraryNameOrder: 'given_first' }],
-  ['a ficha da obra', () => <WorkSheet />, 'Não foi possível abrir esta obra.', work],
+  ['a ficha da obra', () => <WorkPage />, 'Não foi possível abrir esta obra.', work],
   ['a edição da obra', () => <EditBookModal workId={7} tab="edit" onClose={vi.fn()} />, 'Não foi possível abrir esta obra.', work],
 ];
 
