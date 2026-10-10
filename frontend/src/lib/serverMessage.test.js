@@ -154,6 +154,7 @@ describe('what the server says', () => {
     'Candidate value is not a year', // a suggestion the worker already checked: only a program can write one that is not
     'stars is a number from 1 to 5', // the stars: the page only offers one to five
     'from is a position from 0', // the window of the preview: only a program can ask for a negative one
+    'hidden and imageHidden say what to hide, and the texts what to write', // the page sends one of them, or the texts: only a program sends none
     'rootId is required',
     "scope must be 'assets' or 'ws'",
     'state is ok, missing or conflict',

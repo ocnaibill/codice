@@ -1,6 +1,7 @@
 import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, authenticatedUrl } from '../../../lib/api';
+import { serverMessage } from '../../../lib/serverMessage';
 import { isStaff, useMe } from '../../auth/api/useMe';
 import { formatProfileDate } from '../profileDates';
 
@@ -13,6 +14,149 @@ function useSetProfile(personId) {
   });
 }
 
+/** Writes by hand the profile of a person (staff, DEC-167): the texts, as JSON. */
+function useWriteProfile(personId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body) => (await api.put(`/admin/people/${personId}/profile`, body)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['person', personId] }),
+  });
+}
+
+/** Sends the photo of a person, with the credit and the license it is shown under. */
+function useSendPhoto(personId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ file, credit, license }) => {
+      const form = new FormData();
+      form.append('image', file);
+      form.append('credit', credit);
+      form.append('license', license);
+      return (await api.post(`/admin/people/${personId}/profile/photo`, form)).data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['person', personId] }),
+  });
+}
+
+/** Throws the profile away; the one on Wikidata, if the person has an identifier, is read again. */
+function useResetProfile(personId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => api.delete(`/admin/people/${personId}/profile`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['person', personId] }),
+  });
+}
+
+const FIELD = 'min-h-11 w-full rounded-lg border border-border-hairline bg-surface px-3 text-sm text-ink';
+const BUTTON = 'min-h-9 rounded-lg border border-border-hairline bg-surface px-3 text-xs text-ink hover:bg-surface-alt disabled:opacity-40';
+const PRIMARY = 'min-h-10 rounded-lg bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-light disabled:opacity-40';
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const PHOTO_MAX = 5 * 1024 * 1024;
+
+/**
+ * The profile of a person, written by hand (DEC-167): for an author no provider knows, or that one of them has wrong. The texts go in one
+ * request and the photo, if one was chosen, in another with its credit and license; what is left empty is taken away.
+ */
+function ProfileEditor({ person, profile, onDone }) {
+  const write = useWriteProfile(person.id);
+  const send = useSendPhoto(person.id);
+  const [values, setValues] = React.useState({
+    description: profile?.description ?? '',
+    born: profile?.born ?? '',
+    died: profile?.died ?? '',
+    bornPlace: profile?.bornPlace ?? '',
+    bio: profile?.bio ?? '',
+  });
+  const [credit, setCredit] = React.useState(profile?.image?.credit ?? '');
+  const [license, setLicense] = React.useState(profile?.image?.license ?? '');
+  const [file, setFile] = React.useState(null);
+  const [message, setMessage] = React.useState('');
+  const busy = write.isPending || send.isPending;
+  const set = (key) => (event) => setValues((v) => ({ ...v, [key]: event.target.value }));
+
+  const chooseFile = (event) => {
+    const chosen = event.target.files?.[0] ?? null;
+    setMessage('');
+    if (chosen && !PHOTO_TYPES.includes(chosen.type)) {
+      setFile(null);
+      setMessage('A foto deve ser JPEG, PNG ou WebP.');
+      return;
+    }
+    if (chosen && chosen.size > PHOTO_MAX) {
+      setFile(null);
+      setMessage('A foto tem até 5 MB.');
+      return;
+    }
+    setFile(chosen);
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setMessage('');
+    try {
+      // With a new photo the credit and the license go with it; without one they are texts of the profile like the others.
+      await write.mutateAsync(file ? values : { ...values, imageCredit: credit, imageLicense: license });
+      if (file) await send.mutateAsync({ file, credit, license });
+      onDone();
+    } catch (error) {
+      setMessage(serverMessage(error, 'Não foi possível salvar o perfil.'));
+    }
+  };
+
+  return (
+    <form onSubmit={submit} aria-label="Escrever o perfil" className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-4 shadow-sm">
+      <label className="flex flex-col gap-1 text-sm text-ink-soft">
+        Descrição curta
+        <input value={values.description} maxLength={500} onChange={set('description')} placeholder="Ex.: escritor brasileiro" className={FIELD} />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="flex flex-col gap-1 text-sm text-ink-soft">
+          Nascimento
+          <input value={values.born} maxLength={16} onChange={set('born')} placeholder="1962, 1962-11 ou 1962-11-12" className={FIELD} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-ink-soft">
+          Morte
+          <input value={values.died} maxLength={16} onChange={set('died')} placeholder="deixe vazio se vive" className={FIELD} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-ink-soft">
+          Local de nascimento
+          <input value={values.bornPlace} maxLength={255} onChange={set('bornPlace')} className={FIELD} />
+        </label>
+      </div>
+      <label className="flex flex-col gap-1 text-sm text-ink-soft">
+        Biografia
+        <textarea value={values.bio} maxLength={6000} rows={6} onChange={set('bio')} className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-sm text-ink" />
+        <span className="font-mono text-[11px] text-ink-faint">{values.bio.length} de 6000</span>
+      </label>
+      <fieldset className="flex flex-col gap-2 rounded-lg border border-border-hairline p-3">
+        <legend className="px-1 text-sm text-ink-soft">Foto</legend>
+        <label className="flex flex-col gap-1 text-sm text-ink-soft">
+          Enviar uma foto (JPEG, PNG ou WebP, até 5 MB)
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseFile} className="text-sm text-ink" />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-sm text-ink-soft">
+            Crédito da foto
+            <input value={credit} maxLength={300} onChange={(e) => setCredit(e.target.value)} placeholder="Quem fez a foto" className={FIELD} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-ink-soft">
+            Licença da foto
+            <input value={license} maxLength={300} onChange={(e) => setLicense(e.target.value)} placeholder="Ex.: CC BY 4.0, uso autorizado" className={FIELD} />
+          </label>
+        </div>
+      </fieldset>
+      <p className="text-xs text-ink-faint">
+        O que fica escrito aqui é seu: o Códice não lê esta pessoa de novo nos provedores. Deixe um campo vazio para tirá-lo.
+      </p>
+      {message && <p role="alert" className="text-sm text-danger">{message}</p>}
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={busy} className={PRIMARY}>Salvar</button>
+        <button type="button" onClick={onDone} className={BUTTON}>Cancelar</button>
+      </div>
+    </form>
+  );
+}
+
 /**
  * What Wikidata and Wikipedia say about the person: a short description, when they were born and died, the first paragraphs of the biography
  * and a photo, each with where it came from and under which license (the biography is CC BY-SA 4.0, the photo has its own). It is there when a
@@ -21,8 +165,22 @@ function useSetProfile(personId) {
 export function PersonProfile({ person }) {
   const staff = isStaff(useMe().data);
   const set = useSetProfile(person.id);
+  const reset = useResetProfile(person.id);
   const profile = person.profile;
-  if (!profile) return null;
+  const [editing, setEditing] = React.useState(false);
+  const [discarding, setDiscarding] = React.useState(false);
+  const [resetMessage, setResetMessage] = React.useState('');
+  if (!profile && !staff) return null;
+  if (editing) return <ProfileEditor person={person} profile={profile} onDone={() => setEditing(false)} />;
+  if (!profile) {
+    // Nothing was read for the person: staff are told, so the emptiness does not look like a defect, and can write it.
+    return (
+      <section aria-label="Perfil" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border-hairline bg-white/60 p-4">
+        <p className="text-sm text-ink-soft">Sem perfil: nenhum provedor trouxe a foto e a biografia desta pessoa. Você pode escrevê-lo.</p>
+        <button type="button" onClick={() => setEditing(true)} className={BUTTON}>Escrever o perfil</button>
+      </section>
+    );
+  }
 
   const born = formatProfileDate(profile.born);
   const died = formatProfileDate(profile.died);
@@ -82,6 +240,8 @@ export function PersonProfile({ person }) {
             >
               {profile.hidden ? 'Mostrar o perfil' : 'Ocultar o perfil'}
             </button>
+            <button type="button" onClick={() => setEditing(true)} className={BUTTON}>Editar o perfil</button>
+            <button type="button" onClick={() => setDiscarding(!discarding)} aria-pressed={discarding} className={BUTTON}>Descartar o perfil</button>
             {image && (
               <button
                 type="button"
@@ -94,6 +254,29 @@ export function PersonProfile({ person }) {
             )}
           </div>
         )}
+        {staff && profile.manual && <p className="text-[11px] text-ink-faint">Escrito à mão: o Códice não o lê de novo nos provedores.</p>}
+        {staff && discarding && (
+          <div role="alertdialog" aria-label="Descartar o perfil" className="flex flex-wrap items-center gap-3 rounded-lg bg-surface px-3 py-2 text-xs text-ink-soft">
+            <span className="min-w-[200px] flex-1">
+              Descartar o perfil? O que foi escrito se perde{profile.wikidataId ? ' e o perfil da Wikidata é lido de novo' : ''}.
+            </span>
+            <button
+              type="button"
+              disabled={reset.isPending}
+              onClick={() =>
+                reset.mutate(undefined, {
+                  onSuccess: () => setDiscarding(false),
+                  onError: (error) => setResetMessage(serverMessage(error, 'Não foi possível descartar o perfil.')),
+                })
+              }
+              className={PRIMARY}
+            >
+              Descartar
+            </button>
+            <button type="button" onClick={() => setDiscarding(false)} className={BUTTON}>Cancelar</button>
+          </div>
+        )}
+        {resetMessage && <p role="alert" className="text-[12px] text-danger">{resetMessage}</p>}
         {set.isError && <p role="alert" className="text-[12px] text-danger">Não foi possível salvar a escolha.</p>}
       </div>
     </section>

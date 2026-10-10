@@ -109,7 +109,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Put("/admin/ocr/settings", ocrSettings.Set)
 	dup := &DuplicatesHandler{DB: db}
 	ver := &VersionsHandler{DB: db}
-	ppl := &PeopleHandler{DB: db}
+	ppl := &PeopleHandler{DB: db, CoversDir: filepath.Join(storageDir, "covers")}
 	r.Get("/admin/duplicates", dup.List)
 	r.Post("/admin/duplicates/scan", dup.Scan)
 	r.Post("/admin/duplicates/{id}/dismiss", dup.Dismiss)
@@ -123,6 +123,8 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/admin/people/names", ppl.Names)
 	r.Put("/admin/people/{id}/name", ppl.SetName)
 	r.Put("/admin/people/{id}/profile", ppl.SetProfile)
+	r.Delete("/admin/people/{id}/profile", ppl.ResetProfile)
+	r.Post("/admin/people/{id}/profile/photo", ppl.SetPhoto)
 	r.Get("/auth/preferences", ppl.GetPreferences)
 	r.Put("/auth/preferences", ppl.SetPreferences)
 	r.Put("/admin/name-order", ppl.SetLibraryOrder)

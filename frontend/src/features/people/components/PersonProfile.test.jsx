@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../lib/api', () => ({
-  api: { get: vi.fn(), put: vi.fn() },
+  api: { get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() },
   authenticatedUrl: (u) => `${u}?rt=token`,   // the images of the library are asked for with a token that is only good for them
 }));
 
@@ -33,6 +33,8 @@ async function show(p, role = 'reader') {
     throw new Error(`unexpected GET ${url}`);
   });
   api.put.mockResolvedValue({ data: {} });
+  api.post.mockResolvedValue({ data: {} });
+  api.delete.mockResolvedValue({});
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => { root.render(<QueryClientProvider client={client}><PersonProfile person={person(p)} /></QueryClientProvider>); });
   await flush();
@@ -51,7 +53,7 @@ afterEach(() => {
 });
 
 describe('PersonProfile: what Wikidata and Wikipedia say about an author (DEC-146)', () => {
-  it('says nothing when nothing was read', async () => {
+  it('says nothing to a reader when nothing was read', async () => {
     await show(null);
     expect(container.textContent).toBe('');
   });
@@ -144,5 +146,134 @@ describe('PersonProfile: what Wikidata and Wikipedia say about an author (DEC-14
     api.put.mockRejectedValue(new Error('boom'));
     await click(button('Ocultar o perfil'));
     expect(container.querySelector('[role="alert"]').textContent).toBe('Não foi possível salvar a escolha.');
+  });
+});
+
+describe('PersonProfile: written by hand, by owner and admin (DEC-167)', () => {
+  const typeInto = async (el, value) => {
+    const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const field = (label) => [...container.querySelectorAll('label')].find((l) => l.textContent.startsWith(label)).querySelector('input, textarea');
+  const choose = async (input, file) => {
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+  };
+  const photo = (type = 'image/jpeg', size = 100) => new File([new Uint8Array(size)], 'foto.jpg', { type });
+
+  it('tells the staff, and only them, that a person has no profile, with the way to write it', async () => {
+    await show(null, 'admin');
+    expect(container.textContent).toContain('Sem perfil');
+    expect(button('Escrever o perfil')).toBeTruthy();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show(null, 'reader');
+    expect(container.textContent).toBe('');
+  });
+
+  it('writes a profile for a person who has none: the texts in one request, the empty ones too', async () => {
+    await show(null, 'owner');
+    await click(button('Escrever o perfil'));
+    await typeInto(field('Descrição curta'), 'Escritor brasileiro');
+    await typeInto(field('Nascimento'), '1980-05');
+    await typeInto(field('Local de nascimento'), 'São Paulo');
+    await typeInto(field('Biografia'), 'Primeiro parágrafo.');
+    await click(button('Salvar'));
+    expect(api.put).toHaveBeenCalledWith('/admin/people/9/profile', {
+      description: 'Escritor brasileiro', born: '1980-05', died: '', bornPlace: 'São Paulo', bio: 'Primeiro parágrafo.', imageCredit: '', imageLicense: '',
+    });
+    expect(api.post).not.toHaveBeenCalled();
+    expect(container.querySelector('form')).toBeNull(); // done: it closes
+  });
+
+  it('starts from what the profile says, so only what is changed changes', async () => {
+    await show(profile(), 'admin');
+    await click(button('Editar o perfil'));
+    expect(field('Descrição curta').value).toBe('escritor de ficção científica americano (1920-1986)');
+    expect(field('Nascimento').value).toBe('1920-10-08');
+    expect(field('Biografia').value).toBe('Frank Herbert foi um escritor americano.');
+    expect(field('Crédito da foto').value).toBe('Unknown photographer');
+    await typeInto(field('Morte'), '1986');
+    await click(button('Salvar'));
+    expect(api.put.mock.calls[0][1]).toMatchObject({ died: '1986', born: '1920-10-08', imageCredit: 'Unknown photographer', imageLicense: 'Public domain' });
+  });
+
+  it('sends the photo as a file, with its credit and license, after the texts', async () => {
+    await show(null, 'admin');
+    await click(button('Escrever o perfil'));
+    await typeInto(field('Descrição curta'), 'Escritor');
+    const file = photo();
+    await choose(container.querySelector('input[type="file"]'), file);
+    await typeInto(field('Crédito da foto'), 'Arquivo da família');
+    await typeInto(field('Licença da foto'), 'Uso autorizado');
+    await click(button('Salvar'));
+    // With a new photo, the credit and the license go with it and not with the texts.
+    expect(api.put.mock.calls[0][1]).not.toHaveProperty('imageCredit');
+    const [url, form] = api.post.mock.calls[0];
+    expect(url).toBe('/admin/people/9/profile/photo');
+    expect(form.get('image')).toBe(file);
+    expect(form.get('credit')).toBe('Arquivo da família');
+    expect(form.get('license')).toBe('Uso autorizado');
+    expect(api.put.mock.invocationCallOrder[0]).toBeLessThan(api.post.mock.invocationCallOrder[0]);
+  });
+
+  it('refuses a file that is not a photo or is too big before sending anything', async () => {
+    await show(null, 'admin');
+    await click(button('Escrever o perfil'));
+    const input = container.querySelector('input[type="file"]');
+    await choose(input, photo('image/gif'));
+    expect(container.querySelector('[role="alert"]').textContent).toBe('A foto deve ser JPEG, PNG ou WebP.');
+    await choose(input, photo('image/jpeg', 5 * 1024 * 1024 + 1));
+    expect(container.querySelector('[role="alert"]').textContent).toBe('A foto tem até 5 MB.');
+    await click(button('Salvar'));
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('says what the server refused and keeps the form', async () => {
+    await show(null, 'admin');
+    await click(button('Escrever o perfil'));
+    api.put.mockRejectedValueOnce(Object.assign(new Error('x'), { response: { status: 400, data: 'A data deve ser 1962, 1962-11 ou 1962-11-12.' } }));
+    await typeInto(field('Nascimento'), '12/11/1962');
+    await click(button('Salvar'));
+    expect(container.querySelector('[role="alert"]').textContent).toBe('A data deve ser 1962, 1962-11 ou 1962-11-12.');
+    expect(container.querySelector('form')).toBeTruthy();
+  });
+
+  it('closes without sending anything on cancel', async () => {
+    await show(null, 'admin');
+    await click(button('Escrever o perfil'));
+    await click(button('Cancelar'));
+    expect(container.querySelector('form')).toBeNull();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it('offers a reader no editor, and tells only the staff that it was written by hand', async () => {
+    await show(profile({ manual: true, wikidataId: '' }), 'reader');
+    expect(button('Editar o perfil')).toBeUndefined();
+    expect(button('Descartar o perfil')).toBeUndefined();
+    expect(container.textContent).not.toContain('Escrito à mão');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show(profile({ manual: true, wikidataId: '' }), 'admin');
+    expect(container.textContent).toContain('Escrito à mão');
+  });
+
+  it('asks before throwing the profile away, and says it is read again when the person has an identifier', async () => {
+    await show(profile({ manual: true }), 'admin');
+    await click(button('Descartar o perfil'));
+    const dialog = container.querySelector('[role="alertdialog"]');
+    expect(dialog.textContent).toContain('o perfil da Wikidata é lido de novo');
+    expect(api.delete).not.toHaveBeenCalled();
+    await click(button('Descartar'));
+    expect(api.delete).toHaveBeenCalledWith('/admin/people/9/profile');
+  });
+
+  it('does not promise a new reading when there is no identifier', async () => {
+    await show(profile({ manual: true, wikidataId: '' }), 'admin');
+    await click(button('Descartar o perfil'));
+    expect(container.querySelector('[role="alertdialog"]').textContent).not.toContain('Wikidata');
   });
 });

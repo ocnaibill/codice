@@ -19,6 +19,8 @@ import (
 // Herbert", #36). The system only proposes; nothing is merged without a decision.
 type PeopleHandler struct {
 	DB *sql.DB
+	// CoversDir is where the photos of the people are kept (DEC-167), next to the covers of the works.
+	CoversDir string
 }
 
 // List returns the pairs waiting for a decision.
@@ -257,9 +259,15 @@ func (h *PeopleHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Hidden      *bool `json:"hidden"`
 		ImageHidden *bool `json:"imageHidden"`
+		profileTexts
 	}
-	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req) != nil || (req.Hidden == nil && req.ImageHidden == nil) {
-		http.Error(w, "hidden and imageHidden say what to hide", http.StatusBadRequest)
+	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req) != nil || (req.Hidden == nil && req.ImageHidden == nil && !req.profileTexts.any()) {
+		http.Error(w, "hidden and imageHidden say what to hide, and the texts what to write", http.StatusBadRequest)
+		return
+	}
+	if req.profileTexts.any() {
+		// Written by hand (DEC-167); the choices to hide that came with it are made in the same step.
+		h.writeProfile(w, r, id, req.Hidden, req.ImageHidden, req.profileTexts)
 		return
 	}
 	tx, err := h.DB.BeginTx(r.Context(), nil)
