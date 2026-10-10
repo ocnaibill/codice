@@ -62,6 +62,10 @@ type CollectionWork struct {
 	ReadFormat   string     `json:"readFormat,omitempty"`
 	// Notes is how many notes and highlights with a passage the caller made on the work (DEC-163).
 	Notes int `json:"notes"`
+	// Bookmarks is how many places the caller marked in the work (DEC-165).
+	Bookmarks int `json:"bookmarks"`
+	// seconds is the time the caller spent in the work, for the pace of the whole.
+	seconds int
 }
 
 // CollectionSummary is what the page of a collection says of the whole (DEC-162): how far the caller is, in how many hours, the years the
@@ -73,9 +77,14 @@ type CollectionSummary struct {
 	Percent        float64 `json:"percent"`
 	ReadingSeconds int     `json:"readingSeconds"`
 	// Notes is how many notes and highlights with a passage the caller made on the works of the collection (DEC-163).
-	Notes    int  `json:"notes"`
-	YearFrom *int `json:"yearFrom,omitempty"`
-	YearTo   *int `json:"yearTo,omitempty"`
+	Notes int `json:"notes"`
+	// Bookmarks is how many places the caller marked in the works of the collection (DEC-165).
+	Bookmarks int `json:"bookmarks"`
+	// RemainingSeconds is how long is left of the sequence at the pace of the caller in it, by unit (DEC-165); absent until the pace is
+	// worth saying for all that is left.
+	RemainingSeconds int  `json:"remainingSeconds,omitempty"`
+	YearFrom         *int `json:"yearFrom,omitempty"`
+	YearTo           *int `json:"yearTo,omitempty"`
 	// Missing are the numbers of a series that the works skip, by unit: with the volumes 1, 2 and 4 there is a 3 that is not in the library.
 	Missing     []MissingNumber `json:"missing"`
 	Authors     []PersonRef     `json:"authors"`

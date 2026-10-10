@@ -15,11 +15,11 @@ import {
   useRestoreCollection,
   useRetireCollection,
 } from '../api/useCollections';
-import { collectionLine, COMIC_KINDS, groupByUnit, numberText, goOnText, UNITS, unitLabel, wordsOf, worksText } from '../text';
+import { collectionLine, COMIC_KINDS, groupByUnit, numberText, goOnText, sequenceWord, UNITS, unitLabel, wordsOf, worksText } from '../text';
 import { CollectionFavoriteButton } from './CollectionFavoriteButton';
 import { ProgressBar } from '../../../components/ui/ProgressBar';
 import { formatReadingTime } from '../../home/utils/format';
-import { placeLabel } from '../../reader/placeInWords';
+import { placeLabel, remainingText } from '../../reader/placeInWords';
 import { WorkHighlights } from '../../library/components/WorkHighlights';
 import { useCollectionNotes } from '../api/useCollectionNotes';
 
@@ -161,7 +161,7 @@ function statusOf(work, nextId) {
   return null;
 }
 
-function WorkRow({ work, label, index, count, staff, confirming, busy, words, rich, nextId, onOpen, onRead, onMove, onAskRemove, onRemove, onCancel }) {
+function WorkRow({ work, label, index, count, staff, movable, confirming, busy, words, rich, nextId, onOpen, onRead, onMove, onAskRemove, onRemove, onCancel }) {
   const gone = !work.available;
   const status = gone ? null : statusOf(work, nextId);
   const place = work.started ? placeLabel(work.readFormat, { unitIndex: work.unitIndex, unitTotal: work.unitTotal }) : null;
@@ -191,8 +191,12 @@ function WorkRow({ work, label, index, count, staff, confirming, busy, words, ri
         {status && <span className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] ${status.tone}`}>{status.text}</span>}
         {staff && (
           <div className="flex shrink-0 basis-full items-center justify-end gap-1 sm:basis-auto">
-            <button onClick={() => onMove(index, -1)} disabled={busy || index === 0} className={BUTTON} aria-label={`Subir “${work.title}”`}>↑</button>
-            <button onClick={() => onMove(index, 1)} disabled={busy || index === count - 1} className={BUTTON} aria-label={`Descer “${work.title}”`}>↓</button>
+            {movable && (
+              <>
+                <button onClick={() => onMove(index, -1)} disabled={busy || index === 0} className={BUTTON} aria-label={`Subir “${work.title}”`}>↑</button>
+                <button onClick={() => onMove(index, 1)} disabled={busy || index === count - 1} className={BUTTON} aria-label={`Descer “${work.title}”`}>↓</button>
+              </>
+            )}
             <button onClick={() => onAskRemove(work.entryId)} disabled={busy} className={BUTTON} aria-label={`Tirar “${work.title}” da ${words.thing}`}>Tirar</button>
           </div>
         )}
@@ -209,6 +213,11 @@ function WorkRow({ work, label, index, count, staff, confirming, busy, words, ri
             </p>
           </div>
           <button onClick={() => onRead(work)} className={PRIMARY}>Retomar</button>
+        </div>
+      )}
+      {rich && !gone && work.completed && !work.started && (
+        <div className="pl-[68px]">
+          <button onClick={() => onRead(work)} className={BUTTON}>Reler</button>
         </div>
       )}
       {confirming && (
@@ -346,11 +355,17 @@ export function CollectionPage() {
   const [removing, setRemoving] = React.useState(null); // the place waiting for a yes
   const [message, setMessage] = React.useState('');
   const notesRef = React.useRef(null);
+  const [query, setQuery] = React.useState('');
+  const [status, setStatus] = React.useState('all'); // 'all' | 'unread' | 'read' | 'saved'
+  const [descending, setDescending] = React.useState(false);
 
   React.useEffect(() => {
     setMode(null);
     setRemoving(null);
     setMessage('');
+    setQuery('');
+    setStatus('all');
+    setDescending(false);
   }, [id]);
 
   // A page that opens starts at its top, with the focus on what it is about.
@@ -373,7 +388,30 @@ export function CollectionPage() {
   const fail = (fallback) => (err) => setMessage(collectionReason(err, fallback));
   // An official collection shows its works in groups by unit (#187); a list of the person is one row of places.
   const official = kind === 'official';
-  const { groups, headings } = official ? groupByUnit(works) : { groups: [{ key: '', heading: '', works }], headings: false };
+  const { groups: allGroups, headings } = official ? groupByUnit(works) : { groups: [{ key: '', heading: '', works }], headings: false };
+  // The filters and the order of the list (DEC-165): a view over the groups, which never changes the order of the collection.
+  const isSaved = (w) => (w.notes ?? 0) > 0 || (w.bookmarks ?? 0) > 0;
+  const counts = {
+    all: works.length,
+    unread: works.filter((w) => !w.completed).length,
+    read: works.filter((w) => w.completed).length,
+    saved: works.filter(isSaved).length,
+  };
+  const term = query.trim().toLowerCase();
+  const matches = (w) => {
+    if (status === 'unread' && w.completed) return false;
+    if (status === 'read' && !w.completed) return false;
+    if (status === 'saved' && !isSaved(w)) return false;
+    if (!term) return true;
+    const label = official ? unitLabel(w.unit, w.position) : numberText(w.position);
+    return `${w.title} ${w.author} ${label}`.toLowerCase().includes(term);
+  };
+  const filtering = term !== '' || status !== 'all';
+  const groups = allGroups
+    .map((g) => ({ ...g, works: (descending ? [...g.works].reverse() : g.works).filter(matches) }))
+    .filter((g) => g.works.length > 0);
+  const movable = !filtering && !descending;
+  const showFilters = works.length > 5;
   const move = (group, index, delta) => {
     const items = [...group.works];
     [items[index], items[index + delta]] = [items[index + delta], items[index]];
@@ -394,6 +432,7 @@ export function CollectionPage() {
   const goOnWork = goOn ? works.find((w) => w.id === goOn.id) : null;
   const years = summary?.yearFrom != null ? (summary.yearTo !== summary.yearFrom ? `${summary.yearFrom}–${summary.yearTo}` : String(summary.yearFrom)) : null;
   const missing = (summary?.missing ?? []).map((m) => unitLabel(m.unit, m.number));
+  const sequence = summary ? sequenceWord(works, summary.works) : null;
   const read = (work) => openBook(work.id);
 
   return (
@@ -469,17 +508,24 @@ export function CollectionPage() {
                     </div>
                     <ProgressBar percent={summary.percent} color="brand" />
                     <p className="mt-2 font-mono text-[11px] text-ink-soft">
-                      {summary.finished} de {summary.works} {summary.works === 1 ? 'lida' : 'lidas'}
+                      {summary.finished} de {summary.works} {sequence ? `${sequence.noun} ${sequence.read}` : summary.works === 1 ? 'lida' : 'lidas'}
                       {summary.inProgress > 0 ? ` · ${summary.inProgress} em andamento` : ''}
                       {summary.readingSeconds > 0 ? ` · ${formatReadingTime(summary.readingSeconds)} lidas` : ''}
                     </p>
-                    {summary.notes > 0 && (
+                    {remainingText(summary.remainingSeconds) && <p className="mt-1 font-mono text-[11px] text-ink-faint">{remainingText(summary.remainingSeconds)}</p>}
+                    {(summary.notes > 0 || summary.bookmarks > 0) && (
                       <p className="mt-1 font-mono text-[11px] text-ink-soft">
-                        {summary.notes} {summary.notes === 1 ? 'anotação sua' : 'anotações suas'}
-                        {' · '}
-                        <button type="button" onClick={() => notesRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })} className="text-brand underline decoration-dotted underline-offset-4 hover:text-ink">
-                          Ver notas
-                        </button>
+                        {summary.bookmarks > 0 && `${summary.bookmarks} ${summary.bookmarks === 1 ? 'marcador' : 'marcadores'}`}
+                        {summary.bookmarks > 0 && summary.notes > 0 && ' · '}
+                        {summary.notes > 0 && `${summary.notes} ${summary.notes === 1 ? 'anotação sua' : 'anotações suas'}`}
+                        {summary.notes > 0 && (
+                          <>
+                            {' · '}
+                            <button type="button" onClick={() => notesRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })} className="text-brand underline decoration-dotted underline-offset-4 hover:text-ink">
+                              Ver notas
+                            </button>
+                          </>
+                        )}
                       </p>
                     )}
                   </div>
@@ -542,6 +588,32 @@ export function CollectionPage() {
           )}
           {message && <p role="alert" className="text-sm text-danger">{message}</p>}
 
+          {showFilters && (
+            <div role="search" aria-label="Filtrar as obras" className="flex flex-col gap-3 rounded-xl border border-border-hairline bg-white p-3 shadow-sm">
+              <label className="flex flex-col gap-1 text-xs text-ink-soft">
+                Filtrar por nome ou número
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Ex.: Eclipse, Cap. 84, Vol. 12"
+                  className="min-h-11 rounded-lg border border-border-hairline bg-surface px-3 text-sm text-ink"
+                />
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <div role="group" aria-label="Situação" className="flex flex-wrap items-center gap-2">
+                  {[['all', 'Todas'], ['unread', 'Não lidas'], ['read', 'Lidas'], ['saved', 'Salvas']].map(([key, text]) => (
+                    <button key={key} type="button" aria-pressed={status === key} onClick={() => setStatus(key)} className={BUTTON}>
+                      {text} ({counts[key]})
+                    </button>
+                  ))}
+                </div>
+                <button type="button" aria-pressed={descending} onClick={() => setDescending(!descending)} className={`${BUTTON} ml-auto`}>
+                  {descending ? 'Ordem decrescente' : 'Ordem crescente'}
+                </button>
+              </div>
+            </div>
+          )}
           {works.length > 0 && (
             <div role="group" aria-label="Como ver as obras" className="flex items-center gap-2 text-xs text-ink-soft">
               Exibir:
@@ -553,6 +625,11 @@ export function CollectionPage() {
           {works.length === 0 ? (
             <p className="rounded-lg border border-dashed border-surface-alt bg-surface/50 px-4 py-8 text-center text-sm text-ink-faint">
               {collection.retired ? words.restoreHint : words.nowhere}
+            </p>
+          ) : groups.length === 0 ? (
+            <p role="status" className="rounded-lg border border-dashed border-surface-alt bg-surface/50 px-4 py-8 text-center text-sm text-ink-faint">
+              Nenhuma obra com esse filtro.{' '}
+              <button type="button" onClick={() => { setQuery(''); setStatus('all'); }} className="text-brand underline decoration-dotted underline-offset-4">Limpar o filtro</button>
             </p>
           ) : (
             <div className="flex flex-col gap-5">
@@ -567,6 +644,7 @@ export function CollectionPage() {
                   onMove={move}
                   rowProps={(work) => ({
                     staff: staff && !collection.retired,
+                    movable,
                     confirming: removing === work.entryId,
                     busy,
                     words,
