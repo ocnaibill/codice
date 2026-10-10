@@ -43,6 +43,38 @@ afterEach(() => {
   container.remove();
 });
 
+describe('the cover and the name of a card open the page of the work', () => {
+  beforeEach(() => { useGlobalStore.setState({ sheetWorkId: null, collectionSheetId: null }); });
+
+  it('opens it from the cover', async () => {
+    await render([card({ id: 5, title: 'Duna' })]);
+    await act(async () => { container.querySelector('button.library-book-cover').click(); });
+    expect(state()).toMatchObject({ sheetWorkId: 5, activeBookId: null });
+  });
+
+  it('opens it from the name, which is a button with the name of the work, and does not open the reader', async () => {
+    await render([card({ id: 5, title: 'Duna', inProgress: true, continue: { fileId: 11, format: 'epub', completed: false } })]);
+    const name = container.querySelector('h3 button.library-book-title');
+    expect(name.textContent).toBe('Duna');
+    expect(name.getAttribute('aria-label')).toBe('Abrir a página: Duna');
+    await act(async () => { name.click(); });
+    expect(state()).toMatchObject({ sheetWorkId: 5, activeBookId: null });
+  });
+
+  it('keeps the title attribute of the name out of the way of the Read button, which is the one with a title of its own', async () => {
+    await render([card({ id: 5, title: 'Duna' })]);
+    expect(container.querySelector('h3 button.library-book-title').hasAttribute('title')).toBe(false);
+    expect(readButton().getAttribute('aria-label')).toMatch(/^.*: Duna$/);
+  });
+
+  it('opens the collection from the name of a series, as from its cover', async () => {
+    const series = { collectionId: 4, name: 'One Piece', volumes: 3, chapters: 0, oneShots: 0, coverUrl: '/s.jpg', continue: null };
+    await render([card({ id: 9, title: 'One Piece 3', collapsed: series })]);
+    await act(async () => { container.querySelector('article[data-series="true"] h3 button').click(); });
+    expect(state()).toMatchObject({ collectionSheetId: 4, sheetWorkId: null });
+  });
+});
+
 describe('the Read button of a card (DEC-081)', () => {
   it('continues the version that counts when the work is in progress', async () => {
     await render([card({ fileCount: 3, inProgress: true, continue: { fileId: 22, format: 'pdf', completed: false } })]);
