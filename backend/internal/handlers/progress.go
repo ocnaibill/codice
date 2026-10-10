@@ -49,6 +49,39 @@ type PutProgressRequest struct {
 	Device       string          `json:"device"`
 	ClientTime   *time.Time      `json:"clientTime"`
 	BaseRevision *int64          `json:"baseRevision"`
+	// Chapter, UnitIndex and UnitTotal say where the locator points in words (DEC-148): the chapter's title, and which unit of how many (the
+	// page of a PDF or a comic, the position of an EPUB). They are the place of this locator: a save that sends none leaves none.
+	Chapter   string `json:"chapter"`
+	UnitIndex *int   `json:"unitIndex"`
+	UnitTotal *int   `json:"unitTotal"`
+}
+
+const (
+	maxChapter = 200        // characters of a chapter's title
+	maxUnits   = 10_000_000 // pages or positions of one file
+)
+
+// chapterTitle is the title the reader reports for the chapter, as one line of at most maxChapter characters.
+func chapterTitle(raw string) string {
+	title := strings.Join(strings.Fields(raw), " ")
+	if r := []rune(title); len(r) > maxChapter {
+		title = strings.TrimSpace(string(r[:maxChapter]))
+	}
+	return title
+}
+
+// unitOf checks "which of how many": both or neither, from 1, and not past the total.
+func unitOf(index, total *int) (sql.NullInt64, sql.NullInt64, error) {
+	if index == nil && total == nil {
+		return sql.NullInt64{}, sql.NullInt64{}, nil
+	}
+	if index == nil || total == nil {
+		return sql.NullInt64{}, sql.NullInt64{}, errors.New("unitIndex and unitTotal go together")
+	}
+	if *total < 1 || *total > maxUnits || *index < 1 || *index > *total {
+		return sql.NullInt64{}, sql.NullInt64{}, errors.New("unitIndex is a position from 1 up to unitTotal")
+	}
+	return sql.NullInt64{Int64: int64(*index), Valid: true}, sql.NullInt64{Int64: int64(*total), Valid: true}, nil
 }
 
 func fileIDParam(r *http.Request) (int64, bool) {
@@ -180,6 +213,12 @@ func (h *ProgressHandler) Put(w http.ResponseWriter, r *http.Request) {
 	if req.Completed != nil {
 		completed = sql.NullBool{Bool: *req.Completed, Valid: true}
 	}
+	unitIndex, unitTotal, err := unitOf(req.UnitIndex, req.UnitTotal)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	chapter := chapterTitle(req.Chapter)
 	var base sql.NullInt64
 	if req.BaseRevision != nil {
 		base = sql.NullInt64{Int64: *req.BaseRevision, Valid: true}
@@ -190,12 +229,18 @@ func (h *ProgressHandler) Put(w http.ResponseWriter, r *http.Request) {
 	var revision int64
 	err = h.DB.QueryRowContext(r.Context(), `
 		INSERT INTO reading_progress AS rp (user_id, file_id, position, locator, locator_version,
-		                                    percent_complete, completed_at, device, client_updated_at, updated_at)
-		VALUES ($1, $2, $3, $4::jsonb, $5, COALESCE($6::float8, 0), CASE WHEN $7::boolean THEN now() END, NULLIF($8, ''), $9, now())
+		                                    percent_complete, completed_at, device, client_updated_at, updated_at,
+		                                    chapter, unit_index, unit_total)
+		VALUES ($1, $2, $3, $4::jsonb, $5, COALESCE($6::float8, 0), CASE WHEN $7::boolean THEN now() END, NULLIF($8, ''), $9, now(),
+		        NULLIF($11, ''), $12, $13)
 		ON CONFLICT (user_id, file_id) DO UPDATE SET
 			position = EXCLUDED.position,
 			locator = EXCLUDED.locator,
 			locator_version = EXCLUDED.locator_version,
+			-- Where it is in words moves with the locator: what a save does not send is not what the old place was.
+			chapter = EXCLUDED.chapter,
+			unit_index = EXCLUDED.unit_index,
+			unit_total = EXCLUDED.unit_total,
 			percent_complete = COALESCE($6::float8, rp.percent_complete),
 			-- A finished file stays finished: the first date is kept, and only an explicit false reopens it.
 			completed_at = CASE WHEN $7::boolean IS NULL THEN rp.completed_at WHEN $7::boolean THEN COALESCE(rp.completed_at, now()) END,
@@ -206,7 +251,7 @@ func (h *ProgressHandler) Put(w http.ResponseWriter, r *http.Request) {
 		WHERE $10::bigint IS NULL OR rp.revision = $10
 		RETURNING revision`,
 		userID, fileID, locator.Position(canonical), string(canonical), locator.Version,
-		percent, completed, device, req.ClientTime, base).Scan(&revision)
+		percent, completed, device, req.ClientTime, base, chapter, unitIndex, unitTotal).Scan(&revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		st, lerr := h.load(r, userID, fileID)
 		if lerr != nil {
@@ -290,6 +335,9 @@ func (h *ProgressHandler) SetCompletion(w http.ResponseWriter, r *http.Request) 
 			position = CASE WHEN $4::boolean THEN '' ELSE rp.position END,
 			locator = CASE WHEN $4::boolean THEN NULL ELSE rp.locator END,
 			locator_version = CASE WHEN $4::boolean THEN NULL ELSE rp.locator_version END,
+			chapter = CASE WHEN $4::boolean THEN NULL ELSE rp.chapter END,
+			unit_index = CASE WHEN $4::boolean THEN NULL ELSE rp.unit_index END,
+			unit_total = CASE WHEN $4::boolean THEN NULL ELSE rp.unit_total END,
 			revision = rp.revision + 1,
 			updated_at = now()`, userID, fileID, *req.Completed, req.Restart)
 	if err != nil {

@@ -16,10 +16,23 @@ import { MarqueeText } from '../../../components/ui/MarqueeText';
 const COMIC_FORMATS = new Set(['cbz', 'cbr']);
 const AUDIO_FORMATS = new Set(['mp3', 'm4a', 'm4b', 'ogg', 'wav', 'flac']);
 
-function pageLabel(format, progress) {
-  const pageNum = Number.parseInt(progress, 10);
+const PAGED_FORMATS = new Set(['pdf', ...COMIC_FORMATS]);
+
+/**
+ * Where the person is, as a short line: "Página 42 de 310" for a PDF or a comic, "Pos. 3.412 de 5.018" for an EPUB (which has no pages; the
+ * word is the one in the maintainer's drawing, and the title of the line says it whole).
+ * A position saved before the reader said how many (DEC-148) still gives the page of a PDF or a comic, and says nothing for the other
+ * formats: the text of a plain file is a place in characters, an EPUB's a place in its code, and neither is a page.
+ */
+function placeLabel(format, last, legacyProgress) {
+  const { unitIndex, unitTotal } = last || {};
+  if (unitIndex > 0 && unitTotal >= unitIndex) {
+    return `${PAGED_FORMATS.has(format) ? 'Página' : 'Pos.'} ${unitIndex.toLocaleString('pt-BR')} de ${unitTotal.toLocaleString('pt-BR')}`;
+  }
+  if (!PAGED_FORMATS.has(format)) return null;
+  const pageNum = Number.parseInt(legacyProgress, 10);
   if (Number.isNaN(pageNum)) return null;
-  return COMIC_FORMATS.has(format) ? `Página ${pageNum + 1}` : `Página ${pageNum}`;
+  return `Página ${COMIC_FORMATS.has(format) ? pageNum + 1 : pageNum}`;
 }
 
 function InProgressCard({ item, onOpen }) {
@@ -37,7 +50,8 @@ function InProgressCard({ item, onOpen }) {
   const action = isComic
     ? { label: 'Abrir Visor', variant: 'outline' }
     : { label: isAudio ? 'Continuar Ouvindo' : 'Continuar Leitura', variant: 'solid' };
-  const location = isAudio ? null : pageLabel(format, readingProgress);
+  const location = isAudio ? null : placeLabel(format, last, readingProgress);
+  const chapter = isAudio ? '' : last?.chapter || '';
   const genre = item.tags?.[0] || (format ? format.toUpperCase() : null);
 
   return (
@@ -63,11 +77,22 @@ function InProgressCard({ item, onOpen }) {
           </div>
           <h3 className="pt-1 font-body text-xl font-bold tracking-[-0.2px] text-ink" title={title}><MarqueeText>{title}</MarqueeText></h3>
           <p className="font-body text-[13px] tracking-[0.065px] text-ink-soft"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
-          {location && (
-            <div className="mt-3 flex items-center gap-1 rounded-sm bg-surface px-2 py-1">
-              <img src={isAudio ? iconPage : iconChapter} alt="" className="size-[11px]" />
-              <span className="font-body text-[11px] tracking-[0.44px] text-ink-soft">{location}</span>
-            </div>
+          {(chapter || location) && (
+            <ul className="mt-3 flex min-w-0 flex-col gap-1">
+              {chapter && (
+                <li className="flex min-w-0 items-center gap-1 rounded-sm bg-surface px-2 py-1" title={chapter}>
+                  <img src={iconChapter} alt="" className="size-[11px] shrink-0" />
+                  <span className="sr-only">Capítulo: </span>
+                  <span className="truncate font-body text-[11px] tracking-[0.44px] text-ink-soft">{chapter}</span>
+                </li>
+              )}
+              {location && (
+                <li className="flex min-w-0 items-center gap-1 rounded-sm bg-surface px-2 py-1" title={location.replace(/^Pos\./, 'Posição')}>
+                  <img src={iconPage} alt="" className="size-[11px] shrink-0" />
+                  <span className="truncate font-body text-[11px] tracking-[0.44px] text-ink-soft">{location}</span>
+                </li>
+              )}
+            </ul>
           )}
         </div>
       </div>

@@ -7,6 +7,7 @@ import { PdfPassword } from './PdfPassword';
 import { completionFor } from '../../progressRules';
 import { pdfPlaceProblem } from '../../placeCheck';
 import { loadOutline } from '../../pdfOutline';
+import { chapterAt, pageUnit, whereExtras } from '../../placeInWords';
 import { ZOOMS, readingWidth, tapAction, swipeAction } from '../../pdfGestures';
 import { QUIET_AFTER_TURN_MS, TOUCH_TAP_MAX_MS, liftMeaning } from '../../epubGestures';
 import { useSelectionWatcher } from '../../useSelectionWatcher';
@@ -107,7 +108,11 @@ export default function PdfViewer({ fileUrl, onProgress, initialProgress, onPlac
       timeoutRef.current = setTimeout(() => {
         const percent = numPages ? (newPage / numPages) * 100 : undefined;
         const completed = completionFor(percent);
-        onProgress({ type: 'pdf', page: newPage - 1 }, { percent, completed })
+        const where = whereExtras({
+          chapter: chapterAt(outline.map((e) => ({ title: e.title, at: e.page })), newPage),
+          unit: pageUnit(newPage, numPages),
+        });
+        onProgress({ type: 'pdf', page: newPage - 1 }, { percent, completed, ...where })
           .catch((err) => console.error("Failed to save PDF reading progress:", err));
       }, 1000);
     }

@@ -6,7 +6,7 @@ const getBook = vi.fn();
 vi.mock('../../../../lib/api', () => ({ api: { get: (...a) => getBook(...a) }, authenticatedUrl: (u) => u }));
 
 // epub.js is not what is under test: a book with a table of contents, and a page that records what it is asked.
-const state = { toc: [], locationsLength: 0, percent: 0.37, rendition: null, events: {}, hooks: [], displayed: [], renderOptions: [], current: null, generate: () => Promise.resolve() };
+const state = { toc: [], locationsLength: 0, locationAt: -1, percent: 0.37, rendition: null, events: {}, hooks: [], displayed: [], renderOptions: [], current: null, generate: () => Promise.resolve() };
 vi.mock('epubjs', () => ({
   default: () => {
     const rendition = {
@@ -26,10 +26,15 @@ vi.mock('epubjs', () => ({
       loaded: { navigation: Promise.resolve({ toc: state.toc }) },
       opened: Promise.resolve(),
       spine: {
-        spineItems: [{ href: 'Text/c1.xhtml' }, { href: 'Text/c2.xhtml' }],
-        get: (target) => [{ href: 'Text/c1.xhtml' }, { href: 'Text/c2.xhtml' }].find((c) => c.href === target) ?? null,
+        spineItems: [{ href: 'Text/c1.xhtml', index: 0 }, { href: 'Text/c2.xhtml', index: 1 }],
+        get: (target) => [{ href: 'Text/c1.xhtml', index: 0 }, { href: 'Text/c2.xhtml', index: 1 }].find((c) => c.href === target) ?? null,
       },
-      locations: { length: () => state.locationsLength, generate: () => state.generate(), percentageFromCfi: () => state.percent },
+      locations: {
+        length: () => state.locationsLength,
+        generate: () => state.generate(),
+        percentageFromCfi: () => state.percent,
+        locationFromCfi: () => state.locationAt,
+      },
       renderTo: (element, options) => { state.renderOptions.push(options); return rendition; },
       destroy: () => {},
     };
@@ -67,6 +72,7 @@ beforeEach(() => {
   setPreferenceOwner('ana');
   state.toc = [];
   state.locationsLength = 0;
+  state.locationAt = -1;
   state.percent = 0.37;
   state.events = {};
   state.hooks = [];
@@ -1277,5 +1283,53 @@ describe('the EPUB reader: a book that carries scripts', () => {
     await flush();
     expect(state.renderOptions.length).toBeGreaterThan(0);
     for (const options of state.renderOptions) expect(options.allowScriptedContent).toBe(false);
+  });
+});
+
+describe('the EPUB reader: where the person is, in words (DEC-148)', () => {
+  const saved = async (onProgress) => {
+    await act(async () => { await new Promise((r) => setTimeout(r, 1100)); }); // the save is debounced by a second
+    return onProgress.mock.calls.at(-1);
+  };
+  const relocateTo = (index, cfi = 'epubcfi(/6/4!/4)') =>
+    act(async () => { state.events.relocated({ start: { cfi, href: 'Text/c2.xhtml', index, percentage: 0.5, displayed: { page: 1, total: 4 } }, end: { cfi } }); });
+
+  it('saves the chapter that holds the place and which position of how many', async () => {
+    state.toc = [{ label: 'Um', href: 'Text/c1.xhtml' }, { label: ' Dois ', href: 'Text/c2.xhtml#inicio' }];
+    state.locationsLength = 40;
+    state.locationAt = 11;
+    const onProgress = vi.fn().mockResolvedValue({});
+    await open({ onProgress });
+    await relocateTo(1);
+    const [locator, extras] = await saved(onProgress);
+    expect(locator).toMatchObject({ type: 'epub', cfi: 'epubcfi(/6/4!/4)' });
+    expect(extras).toMatchObject({ chapter: 'Dois', unitIndex: 12, unitTotal: 40 });
+  });
+
+  it('names the chapter, not a section of it, when the file holds both: the person may not have reached the anchor', async () => {
+    state.toc = [{ label: 'Capítulo 2', href: 'Text/c2.xhtml' }, { label: 'Uma seção do 2', href: 'Text/c2.xhtml#sec' }];
+    const onProgress = vi.fn().mockResolvedValue({});
+    await open({ onProgress });
+    await relocateTo(1);
+    expect((await saved(onProgress))[1].chapter).toBe('Capítulo 2');
+  });
+
+  it('says no position while the positions of the book are not known, and the chapter all the same', async () => {
+    state.toc = [{ label: 'Um', href: 'Text/c1.xhtml' }];
+    const onProgress = vi.fn().mockResolvedValue({});
+    await open({ onProgress });
+    await relocateTo(1);
+    const [, extras] = await saved(onProgress);
+    expect(extras.chapter).toBe('Um');
+    expect(extras).not.toHaveProperty('unitIndex');
+    expect(extras).not.toHaveProperty('unitTotal');
+  });
+
+  it('says nothing of a chapter for a book with no table of contents', async () => {
+    const onProgress = vi.fn().mockResolvedValue({});
+    await open({ onProgress });
+    await relocateTo(0);
+    const [, extras] = await saved(onProgress);
+    expect(extras).not.toHaveProperty('chapter');
   });
 });

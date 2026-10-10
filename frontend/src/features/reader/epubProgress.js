@@ -1,4 +1,5 @@
 import { completionFor } from './progressRules';
+import { whereExtras } from './placeInWords';
 
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
 
@@ -7,8 +8,9 @@ const clamp01 = (n) => Math.min(1, Math.max(0, n));
  * CFI), the chapter (its href), how far into that chapter, and, once the book's positions have been
  * computed, how far through the whole book. `percentageFromCfi` answers 0..1, or null while it does
  * not know yet: no percentage is invented, and it never says the book is finished before it is.
+ * `where` is the place in words ({ chapter, unit }, see placeInWords) and goes with the rest.
  */
-export function buildEpubProgress(location, percentageFromCfi) {
+export function buildEpubProgress(location, percentageFromCfi, where) {
   const start = location?.start;
   if (!start?.cfi) return null;
 
@@ -27,6 +29,6 @@ export function buildEpubProgress(location, percentageFromCfi) {
   // The end of the book is 100%, even when there is nothing to measure against (a book of one
   // chapter starts and ends in the same place).
   if (location.atEnd) percent = 100;
-  const extras = { percent, completed: location.atEnd ? true : completionFor(percent) };
+  const extras = { percent, completed: location.atEnd ? true : completionFor(percent), ...whereExtras(where) };
   return { locator, extras };
 }
