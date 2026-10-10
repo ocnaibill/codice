@@ -102,7 +102,7 @@ function HomeDashboard() {
         {notes.isError ? (
           <QueryError onRetry={() => notes.refetch()}>Não foi possível carregar as anotações.</QueryError>
         ) : (
-          <NotesQuotes notes={notes.data?.data ?? []} isLoading={notes.isLoading} />
+          <NotesQuotes notes={notes.data?.data ?? []} total={notes.data?.total ?? 0} isLoading={notes.isLoading} />
         )}
       </div>
     </div>
@@ -125,6 +125,7 @@ function HomeDashboard() {
             <ContinueReading items={inProgress.data?.data ?? []} isLoading={inProgress.isLoading} onViewAll={() => setView('reading')} />
           )}
         </div>
+        {personal}
         <section id="library-catalog" aria-label="Acervo" className="home-catalog" style={{ scrollMarginTop: 96 }}>
           <LibraryFilterBar
             worksTotal={stats.data?.worksTotal}
@@ -180,7 +181,6 @@ function HomeDashboard() {
             </>
           )}
         </section>
-        {personal}
       </div>
       {shelves && <CategoryRows />}
     </div>

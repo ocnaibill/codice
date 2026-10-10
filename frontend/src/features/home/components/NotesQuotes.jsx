@@ -1,19 +1,32 @@
 import { EmptyState, Skeleton } from '../../../components/ui/EmptyState';
 import { downloadFile } from '../../../lib/download';
+import { useGlobalStore } from '../../../store/useGlobalStore';
 
-export function NotesQuotes({ notes, isLoading }) {
+/**
+ * What the person wrote in the margins, as the home shows it: two of the notes, drawn again each time the page is read (the caller asks for a
+ * sample), and, when they kept more, the way to all of them.
+ */
+export function NotesQuotes({ notes, total = 0, isLoading }) {
+  const openNotes = useGlobalStore((state) => state.openNotes);
   return (
     <div className="library-panel">
-      <div className="flex items-center justify-between pb-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pb-4">
         <h3 className="font-display text-xl text-ink">À margem da leitura</h3>
         {!isLoading && notes.length > 0 && (
-          <button
-            onClick={() => downloadFile('/notes/export?format=md', 'codice-anotacoes.md').catch(() => {})}
-            className="font-body text-[11px] tracking-[0.44px] text-brand hover:underline"
-            title="Baixa todas as suas anotações, com a referência de cada livro"
-          >
-            Exportar tudo
-          </button>
+          <div className="flex items-center gap-3">
+            {total > notes.length && (
+              <button type="button" onClick={openNotes} className="font-body text-[11px] tracking-[0.44px] text-brand hover:underline">
+                Ver todas ({total})
+              </button>
+            )}
+            <button
+              onClick={() => downloadFile('/notes/export?format=md', 'codice-anotacoes.md').catch(() => {})}
+              className="font-body text-[11px] tracking-[0.44px] text-brand hover:underline"
+              title="Baixa todas as suas anotações, com a referência de cada livro"
+            >
+              Exportar tudo
+            </button>
+          </div>
         )}
       </div>
 

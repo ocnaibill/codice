@@ -109,14 +109,21 @@ function InProgressCard({ item, onOpen, onSheet }) {
   );
 }
 
+/** Whether what the person has in hand is an audiobook: the file read last, when there is one, else the one of the card. */
+function isListening(item) {
+  return AUDIO_FORMATS.has((item.continue?.format || item.format || '').toLowerCase());
+}
+
 export function ContinueReading({ items, isLoading, onViewAll }) {
   const openBook = useGlobalStore((state) => state.openBook);
   const openWork = useGlobalStore((state) => state.openWork);
+  // "& ouvindo" is said only when somebody is listening to an audiobook.
+  const listening = items.some(isListening);
 
   return (
-    <section className="min-w-0" aria-label="Continuar lendo e ouvindo">
+    <section className="min-w-0" aria-label={listening ? 'Continuar lendo e ouvindo' : 'Continuar lendo'}>
       <div className="library-section-heading">
-        <h2>Continuar lendo & ouvindo</h2>
+        <h2>{listening ? 'Continuar lendo & ouvindo' : 'Continuar lendo'}</h2>
         {!isLoading && <span className="library-eyebrow">[{items.length} EM FOCO]</span>}
         {onViewAll && items.length > 0 && <button className="library-text-link" onClick={onViewAll}>Ver todas <LibraryIcon name="arrow" /></button>}
       </div>
