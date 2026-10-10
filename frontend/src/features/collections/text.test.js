@@ -39,7 +39,7 @@ describe('the words of each kind', () => {
 
 describe('the units of a series (#187)', () => {
   it('lists the three units and the two kinds, in the order they are shown', () => {
-    expect(UNITS.map((u) => u.key)).toEqual(['volume', 'chapter', 'oneshot']);
+    expect(UNITS.map((u) => u.key)).toEqual(['volume', 'chapter', 'oneshot', 'extra']);
     expect(COMIC_KINDS.map((k) => [k.key, k.one])).toEqual([['manga', 'Mangá'], ['comic', 'Quadrinho']]);
   });
 
@@ -56,6 +56,8 @@ describe('the units of a series (#187)', () => {
     expect(unitLabel('chapter', 27.5)).toBe('Cap. 27,5');
     expect(unitLabel('chapter', null)).toBe('Cap. —');
     expect(unitLabel('oneshot', 1)).toBe('Único');
+    expect(unitLabel('extra', 4)).toBe('Compl.'); // a complementary work has no number in the sequence
+    expect(unitLabel('extra', null)).toBe('Compl.');
     expect(unitLabel('', 4)).toBe('4');
     expect(unitLabel(undefined, null)).toBe('—');
     expect(unitLabel('arc', 2)).toBe('2');
@@ -68,6 +70,22 @@ describe('the units of a series (#187)', () => {
     expect(groups.map((g) => [g.key, g.heading, g.works.map((x) => x.id)])).toEqual([
       ['volume', 'Volumes', [3, 7]], ['chapter', 'Capítulos', [1, 4]], ['oneshot', 'Únicos', [6]], ['', 'Sem unidade', [2, 5]],
     ]);
+  });
+
+  it('puts the complementary works in a group of their own, after all the others (DEC-164)', () => {
+    const w = (id, unit) => ({ id, unit });
+    const { groups, headings } = groupByUnit([w(1, 'extra'), w(2, ''), w(3, 'volume'), w(4, 'extra')]);
+    expect(headings).toBe(true);
+    expect(groups.map((g) => [g.key, g.heading, g.works.map((x) => x.id)])).toEqual([
+      ['volume', 'Volumes', [3]], ['', 'Sem unidade', [2]], ['extra', 'Complementares', [1, 4]],
+    ]);
+    // Only complementary works: the group has its heading, since it is not "no unit".
+    expect(groupByUnit([w(1, 'extra')]).headings).toBe(true);
+  });
+
+  it('calls a complementary work and a one-shot by their word, with no number, on a button', () => {
+    expect(stepText({ unit: 'extra', position: 3, title: 'Guia do Mundo Bruxo' })).toBe('Compl.');
+    expect(stepText({ unit: 'oneshot', position: null, title: 'x' })).toBe('Único');
   });
 
   it('leaves out the groups with no work, and has no headings when only the works with no unit are there', () => {

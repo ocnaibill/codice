@@ -48,7 +48,12 @@ export const UNITS = [
   { key: 'volume', heading: 'Volumes', short: 'Vol.', one: 'Volume' },
   { key: 'chapter', heading: 'Capítulos', short: 'Cap.', one: 'Capítulo' },
   { key: 'oneshot', heading: 'Únicos', short: 'Único', one: 'Único' },
+  // Belongs to the collection but not to its sequence (DEC-164): a companion book, a guide, an art book. It has no number of its own.
+  { key: 'extra', heading: 'Complementares', short: 'Compl.', one: 'Complementar' },
 ];
+
+/** The units that are a work by itself, with no number in a sequence: "Único" and "Compl.". */
+const UNNUMBERED = ['oneshot', 'extra'];
 
 /** What a comic is, in the words of the screens. */
 export const COMIC_KINDS = [
@@ -62,11 +67,11 @@ export function numberText(position) {
   return String(position).replace('.', ',');
 }
 
-/** What a work is called in its series: "Vol. 3", "Cap. 27,5", "Único"; with no unit, the number alone. */
+/** What a work is called in its series: "Vol. 3", "Cap. 27,5", "Único", "Compl."; with no unit, the number alone. */
 export function unitLabel(unit, position) {
   const u = UNITS.find((x) => x.key === unit);
   if (!u) return numberText(position);
-  return unit === 'oneshot' ? u.short : `${u.short} ${numberText(position)}`;
+  return UNNUMBERED.includes(unit) ? u.short : `${u.short} ${numberText(position)}`;
 }
 
 /**
@@ -74,7 +79,7 @@ export function unitLabel(unit, position) {
  * a one-shot, and the title when it has neither.
  */
 export function stepText(step) {
-  const numbered = UNITS.some((u) => u.key === step.unit) && (step.unit === 'oneshot' || step.position != null);
+  const numbered = UNITS.some((u) => u.key === step.unit) && (UNNUMBERED.includes(step.unit) || step.position != null);
   return numbered ? unitLabel(step.unit, step.position) : step.title;
 }
 
@@ -98,11 +103,14 @@ export function seriesCounts({ volumes = 0, chapters = 0, oneShots = 0 }) {
 }
 
 /**
- * The works of a collection in groups by unit (#187): volumes, chapters, one-shots, and those with no unit last. Each keeps its order. A
- * group with no work is left out, and the headings are for when there is more than the works with no unit.
+ * The works of a collection in groups by unit (#187): volumes, chapters, one-shots, those with no unit, and the complementary ones last
+ * (DEC-164). Each keeps its order. A group with no work is left out, and the headings are for when there is more than the works with no
+ * unit.
  */
 export function groupByUnit(works) {
-  const groups = [...UNITS.map((u) => ({ key: u.key, heading: u.heading })), { key: '', heading: 'Sem unidade' }]
+  const sequence = UNITS.filter((u) => u.key !== 'extra').map((u) => ({ key: u.key, heading: u.heading }));
+  const extra = UNITS.find((u) => u.key === 'extra');
+  const groups = [...sequence, { key: '', heading: 'Sem unidade' }, { key: extra.key, heading: extra.heading }]
     .map((g) => ({ ...g, works: works.filter((w) => (w.unit ?? '') === g.key) }))
     .filter((g) => g.works.length > 0);
   return { groups, headings: groups.some((g) => g.key !== '') };
