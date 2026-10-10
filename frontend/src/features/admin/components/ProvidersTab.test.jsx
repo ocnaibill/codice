@@ -63,9 +63,11 @@ describe('ProvidersTab: which external services may be asked (#68)', () => {
 
   it('says Wikidata translates and identifies the work, that Wikipedia needs it, and that only the title of a page goes to Wikipedia', async () => {
     const wikipedia = { ...provider('wikipedia', 'Wikipedia', false), sends: ['page_title'] };
-    await open({ isOwner: true }, [...providers, provider('wikidata', 'Wikidata', false), wikipedia]);
+    await open({ isOwner: true }, [...providers, provider('wikidata', 'Wikidata', false, { sends: ['title', 'author_id'] }), wikipedia]);
     const text = view.text();
-    expect(text).toContain('Recebe: o título da obra. Endereço: www.wikidata.org (Wikimedia).');
+    expect(text).toContain('Recebe: o título da obra, o identificador Wikidata de cada autor que você aceita (para ler o perfil dele: descrição, anos, biografia e foto). Endereço: www.wikidata.org e commons.wikimedia.org (Wikimedia).');
+    expect(text).toContain('Também lê o perfil dos autores que têm identificador Wikidata');
+    expect(text).toContain('e a biografia dos autores');
     expect(text).toContain('traduz um título que os outros não conhecem');
     expect(text).toContain('Recebe: só o título da página da obra na Wikipédia, que o Wikidata informou (nunca o título do arquivo). Endereço: *.wikipedia.org (Wikimedia).');
     expect(text).toContain('Só funciona com o Wikidata ligado');

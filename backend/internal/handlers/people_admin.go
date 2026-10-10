@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ocnaibill/codice/backend/internal/audit"
 	"github.com/ocnaibill/codice/backend/internal/people"
 	"github.com/ocnaibill/codice/backend/internal/profile"
 	"github.com/ocnaibill/codice/backend/internal/reading"
@@ -246,4 +247,47 @@ func (h *PeopleHandler) SetName(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// SetProfile hides, or shows again, the profile of a person, or only the photo (staff, DEC-146): what Wikidata says is attached to the identifier
+// that a human confirmed, and when that identifier is the wrong person's the page should not say it. Nothing is deleted: showing it again is the
+// same call. A field that is not in the request is left as it was.
+func (h *PeopleHandler) SetProfile(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	var req struct {
+		Hidden      *bool `json:"hidden"`
+		ImageHidden *bool `json:"imageHidden"`
+	}
+	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req) != nil || (req.Hidden == nil && req.ImageHidden == nil) {
+		http.Error(w, "hidden and imageHidden say what to hide", http.StatusBadRequest)
+		return
+	}
+	tx, err := h.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		http.Error(w, "Error saving the choice", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(r.Context(), `
+		UPDATE person_profile SET hidden = COALESCE($2, hidden), image_hidden = COALESCE($3, image_hidden), updated_by = NULLIF($4, '')::uuid
+		WHERE person_id = $1`, id, req.Hidden, req.ImageHidden, currentUserID(r))
+	if err != nil {
+		log.Println("Error hiding a profile:", err)
+		http.Error(w, "Error saving the choice", http.StatusInternalServerError)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		http.Error(w, "Profile not found", http.StatusNotFound)
+		return
+	}
+	if err := audit.Record(r.Context(), tx, currentUserID(r), "person.profile", "person", strconv.Itoa(id), map[string]any{"hidden": req.Hidden, "imageHidden": req.ImageHidden}); err != nil {
+		log.Println("Could not audit person.profile:", err)
+		http.Error(w, "Error saving the choice", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Error saving the choice", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

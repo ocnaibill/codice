@@ -68,6 +68,52 @@ class Reply:
         return self.status == 200 and self.data is not None
 
 
+def get_binary(provider, url, max_bytes, timeout=20, secrets=(), interval=None) -> Reply:
+    """Asks for a file (an image) and says why it did not come. Never more than `max_bytes` is read: a file that is bigger is not taken. The
+    bytes are `data`. It leaves the same pause between two requests to a host, and is told to the administration like any other request."""
+    reply = _download(provider, url, max_bytes, timeout, secrets, interval)
+    if reporter is not None:
+        try:
+            reporter(provider, reply)
+        except Exception as err:
+            print(f"   ⚠️ {provider}: could not report how it answered ({err})")
+    return reply
+
+
+def _download(provider, url, max_bytes, timeout, secrets, interval) -> Reply:
+    _wait(urlparse(url).netloc, min_interval() if interval is None else interval)
+    try:
+        resp = requests.get(url, headers={'User-Agent': user_agent()}, timeout=timeout, stream=True)
+    except Exception as err:
+        problem = f'the request failed ({scrub(err, *secrets)})'
+        print(f"   ⚠️ {provider}: {problem}")
+        return Reply(0, None, problem)
+    try:
+        if resp.status_code != 200:
+            problem = f'HTTP {resp.status_code}' + (f': {STATUS_HINTS[resp.status_code]}' if resp.status_code in STATUS_HINTS else '')
+            print(f"   ⚠️ {provider}: {problem}")
+            return Reply(resp.status_code, None, problem)
+        declared = resp.headers.get('Content-Length') if getattr(resp, 'headers', None) else None
+        if declared and declared.isdigit() and int(declared) > max_bytes:
+            problem = f'the file is bigger than {max_bytes} bytes'
+            print(f"   ⚠️ {provider}: {problem}")
+            return Reply(200, None, problem)
+        body = b''
+        for chunk in resp.iter_content(chunk_size=64 * 1024):
+            body += chunk
+            if len(body) > max_bytes:
+                problem = f'the file is bigger than {max_bytes} bytes'
+                print(f"   ⚠️ {provider}: {problem}")
+                return Reply(200, None, problem)
+        return Reply(200, body)
+    except Exception as err:
+        problem = f'the download failed ({scrub(err, *secrets)})'
+        print(f"   ⚠️ {provider}: {problem}")
+        return Reply(0, None, problem)
+    finally:
+        resp.close()
+
+
 def _said(resp, secrets=()):
     """What the provider says about why it refused, in a few words (Google: {"error": {"message": ...}}; others: {"error": "..."}). Without it a
     key that is not valid looks like any badly made request."""

@@ -62,6 +62,7 @@ const EXACT = {
   'The request is no longer waiting for a decision': 'Este pedido não espera mais uma decisão.',
   'Notice not found': 'Aviso não encontrado.',
   'Person not found': 'Pessoa não encontrada.',
+  'Profile not found': 'Essa pessoa não tem perfil.',
   'name is required (up to 100 characters)': 'Dê um nome (até 100 caracteres).',
   'family and given are the parts of the name': 'Informe o sobrenome e o nome.',
   // What the domain says when it refuses (the errors of the packages the handlers read out)

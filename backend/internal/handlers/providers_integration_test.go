@@ -87,7 +87,11 @@ func TestProviders_EveryOneIsOffUntilTheOwnerTurnsItOnAndSaysWhatItSends(t *test
 	if got := strings.Join(rows[1].Sends, ","); got != "title,isbn,author_key" {
 		t.Errorf("Open Library receives %q", got)
 	}
-	for _, i := range []int{2, 3, 4, 5} {
+	// Wikidata is also given the identifier of each author a person accepted, to read the author's profile (DEC-146).
+	if got := strings.Join(rows[5].Sends, ","); got != "title,author_id" {
+		t.Errorf("Wikidata receives %q", got)
+	}
+	for _, i := range []int{2, 3, 4} {
 		if len(rows[i].Sends) != 1 || rows[i].Sends[0] != "title" {
 			t.Errorf("%s receives only the title: %v", rows[i].ID, rows[i].Sends)
 		}

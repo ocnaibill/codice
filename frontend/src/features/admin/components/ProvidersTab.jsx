@@ -13,8 +13,8 @@ const ABOUT = {
   comicvine: { host: 'comicvine.gamespot.com', keyEnv: 'COMICVINE_API_KEY', note: 'Para quadrinhos: acha a série e depois a edição com o número do arquivo (editora, data, capa, sinopse e quem escreveu e desenhou).' },
   anilist: { host: 'graphql.anilist.co (AniList)', note: 'Para mangá: autores, gêneros, ano, sinopse e capa da série. Uso gratuito não comercial; não guardamos mais do que você aceita.' },
   mangadex: { host: 'api.mangadex.org (MangaDex)', note: 'Para mangá: autores, gêneros, público (seinen, shounen…), sinopse e capa da série. Política de uso: não comercial.' },
-  wikidata: { host: 'www.wikidata.org (Wikimedia)', note: 'Diz que obra é: traduz um título que os outros não conhecem (“A Nuvem” é Thunderhead), e acrescenta o identificador, a série e os gêneros em português. Dados em domínio público (CC0).' },
-  wikipedia: { host: '*.wikipedia.org (Wikimedia)', note: 'Completa a sinopse com o resumo da página da obra, quando nenhum outro provedor trouxe uma; a fonte e a licença (CC BY-SA 4.0) ficam escritas junto do texto. Só funciona com o Wikidata ligado, que diz qual é a página.' },
+  wikidata: { host: 'www.wikidata.org e commons.wikimedia.org (Wikimedia)', note: 'Diz que obra é: traduz um título que os outros não conhecem (“A Nuvem” é Thunderhead), e acrescenta o identificador, a série e os gêneros em português. Também lê o perfil dos autores que têm identificador Wikidata (descrição, anos e a foto, que é baixada para o servidor com o crédito e a licença). Dados em domínio público (CC0); as fotos têm a licença de cada uma.' },
+  wikipedia: { host: '*.wikipedia.org (Wikimedia)', note: 'Completa a sinopse com o resumo da página da obra, quando nenhum outro provedor trouxe uma, e a biografia dos autores; a fonte e a licença (CC BY-SA 4.0) ficam escritas junto do texto. Só funciona com o Wikidata ligado, que diz qual é a página.' },
 };
 // The fixed, public question the test asks each provider (nothing of the library is in it).
 const QUESTION = {
@@ -23,6 +23,7 @@ const QUESTION = {
 };
 const SENDS = {
   title: 'o título da obra',
+  author_id: 'o identificador Wikidata de cada autor que você aceita (para ler o perfil dele: descrição, anos, biografia e foto)',
   isbn: 'o ISBN do arquivo, quando ele tem (para achar o livro sem dúvida)',
   page_title: 'só o título da página da obra na Wikipédia, que o Wikidata informou (nunca o título do arquivo)',
   author_key: 'a chave de cada autor que você aceita (para obter os identificadores dele: Wikidata, VIAF, ISNI)',

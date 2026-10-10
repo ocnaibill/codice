@@ -34,6 +34,7 @@ const chip = (label) => [...container.querySelectorAll('[aria-label="Função na
 async function open({ data = person(), works = { data: [work(1, 'Duna'), work(2, 'Messias')], total: 2, totalPages: 1 }, id = 9 } = {}) {
   asked = [];
   api.get.mockImplementation(async (url) => {
+    if (url === '/auth/me') return { data: { id: 'u', role: 'reader' } };
     if (url === `/people/${id}`) {
       if (data instanceof Error) throw data;
       return { data };
@@ -64,6 +65,20 @@ afterEach(() => {
 });
 
 describe('PersonSheet: the page of a person (#186)', () => {
+  it('shows the profile of the author above the works, with where it came from, when one was read', async () => {
+    await open({ data: person({ profile: { wikidataId: 'Q7934', description: 'escritor americano', born: '1920', bio: 'Frank Herbert foi um escritor.',
+      bioSource: { language: 'pt', title: 'Frank Herbert', url: 'https://pt.wikipedia.org/wiki/Frank_Herbert', license: 'CC BY-SA 4.0' } } }) });
+    const profile = container.querySelector('[aria-label="Perfil"]');
+    expect(profile.textContent).toContain('escritor americano');
+    expect(profile.textContent).toContain('Fonte: Wikipédia (pt), CC BY-SA 4.0');
+    expect(container.textContent.indexOf('escritor americano')).toBeLessThan(container.textContent.indexOf('Também aparece como'));
+  });
+
+  it('has no profile when none was read', async () => {
+    await open({ data: person({ profile: null }) });
+    expect(container.querySelector('[aria-label="Perfil"]')).toBeNull();
+  });
+
   it('says who they are, the names they are also written with, and lists their works as author first', async () => {
     await open();
     expect(container.querySelector('[role="dialog"]').getAttribute('aria-label')).toBe('Pessoa');

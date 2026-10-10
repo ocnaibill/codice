@@ -24,6 +24,79 @@ type PersonPage struct {
 	// Roles are the roles the person has on works of the library, with how many works, in the order the roles are listed.
 	Roles       []PersonRole       `json:"roles"`
 	Collections []PersonCollection `json:"collections"`
+	// Profile is what Wikidata and Wikipedia say about the person (DEC-146): null when nothing was read, or when staff hid it (staff still see it,
+	// marked hidden, to be able to show it again).
+	Profile *PersonProfile `json:"profile"`
+}
+
+// PersonProfile is the profile of a person: a short description, the years, a biography with where it came from, and a photo with its credit.
+type PersonProfile struct {
+	WikidataID  string `json:"wikidataId"`
+	Description string `json:"description"`
+	Born        string `json:"born,omitempty"`
+	Died        string `json:"died,omitempty"`
+	// Bio is the first paragraphs of the page of the person on Wikipedia, under CC BY-SA 4.0: BioSource says whose it is and where it is.
+	Bio       string            `json:"bio,omitempty"`
+	BioSource *ProfileBioSource `json:"bioSource,omitempty"`
+	Image     *ProfileImage     `json:"image,omitempty"`
+	// Hidden and ImageHidden are what staff chose; they are only told to staff.
+	Hidden      bool `json:"hidden,omitempty"`
+	ImageHidden bool `json:"imageHidden,omitempty"`
+}
+
+// ProfileBioSource is the page a biography is taken from.
+type ProfileBioSource struct {
+	Language string `json:"language"`
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+	License  string `json:"license"`
+}
+
+// ProfileImage is the photo of a person, kept on the server, with who made it and under which license it is shown.
+type ProfileImage struct {
+	URL        string `json:"url"`
+	Credit     string `json:"credit,omitempty"`
+	License    string `json:"license,omitempty"`
+	LicenseURL string `json:"licenseUrl,omitempty"`
+	PageURL    string `json:"pageUrl,omitempty"`
+}
+
+// readProfile is the profile of a person as the one who asks may see it: a hidden one is not there for who is not staff, and a hidden photo is
+// not there for anybody (staff are told it is hidden, so that they can show it).
+func readProfile(r *http.Request, db *sql.DB, personID int) (*PersonProfile, error) {
+	var (
+		p                                            PersonProfile
+		born, died, bioLang, bioTitle, bioURL        sql.NullString
+		path, credit, license, licenseURL, imagePage sql.NullString
+		bio                                          string
+	)
+	err := db.QueryRowContext(r.Context(), `
+		SELECT wikidata_id, description, born, died, bio, bio_language, bio_title, bio_url,
+		       image_path, image_credit, image_license, image_license_url, image_page_url, hidden, image_hidden
+		FROM person_profile WHERE person_id = $1`, personID).Scan(&p.WikidataID, &p.Description, &born, &died, &bio, &bioLang, &bioTitle, &bioURL,
+		&path, &credit, &license, &licenseURL, &imagePage, &p.Hidden, &p.ImageHidden)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	staff := isStaffRequest(r)
+	if p.Hidden && !staff {
+		return nil, nil
+	}
+	p.Born, p.Died = born.String, died.String
+	if bio != "" && bioLang.Valid {
+		p.Bio = bio
+		p.BioSource = &ProfileBioSource{Language: bioLang.String, Title: bioTitle.String, URL: bioURL.String, License: "CC BY-SA 4.0"}
+	}
+	if path.Valid && path.String != "" && (!p.ImageHidden || staff) {
+		p.Image = &ProfileImage{URL: path.String, Credit: credit.String, License: license.String, LicenseURL: licenseURL.String, PageURL: imagePage.String}
+	}
+	if !staff {
+		p.Hidden, p.ImageHidden = false, false
+	}
+	return &p, nil
 }
 
 // PersonRole is a role of a person and how many works the library has of theirs with it.
@@ -122,6 +195,11 @@ func (h *PeopleHandler) Page(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		page.Collections = append(page.Collections, pc)
+	}
+	if page.Profile, err = readProfile(r, h.DB, id); err != nil {
+		log.Println("Error reading the profile of a person:", err)
+		http.Error(w, "Error reading the person", http.StatusInternalServerError)
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(page)

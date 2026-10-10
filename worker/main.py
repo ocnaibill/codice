@@ -16,6 +16,7 @@ from providers.health import install as report_provider_health
 from rematch import MetadataRematch
 from providertest import ProviderTester
 from authority import resolve_pending
+from profiles import resolve_pending as resolve_profiles
 from maintenance import repair_descriptions
 from db import CodiceDatabase
 from analyzer import Analyzer, MediaStatus
@@ -128,11 +129,7 @@ def build_runner(db, client, heartbeat=None):
     rematch = MetadataRematch(db, analyzer, provider_registry)
     provider_tester = ProviderTester(db, provider_registry)
 
-    storage_path = os.getenv('CODICE_STORAGE_PATH', './uploads')
-    # If relative, resolve from project root (two levels up from worker/)
-    if not os.path.isabs(storage_path):
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        storage_path = os.path.join(project_root, storage_path)
+    storage_path = storage_root()
     covers_dir = os.path.join(storage_path, 'covers')
     os.makedirs(covers_dir, exist_ok=True)
 
@@ -247,15 +244,29 @@ def build_runner(db, client, heartbeat=None):
     return runner
 
 
+def storage_root():
+    """The folder the library's files are kept in (CODICE_STORAGE_PATH), relative to the project when it is not absolute."""
+    storage_path = os.getenv('CODICE_STORAGE_PATH', './uploads')
+    if not os.path.isabs(storage_path):
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        storage_path = os.path.join(project_root, storage_path)
+    return storage_path
+
+
 def resolve_authors(db, allowed):
     """With nothing else to do, look up a few authors whose keys nobody has looked up (only if the owner turned
-    Open Library on, and only by the worker that asks the providers). It never gets in the way of the work."""
+    Open Library on, and only by the worker that asks the providers), and then the profile of the ones that have a Wikidata identifier
+    (DEC-146; only if the owner turned Wikidata on). It never gets in the way of the work."""
     if not asks_providers():
         return
     try:
         resolve_pending(db, allowed)
     except Exception as err:
         print(f"   ⚠️ Author lookup failed ({type(err).__name__}: {err})")
+    try:
+        resolve_profiles(db, allowed, os.path.join(storage_root(), 'covers'))
+    except Exception as err:
+        print(f"   ⚠️ Author profile lookup failed ({type(err).__name__}: {err})")
 
 
 def listen_for_tasks():
