@@ -66,6 +66,8 @@ type Work struct {
 	FormatCount int `json:"formatCount"`
 	// Completions, only in the detail: how many times the caller finished it, and in what format.
 	Completions *CompletionSummary `json:"completions,omitempty"`
+	// ReadLater, only in the detail: the caller put it aside in their list "Ler depois" (DEC-152).
+	ReadLater bool `json:"readLater"`
 }
 
 // CompletionSummary is the history of finishing a work (DEC-080): "finished 2 times, 1 in EPUB and
@@ -542,6 +544,15 @@ func (h *LibraryHandler) GetWorkByID(w http.ResponseWriter, r *http.Request) {
 
 	if work.Completions, err = h.loadCompletions(r, userID, id); err != nil {
 		log.Println("Error fetching completions:", err)
+		http.Error(w, "Error fetching book", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.DB.QueryRowContext(r.Context(), `
+		SELECT EXISTS (SELECT 1 FROM collection_works cw JOIN collections c ON c.id = cw.collection_id
+		               WHERE c.owner_id = $1::uuid AND c.system_key = $2 AND cw.work_id = $3)`,
+		userID, readLaterKey, id).Scan(&work.ReadLater); err != nil {
+		log.Println("Error fetching the read-later mark:", err)
 		http.Error(w, "Error fetching book", http.StatusInternalServerError)
 		return
 	}

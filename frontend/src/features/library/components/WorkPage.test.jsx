@@ -512,6 +512,25 @@ describe('WorkPage: the page of the work (DEC-149)', () => {
     expect(useGlobalStore.getState().seek).toMatchObject({ locator: { type: 'epub', href: 'c2.xhtml' }, context: { kind: 'note' } });
   });
 
+  it('puts the work aside for later with its own button, beside the heart, and takes it out again', async () => {
+    api.put.mockResolvedValue({ data: {} });
+    await show({ readLater: false });
+    const later = container.querySelector('button[aria-label="Ler depois"]');
+    expect(later.getAttribute('aria-pressed')).toBe('false');
+    await act(async () => { later.click(); });
+    expect(api.put).toHaveBeenCalledWith('/works/7/read-later');
+    expect(api.delete).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show({ readLater: true });
+    const put = [...container.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') || '').startsWith('Tirar de'));
+    expect(put.getAttribute('aria-pressed')).toBe('true');
+    await act(async () => { put.click(); });
+    expect(api.delete).toHaveBeenCalledWith('/works/7/read-later');
+    // the heart is another thing
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
   it('is left by a search: the results are what the person asked for', () => {
     useGlobalStore.setState({ sheetWorkId: 7, searchQuery: '' });
     useGlobalStore.getState().setSearchQuery('duna');

@@ -70,7 +70,7 @@ func (h *PersonalCollectionsHandler) Create(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var have int
-	if err := tx.QueryRowContext(r.Context(), `SELECT count(*) FROM collections WHERE kind = 'personal' AND owner_id = $1::uuid AND retired_at IS NULL`, userID).Scan(&have); err != nil {
+	if err := tx.QueryRowContext(r.Context(), `SELECT count(*) FROM collections WHERE kind = 'personal' AND owner_id = $1::uuid AND retired_at IS NULL AND system_key IS NULL`, userID).Scan(&have); err != nil {
 		h.fail(w, "create", err)
 		return
 	}
@@ -115,6 +115,13 @@ func (h *PersonalCollectionsHandler) Rename(w http.ResponseWriter, r *http.Reque
 	}
 	if retired {
 		conflict(w, "A lista está aposentada: restaure antes de mudar.", id)
+		return
+	}
+	if system, err := isSystemList(tx, r, id); err != nil {
+		h.fail(w, "rename", err)
+		return
+	} else if system {
+		conflict(w, "Essa lista é do Códice: ela não muda de nome.", id)
 		return
 	}
 	if _, err := tx.ExecContext(r.Context(), `UPDATE collections SET name = $2, edited_at = now() WHERE id = $1`, id, name); err != nil {
@@ -351,6 +358,13 @@ func (h *PersonalCollectionsHandler) setRetired(w http.ResponseWriter, r *http.R
 		h.fail(w, "retire", err)
 		return
 	}
+	if system, err := isSystemList(tx, r, id); err != nil {
+		h.fail(w, "retire", err)
+		return
+	} else if system {
+		conflict(w, "Essa lista é do Códice: ela não sai. Tire as obras que não quer mais nela.", id)
+		return
+	}
 	if retired == retire {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -362,7 +376,7 @@ func (h *PersonalCollectionsHandler) setRetired(w http.ResponseWriter, r *http.R
 			return
 		}
 		var have int
-		if err := tx.QueryRowContext(r.Context(), `SELECT count(*) FROM collections WHERE kind = 'personal' AND owner_id = $1::uuid AND retired_at IS NULL`, currentUserID(r)).Scan(&have); err != nil {
+		if err := tx.QueryRowContext(r.Context(), `SELECT count(*) FROM collections WHERE kind = 'personal' AND owner_id = $1::uuid AND retired_at IS NULL AND system_key IS NULL`, currentUserID(r)).Scan(&have); err != nil {
 			h.fail(w, "restore", err)
 			return
 		}
