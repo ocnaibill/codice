@@ -12,5 +12,8 @@ export const FIELD_LABELS = {
   original_year: 'Ano da primeira publicação',
   description: 'Sinopse',
   tags: 'Etiquetas',
+  // What a provider says of the series the work is in, not of the work (DEC-171): it goes to the series when accepted.
+  series_status: 'Situação da série',
+  series_original_title: 'Título original da série',
 };
 export const FIELD_ORDER = Object.keys(FIELD_LABELS);

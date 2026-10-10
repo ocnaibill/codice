@@ -88,8 +88,10 @@ class AniListProvider(BaseProvider):
                                        if start.get('month') and start.get('day') else str(start['year']))
         record.prior = min((media.get('popularity') or 0) / 10000, 10)
         alts = [t for t in (titles.get('english'), titles.get('native'), *(media.get('synonyms') or [])[:6]) if isinstance(t, str) and t]
+        native = titles.get('native')
         record.raw = {'anilist_id': media.get('id'), 'alt_titles': alts, 'format': media.get('format'), 'volumes': media.get('volumes'),
-                      'chapters': media.get('chapters'), 'status': media.get('status'), 'country': media.get('countryOfOrigin')}
+                      'chapters': media.get('chapters'), 'status': media.get('status'), 'country': media.get('countryOfOrigin'),
+                      'native_title': native.strip() if isinstance(native, str) and native.strip() else None}
         return record
 
     def lookup(self, query) -> List[MetadataRecord]:

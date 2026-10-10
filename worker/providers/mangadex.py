@@ -75,8 +75,16 @@ class MangaDexProvider(BaseProvider):
         for other in (attrs.get('title') or {}).values():
             if isinstance(other, str) and other and other != record.title:
                 alts.append(other)
+        # The title in the script of the language the series was written in: what MangaDex keeps for its original language, when it has one.
+        original = attrs.get('originalLanguage')
+        native = None
+        for entry in attrs.get('altTitles') or []:
+            value = (entry or {}).get(original) if isinstance(entry, dict) and original else None
+            if isinstance(value, str) and value.strip():
+                native = value.strip()
+                break
         record.raw = {'mangadex_id': manga.get('id'), 'alt_titles': alts[:12], 'status': attrs.get('status'), 'demographic': demographic,
-                      'language': attrs.get('originalLanguage')}
+                      'language': original, 'native_title': native}
         return record
 
     def lookup(self, query) -> List[MetadataRecord]:

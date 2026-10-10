@@ -69,6 +69,21 @@ def fit_field(field, value):
     return shorten(value, SHORTENED_FIELDS[field])
 
 
+# How AniList and MangaDex say a series stands in publication, as the library says it (DEC-170). What is not a state of publication (a series
+# that has not begun, a word nobody knows) is no suggestion.
+PUBLICATION_STATES = {
+    'releasing': 'ongoing', 'ongoing': 'ongoing',
+    'finished': 'finished', 'completed': 'finished',
+    'hiatus': 'hiatus',
+    'cancelled': 'cancelled', 'canceled': 'cancelled',
+}
+
+
+def series_status_of(word):
+    """The library's word for a provider's state of publication, or None."""
+    return PUBLICATION_STATES.get(str(word or '').strip().lower())
+
+
 def clean_tag(name):
     """A tag as the database can hold it. A book's subjects are free text (one EPUB lists "Translated by
     Ebook Translator: https://translator.bookfere.com" as one), and a value the column cannot hold must
@@ -364,6 +379,16 @@ class Analyzer:
         if extra:
             propose('contributors', json.dumps(extra, ensure_ascii=False))
 
+        # What the provider says of the series (DEC-171): it is proposed only for a work that is in an official series, and only when the series
+        # does not say it already. Accepting it writes it on the series, not on the work.
+        series = self._series_of(work_id)
+        if series is not None:
+            status, title = record.get('series_status'), ' '.join(str(record.get('series_original_title') or '').split())
+            if status in ('ongoing', 'finished', 'hiatus', 'cancelled') and status != series['status']:
+                propose('series_status', status)
+            if title and len(title) <= 255 and title != series['original_title']:
+                propose('series_original_title', title)
+
         tags = {clean_tag(t) for t in (record.get('tags') or []) if clean_tag(t)}
         if tags:
             have = {r[0] for r in (self.db.fetchall(
@@ -372,6 +397,18 @@ class Analyzer:
             if not tags <= have:
                 propose('tags', json.dumps(sorted(tags)))
         return stored
+
+    def _series_of(self, work_id: int):
+        """How the official series the work is in stands in publication and its title in its own script ({'status', 'original_title'}, '' when
+        nobody said), or None when the work is in no series (one that was put away is none)."""
+        rows = self.db.fetchall(
+            """SELECT COALESCE(c.publication_status, ''), COALESCE(c.original_title, '')
+               FROM collection_works cw JOIN collections c ON c.id = cw.collection_id
+               WHERE cw.work_id = %s AND cw.official AND c.kind = 'official' AND c.retired_at IS NULL
+               ORDER BY c.id LIMIT 1""", (work_id,))
+        if not rows:
+            return None
+        return {'status': rows[0][0], 'original_title': rows[0][1]}
 
     def _missing_contributors(self, work_id: int, record: dict, state: dict, include_locked: bool = False) -> list:
         """The people the provider credits besides the author it suggests (a co-author, an illustrator, a

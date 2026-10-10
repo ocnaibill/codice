@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/audit"
@@ -417,6 +418,10 @@ func (h *LibraryHandler) ListCandidates(w http.ResponseWriter, r *http.Request) 
 		         WHEN 'original_year' THEN COALESCE(w.original_year::text, '')
 		         WHEN 'contributors' THEN COALESCE((SELECT string_agg(p.name || ' (' || k.role || ')', '; ' ORDER BY k.role, k.position, p.name)
 		                                            FROM work_contributors k JOIN person p ON p.id = k.person_id WHERE k.work_id = w.id), '')
+		         WHEN 'series_status' THEN COALESCE((SELECT sc.publication_status FROM collection_works scw JOIN collections sc ON sc.id = scw.collection_id
+		                                             WHERE scw.work_id = w.id AND scw.official AND sc.kind = 'official' AND sc.retired_at IS NULL LIMIT 1), '')
+		         WHEN 'series_original_title' THEN COALESCE((SELECT sc.original_title FROM collection_works scw JOIN collections sc ON sc.id = scw.collection_id
+		                                                     WHERE scw.work_id = w.id AND scw.official AND sc.kind = 'official' AND sc.retired_at IS NULL LIMIT 1), '')
 		         ELSE '' END
 		FROM metadata_candidates c
 		JOIN works w ON w.id = c.work_id
@@ -497,6 +502,7 @@ func (h *LibraryHandler) decideCandidate(w http.ResponseWriter, r *http.Request,
 
 	action := "metadata.reject"
 	details := map[string]any{"field": field, "source": source}
+	seriesField := false
 	if accept {
 		action = "metadata.accept"
 		next := cur
@@ -552,12 +558,53 @@ func (h *LibraryHandler) decideCandidate(w http.ResponseWriter, r *http.Request,
 				return
 			}
 			details["added"] = added
+		case "series_status", "series_original_title":
+			// What a provider says of the series, not of the work (DEC-171): it is written on the official collection the work is in.
+			column := map[string]string{"series_status": "publication_status", "series_original_title": "original_title"}[field]
+			if field == "series_status" && !publicationStatuses[value] {
+				http.Error(w, "Candidate value is not a publication status", http.StatusUnprocessableEntity)
+				return
+			}
+			if field == "series_original_title" {
+				title := cleanLine(value)
+				if title == "" || utf8.RuneCountInString(title) > maxOriginalTitle {
+					http.Error(w, "Candidate value is not a title", http.StatusUnprocessableEntity)
+					return
+				}
+				value = title
+			}
+			var collectionID int64
+			err := tx.QueryRowContext(r.Context(), `
+				SELECT c.id FROM collection_works cw JOIN collections c ON c.id = cw.collection_id
+				WHERE cw.work_id = $1 AND cw.official AND c.kind = 'official' AND c.retired_at IS NULL
+				ORDER BY c.id LIMIT 1 FOR NO KEY UPDATE OF c`, workID).Scan(&collectionID)
+			if errors.Is(err, sql.ErrNoRows) {
+				http.Error(w, "A obra não está numa série.", http.StatusUnprocessableEntity)
+				return
+			}
+			if err != nil {
+				http.Error(w, "Error finding the series", http.StatusInternalServerError)
+				return
+			}
+			if _, err := tx.ExecContext(r.Context(), `UPDATE collections SET `+column+` = $2 WHERE id = $1`, collectionID, value); err != nil {
+				http.Error(w, "Error applying candidate", http.StatusInternalServerError)
+				return
+			}
+			details["collectionId"], details["value"] = collectionID, value
+			// The series is settled: the proposals of the same field for any work of it are dismissed.
+			if _, err := tx.Exec(`UPDATE metadata_candidates SET state = 'rejected', decided_at = now()
+				WHERE field = $1 AND state = 'pending' AND id <> $2
+				  AND work_id IN (SELECT work_id FROM collection_works WHERE collection_id = $3)`, field, candID, collectionID); err != nil {
+				http.Error(w, "Error updating candidates", http.StatusInternalServerError)
+				return
+			}
+			seriesField = true
 		default:
 			http.Error(w, "Unsupported candidate field", http.StatusUnprocessableEntity)
 			return
 		}
-		// Tags and contributors only add: they do not settle a field, so other proposals for them stay.
-		if field != "tags" && field != "contributors" {
+		// Tags and contributors only add, and what is said of the series is not a field of the work: they do not settle one, so other proposals stay.
+		if field != "tags" && field != "contributors" && !seriesField {
 			changes, err := applyWorkFields(r.Context(), tx, workID, actor, source, cur, retired, next, nil)
 			if err != nil {
 				http.Error(w, "Error applying candidate", http.StatusInternalServerError)

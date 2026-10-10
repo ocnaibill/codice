@@ -3,7 +3,7 @@ providers for suggestions. Kept apart from the queue loop so it can be tested
 and reused by whatever runs the jobs."""
 import os
 
-from analyzer import Analyzer
+from analyzer import Analyzer, series_status_of
 from extractors.plain_text import plain_description
 from ocr_detect import detect_text_layer
 
@@ -35,6 +35,9 @@ def suggest(analyzer: Analyzer, work_id, enriched, query_title, include_locked=F
         'credits': [c.as_dict() for c in (getattr(enriched, 'credits', None) or [])],
     }
     raw = enriched.raw or {}
+    # What a provider says of the series the work is in (DEC-171): how it stands in publication and its title in the script of its language.
+    record['series_status'] = series_status_of(raw.get('status'))
+    record['series_original_title'] = raw.get('native_title') if isinstance(raw.get('native_title'), str) else None
     evidence = {k: raw[k] for k in ('google_id', 'openlibrary_id', 'comicvine_id', 'anilist_id', 'mangadex_id', 'wikidata_id', 'translated_from') if raw.get(k)}
     if record['credits']:
         evidence['credits'] = record['credits']

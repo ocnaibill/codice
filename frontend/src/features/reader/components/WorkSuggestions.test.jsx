@@ -12,6 +12,7 @@ import { api } from '../../../lib/api';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { WorkSuggestions } from './WorkSuggestions';
 import { suggestionText } from '../suggestionText';
+import { FIELD_LABELS, FIELD_ORDER } from '../../../lib/suggestionFields';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -98,6 +99,19 @@ describe('WorkSuggestions (#70)', () => {
     expect(items()[0].textContent).toContain('Hoje: Inglês');
   });
 
+  it('says what is suggested for the series as a state a person reads, with the one the series has today (DEC-171)', async () => {
+    await show([
+      candidate({ id: 8, field: 'series_status', value: 'hiatus', current: 'ongoing', source: 'AniList' }),
+      candidate({ id: 9, field: 'series_original_title', value: 'ベルセルク', current: '', source: 'AniList' }),
+    ]);
+    const stateItem = items().find((i) => i.textContent.includes('Situação da série'));
+    expect(stateItem.textContent).toContain('Em hiato');
+    expect(stateItem.textContent).toContain('Hoje: Em andamento');
+    const titleItem = items().find((i) => i.textContent.includes('Título original da série'));
+    expect(titleItem.textContent).toContain('ベルセルク');
+    expect(titleItem.textContent).toContain('Hoje: em branco');
+  });
+
   it('says which key accepting would keep for whom, and says nothing when there is none', async () => {
     await show([author, people, synopsis]);
     expect(itemOf('T. Pratchett').textContent).toContain('Ao aceitar, guarda a chave de Terry Pratchett: Open Library OL25712A.');
@@ -148,6 +162,20 @@ describe('WorkSuggestions (#70)', () => {
     await act(async () => { finish({ data: {} }); });
     await flush();
     expect([...container.querySelectorAll('button')].some((b) => b.disabled)).toBe(false);
+  });
+});
+
+describe('what a provider says of the series (DEC-171)', () => {
+  it('names the fields of the series and reads the state in Portuguese', () => {
+    expect(FIELD_LABELS.series_status).toBe('Situação da série');
+    expect(FIELD_LABELS.series_original_title).toBe('Título original da série');
+    expect(FIELD_ORDER.slice(-2)).toEqual(['series_status', 'series_original_title']);
+    expect(suggestionText({ field: 'series_status', value: 'hiatus' })).toBe('Em hiato');
+    expect(suggestionText({ field: 'series_status', value: 'ongoing' })).toBe('Em andamento');
+    expect(suggestionText({ field: 'series_status', value: 'finished' })).toBe('Concluída');
+    expect(suggestionText({ field: 'series_status', value: 'cancelled' })).toBe('Cancelada');
+    expect(suggestionText({ field: 'series_status', value: 'strange' })).toBe('strange');
+    expect(suggestionText({ field: 'series_original_title', value: 'ベルセルク' })).toBe('ベルセルク');
   });
 });
 

@@ -156,6 +156,8 @@ describe('what the server says', () => {
     'from is a position from 0', // the window of the preview: only a program can ask for a negative one
     'hidden and imageHidden say what to hide, and the texts what to write', // the page sends one of them, or the texts: only a program sends none
     'Search not found', // the page reads it as "no search was made" (404) and shows nothing
+    'Candidate value is not a publication status', // a suggestion the worker already checked: only a program can write one that is not
+    'Candidate value is not a title', // the same, for the title of a series in its own script
     'wikidataId is a Wikidata identifier, like Q6984190', // the page only sends the identifier of a candidate it was given
     'rootId is required',
     "scope must be 'assets' or 'ws'",

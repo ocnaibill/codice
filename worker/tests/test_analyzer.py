@@ -12,7 +12,7 @@ LOCK_NAMES = ['title', 'author', 'series', 'cover', 'isbn', 'language', 'publish
 class FakeDB:
     """Records statements and answers the analyzer's reads from a given state."""
 
-    def __init__(self, values=None, locks=None, sources=None, tags=(), contributors=()):
+    def __init__(self, values=None, locks=None, sources=None, tags=(), contributors=(), series=None):
         self.values = {n: '' for n in VALUE_NAMES}
         self.values['series_index'] = 0
         self.values['title'] = 'upload.epub'
@@ -22,6 +22,7 @@ class FakeDB:
         self.sources = sources or {}
         self.tags = list(tags)
         self.contributors = list(contributors)  # [(name, role)]
+        self.series = series  # None: in no series; else (publication status, original title), '' when nobody said
         self.statements = []
 
     def execute(self, query, params=()):
@@ -44,6 +45,8 @@ class FakeDB:
             return [(t,) for t in self.tags]
         if "FROM work_contributors c JOIN person" in query:
             return list(self.contributors)
+        if "FROM collection_works cw JOIN collections c" in query:
+            return [] if self.series is None else [tuple(self.series)]
         return []
 
     # helpers for assertions
@@ -465,3 +468,50 @@ class TestOriginalYearCandidates:
         Analyzer(db).save_metadata(7, dict(NATIVE, original_year='1965'))
         query, _ = db.work_update()
         assert 'original_year' not in query
+
+
+class TestWhatAProviderSaysOfTheSeries:
+    """DEC-171: how the series stands in publication and its title in its own script are proposed for the series, not for the work."""
+
+    def proposed(self, db):
+        return {p[1]: p[2] for q, p in db.matching("INSERT INTO metadata_candidates")}
+
+    def test_both_are_proposed_for_a_work_that_is_in_a_series_that_says_neither(self):
+        db = FakeDB(series=('', ''))
+        Analyzer(db).save_candidates(7, {'series_status': 'hiatus', 'series_original_title': 'ベルセルク'}, 'AniList')
+        assert self.proposed(db) == {'series_status': 'hiatus', 'series_original_title': 'ベルセルク'}
+
+    def test_what_the_series_already_says_is_not_proposed_again(self):
+        db = FakeDB(series=('hiatus', 'ベルセルク'))
+        Analyzer(db).save_candidates(7, {'series_status': 'hiatus', 'series_original_title': 'ベルセルク'}, 'AniList')
+        assert self.proposed(db) == {}
+        db = FakeDB(series=('ongoing', 'ベルセルク'))
+        Analyzer(db).save_candidates(7, {'series_status': 'hiatus', 'series_original_title': 'ベルセルク'}, 'AniList')
+        assert self.proposed(db) == {'series_status': 'hiatus'}   # a state that changed is a suggestion
+
+    def test_a_work_in_no_series_gets_none(self):
+        db = FakeDB(series=None)
+        Analyzer(db).save_candidates(7, {'series_status': 'hiatus', 'series_original_title': 'ベルセルク'}, 'AniList')
+        assert self.proposed(db) == {}
+
+    def test_what_is_not_a_state_or_not_a_title_is_no_suggestion(self):
+        db = FakeDB(series=('', ''))
+        Analyzer(db).save_candidates(7, {'series_status': 'paused', 'series_original_title': '   '}, 'AniList')
+        Analyzer(db).save_candidates(7, {'series_status': None, 'series_original_title': 'x' * 256}, 'AniList')
+        assert self.proposed(db) == {}
+
+    def test_the_title_is_kept_on_one_line(self):
+        db = FakeDB(series=('', ''))
+        Analyzer(db).save_candidates(7, {'series_original_title': '  ベルセルク \n 黄金時代 '}, 'MangaDex')
+        assert self.proposed(db) == {'series_original_title': 'ベルセルク 黄金時代'}
+
+
+class TestTheStateOfPublicationOfAProvider:
+    def test_the_words_of_both_providers_are_the_librarys(self):
+        from analyzer import series_status_of
+        assert [series_status_of(w) for w in ('RELEASING', 'ongoing', 'FINISHED', 'completed', 'HIATUS', 'hiatus', 'CANCELLED', 'cancelled')] == [
+            'ongoing', 'ongoing', 'finished', 'finished', 'hiatus', 'hiatus', 'cancelled', 'cancelled']
+
+    def test_a_series_that_has_not_begun_or_a_word_nobody_knows_is_none(self):
+        from analyzer import series_status_of
+        assert [series_status_of(w) for w in ('NOT_YET_RELEASED', 'paused', '', None, 7)] == [None, None, None, None, None]
