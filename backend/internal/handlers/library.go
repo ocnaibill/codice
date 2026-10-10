@@ -713,6 +713,8 @@ type UpdateWorkRequest struct {
 	Language        *string  `json:"language"`
 	PublicationDate *string  `json:"publication_date"`
 	Description     *string  `json:"description"`
+	// OriginalYear is the year the work was first published (DEC-156): "" clears, absent leaves; negative is before the common era.
+	OriginalYear *string `json:"original_year"`
 	// Unit and ComicKind (#187): "volume", "chapter" or "oneshot", and "comic" or "manga"; an empty one clears, an absent one leaves.
 	Unit      *string `json:"unit"`
 	ComicKind *string `json:"comic_kind"`
@@ -726,6 +728,7 @@ type UpdateWorkRequest struct {
 	LanguageLock        *bool `json:"language_lock"`
 	PublicationDateLock *bool `json:"publication_date_lock"`
 	DescriptionLock     *bool `json:"description_lock"`
+	OriginalYearLock    *bool `json:"original_year_lock"`
 }
 
 // validUnit and validComicKind say what the two fields of a comic or manga work (#187) can hold; empty is none.
@@ -801,6 +804,13 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 	if req.Description != nil {
 		next.Description = strings.TrimSpace(*req.Description)
 	}
+	if req.OriginalYear != nil {
+		next.OriginalYear = strings.TrimSpace(*req.OriginalYear)
+		if !validYear(next.OriginalYear) {
+			http.Error(w, "O ano da primeira publicação é um número inteiro.", http.StatusBadRequest)
+			return
+		}
+	}
 	if req.Unit != nil {
 		next.Unit = strings.TrimSpace(*req.Unit)
 		if !validUnit(next.Unit) {
@@ -819,7 +829,7 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 	locks := map[string]*bool{
 		"title": req.TitleLock, "author": req.AuthorLock, "series": req.SeriesLock, "cover": req.CoverLock,
 		"isbn": req.ISBNLock, "publisher": req.PublisherLock, "language": req.LanguageLock,
-		"publication_date": req.PublicationDateLock, "description": req.DescriptionLock,
+		"publication_date": req.PublicationDateLock, "description": req.DescriptionLock, "original_year": req.OriginalYearLock,
 	}
 	actor := currentUserID(r)
 	changes, err := applyWorkFields(r.Context(), tx, id, actor, sourceManual, cur, retired, next, locks)

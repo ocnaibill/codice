@@ -82,8 +82,9 @@ class WikidataProvider(BaseProvider):
         record.title = label_of(entity)
         record.credits = [Credit(names[a], ids={'wikidata': a}) for a in claim_values(entity, 'P50') if names.get(a)]
         record.author = record.credits[0].name if record.credits else None
+        # P577 on the item of a work is when it was first published: the work's year, not the date of an edition (DEC-156).
         dates = [year_of(v) for v in claim_values(entity, 'P577')]
-        record.publication_date = next((d for d in dates if d), None)
+        record.original_year = next((d for d in dates if d), None)
         series = (claim_values(entity, 'P179') or [None])[0]
         if series and names.get(series):
             record.series = names[series]

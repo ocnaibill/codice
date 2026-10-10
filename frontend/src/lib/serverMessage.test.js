@@ -151,6 +151,7 @@ describe('what the server says', () => {
     'percent is not a number',
     'q is what to search for',
     'rootId is a number',
+    'Candidate value is not a year', // a suggestion the worker already checked: only a program can write one that is not
     'stars is a number from 1 to 5', // the stars: the page only offers one to five
     'from is a position from 0', // the window of the preview: only a program can ask for a negative one
     'rootId is required',

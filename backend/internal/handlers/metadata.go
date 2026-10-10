@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/audit"
@@ -30,7 +31,9 @@ type WorkMetadata struct {
 	Publisher       string  `json:"publisher"`
 	Language        string  `json:"language"`
 	PublicationDate string  `json:"publicationDate"`
-	Description     string  `json:"description"`
+	// OriginalYear is the year the work was first published (DEC-156), null when nobody knows; negative is before the common era.
+	OriginalYear *int   `json:"originalYear"`
+	Description  string `json:"description"`
 	// Unit and ComicKind are chosen by hand (#187): the unit a comic or manga work is of its series, and whether it is a comic or a
 	// manga. Empty when nobody said.
 	Unit      string `json:"unit"`
@@ -52,25 +55,30 @@ type WorkMetadata struct {
 // loadMetadata reads the metadata block shown by GET /works/{id}.
 func loadMetadata(ctx context.Context, db *sql.DB, workID int, order string) (*WorkMetadata, error) {
 	m := &WorkMetadata{Locks: map[string]bool{}, Sources: map[string]string{}, AlternativeTitles: []AlternativeTitle{}, Contributors: []Contributor{}, Categories: []WorkCategory{}}
-	var titleL, authorL, seriesL, coverL, isbnL, pubL, langL, dateL, descL bool
+	var titleL, authorL, seriesL, coverL, isbnL, pubL, langL, dateL, descL, yearL bool
+	var year sql.NullInt64
 	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(e.isbn, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.language, ''), COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(a.name, ''),
-		       COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''),
+		       COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.original_year,
 		       w.title_lock, w.author_lock, w.series_lock, w.cover_lock,
-		       w.isbn_lock, w.publisher_lock, w.language_lock, w.publication_date_lock, w.description_lock
+		       w.isbn_lock, w.publisher_lock, w.language_lock, w.publication_date_lock, w.description_lock, w.original_year_lock
 		FROM works w LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
 		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1`, workID).Scan(
 		&m.Series, &m.SeriesIndex, &m.ISBN, &m.Publisher, &m.Language, &m.PublicationDate, &m.Description, &m.FirstAuthor,
-		&m.Unit, &m.ComicKind,
-		&titleL, &authorL, &seriesL, &coverL, &isbnL, &pubL, &langL, &dateL, &descL)
+		&m.Unit, &m.ComicKind, &year,
+		&titleL, &authorL, &seriesL, &coverL, &isbnL, &pubL, &langL, &dateL, &descL, &yearL)
 	if err != nil {
 		return nil, err
 	}
+	if year.Valid {
+		y := int(year.Int64)
+		m.OriginalYear = &y
+	}
 	m.Locks = map[string]bool{
 		"title": titleL, "author": authorL, "series": seriesL, "cover": coverL,
-		"isbn": isbnL, "publisher": pubL, "language": langL, "publication_date": dateL, "description": descL,
+		"isbn": isbnL, "publisher": pubL, "language": langL, "publication_date": dateL, "description": descL, "original_year": yearL,
 	}
 	if m.AlternativeTitles, err = loadAlternativeTitles(db, workID); err != nil {
 		return nil, err
@@ -109,10 +117,22 @@ type workFields struct {
 	Language        string
 	PublicationDate string
 	Description     string
+	// OriginalYear is the year the work was first published, as text: "" when nobody knows (DEC-156).
+	OriginalYear string
 	// Unit and ComicKind say what a comic or manga work is (#187): "volume", "chapter" or "oneshot", and "comic" or "manga".
 	// Either may be empty.
 	Unit      string
 	ComicKind string
+}
+
+// validYear says whether a text is a year a work can have been first published in: whole, not zero (there is no year 0), from 3000 before the
+// common era up to next year. Empty is none, and valid: it clears.
+func validYear(s string) bool {
+	if s == "" {
+		return true
+	}
+	y, err := strconv.Atoi(s)
+	return err == nil && y != 0 && y >= -3000 && y <= time.Now().Year()+1 && strconv.Itoa(y) == s
 }
 
 // fieldChange records one field that actually changed.
@@ -127,7 +147,7 @@ type fieldChange struct {
 var fieldLocks = map[string]string{
 	"title": "title_lock", "author": "author_lock", "series": "series_lock", "cover": "cover_lock",
 	"isbn": "isbn_lock", "publisher": "publisher_lock", "language": "language_lock",
-	"publication_date": "publication_date_lock", "description": "description_lock",
+	"publication_date": "publication_date_lock", "description": "description_lock", "original_year": "original_year_lock",
 }
 
 // readWorkFields loads the current values, locking the row for the transaction.
@@ -137,13 +157,14 @@ func readWorkFields(tx *sql.Tx, workID int) (workFields, bool, error) {
 	err := tx.QueryRow(`
 		SELECT w.original_title, COALESCE(a.name, 'Unknown Author'), COALESCE(w.series, ''), COALESCE(w.series_index, 0),
 		       COALESCE(e.isbn, ''), COALESCE(e.publisher, ''), COALESCE(e.language, ''),
-		       COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.retired_at IS NOT NULL
+		       COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.retired_at IS NOT NULL,
+		       COALESCE(w.original_year::text, '')
 		FROM works w
 		LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
 		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1 FOR UPDATE OF w`, workID).Scan(
 		&f.Title, &f.Author, &f.Series, &f.SeriesIndex, &f.ISBN, &f.Publisher, &f.Language,
-		&f.PublicationDate, &f.Description, &f.Unit, &f.ComicKind, &retired)
+		&f.PublicationDate, &f.Description, &f.Unit, &f.ComicKind, &retired, &f.OriginalYear)
 	return f, retired, err
 }
 
@@ -188,6 +209,19 @@ func applyWorkFields(ctx context.Context, tx *sql.Tx, workID int, actor, source 
 	if next.SeriesIndex != cur.SeriesIndex {
 		add("series_index", next.SeriesIndex)
 		note("series", strconv.FormatFloat(cur.SeriesIndex, 'f', -1, 64), strconv.FormatFloat(next.SeriesIndex, 'f', -1, 64))
+	}
+	// The year the work was first published (DEC-156): a column of the work, as a number.
+	if next.OriginalYear != cur.OriginalYear {
+		var value sql.NullInt64
+		if next.OriginalYear != "" {
+			y, err := strconv.Atoi(next.OriginalYear)
+			if err != nil {
+				return nil, err
+			}
+			value = sql.NullInt64{Int64: int64(y), Valid: true}
+		}
+		add("original_year", value)
+		note("original_year", cur.OriginalYear, next.OriginalYear)
 	}
 	// What a comic or manga work is (#187): no lock of its own, since nothing but a person writes them.
 	for _, f := range []struct{ name, from, to string }{
@@ -367,6 +401,7 @@ func (h *LibraryHandler) ListCandidates(w http.ResponseWriter, r *http.Request) 
 		         WHEN 'publisher' THEN COALESCE(e.publisher, '')
 		         WHEN 'publication_date' THEN COALESCE(e.publication_date, '')
 		         WHEN 'description' THEN COALESCE(w.description, '')
+		         WHEN 'original_year' THEN COALESCE(w.original_year::text, '')
 		         WHEN 'contributors' THEN COALESCE((SELECT string_agg(p.name || ' (' || k.role || ')', '; ' ORDER BY k.role, k.position, p.name)
 		                                            FROM work_contributors k JOIN person p ON p.id = k.person_id WHERE k.work_id = w.id), '')
 		         ELSE '' END
@@ -476,6 +511,12 @@ func (h *LibraryHandler) decideCandidate(w http.ResponseWriter, r *http.Request,
 			next.PublicationDate = value
 		case "description":
 			next.Description = value
+		case "original_year":
+			if !validYear(value) || value == "" {
+				http.Error(w, "Candidate value is not a year", http.StatusUnprocessableEntity)
+				return
+			}
+			next.OriginalYear = value
 		case "tags":
 			var names []string
 			if json.Unmarshal([]byte(value), &names) != nil {

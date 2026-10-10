@@ -50,6 +50,16 @@ def shorten(text, limit):
     return cut.rstrip(' ,;:.-–—/') + '…'
 
 
+def valid_year(text):
+    """A year a work can have been first published in: a whole number, not zero, from 3000 before the common era on
+    (the column is a SMALLINT with that range, and the server refuses what is not one)."""
+    try:
+        year = int(str(text))
+    except ValueError:
+        return False
+    return str(year) == str(text) and year != 0 and -3000 <= year <= 9999
+
+
 def fit_field(field, value):
     """The value of a descriptive field as its column holds it, or None when it cannot be (see EXACT_FIELDS)."""
     if value is None or isinstance(value, (int, float)) or field not in SHORTENED_FIELDS and field not in EXACT_FIELDS:
@@ -147,22 +157,23 @@ class Analyzer:
                       COALESCE(w.series, ''), COALESCE(w.series_index, 0),
                       COALESCE(e.isbn, ''), COALESCE(e.language, ''),
                       COALESCE(e.publisher, ''), COALESCE(e.publication_date, ''),
-                      COALESCE(w.description, ''),
+                      COALESCE(w.description, ''), COALESCE(w.original_year::text, ''),
                       w.title_lock, w.author_lock, w.series_lock, w.cover_lock, w.isbn_lock,
-                      w.language_lock, w.publisher_lock, w.publication_date_lock, w.description_lock
+                      w.language_lock, w.publisher_lock, w.publication_date_lock, w.description_lock,
+                      w.original_year_lock
                FROM works w LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
                WHERE w.id = %s""",
             (work_id,))
         if not row:
             return {'values': {}, 'locks': {}, 'sources': {}}
         names = ['title', 'author', 'series', 'series_index', 'isbn', 'language', 'publisher',
-                 'publication_date', 'description']
+                 'publication_date', 'description', 'original_year']
         lock_names = ['title', 'author', 'series', 'cover', 'isbn', 'language', 'publisher',
-                      'publication_date', 'description']
-        values = dict(zip(names, row[:9]))
+                      'publication_date', 'description', 'original_year']
+        values = dict(zip(names, row[:10]))
         if values['author'] == 'Unknown Author':
             values['author'] = ''
-        locks = dict(zip(lock_names, row[9:]))
+        locks = dict(zip(lock_names, row[10:]))
         sources = dict(self.db.fetchall(
             "SELECT field, source FROM work_field_sources WHERE work_id = %s", (work_id,)) or [])
         return {'values': values, 'locks': locks, 'sources': sources}
@@ -301,7 +312,7 @@ class Analyzer:
 
     # Fields an external provider may propose, and how each is compared.
     CANDIDATE_FIELDS = ['title', 'author', 'series', 'series_index', 'isbn', 'language',
-                        'publisher', 'publication_date', 'description']
+                        'publisher', 'publication_date', 'description', 'original_year']
 
     def save_candidates(self, work_id: int, record: dict, source: str, evidence: Optional[dict] = None, include_locked: bool = False) -> int:
         """Store a provider's suggestions for an admin to accept or reject.
@@ -336,6 +347,8 @@ class Analyzer:
             text = fit_field(field, str(value)) if field != 'series_index' else str(value)
             if text is None:
                 continue
+            if field == 'original_year' and not valid_year(text):
+                continue   # a provider's date that is not a year of the work is no suggestion
             current = state['values'].get(field)
             if field == 'series_index':
                 try:

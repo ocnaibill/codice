@@ -21,7 +21,7 @@ import { WorkCategoriesEditor } from '../../categories/components/WorkCategories
 
 const LOCKS = [
   ['title', 'Título'], ['author', 'Autor'], ['series', 'Série'], ['cover', 'Capa'], ['isbn', 'ISBN'],
-  ['publisher', 'Editora'], ['language', 'Idioma'], ['publication_date', 'Data'], ['description', 'Sinopse'],
+  ['publisher', 'Editora'], ['language', 'Idioma'], ['publication_date', 'Data'], ['original_year', 'Ano original'], ['description', 'Sinopse'],
 ];
 
 const inputClass = 'w-full rounded-lg border border-border-hairline bg-white px-3 py-2 text-sm text-ink outline-none focus:border-brand disabled:opacity-50';
@@ -59,6 +59,8 @@ function EditForm({ work, onClose }) {
   const [publisher, setPublisher] = useState(meta.publisher || '');
   const [language, setLanguage] = useState(meta.language || '');
   const [publicationDate, setPublicationDate] = useState(meta.publicationDate || '');
+  // The year the work was first published (DEC-156): the work's, not the edition's; negative is before the common era.
+  const [originalYear, setOriginalYear] = useState(meta.originalYear != null ? String(meta.originalYear) : '');
   const [description, setDescription] = useState(meta.description || '');
   const [tags, setTags] = useState((work.tags || []).join(', '));
   const [locks, setLocks] = useState(meta.locks || {});
@@ -107,6 +109,7 @@ function EditForm({ work, onClose }) {
       publisher,
       language,
       publication_date: publicationDate,
+      original_year: originalYear.trim(),
       description,
       tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       title_lock: !!locks.title,
@@ -118,6 +121,7 @@ function EditForm({ work, onClose }) {
       language_lock: !!locks.language,
       description_lock: !!locks.description,
       publication_date_lock: !!locks.publication_date,
+      original_year_lock: !!locks.original_year,
     });
   };
 
@@ -160,8 +164,20 @@ function EditForm({ work, onClose }) {
         <Field label="Idioma">
           <input className={inputClass} value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="pt, pt-BR, en…" disabled={busy} />
         </Field>
-        <Field label="Data de publicação">
+        <Field label="Data de publicação (desta edição)">
           <input className={inputClass} value={publicationDate} onChange={(e) => setPublicationDate(e.target.value)} disabled={busy} />
+        </Field>
+        <Field label="Ano da primeira publicação (da obra)">
+          <input
+            className={inputClass}
+            value={originalYear}
+            onChange={(e) => setOriginalYear(e.target.value)}
+            inputMode="numeric"
+            pattern="-?[0-9]{1,4}"
+            title="Um ano inteiro; com um sinal de menos, antes da era comum"
+            placeholder="1965"
+            disabled={busy}
+          />
         </Field>
       </div>
       <Field label="Etiquetas (separadas por vírgula)">
