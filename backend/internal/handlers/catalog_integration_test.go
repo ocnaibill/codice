@@ -180,6 +180,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/admin/suggestions", lib.SuggestionQueue)
 	r.Get("/admin/metadata-providers", (&ProvidersHandler{DB: db}).List)
 	r.Put("/admin/metadata-providers/{id}", (&ProvidersHandler{DB: db}).Set)
+	r.Post("/admin/metadata-providers/{id}/test", (&ProvidersHandler{DB: db}).Test)
 	r.Get("/metadata/search", lib.SearchMetadata)
 	r.Get("/works/{id}/candidates", lib.ListCandidates)
 	r.Post("/works/{id}/candidates/{candidateID}/accept", lib.AcceptCandidate)

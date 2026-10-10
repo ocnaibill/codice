@@ -44,6 +44,21 @@ var Known = []Info{
 	{ID: "wikipedia", Name: "Wikipedia", Sends: []string{"page_title"}},
 }
 
+// TestsSettingKey is where the worker puts how the last test of each provider came out: {"google_books": {"ok": true, ...}}.
+const TestsSettingKey = "metadata.providers.tests"
+
+// Test is what the worker found when the owner asked a provider to be tested (DEC-145): one fixed, public question, with nothing of the library in it.
+type Test struct {
+	OK bool `json:"ok"`
+	// State is how the question came out: "ok", "key", "quota", "down", "error" (as in Health), "nokey" (the provider needs a key the worker
+	// has not got, so nothing was asked) or "empty" (it answered, with nothing, to a question that has an answer).
+	State    string    `json:"state"`
+	Status   int       `json:"status"`
+	Results  int       `json:"results"`
+	Ms       int       `json:"ms"`
+	TestedAt time.Time `json:"testedAt"`
+}
+
 // KeysSettingKey is where the worker tells which API keys it has: {"comicvine": true, ...}. It tells whether each
 // is set and never the key, which stays in the environment of the worker.
 const KeysSettingKey = "metadata.providers.keys"
@@ -60,6 +75,9 @@ type Status struct {
 	KeyConfigured *bool `json:"keyConfigured"`
 	// Health is how the provider answered the last time the worker asked it (DEC-144): null until it was asked.
 	Health *Health `json:"health"`
+	// Test is how the last test of the provider came out (null if it never was tested); Testing is whether one is waiting or running.
+	Test    *Test `json:"test"`
+	Testing bool  `json:"testing"`
 }
 
 // EmptyWarning is how many searches in a row a provider can answer with nothing at all, every request answered, before the administration
@@ -143,9 +161,17 @@ func List(ctx context.Context, db *sql.DB) ([]Status, error) {
 	if err != nil {
 		return nil, err
 	}
+	tests, err := readTests(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	running, err := testsRunning(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Status, 0, len(Known))
 	for _, k := range Known {
-		st := Status{Info: k, Enabled: on[k.ID], Health: health[k.ID]}
+		st := Status{Info: k, Enabled: on[k.ID], Health: health[k.ID], Test: tests[k.ID], Testing: running[k.ID]}
 		if has, said := keys[k.ID]; said && k.Key != "" {
 			st.KeyConfigured = &has
 		}
@@ -180,6 +206,90 @@ func readHealth(ctx context.Context, db *sql.DB) (map[string]*Health, error) {
 		out[id] = &h
 	}
 	return out, rows.Err()
+}
+
+// readTests is the last test of each provider, by id. Whatever in the setting is not a test the worker could have written is left out.
+func readTests(ctx context.Context, db *sql.DB) (map[string]*Test, error) {
+	var raw []byte
+	err := db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = $1`, TestsSettingKey).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return map[string]*Test{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var all map[string]struct {
+		OK      bool   `json:"ok"`
+		State   string `json:"state"`
+		Status  int    `json:"status"`
+		Results int    `json:"results"`
+		Ms      int    `json:"ms"`
+		At      string `json:"at"`
+	}
+	if json.Unmarshal(raw, &all) != nil {
+		return map[string]*Test{}, nil
+	}
+	out := map[string]*Test{}
+	for id, t := range all {
+		at, err := time.Parse(time.RFC3339, t.At)
+		if err != nil || t.State == "" {
+			continue
+		}
+		out[id] = &Test{OK: t.OK, State: t.State, Status: t.Status, Results: t.Results, Ms: t.Ms, TestedAt: at}
+	}
+	return out, nil
+}
+
+// testsRunning is which providers have a test waiting or running.
+func testsRunning(ctx context.Context, db *sql.DB) (map[string]bool, error) {
+	rows, err := db.QueryContext(ctx, `SELECT DISTINCT payload->>'provider' FROM jobs WHERE type = 'provider_test' AND state IN ('pending', 'running')`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id sql.NullString
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		if id.Valid {
+			out[id.String] = true
+		}
+	}
+	return out, rows.Err()
+}
+
+// RequestTest asks for one provider to be tested: one fixed, public question, whether the provider is on or not (the owner asked, and nothing of the
+// library is in it). Asking again while a test of that provider waits or runs is the same request: it returns queued false.
+func RequestTest(ctx context.Context, db *sql.DB, id, actor string) (jobID int64, queued bool, err error) {
+	if _, ok := find(id); !ok {
+		return 0, false, ErrUnknown
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, false, err
+	}
+	defer tx.Rollback()
+	// One statement under a lock, so two requests at once are one job.
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('provider_test'))`); err != nil {
+		return 0, false, err
+	}
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO jobs (type, payload, priority, created_by)
+		SELECT 'provider_test', jsonb_build_object('provider', $1::text), 5, NULLIF($2, '')::uuid
+		WHERE NOT EXISTS (SELECT 1 FROM jobs WHERE type = 'provider_test' AND state IN ('pending', 'running') AND payload->>'provider' = $1)
+		RETURNING id`, id, actor).Scan(&jobID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if err := audit.Record(ctx, tx, actor, "providers.test", "metadata_provider", id, nil); err != nil {
+		return 0, false, err
+	}
+	return jobID, true, tx.Commit()
 }
 
 // AnyEnabled is whether some provider may be asked.

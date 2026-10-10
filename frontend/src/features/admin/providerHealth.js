@@ -31,4 +31,29 @@ export function describeHealth(provider, now = Date.now()) {
   }
 }
 
+/** What the last test of a provider came to, in words (DEC-145). `{ tone, text }`, or null when it never was tested. */
+export function describeTest(provider, now = Date.now()) {
+  const test = provider.test;
+  if (!test) return null;
+  const when = formatAge(now - new Date(test.testedAt).getTime());
+  const env = KEY_ENV[provider.id];
+  const seconds = `${(test.ms / 1000).toFixed(1).replace('.', ',')} s`;
+  switch (test.state) {
+    case 'ok':
+      return { tone: 'ok', text: `Teste ${when}: respondeu em ${seconds}, com ${test.results} ${test.results === 1 ? 'resultado' : 'resultados'}.` };
+    case 'key':
+      return { tone: 'danger', text: `Teste ${when}: a chave foi recusada (HTTP ${test.status}).${env ? ` Confira ${env} no ambiente do worker e reinicie-o.` : ''}` };
+    case 'quota':
+      return { tone: 'warn', text: `Teste ${when}: o limite de uso foi atingido (HTTP ${test.status}). Espere, ou use uma chave com cota maior.` };
+    case 'down':
+      return { tone: 'danger', text: `Teste ${when}: não respondeu (rede ou serviço fora do ar).` };
+    case 'nokey':
+      return { tone: 'warn', text: `Teste ${when}: faltou a chave de API, então nada foi perguntado.${env ? ` Defina ${env} no ambiente do worker e reinicie-o.` : ''}` };
+    case 'empty':
+      return { tone: 'warn', text: `Teste ${when}: respondeu em ${seconds}, mas sem nada para uma pergunta que tem resposta.` };
+    default:
+      return { tone: 'warn', text: `Teste ${when}: respondeu com erro (HTTP ${test.status}).` };
+  }
+}
+
 export const TONE_CLASS = { ok: 'text-success', warn: 'text-warning', danger: 'text-danger', faint: 'text-ink-faint' };

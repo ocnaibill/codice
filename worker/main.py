@@ -14,6 +14,7 @@ from providers import ProviderRegistry
 from providers.gate import asks_providers, db_gate, report_keys
 from providers.health import install as report_provider_health
 from rematch import MetadataRematch
+from providertest import ProviderTester
 from authority import resolve_pending
 from maintenance import repair_descriptions
 from db import CodiceDatabase
@@ -125,6 +126,7 @@ def build_runner(db, client, heartbeat=None):
     report_provider_health(db, provider_registry)   # the administration says how each provider answers
     analyzer = Analyzer(db)
     rematch = MetadataRematch(db, analyzer, provider_registry)
+    provider_tester = ProviderTester(db, provider_registry)
 
     storage_path = os.getenv('CODICE_STORAGE_PATH', './uploads')
     # If relative, resolve from project root (two levels up from worker/)
@@ -159,6 +161,10 @@ def build_runner(db, client, heartbeat=None):
             outcome = ocr.run(job['work_id'], retry_failed=bool(job['payload'].get('retry_failed')), checkpoint=checkpoint) if ocr else {}
             print(f"   🔤 {outcome or 'nothing to read'}")
             return outcome
+        if job.get('type') == 'provider_test':
+            # The owner asked to see whether a provider answers: one fixed, public question, whether it is on or not. It never touches a work.
+            print(f"\n🧪 Provider test {job['id']} ({job['payload'].get('provider')}, attempt {job['attempts']}/{job['max_attempts']})")
+            return provider_tester.run(job['id'], job['payload'].get('provider'), checkpoint=checkpoint)
         if job.get('type') == 'match_metadata':
             # Someone from the staff asked to search the providers again for this work: the answers come back as suggestions, and the
             # work is left as it is (it never changes the status of the work).

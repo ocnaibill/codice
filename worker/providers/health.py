@@ -31,7 +31,8 @@ class HealthRecorder:
 
     def __init__(self, db, names):
         self.db, self.names = db, dict(names)
-        self.last = {}   # provider id -> the state of its last request, in this process
+        self.last = {}     # provider id -> the state of its last request, in this process
+        self.status = {}   # ... and its HTTP status
 
     def reply(self, provider_name, reply):
         """Called for every request of a provider: records how it came out. Never raises: the health of a provider is not worth an analysis."""
@@ -40,6 +41,7 @@ class HealthRecorder:
             return
         state = state_of(reply.status, reply.data is not None, reply.problem)
         self.last[provider] = state
+        self.status[provider] = reply.status
         try:
             self.db.execute(
                 """INSERT INTO provider_health (provider, state, status, problem, checked_at, last_ok_at)

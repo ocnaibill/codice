@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { describeError, useMetadataProviders, useSetMetadataProvider } from '../api/admin';
+import { describeError, useMetadataProviders, useSetMetadataProvider, useTestMetadataProvider } from '../api/admin';
 import { ConfirmDialog } from './ConfirmDialog';
-import { Empty, ErrorNote, Loading, Section } from './ui';
+import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 import { LoadError } from '../../../components/ui/LoadError';
-import { describeHealth, TONE_CLASS } from '../providerHealth';
+import { describeHealth, describeTest, TONE_CLASS } from '../providerHealth';
 import { PermissionNote } from '../../../components/ui/PermissionNote';
 
 // What each provider is, where it lives, and what asking it hands over: the owner decides knowing (DEC-045).
@@ -15,6 +15,11 @@ const ABOUT = {
   mangadex: { host: 'api.mangadex.org (MangaDex)', note: 'Para mangá: autores, gêneros, público (seinen, shounen…), sinopse e capa da série. Política de uso: não comercial.' },
   wikidata: { host: 'www.wikidata.org (Wikimedia)', note: 'Diz que obra é: traduz um título que os outros não conhecem (“A Nuvem” é Thunderhead), e acrescenta o identificador, a série e os gêneros em português. Dados em domínio público (CC0).' },
   wikipedia: { host: '*.wikipedia.org (Wikimedia)', note: 'Completa a sinopse com o resumo da página da obra, quando nenhum outro provedor trouxe uma; a fonte e a licença (CC BY-SA 4.0) ficam escritas junto do texto. Só funciona com o Wikidata ligado, que diz qual é a página.' },
+};
+// The fixed, public question the test asks each provider (nothing of the library is in it).
+const QUESTION = {
+  google_books: '“Dune”', openlibrary: '“Dune”', wikidata: '“Dune”', comicvine: '“Absolute Batman”', anilist: '“Berserk”', mangadex: '“Berserk”',
+  wikipedia: 'a página “Dune (novel)”',
 };
 const SENDS = {
   title: 'o título da obra',
@@ -46,7 +51,9 @@ const sendsText = (provider) => provider.sends.map((s) => SENDS[s] || s).join(',
 export function ProvidersTab({ isOwner }) {
   const { data, isLoading, isError, error, refetch, isRefetching } = useMetadataProviders();
   const set = useSetMetadataProvider();
+  const test = useTestMetadataProvider();
   const [turningOn, setTurningOn] = useState(null);
+  const [testing, setTesting] = useState(null); // the provider that is off and the owner is about to ask a test question
   const providers = data?.data || [];
 
   return (
@@ -62,6 +69,8 @@ export function ProvidersTab({ isOwner }) {
           const about = ABOUT[provider.id] || {};
           const note = keyNote(provider);
           const health = describeHealth(provider);
+          const lastTest = describeTest(provider);
+          const busy = provider.testing || (test.isPending && test.variables === provider.id);
           return (
             <li key={provider.id} className="flex flex-wrap items-start justify-between gap-3 py-4">
               <div className="min-w-0">
@@ -81,24 +90,56 @@ export function ProvidersTab({ isOwner }) {
                     {health.text}
                   </p>
                 )}
+                {busy && <p role="status" className="text-[12px] text-ink-soft">Testando…</p>}
+                {!busy && lastTest && (
+                  <p className={`text-[12px] ${TONE_CLASS[lastTest.tone]}`} data-test={provider.test.state}>
+                    {lastTest.text}
+                  </p>
+                )}
               </div>
-              <label className="flex min-h-10 items-center gap-2 text-[13px] text-ink">
-                <input
-                  type="checkbox"
-                  checked={provider.enabled}
-                  disabled={!isOwner || set.isPending || blocked(provider)}
-                  onChange={(event) => (event.target.checked ? setTurningOn(provider) : set.mutate({ id: provider.id, enabled: false }))}
-                  aria-label={`${provider.name}: ${provider.enabled ? 'ligado' : 'desligado'}`}
-                />
-                {provider.enabled ? 'Ligado' : 'Desligado'}
-              </label>
+              <div className="flex items-center gap-3">
+                {isOwner && (
+                  <Btn
+                    disabled={busy || test.isPending}
+                    aria-label={`Testar ${provider.name}`}
+                    onClick={() => (provider.enabled ? test.mutate(provider.id) : setTesting(provider))}
+                  >
+                    {busy ? 'Testando…' : 'Testar'}
+                  </Btn>
+                )}
+                <label className="flex min-h-10 items-center gap-2 text-[13px] text-ink">
+                  <input
+                    type="checkbox"
+                    checked={provider.enabled}
+                    disabled={!isOwner || set.isPending || blocked(provider)}
+                    onChange={(event) => (event.target.checked ? setTurningOn(provider) : set.mutate({ id: provider.id, enabled: false }))}
+                    aria-label={`${provider.name}: ${provider.enabled ? 'ligado' : 'desligado'}`}
+                  />
+                  {provider.enabled ? 'Ligado' : 'Desligado'}
+                </label>
+              </div>
             </li>
           );
         })}
       </ul>
       {!isOwner && <PermissionNote className="mt-3">Só o dono do acervo liga ou desliga os provedores.</PermissionNote>}
       <ErrorNote>{set.isError && describeError(set.error)}</ErrorNote>
+      <ErrorNote>{test.isError && describeError(test.error)}</ErrorNote>
 
+      {testing && (
+        <ConfirmDialog
+          title={`Testar ${testing.name}?`}
+          message={
+            <p>
+              O teste faz uma pergunta a <strong>{ABOUT[testing.id]?.host || testing.name}</strong> com um título fixo e público, {QUESTION[testing.id]}, para ver se ele
+              responde. Nada da sua biblioteca é enviado. O provedor continua desligado.{testing.keyConfigured && ' A chave de API configurada no worker vai junto.'}
+            </p>
+          }
+          choices={[{ label: 'Testar', value: true, tone: 'primary' }]}
+          onChoose={() => { test.mutate(testing.id); setTesting(null); }}
+          onCancel={() => setTesting(null)}
+        />
+      )}
       {turningOn && (
         <ConfirmDialog
           title={`Ligar ${turningOn.name}?`}
