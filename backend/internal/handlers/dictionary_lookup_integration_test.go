@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -114,6 +115,22 @@ func TestDictionaryLookup_ReadsTheWordTheWayTheDictionaryStoresIt(t *testing.T) 
 		if got := kinds(lookup(t, s, "pt", word)); got != "entry:ação:noun" {
 			t.Errorf("%q: %s", word, got)
 		}
+	}
+}
+
+func TestDictionaryLookup_AWordThatABookBrokeWithSoftHyphensIsTheSameWord(t *testing.T) {
+	s := newCatalogStack(t)
+	stockedDictionary(t, s)
+	// Some books put a soft hyphen inside every word, to help the line break; selecting one gives the word with them in.
+	for _, word := range []string{"cor\u00adrer", "co\u00adr\u00adrer", "\u201ccor\u00adrer,\u201d", "cor\u200brer", "cor\u2060rer", "\ufeffcorrer"} {
+		if got := kinds(lookup(t, s, "pt", word)); got != "entry:correr:verb" {
+			t.Errorf("%q: %s", word, got)
+		}
+	}
+	// What is nothing but invisible is no word.
+	rec := s.do(ana, "GET", "/dictionary?lang=pt&word="+url.QueryEscape("\u00ad\u200b"), "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("only invisible: %d, want 400", rec.Code)
 	}
 }
 

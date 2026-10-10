@@ -14,7 +14,7 @@ import { api } from '../../../lib/api';
 import { NotesPanel } from './NotesPanel';
 import { SelectionMenu } from './SelectionMenu';
 import { DictionaryCard } from './DictionaryCard';
-import { isLookupable, lookupLanguage, scriptLanguage } from '../dictionaryLookup';
+import { isLookupable, lookupLanguage, scriptLanguage, selectedWord } from '../dictionaryLookup';
 import { isHighlightColor } from '../highlightColors';
 import { getHighlightColor, getKeepScreenOn, saveHighlightColor } from '../preferences';
 import { useCreateNote, useWorkNotes } from '../api/useWorkNotes';
@@ -200,7 +200,8 @@ export function Reader() {
   const lookUpSelection = () => {
     if (!selection) return;
     // A word in a script of its own (a Japanese word in a Portuguese book) is looked up in that language first.
-    setLookup({ word: selection.text, language: scriptLanguage(selection.text) ?? lookupLanguage(file?.edition?.language) ?? 'pt' });
+    const word = selectedWord(selection.text).trim();
+    setLookup({ word, language: scriptLanguage(word) ?? lookupLanguage(file?.edition?.language) ?? 'pt' });
     afterSelection();
   };
   const noteOnSelection = () => {

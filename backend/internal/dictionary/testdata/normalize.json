@@ -34,6 +34,12 @@
     {"in": "...", "out": ""},
     {"in": "", "out": ""},
     {"in": "   ", "out": ""},
-    {"in": "'", "out": ""}
+    {"in": "'", "out": ""},
+    {"in": "Le\u00adva", "out": "leva"},
+    {"in": "tem\u00adpo,", "out": "tempo"},
+    {"in": "For\u00admi\u00add\u00e1\u00advel", "out": "formidavel"},
+    {"in": "\u201cCei\u00adfa\u00addor\u201d", "out": "ceifador"},
+    {"in": "a\u200bb\u2060c\ufeffd", "out": "abcd"},
+    {"in": "\u00ad", "out": ""}
   ]
 }

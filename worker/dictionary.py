@@ -64,9 +64,14 @@ def _strip_marks(char: str) -> str:
     return char
 
 
+_INVISIBLE = frozenset('\u00ad\u200b\u2060\ufeff')   # the soft hyphen, the zero-width space, the word joiner and the byte order mark
+
+
 def normalize(text: str) -> str:
     """What a word reads as: the form it is looked up by."""
     folded = unicodedata.normalize('NFKC', str(text)).replace('’', "'").replace('ʼ', "'").casefold()
+    # What a book puts inside a word to help the line break (a soft hyphen) and what is invisible is not part of the word.
+    folded = ''.join(c for c in folded if c not in _INVISIBLE)
     letters = ''.join(_strip_marks(c) for c in folded)
     # The edges of what was selected are not part of the word: a full stop, a quotation mark, a parenthesis.
     start, end = 0, len(letters)

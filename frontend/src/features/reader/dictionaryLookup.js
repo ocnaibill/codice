@@ -34,13 +34,19 @@ export function groupTranslations(translations, prefer) {
   }));
 }
 
+/**
+ * What a reader selected, as the word it is: a book may put a soft hyphen inside each word, to help the line break ("le­va", "tem­po"), and the
+ * zero-width characters are not a part of it either. Taken out, the selection is what is written and what the dictionary has.
+ */
+export const selectedWord = (text) => String(text ?? '').replace(/[\u00ad\u200b\u2060\ufeff]/g, '');
+
 /** The longest selection that is looked up, and the most words in it: a word, a word with a hyphen, a short expression. */
 export const MAX_LOOKUP_LENGTH = 40;
 export const MAX_LOOKUP_WORDS = 3;
 
 /** Whether a selection is something to look up in a dictionary: a word or a few, not a sentence. */
 export function isLookupable(text) {
-  const trimmed = String(text ?? '').trim();
+  const trimmed = selectedWord(text).trim();
   if (!trimmed || [...trimmed].length > MAX_LOOKUP_LENGTH) return false;
   if (trimmed.split(/\s+/).length > MAX_LOOKUP_WORDS) return false;
   return /[\p{L}\p{N}]/u.test(trimmed);
