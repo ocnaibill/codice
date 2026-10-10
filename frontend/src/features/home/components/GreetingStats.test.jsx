@@ -22,7 +22,7 @@ describe('GreetingStats', () => {
 
   it('greets the signed-in account by name, and asks what is wanted', async () => {
     view = await mount(<GreetingStats userName="ana" stats={null} isLoading />);
-    expect(view.text()).toContain('ana :)');
+    expect(view.text()).toContain('ana\u00a0:)'); // a no-break space: the smiley is never alone on a line
     expect(view.text()).toContain('O que queremos hoje?');
     expect(view.text()).not.toContain('Bianco');
   });
@@ -65,7 +65,7 @@ describe('GreetingStats', () => {
   it('titles the home with the greeting, the one heading of the page', async () => {
     view = await mount(<GreetingStats userName="ana" stats={null} isLoading />);
     expect(document.body.querySelectorAll('h1')).toHaveLength(1);
-    expect(document.body.querySelector('#library-heading').textContent).toMatch(/^(Bom dia|Boa tarde|Boa noite), ana :\)$/);
+    expect(document.body.querySelector('#library-heading').textContent).toMatch(/^(Bom dia|Boa tarde|Boa noite), ana\u00a0:\)$/);
   });
 
   it('shows three cards beside the greeting: kept, being read, and the activity of the month', async () => {

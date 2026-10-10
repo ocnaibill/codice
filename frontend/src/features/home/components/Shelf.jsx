@@ -4,6 +4,7 @@ import { useGlobalStore } from '../../../store/useGlobalStore';
 import { LibraryIcon } from '../../../components/ui/LibraryIcon';
 import { formatCount } from '../utils/format';
 import { BookCard, SeriesBookCard } from './LibraryGrid';
+import { countWordFor } from '../utils/format';
 
 /**
  * A shelf: a heading with how many there are and a link to the rest, and the works in a row that goes on past the edge. It is "Adicionados
@@ -18,7 +19,7 @@ export function Shelf({ title, total, countWord = 'obras', items, isLoading, emp
     <section aria-busy={!!isLoading} aria-labelledby={headingId} className="library-shelf">
       <div className="library-section-heading">
         <h2 id={headingId}>{title}</h2>
-        {total != null && <span className="library-eyebrow">[ {formatCount(total)} {countWord} ]</span>}
+        {total != null && <span className="library-eyebrow">[ {formatCount(total)} {countWordFor(total, countWord)} ]</span>}
         {seeAll && (
           <button type="button" className="library-text-link" onClick={seeAll.onClick}>
             {seeAll.label} <LibraryIcon name="arrow" />

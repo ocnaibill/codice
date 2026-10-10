@@ -24,6 +24,18 @@ describe('Shelf', () => {
     expect(document.body.querySelector('ul[aria-label="Ficção científica"]')).not.toBeNull();
   });
 
+  it('says one in the singular: "[ 1 obra ]", and the other counts as they were', async () => {
+    view = await mount(<Shelf title="Romance" total={1} items={[work(1, 'Duna')]} />);
+    expect(document.body.textContent).toContain('[ 1 obra ]');
+    expect(document.body.textContent).not.toContain('1 obras');
+    view.unmount();
+    view = await mount(<Shelf title="Romance" total={1} countWord="itens" items={[work(1, 'Duna')]} />);
+    expect(document.body.textContent).toContain('[ 1 item ]');
+    view.unmount();
+    view = await mount(<Shelf title="Romance" total={0} items={[]} />);
+    expect(document.body.textContent).toContain('[ 0 obras ]');
+  });
+
   it('counts by the word it is given, and has no count when it is not told one', async () => {
     view = await mount(<Shelf title="A" total={5} countWord="itens" items={[work(1, 'Duna')]} />);
     expect(document.body.textContent).toContain('[ 5 itens ]');

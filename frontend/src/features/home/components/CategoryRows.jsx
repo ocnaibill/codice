@@ -4,8 +4,9 @@ import { useWorks } from '../../library/api/useWorks';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { Shelf } from './Shelf';
 
-// How many categories get a shelf on the home, the ones with most works first; the rest are in "Explorar por categoria".
-export const MAX_ROWS = 6;
+// How many categories get a shelf on the home, the ones with most works first. There is no index of the rest at the end any more, so the
+// limit is of what a page can reasonably carry (a shelf asks for its works only when it comes near the screen).
+export const MAX_ROWS = 24;
 const PER_ROW = 12;
 const byWorksThenName = (a, b) => b.works - a.works || a.name.localeCompare(b.name, 'pt');
 

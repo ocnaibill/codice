@@ -213,6 +213,18 @@ describe('a series in the grid (#187)', () => {
     });
     expect(container.textContent).toContain('[ 5 itens ]');
   });
+
+  it('says one in the singular: "[ 1 obra ]" and "[ 1 item ]"', async () => {
+    await act(async () => {
+      root.render(<QueryClientProvider client={queryClient}><LibraryGrid items={[card({ id: 1, title: 'Duna' })]} total={1} /></QueryClientProvider>);
+    });
+    expect(container.textContent).toContain('[ 1 obra ]');
+    expect(container.textContent).not.toContain('1 obras');
+    await act(async () => {
+      root.render(<QueryClientProvider client={queryClient}><LibraryGrid items={[seriesCard()]} total={1} countWord="itens" /></QueryClientProvider>);
+    });
+    expect(container.textContent).toContain('[ 1 item ]');
+  });
 });
 
 describe('the title of the edition being read on a card (#185)', () => {

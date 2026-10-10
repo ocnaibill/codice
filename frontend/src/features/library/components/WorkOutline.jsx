@@ -44,7 +44,8 @@ export function WorkOutline({ outline, onOpen }) {
         <h2 className="font-display text-2xl text-ink">Sumário da obra</h2>
         <span className="font-mono text-[11px] uppercase tracking-widest text-ink-faint">{count}</span>
       </div>
-      <ol className="flex max-h-96 flex-col overflow-y-auto">
+      {/* relative: the hidden texts of the rows (sr-only is absolute) belong to the list, and are not left where the rows would be under the page */}
+      <ol className="relative flex max-h-96 flex-col overflow-y-auto">
         {shown.map((entry) => {
           const state = entry.hasChildren ? null : stateOf(entry.index);
           const where = whereText(entry);

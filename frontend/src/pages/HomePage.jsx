@@ -14,7 +14,6 @@ import { SearchPage } from '../features/search/SearchPage';
 import { CollectionsGrid } from '../features/collections/components/CollectionsGrid';
 import { useCollections } from '../features/collections/api/useCollections';
 import { isStaff } from '../features/auth/api/useMe';
-import { CategoryShelf } from '../features/home/components/CategoryShelf';
 import { CategoryRows } from '../features/home/components/CategoryRows';
 import { Shelf } from '../features/home/components/Shelf';
 import { CategoryPage } from '../features/categories/components/CategoryPage';
@@ -184,7 +183,6 @@ function HomeDashboard() {
         {personal}
       </div>
       {shelves && <CategoryRows />}
-      {view === 'all' && <CategoryShelf />}
     </div>
   );
 }

@@ -42,7 +42,9 @@ export function GreetingStats({ userName, stats, isLoading, error, onRetry }) {
           {greetingPeriod(now.getHours())}
           {userName && (
             <>
-              , <span>{userName}</span> :)
+              , <span>{userName}</span>
+              {/* a no-break space: the smiley never goes to a line of its own */}
+              {'\u00a0'}:)
             </>
           )}
         </h1>

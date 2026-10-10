@@ -96,6 +96,11 @@ describe('WorkOutline', () => {
     expect(rows()).toHaveLength(2);
   });
 
+  it('holds the hidden texts of its rows inside the list: they are absolute, and would be left under the page', async () => {
+    await render({ outline });
+    expect(container.querySelector('ol').className).toContain('relative');
+  });
+
   it('says nothing when there is no outline', async () => {
     await render({ outline: { chapters: [], current: null } });
     expect(container.querySelector('section')).toBeNull();
