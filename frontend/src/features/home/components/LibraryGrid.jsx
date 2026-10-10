@@ -68,7 +68,11 @@ export function BookCard({ item, onOpen, onSheet }) {
               item.mediaStatus ??
               'Pronto para ler'}
           </p>
-          <h3 title={title}><MarqueeText>{title}</MarqueeText></h3>
+          <h3 title={title}>
+            <button type="button" className="library-book-title" onClick={() => onSheet(item.id)} aria-label={`Abrir a página: ${title}`}>
+              <MarqueeText>{title}</MarqueeText>
+            </button>
+          </h3>
           <p className="library-author"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
           {item.tags?.length > 0 && (
             <p className="library-book-tags">{item.tags.join(' · ')}</p>
@@ -135,7 +139,11 @@ export function SeriesBookCard({ item, onCollection, onOpen }) {
         </button>
         <div className="library-book-meta">
           <p className="library-book-status">Série</p>
-          <h3 title={series.name}><MarqueeText>{series.name}</MarqueeText></h3>
+          <h3 title={series.name}>
+            <button type="button" className="library-book-title" onClick={() => onCollection(series.collectionId)} aria-label={`Abrir a série ${series.name}`}>
+              <MarqueeText>{series.name}</MarqueeText>
+            </button>
+          </h3>
           <p className="library-author"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
           <p className="library-book-tags">{seriesCounts(series)}</p>
         </div>

@@ -680,6 +680,27 @@
   font: 600 17px/1.3 var(--font-display);
   margin: 4px 0;
 }
+/* The name of a work is what opens its page, as the cover does: it looks like the text it always was and shows it can be pressed. */
+.library-book-title {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.library-book-title:hover {
+  color: var(--color-brand);
+}
+.library-book-title:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 /* A title on one line: when it is longer than its place the end is faded, and it runs along while the card is under the mouse or has the focus.
    The card never grows. Whoever asked for less motion gets the faded end and the whole title in the tooltip. */
 .marquee {

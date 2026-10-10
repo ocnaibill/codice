@@ -23,6 +23,8 @@ const render = async (items) => {
   await act(async () => { root.render(<ContinueReading items={items} isLoading={false} />); });
 };
 const card = (title) => [...container.querySelectorAll('article')].find((a) => a.textContent.includes(title));
+// The button that goes on reading (the cover and the title of a card open the page of the work).
+const goOn = (c) => c.querySelector('.library-reading-action');
 
 beforeEach(() => {
   container = document.createElement('div');
@@ -35,6 +37,32 @@ afterEach(() => {
   container.remove();
 });
 
+describe('ContinueReading: the cover and the name open the page of the work', () => {
+  beforeEach(() => { useGlobalStore.setState({ sheetWorkId: null }); });
+
+  it('opens the page of the work from the cover, and not the reader', async () => {
+    await render([work]);
+    const cover = card('Duna').querySelector('button[aria-label="Abrir a página: Duna"]');
+    expect(cover.querySelector('img')).toBeTruthy();
+    await act(async () => { cover.click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ sheetWorkId: 7, activeBookId: null });
+  });
+
+  it('opens it from the name too', async () => {
+    await render([plain]);
+    const name = card('Outro').querySelector('h3 button');
+    expect(name.textContent).toBe('Outro');
+    await act(async () => { name.click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ sheetWorkId: 8, activeBookId: null });
+  });
+
+  it('keeps the button of the card for reading', async () => {
+    await render([work]);
+    await act(async () => { goOn(card('Duna')).click(); });
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 11 });
+  });
+});
+
 describe('ContinueReading', () => {
   it('shows the file read last, not the primary one, and opens exactly that file', async () => {
     await render([work]);
@@ -43,7 +71,7 @@ describe('ContinueReading', () => {
     expect(c.textContent).not.toContain('PDF');
     expect(c.textContent).toContain('30%');
     expect(c.textContent).not.toContain('5%');
-    await act(async () => { c.querySelector('button').click(); });
+    await act(async () => { goOn(c).click(); });
     expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 11 });
   });
 
@@ -53,7 +81,7 @@ describe('ContinueReading', () => {
     expect(c.textContent).toContain('CBZ');
     expect(c.textContent).toContain('50%');
     expect(c.textContent).toContain('Página 5'); // a comic position counts from 0
-    await act(async () => { c.querySelector('button').click(); });
+    await act(async () => { goOn(c).click(); });
     expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 8, activeFileId: null });
   });
 
@@ -78,7 +106,7 @@ describe('ContinueReading: the title of the edition being read (#185)', () => {
 
   it('still opens the work and the file it was reading', async () => {
     await render([english]);
-    await act(async () => { card('Dune').querySelector('button').click(); });
+    await act(async () => { goOn(card('Dune')).click(); });
     expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 7, activeFileId: 11 });
   });
 
