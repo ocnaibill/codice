@@ -10,6 +10,8 @@ import { EmptyState, Skeleton } from '../../../components/ui/EmptyState';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { LibraryIcon } from '../../../components/ui/LibraryIcon';
+import { Carousel } from '../../../components/ui/Carousel';
+import { MarqueeText } from '../../../components/ui/MarqueeText';
 
 const COMIC_FORMATS = new Set(['cbz', 'cbr']);
 const AUDIO_FORMATS = new Set(['mp3', 'm4a', 'm4b', 'ogg', 'wav', 'flac']);
@@ -59,7 +61,7 @@ function InProgressCard({ item, onOpen }) {
             )}
             {item.isFavorite && <img src={iconPin} alt="Favorito" className="size-[9px]" />}
           </div>
-          <h3 className="pt-1 font-body text-xl font-bold tracking-[-0.2px] text-ink">{title}</h3>
+          <h3 className="pt-1 font-body text-xl font-bold tracking-[-0.2px] text-ink" title={title}><MarqueeText>{title}</MarqueeText></h3>
           <p className="font-body text-[13px] tracking-[0.065px] text-ink-soft"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
           {location && (
             <div className="mt-3 flex items-center gap-1 rounded-sm bg-surface px-2 py-1">
@@ -111,11 +113,11 @@ export function ContinueReading({ items, isLoading, onViewAll }) {
       ) : items.length === 0 ? (
         <EmptyState>Nenhuma leitura em andamento. Abra um livro da sua biblioteca para começar.</EmptyState>
       ) : (
-        <div className="library-reading-track" tabIndex={0} aria-label="Leituras em andamento">
+        <Carousel label="Leituras em andamento" className="library-carousel--reading">
           {items.map((item) => (
             <InProgressCard key={item.id} item={item} onOpen={openBook} />
           ))}
-        </div>
+        </Carousel>
       )}
     </section>
   );

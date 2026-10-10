@@ -398,8 +398,14 @@ func (h *NotesHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	args = append(args, limit, offset)
+	// `sample=true` is a few of the notes at random, for the home to show some of what the person kept (each visit another): the order is the
+	// chance, and the filters, the limit and the total are the same.
+	order := `n.created_at DESC, n.id DESC`
+	if r.URL.Query().Get("sample") == "true" {
+		order = `random()`
+	}
 	rows, err := h.DB.QueryContext(r.Context(), noteSelect+` WHERE `+cond+
-		fmt.Sprintf(` ORDER BY n.created_at DESC, n.id DESC LIMIT $%d OFFSET $%d`, len(args)-1, len(args)), args...)
+		fmt.Sprintf(` ORDER BY %s LIMIT $%d OFFSET $%d`, order, len(args)-1, len(args)), args...)
 	if err != nil {
 		log.Println("Error listing notes:", err)
 		http.Error(w, "Error listing notes", http.StatusInternalServerError)

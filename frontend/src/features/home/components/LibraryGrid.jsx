@@ -3,6 +3,7 @@ import iconActionDownload from '../../../assets/icons/card-action-download.svg';
 import { EmptyState, Skeleton } from '../../../components/ui/EmptyState';
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { LibraryIcon } from '../../../components/ui/LibraryIcon';
+import { MarqueeText } from '../../../components/ui/MarqueeText';
 import { useFavoriteToggle } from '../../reader/api/useFavoriteToggle';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { AuthorLinks } from '../../people/components/AuthorLinks';
@@ -39,7 +40,8 @@ function FavoriteButton({ item }) {
   );
 }
 
-function BookCard({ item, onOpen, onSheet }) {
+/** A work in a shelf or a grid: the cover, the title (on one line: a long one runs along inside its place), the authors and what can be done. */
+export function BookCard({ item, onOpen, onSheet }) {
   const title = cardTitle(item); // the name of the edition being read, when someone wrote one for it
   const isReady = item.mediaStatus === 'READY' || !item.mediaStatus;
   return (
@@ -66,7 +68,7 @@ function BookCard({ item, onOpen, onSheet }) {
               item.mediaStatus ??
               'Pronto para ler'}
           </p>
-          <h3 title={title}>{title}</h3>
+          <h3 title={title}><MarqueeText>{title}</MarqueeText></h3>
           <p className="library-author"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
           {item.tags?.length > 0 && (
             <p className="library-book-tags">{item.tags.join(' · ')}</p>
@@ -108,7 +110,7 @@ function BookCard({ item, onOpen, onSheet }) {
  * A series in the grid of the library (#187): one card for the whole of it, in the place of its newest work. The cover and the name
  * open the collection; the button goes on with the series, where the page of the collection would.
  */
-function SeriesBookCard({ item, onCollection, onOpen }) {
+export function SeriesBookCard({ item, onCollection, onOpen }) {
   const series = item.collapsed;
   const go = series.continue;
   return (
@@ -133,7 +135,7 @@ function SeriesBookCard({ item, onCollection, onOpen }) {
         </button>
         <div className="library-book-meta">
           <p className="library-book-status">Série</p>
-          <h3 title={series.name}>{series.name}</h3>
+          <h3 title={series.name}><MarqueeText>{series.name}</MarqueeText></h3>
           <p className="library-author"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
           <p className="library-book-tags">{seriesCounts(series)}</p>
         </div>

@@ -110,6 +110,7 @@ describe('the categories on the home (DEC-140)', () => {
 
 describe('library hub', () => {
   it('sorts the catalog by the author when asked, from the first page, and keeps the sort across categories', async () => {
+    useGlobalStore.getState().setLibrarySort('title'); // the paginated catalog: the plain shelves have no pages
     view = await mount(<HomePage />);
     await flush();
     await view.click(view.button('Próxima'));
@@ -176,13 +177,14 @@ describe('library hub', () => {
   });
 
   it('paginates the catalog and resets to page one when its category changes', async () => {
+    useGlobalStore.getState().setLibrarySort('title');
     view = await mount(<HomePage />);
     await flush();
     await view.click(view.button('Próxima'));
-    expect(api.get).toHaveBeenCalledWith('/works?page=2&limit=12&series=collapse');
+    expect(api.get).toHaveBeenCalledWith('/works?page=2&limit=12&sort=title&series=collapse');
     await view.click(view.buttonMatching(/^Quadrinhos/));
     expect(api.get).toHaveBeenCalledWith(
-      '/works?page=1&limit=12&formatGroup=comics&series=collapse'
+      '/works?page=1&limit=12&formatGroup=comics&sort=title&series=collapse'
     );
     expect(useGlobalStore.getState().libraryPage).toBe(1);
   });
@@ -198,16 +200,16 @@ describe('library hub', () => {
     });
     view = await mount(<HomePage />);
     await flush();
-    expect(view.container.querySelector('.library-books').textContent).toContain('Duna');
+    expect(view.container.querySelector('#library-catalog').textContent).toContain('Duna');
 
     await act(async () => useGlobalStore.getState().setLibraryView('comics'));
-    expect(view.container.querySelector('.library-books').textContent).not.toContain('Duna');
+    expect(view.container.querySelector('#library-catalog').textContent).not.toContain('Duna');
 
     await act(async () => finishComics({
       data: { data: [{ ...work, id: 2, title: 'Volume Um', format: 'cbz' }], total: 1, totalPages: 1, page: 1 },
     }));
     await flush();
-    expect(view.container.querySelector('.library-books').textContent).toContain('Volume Um');
+    expect(view.container.querySelector('#library-catalog').textContent).toContain('Volume Um');
   });
 
   it('changes the rendered layout when list mode is selected', async () => {
@@ -255,7 +257,7 @@ describe('library hub', () => {
     await view.click(view.button('Tentar novamente'));
     await flush();
     expect(
-      view.container.querySelector('.library-books').textContent
+      view.container.querySelector('#library-catalog').textContent
     ).toContain('Duna');
   });
 
@@ -276,6 +278,94 @@ describe('library hub', () => {
     });
     expect(view.text()).not.toContain('Administração');
     expect(view.text()).not.toContain('Adicionar');
+  });
+});
+
+describe('the home as shelves (the plain home) and as the catalog (everything else)', () => {
+  const tree = [
+    { id: 1, parentId: null, name: 'Ficção científica', works: 3, own: 3, covers: [] },
+    { id: 2, parentId: null, name: 'Mangá', works: 7, own: 1, covers: [] },
+  ];
+  const mountHome = async () => {
+    const before = api.get.getMockImplementation();
+    api.get.mockImplementation(async (url, config) => (url === '/categories' ? { data: { data: tree } } : before(url, config)));
+    view = await mount(<HomePage />);
+    await flush();
+  };
+  const columns = () => view.container.querySelector('.home-columns');
+  const sortTo = async (value) => {
+    const select = document.body.querySelector('select[aria-label="Ordenar o acervo"]');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, value);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+  };
+  beforeEach(() => useGlobalStore.setState({ categoryPageId: null, libraryPage: 1 }));
+
+  it('is shelves while it is the plain one: the newest in a row, no pages, and a shelf for each category', async () => {
+    await mountHome();
+    expect(columns().dataset.catalog).toBe('shelves');
+    const catalog = view.container.querySelector('#library-catalog');
+    expect(catalog.querySelector('h2').textContent).toBe('Adicionados recentemente');
+    expect(catalog.querySelector('ul.library-carousel-track')).not.toBeNull();
+    expect(catalog.querySelector('.library-books')).toBeNull();
+    expect(view.container.querySelector('nav[aria-label="Páginas do acervo"]')).toBeNull();
+    const headings = [...view.container.querySelectorAll('h2')].map((h) => h.textContent);
+    expect(headings).toEqual(expect.arrayContaining(['Mangá', 'Ficção científica']));
+    expect(api.get).toHaveBeenCalledWith('/works?page=1&limit=12&series=collapse&category=2');
+  });
+
+  it('puts what is the person\'s beside the reading and the catalog: the favorites first and the notes after', async () => {
+    await mountHome();
+    const areas = ['.home-continue', '.home-catalog', '.home-favorites', '.home-notes'].map((selector) => columns().querySelector(selector));
+    expect(areas.every(Boolean)).toBe(true);
+    expect(columns().querySelector('.home-continue').textContent).toContain('Continuar lendo');
+    expect(columns().querySelector('.home-favorites').textContent).toContain('Seus favoritos');
+    expect(columns().querySelector('.home-notes').textContent).toContain('À margem da leitura');
+    // across the page: the greeting, the columns, then the shelves of the categories
+    const order = ['library-heading', 'library-catalog'].map((id) => document.getElementById(id));
+    expect(order[0].compareDocumentPosition(order[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('asks for two of the notes at random, and keeps the favorites and the notes together, with nothing between them', async () => {
+    await mountHome();
+    expect(api.get).toHaveBeenCalledWith('/notes?limit=2&sample=true');
+    const rail = columns().querySelector('.home-rail');
+    expect(rail).not.toBeNull();
+    expect([...rail.children].map((c) => c.className)).toEqual(['home-favorites', 'home-notes']);
+    expect(rail.parentElement).toBe(columns());
+  });
+
+  it('is the paginated catalog as soon as the order is not the newest, with no shelf of categories', async () => {
+    await mountHome();
+    await sortTo('title');
+    expect(columns().dataset.catalog).toBe('full');
+    expect(view.container.querySelector('#library-catalog .library-books')).not.toBeNull();
+    expect(view.container.querySelector('ul.library-carousel-track[aria-label="Ficção científica"]')).toBeNull();
+    expect(view.container.querySelector('nav[aria-label="Páginas do acervo"]')).not.toBeNull();
+    expect([...view.container.querySelectorAll('h2')].map((h) => h.textContent)).not.toContain('Mangá');
+    await sortTo('added');
+    expect(columns().dataset.catalog).toBe('shelves');
+  });
+
+  it('is the paginated catalog in the list, and shelves again in the grid', async () => {
+    await mountHome();
+    await view.click(view.container.querySelector('[aria-label="Lista"]'));
+    expect(columns().dataset.catalog).toBe('full');
+    expect(view.container.querySelector('.library-books').dataset.view).toBe('list');
+    await view.click(view.container.querySelector('[aria-label="Grade"]'));
+    expect(columns().dataset.catalog).toBe('shelves');
+  });
+
+  it('is the paginated catalog in another kind too, and the categories are only for all the works', async () => {
+    await mountHome();
+    expect(view.text()).toContain('Explorar por categoria');
+    await view.click(view.buttonMatching(/^Quadrinhos/));
+    expect(columns().dataset.catalog).toBe('full'); // another kind is the paginated catalog of that kind
+    expect(view.container.querySelector('#library-catalog .library-books')).not.toBeNull();
+    expect(view.text()).not.toContain('Explorar por categoria');
+    expect([...view.container.querySelectorAll('h2')].map((h) => h.textContent)).not.toContain('Mangá');
   });
 });
 

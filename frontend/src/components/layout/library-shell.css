@@ -349,6 +349,149 @@
   margin: 0;
   color: var(--color-ink-soft);
 }
+/* The top of the home: the greeting, and the three cards beside it. */
+.home-top {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 2.2fr);
+  gap: 24px;
+  align-items: center;
+}
+.home-greeting h1 {
+  font: 500 clamp(28px, 3vw, 40px)/1.2 var(--font-display);
+  letter-spacing: -0.8px;
+  margin: 8px 0 4px;
+}
+.home-greeting h1 span {
+  color: var(--color-brand);
+}
+.home-greeting-question {
+  font: italic 400 clamp(18px, 1.8vw, 24px)/1.3 var(--font-display);
+  color: var(--color-ink-soft);
+}
+.home-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.home-metrics-error {
+  grid-column: 2;
+}
+.home-activity-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  font: inherit;
+  margin: 9px 0 5px;
+}
+.home-activity-pair strong {
+  display: block;
+  font: 500 30px/1.15 var(--font-display);
+}
+.home-activity-pair small {
+  display: block;
+  font: 9px/1.5 var(--font-mono);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+/* The body: the reading and the catalog on the left, what is the person's on the right, one under the other with no hole between them
+   (the favorites grow with what the person has). It is one column when there is no room. */
+.home-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-areas:
+    'continue rail'
+    'catalog rail';
+  gap: 36px 24px;
+  align-items: start;
+}
+.home-rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+/* In the paginated catalog the catalog takes the whole width: what is the person's goes above it and below it. */
+.home-columns[data-catalog='full'] {
+  grid-template-areas:
+    'continue favorites'
+    'catalog catalog'
+    'notes notes';
+}
+.home-columns[data-catalog='full'] .home-rail {
+  display: contents;
+}
+.home-continue {
+  grid-area: continue;
+  min-width: 0;
+}
+.home-favorites {
+  grid-area: favorites;
+  min-width: 0;
+}
+.home-catalog {
+  grid-area: catalog;
+  min-width: 0;
+}
+.home-notes {
+  grid-area: notes;
+  min-width: 0;
+}
+.library-shelf {
+  min-width: 0;
+}
+/* A row of cards that goes on past the edge, with the buttons for the next ones. */
+.library-carousel {
+  position: relative;
+  min-width: 0;
+}
+.library-carousel-track {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding: 4px 3px 14px;
+  margin: 0;
+  list-style: none;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.library-carousel-item {
+  flex: 0 0 176px;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+.library-carousel--reading .library-carousel-item {
+  flex-basis: min(100%, 340px);
+}
+.library-carousel-button {
+  position: absolute;
+  top: 40%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-hairline);
+  background: var(--library-paper);
+  color: var(--color-brand);
+  box-shadow: 0 2px 8px #201c1820;
+}
+.library-carousel-button[data-side='end'] {
+  right: -8px;
+}
+.library-carousel-button[data-side='start'] {
+  left: -8px;
+  transform: rotate(180deg);
+}
+.library-carousel-button:hover {
+  background: var(--color-surface-alt);
+}
+.home-notes .library-panel blockquote p {
+  overflow-wrap: anywhere;
+}
 .library-section-heading {
   display: flex;
   align-items: baseline;
@@ -527,10 +670,48 @@
 .library-book-meta h3 {
   font: 600 17px/1.3 var(--font-display);
   margin: 4px 0;
+}
+/* A title on one line: when it is longer than its place the end is faded, and it runs along while the card is under the mouse or has the focus.
+   The card never grows. Whoever asked for less motion gets the faded end and the whole title in the tooltip. */
+.marquee {
+  display: block;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
+}
+.marquee-text {
+  display: inline-block;
+}
+.marquee.is-long {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent);
+}
+.library-book:hover .marquee.is-long,
+.library-book:focus-within .marquee.is-long,
+.library-reading-card:hover .marquee.is-long,
+.library-reading-card:focus-within .marquee.is-long {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.library-book:hover .marquee.is-long .marquee-text,
+.library-book:focus-within .marquee.is-long .marquee-text,
+.library-reading-card:hover .marquee.is-long .marquee-text,
+.library-reading-card:focus-within .marquee.is-long .marquee-text {
+  animation: marquee-run var(--marquee-seconds, 4s) linear infinite alternate;
+}
+@keyframes marquee-run {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  88%,
+  100% {
+    transform: translateX(var(--marquee-distance, 0));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee.is-long .marquee-text {
+    animation: none !important;
+  }
 }
 .library-book-meta .library-author {
   font-size: 11px;
@@ -682,6 +863,24 @@
   }
 }
 @media (max-width: 1199px) {
+  .home-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-metrics-error {
+    grid-column: 1;
+  }
+  .home-columns,
+  .home-columns[data-catalog='full'] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'continue'
+      'favorites'
+      'catalog'
+      'notes';
+  }
+  .home-columns .home-rail {
+    display: contents;
+  }
   .library-sidebar {
     width: 218px;
   }
@@ -696,6 +895,9 @@
   }
   .library-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 @media (max-width: 899px) {
@@ -748,6 +950,18 @@
   }
   .library-intro h1 {
     font-size: 30px;
+  }
+  .home-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-activity {
+    grid-column: 1 / -1;
+  }
+  .library-carousel-item {
+    flex-basis: 150px;
+  }
+  .library-carousel--reading .library-carousel-item {
+    flex-basis: 88%;
   }
   .library-stat-grid {
     gap: 8px;

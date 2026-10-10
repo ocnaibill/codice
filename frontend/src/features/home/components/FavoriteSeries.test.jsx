@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 vi.mock('../../../lib/api', () => ({ authenticatedUrl: (u) => u }));
 
 import { useGlobalStore } from '../../../store/useGlobalStore';
-import { FavoriteSeries, readingLine } from './FavoriteSeries';
+import { FavoriteSeries, readingLine, SHOWN } from './FavoriteSeries';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -91,5 +91,63 @@ describe('FavoriteSeries: the favorites of the home', () => {
     await render([], { isLoading: true });
     expect(container.textContent).not.toContain('no total');
     expect(container.querySelectorAll('.animate-pulse')).toHaveLength(2);
+  });
+
+  describe('when there are more than the home shows', () => {
+    const many = (n) => Array.from({ length: n }, (_, i) => ({ ...loose, workId: 100 + i, title: `Obra ${i + 1}` }));
+    const seeAll = () => [...container.querySelectorAll('button')].find((b) => b.textContent.startsWith('Ver todos'));
+    const click = async (el) => { await act(async () => { el.click(); }); };
+
+    it('shows four and a way to see all of them, with how many', async () => {
+      expect(SHOWN).toBe(4);
+      await render(many(15));
+      expect([...container.querySelectorAll('p.truncate')].map((p) => p.textContent)).toHaveLength(4);
+      expect(container.textContent).toContain('Obra 4 —');
+      expect(container.textContent).not.toContain('Obra 5 —');
+      expect(seeAll().textContent).toContain('Ver todos (15)');
+      expect(container.textContent).toContain('15 no total');
+    });
+
+    it('has no such button for four, or for fewer', async () => {
+      await render(many(4));
+      expect(seeAll()).toBeUndefined();
+      await render(many(1));
+      expect(seeAll()).toBeUndefined();
+      await render(many(5));
+      expect(seeAll()).toBeDefined();
+    });
+
+    it('lists all of them in a window, with a way out', async () => {
+      await render(many(15));
+      await click(seeAll());
+      const dialog = document.body.querySelector('[role="dialog"]');
+      expect(dialog.getAttribute('aria-label')).toBe('Todos os favoritos');
+      expect(dialog.textContent).toContain('15 no total');
+      expect([...dialog.querySelectorAll('p.truncate')]).toHaveLength(15);
+      expect(dialog.textContent).toContain('Obra 15 —');
+      await click(dialog.querySelector('[aria-label="Fechar"]'));
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    });
+
+    it('opens a work from the window and closes it, and a collection too', async () => {
+      await render([collection, ...many(6)]);
+      await click(seeAll());
+      const dialog = document.body.querySelector('[role="dialog"]');
+      const row = [...dialog.querySelectorAll('button')].find((b) => b.textContent.includes('Obra 6'));
+      await click(row);
+      expect(useGlobalStore.getState().sheetWorkId).toBe(105);
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+      await click(seeAll());
+      const again = [...document.body.querySelector('[role="dialog"]').querySelectorAll('button')].find((b) => b.textContent.includes('Harry Potter'));
+      await click(again);
+      expect(useGlobalStore.getState().collectionSheetId).toBe(5);
+    });
+
+    it('closes the window with Escape', async () => {
+      await render(many(6));
+      await click(seeAll());
+      await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    });
   });
 });
