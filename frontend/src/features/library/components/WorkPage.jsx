@@ -19,7 +19,7 @@ import { isStaff, useMe } from '../../auth/api/useMe';
 import { JoinVersionsDialog } from '../../reader/components/JoinVersionsDialog';
 import { useCandidates } from '../../reader/api/useCandidates';
 import { completionText, formatSize, languageName, whereYouAre } from '../../reader/files';
-import { placeLabel } from '../../reader/placeInWords';
+import { placeLabel, remainingText } from '../../reader/placeInWords';
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { LibraryIcon } from '../../../components/ui/LibraryIcon';
 import { ProgressBar } from '../../../components/ui/ProgressBar';
@@ -430,6 +430,9 @@ export function WorkPage() {
                       {last.completed ? 'Concluído' : `${Math.round(last.percentComplete || 0)}% lido`}
                       {resumeAt ? ` · ${resumeAt}` : ''}
                     </p>
+                    {!last.completed && remainingText(last.remainingSeconds) && (
+                      <p className="font-mono text-[11px] text-ink-faint">{remainingText(last.remainingSeconds)}</p>
+                    )}
                   </div>
                 )}
               </div>

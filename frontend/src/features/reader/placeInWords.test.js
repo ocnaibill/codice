@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chapterAt, epubChapterEntries, epubUnit, pageUnit, placeLabel, whereExtras } from './placeInWords';
+import { chapterAt, epubChapterEntries, epubUnit, pageUnit, placeLabel, remainingText, whereExtras } from './placeInWords';
 
 describe('chapterAt', () => {
   const entries = [
@@ -137,5 +137,24 @@ describe('placeLabel', () => {
 
   it('does not say a place that is past the end', () => {
     expect(placeLabel('pdf', { unitIndex: 400, unitTotal: 310 }, '42')).toBe('Página 42');
+  });
+});
+
+describe('remainingText', () => {
+  it('says minutes under an hour, and hours with the minutes under ten', () => {
+    expect(remainingText(20)).toBe('~1 min restantes');
+    expect(remainingText(45 * 60)).toBe('~45 min restantes');
+    expect(remainingText(60 * 60)).toBe('~1 h restantes');
+    expect(remainingText(2 * 3600 + 45 * 60)).toBe('~2 h 45 min restantes');
+    expect(remainingText(9 * 3600 + 59 * 60)).toBe('~9 h 59 min restantes');
+  });
+
+  it('leaves the minutes out from ten hours on', () => {
+    expect(remainingText(10 * 3600 + 20 * 60)).toBe('~10 h restantes');
+    expect(remainingText(32400 + 3 * 3600)).toBe('~12 h restantes');
+  });
+
+  it('says nothing for what is not an estimate', () => {
+    for (const v of [0, -5, undefined, null, NaN, 'x']) expect(remainingText(v)).toBeNull();
   });
 });

@@ -856,3 +856,45 @@ func TestFileProgress_RefusesAPlaceInWordsThatIsNotOne(t *testing.T) {
 		t.Errorf("a refused save stores nothing: %+v", st)
 	}
 }
+
+func TestDetail_SaysHowLongIsLeftOnlyOfTheCallersOwnReadingAndOnlyWhenItIsWorthSaying(t *testing.T) {
+	s := newCatalogStack(t)
+	work, epub, _ := s.bookWithTwoFiles()
+	remaining := func(a actor) int {
+		t.Helper()
+		w, code := s.detail(a, work)
+		if code != 200 {
+			t.Fatalf("%d", code)
+		}
+		if w.Continue == nil {
+			return -1
+		}
+		return w.Continue.RemainingSeconds
+	}
+	s.progress(ana, "PUT", epub, `{"locator":{"type":"epub","href":"c1.xhtml"},"percent":25}`)
+	if got := remaining(ana); got != 0 {
+		t.Errorf("no reading time yet: %d", got)
+	}
+	// An hour of reading got them a quarter of the way: three hours left.
+	s.exec(`UPDATE reading_progress SET reading_seconds = 3600 WHERE user_id = $1 AND file_id = $2`, idAna, epub)
+	if got := remaining(ana); got != 10800 {
+		t.Errorf("three hours: %d", got)
+	}
+	// It is the person's own pace.
+	if got := remaining(bob); got != -1 {
+		t.Errorf("bob has read nothing: %d", got)
+	}
+	s.progress(bob, "PUT", epub, `{"locator":{"type":"epub","href":"c1.xhtml"},"percent":50}`)
+	s.exec(`UPDATE reading_progress SET reading_seconds = 1200 WHERE user_id = $1 AND file_id = $2`, idBob, epub)
+	if got := remaining(bob); got != 1200 {
+		t.Errorf("bob's pace is his: %d", got)
+	}
+	if got := remaining(ana); got != 10800 {
+		t.Errorf("and ana's is hers: %d", got)
+	}
+	// Finished: nothing is left.
+	s.progress(ana, "PUT", epub, `{"locator":{"type":"epub","href":"c9.xhtml"},"percent":100,"completed":true}`)
+	if got := remaining(ana); got != 0 {
+		t.Errorf("finished: %d", got)
+	}
+}
