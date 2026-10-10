@@ -29,6 +29,10 @@ let asked;
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 const click = async (el) => { await act(async () => { el.click(); }); await flush(); };
 const button = (text) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
+const setValue = (el, value) => act(async () => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, value);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+});
 const chip = (label) => [...container.querySelectorAll('[aria-label="Função na obra"] button')].find((b) => b.textContent.startsWith(label));
 
 async function open({ role = 'reader', notes = { data: [], total: 0 }, data = person(), works = { data: [work(1, 'Duna'), work(2, 'Messias')], total: 2, totalPages: 1 }, id = 9 } = {}) {
@@ -242,6 +246,71 @@ describe('PersonPage: the page of a person (#186)', () => {
     await click(section.querySelector('li button'));
     expect(useGlobalStore.getState()).toMatchObject({ activeBookId: 1, activeFileId: 10 });
     expect(useGlobalStore.getState().seek).toMatchObject({ locator: { type: 'epub', href: 'c1.xhtml' }, context: { kind: 'note' } });
+  });
+
+  describe('the filter, the formats and the order', () => {
+    const w = (id, title, format, extra = {}) => ({ ...work(id, title), format, ...extra });
+    const list = { data: [w(1, 'Duna', 'epub', { originalYear: 1965 }), w(2, 'Messias de Duna', 'epub', { originalYear: 1969 }), w(3, 'O Cérebro Verde', 'pdf', { originalYear: 1966 }), w(4, 'Audio Dune', 'm4b'), w(5, 'Sem ano', 'epub'), w(6, 'Outro Pdf', 'pdf')], total: 6, totalPages: 1 };
+    const titles = () => [...container.querySelectorAll('.library-book')].map((b) => b.textContent);
+    const box = () => container.querySelector('input[type="search"]');
+
+    it('filters the works by what is typed, in the title, without caring for case and accents', async () => {
+      await open({ works: list });
+      expect(titles()).toHaveLength(6);
+      await setValue(box(), 'CEREBRO');
+      expect(titles()).toHaveLength(1);
+      expect(titles()[0]).toContain('Cérebro');
+      await setValue(box(), 'xyz');
+      expect(container.textContent).toContain('Nenhuma obra desta pessoa tem isso.');
+    });
+
+    it('offers the formats the works have, with how many, and filters by one and back', async () => {
+      await open({ works: list });
+      const chips = [...container.querySelectorAll('[aria-label="Formato"] button')].map((b) => b.textContent.replace(/\s+/g, ' ').trim());
+      expect(chips).toEqual(['Todos', 'EPUB (3)', 'PDF (2)', 'M4B (1)']); // the most first
+      await click(button('EPUB (3)'));
+      expect(titles()).toHaveLength(3);
+      expect(button('EPUB (3)').getAttribute('aria-pressed')).toBe('true');
+      await click(button('EPUB (3)')); // again, back to all
+      expect(titles()).toHaveLength(6);
+      await click(button('PDF (2)'));
+      await click(button('Todos'));
+      expect(titles()).toHaveLength(6);
+    });
+
+    it('puts the works in chronological order, those nobody dated last', async () => {
+      await open({ works: list });
+      await act(async () => {
+        const select = container.querySelector('select');
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, 'year');
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(container.querySelector('.library-section-heading h2').textContent).toBe('Em ordem cronológica');
+      const order = titles().map((t) => ['Cérebro', 'Messias', 'Audio', 'Sem ano', 'Outro', 'Duna'].find((n) => t.includes(n)));
+      expect(order).toEqual(['Duna', 'Cérebro', 'Messias', 'Audio', 'Outro', 'Sem ano']);
+    });
+
+    it('has no filter for a person with one work, and none of the formats when there is one format', async () => {
+      await open({ works: { data: [w(1, 'Duna', 'epub')], total: 1, totalPages: 1 } });
+      expect(container.querySelector('[aria-label="Filtrar as obras"]')).toBeNull();
+      act(() => root.unmount());
+      root = createRoot(container);
+      await open({ works: { data: [w(1, 'Duna', 'epub'), w(2, 'Messias', 'epub')], total: 2, totalPages: 1 } });
+      expect(container.querySelector('[aria-label="Filtrar as obras"]')).toBeTruthy();
+      expect(container.querySelector('[aria-label="Formato"]')).toBeNull();
+    });
+
+    it('starts again for another person', async () => {
+      await open({ works: list });
+      await setValue(box(), 'duna');
+      await click(button('EPUB (3)'));
+      api.get.mockImplementation(async (url) => (url === '/people/10' ? { data: person({ id: 10, displayName: 'Outra' }) } : url === '/auth/me' ? { data: { role: 'reader' } } : url === '/notes' ? { data: { data: [], total: 0 } } : { data: list }));
+      await act(async () => { useGlobalStore.setState({ personSheetId: 10 }); });
+      await flush();
+      await flush();
+      expect(box().value).toBe('');
+      expect(titles()).toHaveLength(6);
+    });
   });
 
   it('has no marginalia when the person kept none on the works', async () => {

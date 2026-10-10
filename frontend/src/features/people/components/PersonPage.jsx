@@ -64,6 +64,24 @@ function CorrectNameButton() {
   );
 }
 
+/** The works of the page that match what was typed (in the title or the author) and the format chosen (its primary file's). */
+export function filterWorks(works, { text = '', format = '' } = {}) {
+  const wanted = keyOf(text);
+  return works.filter((work) => {
+    if (format && String(work.format || '').toLowerCase() !== format) return false;
+    if (wanted && !keyOf(`${work.title} ${work.author || ''}`).includes(wanted)) return false;
+    return true;
+  });
+}
+
+/** In chronological order: by the year the work was first published, those nobody dated last, by title. */
+export function byYear(works) {
+  return [...works].sort(
+    (a, b) =>
+      (a.originalYear ?? Infinity) - (b.originalYear ?? Infinity) || String(a.title).localeCompare(String(b.title), 'pt')
+  );
+}
+
 function Stat({ label, value }) {
   return (
     <div className="library-stat">
@@ -88,6 +106,9 @@ export function PersonPage() {
   const pageRef = React.useRef(null);
   const [chosen, setChosen] = React.useState(null);
   const [page, setPage] = React.useState(1);
+  const [text, setText] = React.useState('');
+  const [format, setFormat] = React.useState('');
+  const [order, setOrder] = React.useState('series'); // 'series' (a shelf for each) or 'year' (one, in chronological order)
   const { data: person, isLoading, isError, error, refetch, isRefetching } = usePerson(id);
   const notes = usePersonHighlights(id).data?.data;
 
@@ -95,6 +116,9 @@ export function PersonPage() {
   React.useEffect(() => {
     setChosen(null);
     setPage(1);
+    setText('');
+    setFormat('');
+    setOrder('series');
   }, [id]);
 
   const roles = person?.roles ?? [];
@@ -115,7 +139,14 @@ export function PersonPage() {
     setChosen(key);
     setPage(1);
   };
-  const { series, loose } = shelvesOf(works.data?.data ?? []);
+  const loaded = works.data?.data ?? [];
+  const formats = [...loaded.reduce((m, w) => {
+    const f = String(w.format || '').toLowerCase();
+    return f ? m.set(f, (m.get(f) ?? 0) + 1) : m;
+  }, new Map())].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const shown = filterWorks(loaded, { text, format });
+  const filtering = text.trim() !== '' || format !== '';
+  const { series, loose } = shelvesOf(shown);
   const collectionOf = (name) => (person?.collections ?? []).find((c) => keyOf(c.name) === keyOf(name));
   const stats = person?.stats;
   const tags = person?.tags ?? [];
@@ -189,8 +220,46 @@ export function PersonPage() {
                 </div>
               )}
 
+              {loaded.length > 1 && (
+                <div className="flex flex-wrap items-center gap-3" role="search" aria-label="Filtrar as obras">
+                  <input
+                    type="search"
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="Filtrar as obras desta pessoa…"
+                    aria-label="Filtrar as obras desta pessoa"
+                    className="min-h-10 min-w-[220px] flex-1 rounded-lg border border-border-hairline bg-white px-3 text-sm text-ink outline-none focus:border-brand"
+                  />
+                  {formats.length > 1 && (
+                    <div role="group" aria-label="Formato" className="flex flex-wrap gap-2">
+                      <button type="button" aria-pressed={format === ''} onClick={() => setFormat('')} className="min-h-9 rounded-full border border-border-hairline bg-white px-3 text-xs text-ink aria-pressed:border-brand aria-pressed:bg-brand aria-pressed:text-white">
+                        Todos
+                      </button>
+                      {formats.map(([f, n]) => (
+                        <button key={f} type="button" aria-pressed={format === f} onClick={() => setFormat(format === f ? '' : f)} className="min-h-9 rounded-full border border-border-hairline bg-white px-3 text-xs text-ink aria-pressed:border-brand aria-pressed:bg-brand aria-pressed:text-white">
+                          {f.toUpperCase()} <span className="font-mono opacity-70">({n})</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2 text-xs text-ink-soft">
+                    Ordem
+                    <select value={order} onChange={(e) => setOrder(e.target.value)} className="min-h-9 rounded-lg border border-border-hairline bg-white px-2 text-sm text-ink">
+                      <option value="series">Por série</option>
+                      <option value="year">Cronológica (ano da primeira publicação)</option>
+                    </select>
+                  </label>
+                </div>
+              )}
+
               {works.isError ? (
                 <LoadError error={works.error} onRetry={works.refetch} retrying={works.isRefetching}>Não foi possível carregar as obras.</LoadError>
+              ) : filtering && shown.length === 0 && !works.isLoading ? (
+                <p className="rounded-lg border border-dashed border-surface-alt bg-surface/50 px-4 py-8 text-center text-sm text-ink-faint">
+                  Nenhuma obra desta pessoa tem isso.
+                </p>
+              ) : order === 'year' ? (
+                <Shelf headingId="person-chronological" title="Em ordem cronológica" total={shown.length} items={byYear(shown)} isLoading={works.isLoading} />
               ) : (
                 <>
                   {series.map((s, i) => {
