@@ -16,6 +16,7 @@ from providers.health import install as report_provider_health
 from rematch import MetadataRematch
 from providertest import ProviderTester
 from profilesearch import ProfileSearcher
+from coversearch import CoverSearcher
 from authority import resolve_pending
 from profiles import resolve_pending as resolve_profiles
 from maintenance import repair_descriptions
@@ -135,6 +136,8 @@ def build_runner(db, client, heartbeat=None):
     storage_path = storage_root()
     covers_dir = os.path.join(storage_path, 'covers')
     os.makedirs(covers_dir, exist_ok=True)
+    # The covers a search brought, to be seen and chosen from: a folder that expires, outside the library and its backups.
+    cover_searcher = CoverSearcher(db, provider_registry, analyzer, os.path.join(storage_path, 'cache', 'cover-search'))
 
     indexer = TextIndexer(db, storage_path)
     # A dictionary the owner asked to install: downloaded from the address in the server's catalog, imported in one
@@ -169,6 +172,10 @@ def build_runner(db, client, heartbeat=None):
             # Staff asked to look a person up on Wikidata by name: the candidates are kept for them to choose from, and nothing is linked.
             print(f"\n🔎 Profile search {job['id']} (person {job['payload'].get('person')}, attempt {job['attempts']}/{job['max_attempts']})")
             return profile_searcher.run(job['id'], job['payload'].get('person'), job['payload'].get('query'), checkpoint=checkpoint)
+        if job.get('type') == 'cover_search':
+            # Staff asked for the covers the providers have for a work: they are kept to be seen, and the work is left as it is.
+            print(f"\n🖼️ Cover search {job['id']} (work {job['payload'].get('work')}, attempt {job['attempts']}/{job['max_attempts']})")
+            return cover_searcher.run(job['id'], job['payload'].get('work'), job['payload'].get('query'), checkpoint=checkpoint)
         if job.get('type') == 'match_metadata':
             # Someone from the staff asked to search the providers again for this work: the answers come back as suggestions, and the
             # work is left as it is (it never changes the status of the work).

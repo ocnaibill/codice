@@ -20,6 +20,7 @@ import { COMIC_KINDS, UNITS } from '../../collections/text';
 import { WorkCategoriesEditor } from '../../categories/components/WorkCategoriesEditor';
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { CoverCropDialog } from './CoverCropDialog';
+import { CoverSearchDialog } from './CoverSearchDialog';
 import { useResetWorkCover, useSetWorkCover } from '../api/useWorkCover';
 
 const LOCKS = [
@@ -40,6 +41,7 @@ function CoverEditor({ work, onLock, disabled }) {
   const meta = work.metadata || {};
   const [cover, setCover] = useState({ url: work.coverUrl, manual: meta.sources?.cover === 'manual' });
   const [file, setFile] = useState(null);
+  const [searching, setSearching] = useState(false);
   const [problem, setProblem] = useState('');
   const picker = useRef(null);
   const send = useSetWorkCover(work.id);
@@ -92,6 +94,14 @@ function CoverEditor({ work, onLock, disabled }) {
           >
             Trocar capa…
           </button>
+          <button
+            type="button"
+            onClick={() => setSearching(true)}
+            disabled={busy || disabled}
+            className="min-h-10 rounded-lg border border-border-hairline bg-white px-3 py-2 text-xs text-ink hover:border-brand hover:text-brand disabled:opacity-40"
+          >
+            Buscar capas…
+          </button>
           {cover.manual && (
             <button
               type="button"
@@ -107,6 +117,13 @@ function CoverEditor({ work, onLock, disabled }) {
         {problem && <p role="alert" className="text-xs text-danger">{problem}</p>}
         {reset.isError && <p role="alert" className="text-xs text-danger">{reasonOf(reset.error, 'Não foi possível voltar à capa do arquivo.')}</p>}
       </div>
+      {searching && (
+        <CoverSearchDialog
+          work={work}
+          onClose={() => setSearching(false)}
+          onChoose={(picked) => { setSearching(false); setProblem(''); setFile(picked); }}
+        />
+      )}
       {file && (
         <CoverCropDialog
           file={file}

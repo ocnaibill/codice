@@ -406,6 +406,17 @@ class TestChoosingTheAnswer:
         assert registry(None, Fake('openlibrary', [book('Dune', None)])).search_all('Dune', 'epub') == []
         assert 'No metadata found' in capsys.readouterr().out
 
+    def test_the_search_for_covers_judges_by_the_author_and_asks_by_the_isbn(self):
+        a = Fake('openlibrary', [book('Dune', 'Frank Herbert'), book('Dune', 'Someone Else')])
+        got = registry({'openlibrary'}, a).search_all('Dune', 'epub', author='Frank Herbert', isbn='9780441172719')
+        assert a.asked[0].isbn == '9780441172719'
+        assert got[0].author == 'Frank Herbert'
+
+    def test_any_on_says_whether_some_provider_of_the_format_may_be_asked(self):
+        assert registry({'openlibrary'}, Fake('openlibrary', [])).any_on('epub') is True
+        assert registry({'google_books'}, Fake('openlibrary', [])).any_on('epub') is False
+        assert registry(None, Fake('openlibrary', [])).any_on('epub') is False
+
     def test_search_gives_the_first_answer_of_the_first_provider_that_has_one(self):
         a, b = Fake('google_books', []), Fake('openlibrary', [book('Dune', None)])
         got = registry({'google_books', 'openlibrary'}, a, b).search('Dune', 'epub')

@@ -37,8 +37,10 @@ async function open({ coverUrl = '/covers/duna.jpg', sources = {}, locks = {} } 
   api.get.mockImplementation(async (url) => {
     if (url === '/works/7') return { data: { id: 7, title: 'Duna', author: 'Frank Herbert', tags: [], format: 'epub', coverUrl, editions: [], metadata } };
     if (url === '/works/7/candidates') return { data: { data: [] } };
+    if (url === '/works/7/cover/search') return { data: { state: 'done', query: '', results: [{ file: '7_0_aaaaaaaa.jpg', provider: 'openlibrary', source: 'OpenLibrary', title: 'Duna', author: 'Frank Herbert' }] } };
     throw new Error(`unexpected GET ${url}`);
   });
+  api.post.mockResolvedValue({ data: { state: 'pending', query: '', results: [] } });
   api.put.mockResolvedValue({ data: { url: '/covers/cover_manual_7_1.jpg' } });
   api.delete.mockResolvedValue({ data: { url: '/covers/duna.jpg' } });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -149,5 +151,34 @@ describe('EditBookModal: the cover chosen by hand (DEC-173)', () => {
     expect(dialog).toBeTruthy();
     expect(dialog.textContent).toContain('2 MB');
     expect(document.body.textContent).not.toContain('Escolhida por você');
+  });
+
+  it('searches the providers for covers, cuts the one chosen and sends it like one of its own', async () => {
+    const cut = new Blob(['jpeg'], { type: 'image/jpeg' });
+    cutToBlob.mockResolvedValue(cut);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['found'], { type: 'image/jpeg' }) }));
+    await open();
+    await click(button('Buscar capas…'));
+    expect(api.post).toHaveBeenCalledWith('/works/7/cover/search', { query: '' });
+    expect(document.querySelector('[role="dialog"][aria-label="Buscar capas"]')).toBeTruthy();
+    await click(document.querySelector('li button'));
+    // The search closes and the cutting opens, on the picture that was found.
+    expect(document.querySelector('[role="dialog"][aria-label="Buscar capas"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"][aria-label="Recortar a capa"]')).toBeTruthy();
+    expect(api.put.mock.calls.some(([u]) => u === '/works/7/cover')).toBe(false);
+    await click(button('Usar esta capa'));
+    const [url, form] = api.put.mock.calls.find(([u]) => u === '/works/7/cover');
+    expect(url).toBe('/works/7/cover');
+    expect(form.get('image').size).toBe(cut.size);
+    expect(document.body.textContent).toContain('Escolhida por você');
+  });
+
+  it('puts nothing on the work when the search is closed without a choice', async () => {
+    await open();
+    await click(button('Buscar capas…'));
+    await click(button('Fechar'));
+    expect(document.querySelector('[role="dialog"][aria-label="Buscar capas"]')).toBeNull();
+    expect(api.put).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('A que veio do arquivo');
   });
 });
