@@ -88,7 +88,8 @@ func newRouter(d routerDeps) http.Handler {
 	collectionsAdmin := &handlers.CollectionsAdminHandler{DB: db}
 	personalCollections := &handlers.PersonalCollectionsHandler{DB: db}
 	workTitles := &handlers.WorkTitlesHandler{DB: db}
-	workCover := &handlers.WorkCoverHandler{DB: db, CoversDir: filepath.Join(d.StoragePath, "covers")}
+	workCover := &handlers.WorkCoverHandler{DB: db, CoversDir: filepath.Join(d.StoragePath, "covers"),
+		SearchDir: filepath.Join(d.StoragePath, "cache", "cover-search"), RedisClient: d.RedisClient}
 	categories := &handlers.CategoriesHandler{DB: db}
 	categoryRules := &handlers.CategoryRulesHandler{DB: db}
 	workContributors := &handlers.WorkContributorsHandler{DB: db}
@@ -161,6 +162,11 @@ func newRouter(d routerDeps) http.Handler {
 	staff := func(next http.Handler) http.Handler {
 		return auth(appMiddleware.RequireStaff(next))
 	}
+	// The same, for what a picture on the page loads without headers (the covers a search found): the short-lived asset token is enough to
+	// read, and the account behind it must still be staff.
+	staffAssets := func(next http.Handler) http.Handler {
+		return assets(appMiddleware.RequireStaff(next))
+	}
 	// Instance-level actions: owner only (DEC-056).
 	owner := func(next http.Handler) http.Handler {
 		return auth(appMiddleware.RequireOwner(next))
@@ -217,6 +223,9 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/works/{id}/titles", workTitles.Add)
 	r.With(staff).Put("/works/{id}/cover", workCover.Set)
 	r.With(staff).Delete("/works/{id}/cover", workCover.Reset)
+	r.With(staff).Post("/works/{id}/cover/search", workCover.RequestSearch)
+	r.With(staff).Get("/works/{id}/cover/search", workCover.SearchResult)
+	r.With(staffAssets).Get("/works/{id}/cover/candidates/{file}", workCover.Candidate)
 	r.With(staff).Put("/works/{id}/categories", categories.SetForWork)
 	r.With(auth).Get("/categories", categories.List)
 	r.With(staff).Post("/admin/categories", categories.Create)

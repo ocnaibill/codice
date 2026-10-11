@@ -87,6 +87,8 @@ describe('what the server says', () => {
 
   // Messages for programs that call the API, which no screen of the app brings about: they are not translated.
   const FOR_PROGRAMS = [
+    // a picture found by the search for covers that is no longer in the folder that expires: the window says it in its own words
+    'Cover not found',
     // the categories, which the screens send from the tree they show (a name is checked before it is sent)
     'name is required',
     'term is required',

@@ -112,10 +112,16 @@ class ProviderRegistry:
         print("   ❌ No metadata found from any provider")
         return None
 
-    def search_all(self, query: str, format: str = 'default', per_provider: int = 5) -> List[MetadataRecord]:
+    def any_on(self, format: str = 'default') -> bool:
+        """Whether some provider that answers about this format is turned on."""
+        return any(self._enabled(p.id) for p in self._providers.get(format, self._providers['default']))
+
+    def search_all(self, query: str, format: str = 'default', per_provider: int = 5, author: Optional[str] = None,
+                   isbn: Optional[str] = None) -> List[MetadataRecord]:
         """The answers of every provider that is on, up to `per_provider` of each, the closest to the text first, close or not: it is for a
-        person to choose among (the manual search), who knows better than the threshold."""
-        q = read_file_title(query, None, format)
+        person to choose among (the manual search, the covers), who knows better than the threshold. The author and the ISBN, when given, are
+        what the answers are judged by and what the providers that search by ISBN are asked."""
+        q = read_file_title(query, author, format, isbn)
         judged = self._judged(q, format, resolvers=True)
         by_provider = {}
         for match, provider, record in sorted(judged, key=lambda x: -x[0].score):

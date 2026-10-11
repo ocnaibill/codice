@@ -173,9 +173,12 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/admin/categories/starter", rules.StarterList)
 	r.Post("/admin/categories/starter", rules.CreateFromStarter)
 	r.Post("/works/{id}/titles", titles.Add)
-	workCover := &WorkCoverHandler{DB: db, CoversDir: filepath.Join(storageDir, "covers")}
+	workCover := &WorkCoverHandler{DB: db, CoversDir: filepath.Join(storageDir, "covers"), SearchDir: filepath.Join(storageDir, "cache", "cover-search")}
 	r.Put("/works/{id}/cover", workCover.Set)
 	r.Delete("/works/{id}/cover", workCover.Reset)
+	r.Post("/works/{id}/cover/search", workCover.RequestSearch)
+	r.Get("/works/{id}/cover/search", workCover.SearchResult)
+	r.Get("/works/{id}/cover/candidates/{file}", workCover.Candidate)
 	r.Delete("/works/{id}/titles/{titleId}", titles.Remove)
 	r.Patch("/works/{id}/editions/{editionId}", titles.EditEdition)
 	contributors := &WorkContributorsHandler{DB: db}

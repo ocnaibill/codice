@@ -107,6 +107,9 @@ var staffRoutes = []route{
 	{"POST", "/works/1/titles"},
 	{"PUT", "/works/1/cover"},
 	{"DELETE", "/works/1/cover"},
+	{"POST", "/works/1/cover/search"},
+	{"GET", "/works/1/cover/search"},
+	{"GET", "/works/1/cover/candidates/1_0_aaaaaaaa.jpg"},
 	{"PUT", "/works/1/categories"},
 	{"POST", "/admin/categories"},
 	{"PUT", "/admin/categories/1"},
@@ -350,6 +353,23 @@ func TestResourceTokens_OnlyOpenAssetRoutes(t *testing.T) {
 	// Unknown scopes are not minted.
 	if rec := do(h, "POST", "/auth/resource-token", session, `{"scope":"everything"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("unknown scope: got %d, want 400", rec.Code)
+	}
+}
+
+// The covers a search of the providers found are for staff only, also when the picture is loaded with the asset token of the page.
+func TestResourceTokens_TheCoversOfASearchAreForStaffEvenWithAnAssetToken(t *testing.T) {
+	h := testRouter(t)
+	const path = "/works/1/cover/candidates/none.jpg"
+	reader := mintResourceToken(t, h, tokenFor(t, "reader"), "assets")
+	if rec := do(h, "GET", path+"?rt="+reader, "", ""); rec.Code != http.StatusForbidden {
+		t.Errorf("a reader's asset token: got %d, want 403", rec.Code)
+	}
+	for _, role := range []string{"admin", "owner"} {
+		rt := mintResourceToken(t, h, tokenFor(t, role), "assets")
+		// Past the authentication the handler answers that there is no such picture.
+		if rec := do(h, "GET", path+"?rt="+rt, "", ""); rec.Code != http.StatusNotFound {
+			t.Errorf("%s's asset token: got %d, want 404 from the handler", role, rec.Code)
+		}
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/ocnaibill/codice/backend/internal/audit"
+	"github.com/redis/go-redis/v9"
 )
 
 // WorkCoverHandler is how staff choose the cover of a work by hand (DEC-173) and go back to the one the file has. The cropping is done by the
@@ -25,6 +26,10 @@ import (
 type WorkCoverHandler struct {
 	DB        *sql.DB
 	CoversDir string
+	// SearchDir is where the worker keeps the covers a search found (DEC-174): a folder that expires, outside the covers of the library.
+	SearchDir string
+	// RedisClient wakes the workers when a search is asked for; nil only means they find it on their next poll.
+	RedisClient *redis.Client
 }
 
 const (
