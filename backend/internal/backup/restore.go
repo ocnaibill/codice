@@ -328,11 +328,10 @@ func Restore(ctx context.Context, o RestoreOptions) (res RestoreResult, err erro
 
 	// Files first: they only add. Orphans left by a later failure are harmless.
 	tFiles := time.Now()
-	if pkg.Manifest.IncludesFiles {
-		if _, serr := os.Stat(stage); serr == nil {
-			if err := installStaged(stage, o.StorageRoot, &res); err != nil {
-				return res, err
-			}
+	// What the package carries: the files, when it was made with them, and always the covers chosen by hand.
+	if _, serr := os.Stat(stage); serr == nil {
+		if err := installStaged(stage, o.StorageRoot, &res); err != nil {
+			return res, err
 		}
 	}
 	missing := checkFiles(o.StorageRoot, pkg.Files, o.SkipHash, &res)

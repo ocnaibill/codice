@@ -88,6 +88,7 @@ func newRouter(d routerDeps) http.Handler {
 	collectionsAdmin := &handlers.CollectionsAdminHandler{DB: db}
 	personalCollections := &handlers.PersonalCollectionsHandler{DB: db}
 	workTitles := &handlers.WorkTitlesHandler{DB: db}
+	workCover := &handlers.WorkCoverHandler{DB: db, CoversDir: filepath.Join(d.StoragePath, "covers")}
 	categories := &handlers.CategoriesHandler{DB: db}
 	categoryRules := &handlers.CategoryRulesHandler{DB: db}
 	workContributors := &handlers.WorkContributorsHandler{DB: db}
@@ -214,6 +215,8 @@ func newRouter(d routerDeps) http.Handler {
 	// Catalog administration
 	r.With(staff).Put("/works/{id}", libHandler.UpdateWork)
 	r.With(staff).Post("/works/{id}/titles", workTitles.Add)
+	r.With(staff).Put("/works/{id}/cover", workCover.Set)
+	r.With(staff).Delete("/works/{id}/cover", workCover.Reset)
 	r.With(staff).Put("/works/{id}/categories", categories.SetForWork)
 	r.With(auth).Get("/categories", categories.List)
 	r.With(staff).Post("/admin/categories", categories.Create)

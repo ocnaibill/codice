@@ -18,6 +18,9 @@ import { useAddContributor, useOrderContributors, useRemoveContributor } from '.
 import { peopleOf, ROLES } from '../../reader/credits';
 import { COMIC_KINDS, UNITS } from '../../collections/text';
 import { WorkCategoriesEditor } from '../../categories/components/WorkCategoriesEditor';
+import { WorkCover } from '../../../components/ui/WorkCover';
+import { CoverCropDialog } from './CoverCropDialog';
+import { useResetWorkCover, useSetWorkCover } from '../api/useWorkCover';
 
 const LOCKS = [
   ['title', 'Título'], ['author', 'Autor'], ['series', 'Série'], ['cover', 'Capa'], ['isbn', 'ISBN'],
@@ -25,6 +28,97 @@ const LOCKS = [
 ];
 
 const inputClass = 'w-full rounded-lg border border-border-hairline bg-white px-3 py-2 text-sm text-ink outline-none focus:border-brand disabled:opacity-50';
+
+const MAX_PICTURE_BYTES = 20 * 1024 * 1024;
+
+/**
+ * The cover of the work, chosen by hand (DEC-173): a picture from the person's own computer, cut to 2:3 in the page. It is saved at once
+ * (not with the form) and locks the cover against the extraction; going back returns the cover the file has. `onLock` tells the form,
+ * whose lock for the cover would otherwise be sent back as it was when the form opened.
+ */
+function CoverEditor({ work, onLock, disabled }) {
+  const meta = work.metadata || {};
+  const [cover, setCover] = useState({ url: work.coverUrl, manual: meta.sources?.cover === 'manual' });
+  const [file, setFile] = useState(null);
+  const [problem, setProblem] = useState('');
+  const picker = useRef(null);
+  const send = useSetWorkCover(work.id);
+  const reset = useResetWorkCover(work.id);
+
+  const choose = (event) => {
+    const picked = event.target.files?.[0];
+    event.target.value = '';
+    if (!picked) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(picked.type)) {
+      setProblem('Escolha uma imagem JPEG, PNG ou WebP.');
+      return;
+    }
+    if (picked.size > MAX_PICTURE_BYTES) {
+      setProblem('A imagem tem mais de 20 MB.');
+      return;
+    }
+    setProblem('');
+    setFile(picked);
+  };
+  const confirm = (blob) => send.mutate(blob, {
+    onSuccess: (data) => {
+      setCover({ url: data.url, manual: true });
+      onLock(true);
+      setFile(null);
+    },
+  });
+  const back = () => reset.mutate(undefined, {
+    onSuccess: (data) => {
+      setCover({ url: data.url, manual: false });
+      onLock(false);
+    },
+  });
+  const busy = send.isPending || reset.isPending;
+
+  return (
+    <div className="flex items-start gap-4">
+      <div className="w-24 shrink-0 overflow-hidden rounded-md bg-surface-alt ring-1 ring-border-hairline" style={{ aspectRatio: '2 / 3' }}>
+        <WorkCover item={{ ...work, coverUrl: cover.url }} className="h-full w-full object-cover" />
+      </div>
+      <div className="flex min-w-0 flex-col items-start gap-2">
+        <div className="text-xs font-medium text-ink-soft">Capa</div>
+        <p className="text-xs text-ink-soft">{cover.manual ? 'Escolhida por você.' : 'A que veio do arquivo ou dos provedores.'}</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => picker.current?.click()}
+            disabled={busy || disabled}
+            className="min-h-10 rounded-lg border border-border-hairline bg-white px-3 py-2 text-xs text-ink hover:border-brand hover:text-brand disabled:opacity-40"
+          >
+            Trocar capa…
+          </button>
+          {cover.manual && (
+            <button
+              type="button"
+              onClick={back}
+              disabled={busy || disabled}
+              className="min-h-10 rounded-lg px-3 py-2 text-xs text-ink-soft hover:text-brand disabled:opacity-40"
+            >
+              {reset.isPending ? 'Voltando…' : 'Voltar à capa do arquivo'}
+            </button>
+          )}
+        </div>
+        <input ref={picker} type="file" accept="image/jpeg,image/png,image/webp" onChange={choose} className="hidden" aria-label="Imagem da capa" tabIndex={-1} />
+        {problem && <p role="alert" className="text-xs text-danger">{problem}</p>}
+        {reset.isError && <p role="alert" className="text-xs text-danger">{reasonOf(reset.error, 'Não foi possível voltar à capa do arquivo.')}</p>}
+      </div>
+      {file && (
+        <CoverCropDialog
+          file={file}
+          busy={send.isPending}
+          error={send.isError ? reasonOf(send.error, 'Não foi possível salvar a capa.') : ''}
+          onConfirm={confirm}
+          onCancel={() => { send.reset(); setFile(null); }}
+        />
+      )}
+    </div>
+  );
+}
 
 function Field({ label, children }) {
   return (
@@ -135,6 +229,7 @@ function EditForm({ work, onClose }) {
       <p className="text-sm text-ink-soft">
         Corrija à mão o que o arquivo e os provedores não acertaram. O que você salva fica travado contra a extração automática.
       </p>
+      <CoverEditor work={work} disabled={busy} onLock={(on) => setLocks((prev) => ({ ...prev, cover: on }))} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Título">
           <input className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} required disabled={busy} />

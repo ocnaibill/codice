@@ -1,7 +1,7 @@
 """Tests for the analyzer's database writes, using a fake database that models a
 work's current values, locks and field provenance."""
 import json
-from analyzer import Analyzer, UPSERT_PRIMARY_EDITION_COVER, clean_tag, MAX_TAG
+from analyzer import Analyzer, UPSERT_PRIMARY_EDITION_COVER, REMEMBER_AUTO_COVER, clean_tag, MAX_TAG
 
 VALUE_NAMES = ['title', 'author', 'series', 'series_index', 'isbn', 'language', 'publisher',
                'publication_date', 'description', 'original_year']
@@ -139,12 +139,32 @@ class TestCover:
         writes = db.matching("INSERT INTO editions")
         assert len(writes) == 1
         assert writes[0][0] == " ".join(UPSERT_PRIMARY_EDITION_COVER.split())
-        assert writes[0][1] == (7, "Duna", "/covers/duna.jpg")
+        # The cover of the file is also kept as such, for going back to it.
+        assert writes[0][1] == (7, "Duna", "/covers/duna.jpg", "/covers/duna.jpg")
 
-    def test_a_locked_cover_is_left_alone(self):
+    def test_a_locked_cover_is_not_replaced_but_is_remembered(self):
         db = FakeDB(locks={'cover': True})
         Analyzer(db).save_metadata(7, {"title": "Duna", "cover_path": "/covers/duna.jpg"})
         assert db.matching("INSERT INTO editions") == []
+        (write,) = db.matching("UPDATE editions SET auto_cover_url")
+        assert write == (" ".join(REMEMBER_AUTO_COVER.split()), ("/covers/duna.jpg", 7))
+
+    def test_a_cover_from_a_provider_also_respects_the_lock(self):
+        class Locked(FakeDB):
+            def fetchone(self, query, params=()):
+                if "SELECT cover_lock" in query:
+                    return (True,)
+                return super().fetchone(query, params)
+
+        db = Locked()
+        Analyzer(db).save_cover(7, "/covers/provider.jpg", "Duna")
+        assert db.matching("INSERT INTO editions") == []
+        assert len(db.matching("UPDATE editions SET auto_cover_url")) == 1
+
+    def test_a_cover_from_a_provider_is_stored_when_the_cover_is_free(self):
+        db = FakeDB()
+        Analyzer(db).save_cover(7, "/covers/provider.jpg", "Duna")
+        assert len(db.matching("INSERT INTO editions")) == 1
 
 
 def candidates(db):

@@ -569,6 +569,33 @@ func TestRoundTrip_RestoresNotesFilesAndCoversIntoACleanInstance(t *testing.T) {
 	}
 }
 
+func TestRoundTrip_ACoverChosenByHandTravelsEvenWithoutTheFilesOfTheLibrary(t *testing.T) {
+	s := newSource(t)
+	manual := "cover_manual_7_1700000000000000000.jpg"
+	s.must(os.WriteFile(filepath.Join(s.storage, "covers", manual), []byte("jpeg escolhido"), 0o644))
+	pkg, res := s.backup(false, "")
+	if res.Manifest.IncludesFiles || res.Manifest.Files.Included != 0 || len(res.Warnings) != 0 {
+		t.Fatalf("result = %+v: the package says nothing it should not", res)
+	}
+
+	tg := newTarget(t, s.dsn, true)
+	out, err := tg.restore(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.FilesRestored != 1 {
+		t.Errorf("restored = %d, want only the cover chosen by hand", out.FilesRestored)
+	}
+	got, err := os.ReadFile(filepath.Join(tg.storage, "covers", manual))
+	if err != nil || string(got) != "jpeg escolhido" {
+		t.Errorf("the cover chosen by hand: %q, %v", got, err)
+	}
+	// The covers the worker makes are not in a package without files: they are made again from the files.
+	if _, err := os.Stat(filepath.Join(tg.storage, "covers", "c1.jpg")); err == nil {
+		t.Error("a cover the worker made was carried")
+	}
+}
+
 func TestRestore_WithoutTheFilesTellsWhichAreMissingAndMarksThem(t *testing.T) {
 	s := newSource(t)
 	pkg, _ := s.backup(false, "")

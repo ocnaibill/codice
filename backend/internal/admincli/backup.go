@@ -117,7 +117,7 @@ func backupCmd(ctx context.Context, db *sql.DB, env Env, args []string, out io.W
 	if m.IncludesFiles {
 		fmt.Fprintf(msg, ", %d included in the package, %d missing on disk", m.Files.Included, m.Files.Missing)
 	} else {
-		fmt.Fprint(msg, "; the files themselves are NOT in the package (use --include-files, or back them up with your own tool)")
+		fmt.Fprint(msg, "; the files themselves are NOT in the package (use --include-files, or back them up with your own tool); the covers chosen by hand are, as they exist nowhere else")
 	}
 	fmt.Fprintln(msg)
 	if res.Encrypted {
