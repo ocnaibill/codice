@@ -17,10 +17,15 @@ from people import library_roles, name_key, parse_name
 # work" index (migration 00002); `ON CONFLICT (work_id)` alone no longer matches
 # any constraint and would fail.
 UPSERT_PRIMARY_EDITION_COVER = """
-    INSERT INTO editions (work_id, title, cover_url)
-    VALUES (%s, %s, %s)
+    INSERT INTO editions (work_id, title, cover_url, auto_cover_url)
+    VALUES (%s, %s, %s, %s)
     ON CONFLICT (work_id) WHERE is_primary
-    DO UPDATE SET cover_url = EXCLUDED.cover_url
+    DO UPDATE SET cover_url = EXCLUDED.cover_url, auto_cover_url = EXCLUDED.auto_cover_url
+"""
+
+# With the cover locked (a person chose it, DEC-173) what is found is only remembered: it is what "back to the cover of the file" returns to.
+REMEMBER_AUTO_COVER = """
+    UPDATE editions SET auto_cover_url = %s WHERE work_id = %s AND is_primary
 """
 
 
@@ -302,9 +307,9 @@ class Analyzer:
                     (work_id, author_id[0]))
                 self._record_source(work_id, 'author', 'file')
 
-        # Cover (with lock check), stored on the primary edition.
-        if metadata.get('cover_path') and not state['locks'].get('cover'):
-            self.save_cover(work_id, metadata['cover_path'], metadata.get('title', ''))
+        # Cover (a locked one is only remembered), stored on the primary edition.
+        if metadata.get('cover_path'):
+            self.save_cover(work_id, metadata['cover_path'], metadata.get('title', ''), locked=bool(state['locks'].get('cover')))
 
         # Tags found in the file (Many-to-Many)
         for tag_name in dict.fromkeys(clean_tag(t) for t in metadata.get('tags', []) or []):
@@ -321,9 +326,16 @@ class Analyzer:
                     (work_id, tag_row[0])
                 )
 
-    def save_cover(self, work_id: int, cover_path: str, title: str = ''):
-        """Store a cover on the work's primary edition."""
-        self.db.execute(UPSERT_PRIMARY_EDITION_COVER, (work_id, title, cover_path))
+    def save_cover(self, work_id: int, cover_path: str, title: str = '', locked: Optional[bool] = None):
+        """Store a cover on the work's primary edition. When the cover is locked it is not shown in place of the one a person
+        chose: it is only kept as the cover of the file."""
+        if locked is None:
+            row = self.db.fetchone("SELECT cover_lock FROM works WHERE id = %s", (work_id,))
+            locked = bool(row and row[0])
+        if locked:
+            self.db.execute(REMEMBER_AUTO_COVER, (cover_path, work_id))
+            return
+        self.db.execute(UPSERT_PRIMARY_EDITION_COVER, (work_id, title, cover_path, cover_path))
 
     # Fields an external provider may propose, and how each is compared.
     CANDIDATE_FIELDS = ['title', 'author', 'series', 'series_index', 'isbn', 'language',

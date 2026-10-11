@@ -231,6 +231,9 @@ func Create(ctx context.Context, o CreateOptions) (Result, error) {
 		if err := includeFiles(o, entries, &sum, &res, addStream); err != nil {
 			return res, err
 		}
+	} else if err := includeCovers(filepath.Clean(o.StorageRoot), isManualCover, addStream); err != nil {
+		// The files of the library are the owner's to back up; a cover chosen by hand is not anywhere else.
+		return res, err
 	}
 
 	m := Manifest{
@@ -307,6 +310,11 @@ func includeFiles(o CreateOptions, entries []FileEntry, sum *FilesSummary, res *
 	}
 	// Covers are derived from the files, but small and quick to include: without them a
 	// restored library shows placeholders until every file is analysed again.
+	return includeCovers(root, nil, add)
+}
+
+// includeCovers copies the files of the covers directory into the package; only, when given, says which of them (by name).
+func includeCovers(root string, only func(name string) bool, add func(string, int64, io.Reader) error) error {
 	covers := filepath.Join(root, "covers")
 	return filepath.WalkDir(covers, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -315,7 +323,7 @@ func includeFiles(o CreateOptions, entries []FileEntry, sum *FilesSummary, res *
 			}
 			return err
 		}
-		if d.IsDir() || !d.Type().IsRegular() {
+		if d.IsDir() || !d.Type().IsRegular() || (only != nil && !only(d.Name())) {
 			return nil
 		}
 		rel, err := filepath.Rel(root, p)
@@ -331,12 +339,16 @@ func includeFiles(o CreateOptions, entries []FileEntry, sum *FilesSummary, res *
 			if errors.Is(err, fs.ErrNotExist) {
 				return nil
 			}
-			return fmt.Errorf("cover %s cannot be read (%w): run the backup as the user that owns the library, or leave out --include-files", rel, unwrapPath(err))
+			return fmt.Errorf("cover %s cannot be read (%w): run the backup as the user that owns the library", rel, unwrapPath(err))
 		}
 		defer f.Close()
 		return add(MemberStorage+path.Clean(filepath.ToSlash(rel)), info.Size(), f)
 	})
 }
+
+// isManualCover says whether a file of the covers directory is a cover that a person chose (DEC-173): unlike the others, nothing can make it
+// again, so it goes in every package, with or without the files of the library.
+func isManualCover(name string) bool { return strings.HasPrefix(name, "cover_manual_") }
 
 // unwrapPath drops the path from an *fs.PathError, which the message already names.
 func unwrapPath(err error) error {

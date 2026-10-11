@@ -105,6 +105,8 @@ var staffRoutes = []route{
 	{"POST", "/works/bulk-import"},
 	{"PUT", "/works/1"},
 	{"POST", "/works/1/titles"},
+	{"PUT", "/works/1/cover"},
+	{"DELETE", "/works/1/cover"},
 	{"PUT", "/works/1/categories"},
 	{"POST", "/admin/categories"},
 	{"PUT", "/admin/categories/1"},
