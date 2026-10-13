@@ -12,6 +12,7 @@ type modelsState struct {
 	Models   []ModelEntry      `json:"models"`
 	ComicOcr struct {
 		OtherModelPages int `json:"otherModelPages"`
+		FailedPages     int `json:"failedPages"`
 	} `json:"comicOcr"`
 }
 

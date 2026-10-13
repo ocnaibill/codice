@@ -103,13 +103,13 @@ describe('IA local: reading again with the chosen model', () => {
   const rereadButton = () => [...view.container.querySelectorAll('button')].find((b) => b.textContent.startsWith('Reler'));
   const dialog = () => document.querySelector('[role="dialog"]');
   const dialogButton = (label) => [...dialog().querySelectorAll('button')].find((b) => b.textContent === label);
-  const withOthers = (pages, over = {}) => ({ ...modelsOf({ controls: { comicOcr: 'server' }, ...over }), comicOcr: { otherModelPages: pages } });
+  const withOthers = (pages, over = {}, failed = 0) => ({ ...modelsOf({ controls: { comicOcr: 'server' }, ...over }), comicOcr: { otherModelPages: pages, failedPages: failed } });
 
   it('offers nothing when no page was read by another model, or when no model is chosen', async () => {
     await open(withOthers(0));
     expect(rereadButton()).toBeUndefined();
     view.unmount();
-    await open({ ...modelsOf(), comicOcr: { otherModelPages: 40 } });
+    await open({ ...modelsOf(), comicOcr: { otherModelPages: 0, failedPages: 40 } });
     expect(rereadButton()).toBeUndefined();
   });
 
@@ -143,6 +143,20 @@ describe('IA local: reading again with the chosen model', () => {
   it('is not offered while the service that reads is not running', async () => {
     await open(withOthers(5, { services: { comicOcr: false } }));
     expect(rereadButton().disabled).toBe(true);
+  });
+
+  it('offers it for the pages that failed, and counts them with the ones of another model', async () => {
+    await open(withOthers(0, {}, 14));
+    expect(view.text()).toContain('14 páginas não puderam ser lidas');
+    expect(view.text()).not.toContain('com outro modelo');
+    expect(rereadButton().textContent).toBe('Reler 14 páginas com este modelo');
+    view.unmount();
+    await open(withOthers(3, {}, 1));
+    expect(view.text()).toContain('3 páginas foram lidas com outro modelo');
+    expect(view.text()).toContain('1 página não pôde ser lida');
+    expect(rereadButton().textContent).toBe('Reler 4 páginas com este modelo');
+    await view.click(rereadButton());
+    expect(dialog().textContent).toContain('4 páginas serão lidas de novo');
   });
 
   it('says what the server refused', async () => {

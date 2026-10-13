@@ -334,3 +334,114 @@ class TestWhatTheEngineFinds:
             json = {'res': {'rec_texts': ['TEXTO'], 'rec_scores': [0.9], 'dt_polys': [[[0, 0], [10, 0], [10, 5], [0, 5]]]}}
 
         assert lines_of([Item()])[0]['text'] == 'TEXTO'
+
+
+class TestOneDnn:
+    """The PP-OCRv6 models fail with oneDNN on x86-64 in Paddle 3.3.1: the engine goes on without it, for itself."""
+    ERROR = ('(Unimplemented) ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>] '
+             '(at /paddle/paddle/fluid/framework/new_executor/instruction/onednn/onednn_instruction.cc:116)')
+
+    @pytest.fixture
+    def paddle(self, monkeypatch):
+        import sys
+        import types
+
+        # numpy and Pillow are only in the image of this service: the page is a stand-in that has the size and the same operations.
+        class Pic:
+            size = (40, 60)
+
+            def convert(self, mode):
+                return self
+
+            def resize(self, size):
+                return self
+
+            def __getitem__(self, key):
+                return self
+
+            def copy(self):
+                return self
+
+        pil = types.ModuleType('PIL')
+        pil.Image = types.SimpleNamespace(open=lambda data: Pic())
+        numpy = types.ModuleType('numpy')
+        numpy.array = lambda image: image
+        monkeypatch.setitem(sys.modules, 'PIL', pil)
+        monkeypatch.setitem(sys.modules, 'numpy', numpy)
+
+        class Fake:
+            made = []
+            fail_with = None
+            fail_always = False
+
+            def __init__(self, **kw):
+                self.kw = kw
+                Fake.made.append(kw)
+
+            def predict(self, array):
+                if Fake.fail_with and (self.kw.get('enable_mkldnn') or Fake.fail_always):
+                    raise Fake.fail_with
+                return []
+
+        Fake.made = []
+        Fake.fail_with = None
+        Fake.fail_always = False
+        module = types.ModuleType('paddleocr')
+        module.PaddleOCR = Fake
+        module.__version__ = '3.7.0'
+        monkeypatch.setitem(sys.modules, 'paddleocr', module)
+        Fake.page = b'page'
+        return Fake
+
+    def engine(self, mkldnn='auto', monkeypatch=None):
+        e = comic_ocr.PaddleEngine('server', log=lambda *_: None)
+        e.load()
+        return e
+
+    def test_it_is_used_when_it_works(self, paddle):
+        e = self.engine()
+        assert e.read(paddle.page) == ([], (40, 60))
+        assert [kw['enable_mkldnn'] for kw in paddle.made] == [True]
+
+    def test_the_failure_of_that_path_loads_the_engine_without_it_and_reads_the_same_page(self, paddle):
+        paddle.fail_with = NotImplementedError(self.ERROR)
+        e = self.engine()
+        assert e.read(paddle.page) == ([], (40, 60))
+        assert [kw['enable_mkldnn'] for kw in paddle.made] == [True, False]
+        # and it does not try it again for the next pages
+        e.read(paddle.page)
+        assert len(paddle.made) == 2
+
+    def test_without_it_the_same_kind_of_error_is_not_a_reason_to_load_again(self, paddle):
+        paddle.fail_with = NotImplementedError(self.ERROR)
+        paddle.fail_always = True
+        e = self.engine()
+        with pytest.raises(NotImplementedError):
+            e.read(paddle.page)
+        assert [kw['enable_mkldnn'] for kw in paddle.made] == [True, False]
+        with pytest.raises(NotImplementedError):
+            e.read(paddle.page)
+        assert len(paddle.made) == 2
+
+    def test_another_error_is_the_error_of_the_page(self, paddle):
+        paddle.fail_with = RuntimeError('out of memory')
+        e = self.engine()
+        with pytest.raises(RuntimeError, match='out of memory'):
+            e.read(paddle.page)
+        assert len(paddle.made) == 1
+
+    def test_it_can_be_forced_off_and_forced_on(self, paddle, monkeypatch):
+        monkeypatch.setattr(comic_ocr, 'MKLDNN', 'off')
+        self.engine()
+        assert paddle.made[-1]['enable_mkldnn'] is False
+        monkeypatch.setattr(comic_ocr, 'MKLDNN', 'on')
+        paddle.fail_with = NotImplementedError(self.ERROR)
+        e = self.engine()
+        with pytest.raises(NotImplementedError):
+            e.read(paddle.page)  # forced on: the failure is the page's, not a reason to change
+        assert paddle.made[-1]['enable_mkldnn'] is True
+
+    def test_what_is_a_failure_of_that_path(self):
+        assert comic_ocr.mkldnn_failure(NotImplementedError(self.ERROR))
+        assert comic_ocr.mkldnn_failure(RuntimeError('MKLDNN primitive creation failed'))
+        assert not comic_ocr.mkldnn_failure(ValueError('page 3 is too large to be read'))
