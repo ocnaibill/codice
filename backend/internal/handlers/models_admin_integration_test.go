@@ -10,6 +10,9 @@ type modelsState struct {
 	Controls map[string]string `json:"controls"`
 	Services map[string]bool   `json:"services"`
 	Models   []ModelEntry      `json:"models"`
+	ComicOcr struct {
+		OtherModelPages int `json:"otherModelPages"`
+	} `json:"comicOcr"`
 }
 
 func (s *catalogStack) models() modelsState {

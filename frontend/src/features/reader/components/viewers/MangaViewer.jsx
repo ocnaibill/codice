@@ -13,6 +13,8 @@ import { MAX_READING_WIDTH, tapAction, swipeAction } from '../../pdfGestures';
 const PRELOAD_COUNT = 2;
 // Loading timeout per page in ms
 const PAGE_TIMEOUT = 30000;
+// How long the mark of a search hit stays on the page before it fades (a person who looks away does not find it still there).
+const MARK_MS = 8000;
 
 // How a file can say it is read (#19). The file's word is a fact; the remembered mode is the person's taste, which
 // fills in where the file says nothing.
@@ -53,9 +55,9 @@ const control =
  * The reader of a comic: a page at a time (left to right, right to left, or two together) or a strip to scroll. The
  * controls are at the bottom, where the thumb is. A tap on the left or the right of the page turns it (to the side the
  * comic is read toward), a tap in the middle hides or shows the controls, and a swipe turns it too; on a keyboard the
- * arrows do.
+ * arrows do. A search hit opens the page with the balloon the text came from marked (`highlight`, in fractions of the page).
  */
-export default function MangaViewer({ fileUrl, onProgress, initialProgress, workId, onPlaceFailed, declaredMode, seriesDirection, comicKind, immersive = false, onImmersiveChange }) {
+export default function MangaViewer({ fileUrl, onProgress, initialProgress, workId, onPlaceFailed, declaredMode, seriesDirection, comicKind, highlight = null, immersive = false, onImmersiveChange }) {
   const [pages, setPages] = useState([]);
   const [currentPage, setCurrentPage] = useState(
     initialProgress ? parseInt(initialProgress, 10) || 0 : 0
@@ -87,6 +89,14 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
   // The menu of modes: the focus goes to the one that is on, Escape closes it and the focus goes back to its button.
   useDialog(modesRef, { active: showModes, onEscape: () => setShowModes(false), trap: false, initialFocus: (menu) => menu.querySelector('[aria-checked="true"]') });
   const gesture = useRef(null);
+  // The balloon of a search hit. It is asked for once, when the comic opens (the reader opens it again for each hit), and it is
+  // taken away by the time, by the person going to another page, or by the person moving the strip.
+  const [mark, setMark] = useState(highlight);
+  const [markBox, setMarkBox] = useState(null);
+  // Counts the pages (up to the marked one) that were laid out by the page: what is before it moves it, in a strip.
+  const [laidOut, setLaidOut] = useState(0);
+  const imageRefs = useRef({});
+  const movedByPerson = useRef(false);
   // Read when the page list arrives, not reasons to ask for it again.
   const placeRef = useRef({ initialProgress, onPlaceFailed });
   placeRef.current = { initialProgress, onPlaceFailed };
@@ -204,6 +214,49 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
   }, []);
 
   const webtoon = readingDirection === 'webtoon';
+
+  // The mark goes away with time, and with a page turned (the page that was marked is no longer in view).
+  useEffect(() => {
+    if (!mark) return undefined;
+    const timer = setTimeout(() => setMark(null), MARK_MS);
+    return () => clearTimeout(timer);
+  }, [mark]);
+  const markShown = mark && (webtoon || (currentPage <= mark.index && mark.index < currentPage + shown));
+  useEffect(() => {
+    if (mark && !webtoon && !markShown && !loading) setMark(null);
+  }, [mark, webtoon, markShown, loading]);
+
+  // Where the mark is on the screen: over the image of the page, from the size it has now. It is placed again when the image
+  // loads and when the window changes, and in a strip the page is brought to the middle of the screen (until the person moves it).
+  useEffect(() => {
+    if (!mark || loading) { setMarkBox(null); return undefined; }
+    const place = () => {
+      const img = imageRefs.current[mark.index];
+      if (!img || !img.offsetWidth || !img.offsetHeight) { setMarkBox(null); return; }
+      setMarkBox({
+        left: img.offsetLeft + mark.x * img.offsetWidth,
+        top: img.offsetTop + mark.y * img.offsetHeight,
+        width: mark.w * img.offsetWidth,
+        height: mark.h * img.offsetHeight,
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [mark, loading, laidOut, readingDirection, currentPage]);
+  useEffect(() => {
+    if (!mark || !webtoon) return undefined;
+    const moved = () => { movedByPerson.current = true; };
+    const events = ['wheel', 'touchmove', 'keydown'];
+    events.forEach((name) => window.addEventListener(name, moved, { passive: true }));
+    return () => events.forEach((name) => window.removeEventListener(name, moved));
+  }, [mark, webtoon]);
+  useEffect(() => {
+    if (!mark || !webtoon || !markBox || movedByPerson.current) return;
+    const el = scroller();
+    el?.scrollTo?.({ top: Math.max(0, markBox.top + markBox.height / 2 - el.clientHeight / 2) });
+  }, [mark, webtoon, markBox]);
+
   const step = readingDirection === 'double' ? 2 : 1;
   // Forward is the way the comic is read: to a higher page, whichever side of the screen that is.
   const canForward = currentPage + step < pages.length;
@@ -354,16 +407,30 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
       src={getPageUrl(idx)}
       alt={`Página ${idx + 1}`}
       draggable={false}
+      ref={(el) => { if (el) imageRefs.current[idx] = el; else delete imageRefs.current[idx]; }}
       className={`select-none ${className}`}
       onError={(e) => {
         if (!webtoon && idx === currentPage) setPageStatus((prev) => ({ ...prev, [idx]: 'error' }));
         // Fallback to thumbnail
         e.target.src = getThumbnailUrl(idx);
       }}
-      onLoad={() => setPageStatus((prev) => ({ ...prev, [idx]: 'loaded' }))}
+      onLoad={() => {
+        setPageStatus((prev) => ({ ...prev, [idx]: 'loaded' }));
+        if (mark && idx <= mark.index) setLaidOut((n) => n + 1);
+      }}
       {...extra}
     />
   );
+
+  // The balloon of the hit, over the page. It does not take the taps: the page under it is turned and read as before.
+  const markNode = mark && markBox && markShown ? (
+    <div
+      data-region-mark
+      aria-hidden="true"
+      className="pointer-events-none absolute z-10 rounded border-2 border-brand bg-brand/15"
+      style={{ left: markBox.left, top: markBox.top, width: markBox.width, height: markBox.height }}
+    />
+  ) : null;
 
   const area = {
     'data-comic-page-area': true,
@@ -376,7 +443,7 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
   return (
     <div ref={rootRef} className={webtoon ? 'relative flex min-h-full flex-col items-center pb-6' : 'relative h-full'}>
       {webtoon ? (
-        <div {...area} className="flex w-full flex-col items-center gap-1 py-2">
+        <div {...area} className="relative flex w-full flex-col items-center gap-1 py-2">
           {pages.map((page, idx) => (
             <React.Fragment key={idx}>
               {pageImage(idx, 'h-auto w-full', {
@@ -385,9 +452,10 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
               })}
             </React.Fragment>
           ))}
+          {markNode}
         </div>
       ) : (
-        <div {...area} className="flex h-full items-center justify-center gap-1 p-2 sm:p-4">
+        <div {...area} className="relative flex h-full items-center justify-center gap-1 p-2 sm:p-4">
           {readingDirection === 'double' ? (
             <>
               {pageImage(leftPage, 'max-h-full max-w-[50%] object-contain', { fetchPriority: 'high' })}
@@ -406,7 +474,14 @@ export default function MangaViewer({ fileUrl, onProgress, initialProgress, work
           ) : (
             pageImage(currentPage, 'max-h-full max-w-full object-contain', { fetchPriority: 'high' })
           )}
+          {markNode}
         </div>
+      )}
+
+      {mark && markShown && (
+        <span role="status" className="sr-only">
+          Trecho encontrado na página {mark.index + 1}, destacado.
+        </span>
       )}
 
       {/* The controls, at the bottom. They float over the page, so that hiding them does not move it. */}

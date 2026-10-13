@@ -357,6 +357,8 @@ export const useRemoveDictionary = () => useAdminAction((id) => api.delete(`/adm
 export const useSetEmbeddings = () => useAdminAction(async (settings) => (await api.put('/admin/embeddings', settings)).data);
 /** Chooses the model that reads comics and manga, or none (owner, DEC-176). */
 export const useSetComicOcr = () => useAdminAction(async (model) => (await api.put('/admin/models/comic-ocr', { model })).data);
+/** Reads again, with the chosen model, the pages that another one read (owner, DEC-176); answers with the state of the models. */
+export const useRereadComicOcr = () => useAdminAction(async () => (await api.post('/admin/models/comic-ocr/reread')).data);
 export const useCheckLdap = () => useMutation({ mutationFn: async () => (await api.post('/admin/ldap/check')).data });
 
 /** The record of sign-ins (DEC-121), a page at a time, newest first. `filters` is { result, username, from }; each page

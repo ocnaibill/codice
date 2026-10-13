@@ -186,10 +186,18 @@ func (h *ModelsAdminHandler) state(ctx context.Context) (map[string]any, error) 
 	if semanticOn {
 		semanticChoice = semanticModel
 	}
+	// The pages read with a model that is not the one chosen: what "read again with this model" would read (DEC-176).
+	otherPages := 0
+	if comicChoice != noModel {
+		if err := h.DB.QueryRowContext(ctx, `SELECT count(*) FROM comic_ocr_pages WHERE model <> $1 AND state IN ('done', 'blank')`, comicChoice).Scan(&otherPages); err != nil {
+			return nil, err
+		}
+	}
 	return map[string]any{
 		"controls": map[string]string{"semantic": semanticChoice, "comicOcr": comicChoice},
 		"services": map[string]bool{"semantic": semantic.Fresh, "comicOcr": comic.Fresh},
 		"models":   models,
+		"comicOcr": map[string]int{"otherModelPages": otherPages},
 	}, nil
 }
 
@@ -237,5 +245,37 @@ func (h *ModelsAdminHandler) SetComicOCR(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	_ = audit.Record(r.Context(), h.DB, currentUserID(r), "models.comic_ocr", "settings", comicOCRSetting, map[string]any{"model": req.Model})
+	h.Get(w, r)
+}
+
+// RereadComicOCR answers POST /admin/models/comic-ocr/reread (owner): the pages that were read with another model are read again with the
+// one chosen. Their rows are dropped, which makes the comics unread again for the service, that queues them; the text of each file stays
+// as it was until the new reading replaces it, so the search is never left without it. A model must be chosen and its service running.
+func (h *ModelsAdminHandler) RereadComicOCR(w http.ResponseWriter, r *http.Request) {
+	choice, err := h.chosenComicOCR(r.Context())
+	if err != nil {
+		http.Error(w, "Error reading the local models", http.StatusInternalServerError)
+		return
+	}
+	if choice == noModel {
+		http.Error(w, "Escolha um modelo antes de reler as páginas.", http.StatusConflict)
+		return
+	}
+	beat, err := readServiceBeat(r.Context(), h.DB, comicOCRWorker)
+	if err != nil {
+		http.Error(w, "Error reading the local models", http.StatusInternalServerError)
+		return
+	}
+	if !beat.Fresh {
+		http.Error(w, "O serviço de OCR de quadrinhos não está em execução.", http.StatusConflict)
+		return
+	}
+	res, err := h.DB.ExecContext(r.Context(), `DELETE FROM comic_ocr_pages WHERE model <> $1 AND state IN ('done', 'blank')`, choice)
+	if err != nil {
+		http.Error(w, "Error reading the pages again", http.StatusInternalServerError)
+		return
+	}
+	pages, _ := res.RowsAffected()
+	_ = audit.Record(r.Context(), h.DB, currentUserID(r), "models.comic_ocr.reread", "settings", comicOCRSetting, map[string]any{"model": choice, "pages": pages})
 	h.Get(w, r)
 }

@@ -10,10 +10,10 @@ vi.mock('../../../lib/api', () => ({
 // What the Reader hands the comic viewer is what is checked here.
 let mounts = 0;
 vi.mock('./viewers/MangaViewer', () => ({
-  default: function MangaStub({ declaredMode, comicKind, workId, immersive, onImmersiveChange }) {
+  default: function MangaStub({ declaredMode, comicKind, workId, immersive, onImmersiveChange, highlight, initialProgress }) {
     React.useEffect(() => { mounts += 1; }, []);
     return (
-      <div data-testid="comic" data-declared={declaredMode ?? ''} data-kind={comicKind ?? ''} data-work={workId} data-immersive={String(immersive)}>
+      <div data-testid="comic" data-declared={declaredMode ?? ''} data-kind={comicKind ?? ''} data-work={workId} data-immersive={String(immersive)} data-highlight={highlight ? JSON.stringify(highlight) : ''} data-start={initialProgress ?? ''}>
         <button onClick={() => onImmersiveChange(!immersive)}>toggle</button>
       </div>
     );
@@ -87,6 +87,22 @@ describe('Reader: the comic viewer', () => {
     } finally {
       delete detail.metadata;
     }
+  });
+
+  it('is told the balloon a search hit came from, with the page it opens at, and nothing when it was not asked for', async () => {
+    const mark = () => container.querySelector('[data-testid="comic"]').dataset;
+    await render();
+    expect(mark().highlight).toBe('');
+    const region = { x: 0.1, y: 0.2, w: 0.3, h: 0.4 };
+    await act(async () => { useGlobalStore.setState({ seek: { n: 1, locator: { type: 'image', index: 5, region }, context: { kind: 'search', quote: 'olá' } } }); });
+    await flush();
+    expect(mark().start).toBe('5');
+    expect(JSON.parse(mark().highlight)).toEqual({ index: 5, ...region });
+    // A hit that has no balloon (a text read from the file's own metadata, say) opens the page and marks nothing.
+    await act(async () => { useGlobalStore.setState({ seek: { n: 2, locator: { type: 'image', index: 6 }, context: null } }); });
+    await flush();
+    expect(mark().start).toBe('6');
+    expect(mark().highlight).toBe('');
   });
 
   it('is told how the file being read says it is read', async () => {

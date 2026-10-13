@@ -309,6 +309,8 @@ class ComicOcrIndexer:
         try:
             for file_id, sha, fmt, mode, root, path in self.db.fetchall(FILES_TO_READ, (work_id,)):
                 checkpoint()
+                if self.choice() != model:
+                    break
                 outcome[file_id] = self.read_file(engine, model, file_id, sha, fmt, mode, root, path, checkpoint)
                 # The text of the file, from everything OCR has read of it so far.
                 TextIndexer(self.db, self.storage_root).run(work_id, force=True, checkpoint=checkpoint, only={file_id})
@@ -335,6 +337,10 @@ class ComicOcrIndexer:
                 if index in known:
                     continue
                 checkpoint()
+                # The owner chose another model (or none) while the job was running: what is still to read is left to the next job,
+                # that reads it with the model chosen now, so that reading again (DEC-176) is not undone by the job that was running.
+                if self.choice() != model:
+                    break
                 started = time.time()
                 try:
                     lines, (width, height) = engine.read(archive.read(index))

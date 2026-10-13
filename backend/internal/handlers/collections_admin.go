@@ -57,6 +57,10 @@ func setSeriesData(ctx context.Context, tx *sql.Tx, id int64, e collectionEdit) 
 			return err
 		}
 	}
+	// The order of the balloons of the comics of the series follows its direction (DEC-176): their text is made again from what was read.
+	if e.direction != nil {
+		return queueComicText(ctx, tx, `e.work_id IN (SELECT work_id FROM collection_works WHERE collection_id = $1)`, id)
+	}
 	return nil
 }
 

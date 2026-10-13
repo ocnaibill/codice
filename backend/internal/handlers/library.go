@@ -890,6 +890,17 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A manga is read right to left when nothing else says: changing the kind changes the order of the balloons of the work (DEC-176).
+	for _, c := range changes {
+		if c.Field == "comic_kind" {
+			if err := queueComicText(r.Context(), tx, `e.work_id = $1`, id); err != nil {
+				http.Error(w, "Error queueing the text of the comic", http.StatusInternalServerError)
+				return
+			}
+			break
+		}
+	}
+
 	// Sync Tags (delete existing relations and re-insert new ones)
 	if _, err = tx.Exec("DELETE FROM work_tags WHERE work_id = $1", id); err != nil {
 		http.Error(w, "Error resetting work tags", http.StatusInternalServerError)

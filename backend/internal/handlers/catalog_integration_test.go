@@ -157,6 +157,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Put("/admin/embeddings", embeddingsAdmin.Set)
 	r.Get("/admin/models", modelsAdmin.Get)
 	r.Put("/admin/models/comic-ocr", modelsAdmin.SetComicOCR)
+	r.Post("/admin/models/comic-ocr/reread", modelsAdmin.RereadComicOCR)
 	r.Get("/admin/services", servicesAdmin.Get)
 	r.Post("/works/bulk-import", upload.HandleBulkImport)
 	r.Get("/works", lib.GetWorks)
