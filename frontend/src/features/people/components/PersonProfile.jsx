@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, authenticatedUrl } from '../../../lib/api';
 import { serverMessage } from '../../../lib/serverMessage';
 import { isStaff, useMe } from '../../auth/api/useMe';
-import { formatProfileDate } from '../profileDates';
+import { formatProfileDate, lifeSpan } from '../profileDates';
 
 /** Hides, or shows again, the profile of a person or only the photo (staff, DEC-146). */
 function useSetProfile(personId) {
@@ -275,12 +275,71 @@ function ProfileEditor({ person, profile, onDone }) {
   );
 }
 
+/** Where the photo came from and under which license, with the link to the page of the file. */
+function PhotoCredit({ image }) {
+  return (
+    <figcaption className="mt-1 text-[11px] leading-snug text-ink-faint">
+      Foto{image.credit ? `: ${image.credit}` : ''}
+      {image.license ? ` · ${image.license}` : ''}
+      {image.pageUrl && (
+        <>
+          {' · '}
+          <a href={image.pageUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-brand">Wikimedia Commons</a>
+        </>
+      )}
+    </figcaption>
+  );
+}
+
+/** The initials of a name: the first letters of the first and the last word, "Frank Patrick Herbert" -> "FH". */
+export function initialsOf(name) {
+  const words = String(name ?? '').split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '';
+  const letter = (word) => Array.from(word)[0].toLocaleUpperCase('pt');
+  return words.length === 1 ? letter(words[0]) : letter(words[0]) + letter(words[words.length - 1]);
+}
+
+/**
+ * The portrait at the head of the page of a person: the photo (4:5) with where and when they lived over it, or, when there is none, their
+ * initials in the same frame, so that the page does not change shape for the people the library knows less about. The credit and the
+ * license of the photo go under it.
+ */
+export function ProfilePortrait({ person }) {
+  const profile = person.profile;
+  const image = profile?.image;
+  const years = profile ? lifeSpan(profile.born, profile.died) : '';
+  const caption = [profile?.bornPlace, years].filter(Boolean).join(' · ');
+  return (
+    <figure className="w-28 sm:w-full">
+      <div className="relative aspect-[4/5] w-full overflow-hidden rounded-lg bg-surface-alt ring-1 ring-border-hairline">
+        {image ? (
+          <img
+            src={authenticatedUrl(image.url)}
+            alt={`Foto de ${person.displayName}`}
+            className={`h-full w-full object-cover ${profile.imageHidden ? 'opacity-50' : ''}`}
+          />
+        ) : (
+          <span aria-hidden="true" className="flex h-full w-full items-center justify-center font-display text-7xl text-brand/60">
+            {initialsOf(person.name || person.displayName)}
+          </span>
+        )}
+        {caption && (
+          <span className="absolute bottom-1.5 left-1.5 right-1.5 w-fit max-w-full rounded bg-white/90 px-1.5 py-0.5 font-mono text-[10px] leading-tight text-ink sm:bottom-2 sm:left-2 sm:right-2 sm:px-2 sm:text-[11px]">
+            {caption}
+          </span>
+        )}
+      </div>
+      {image && <PhotoCredit image={image} />}
+    </figure>
+  );
+}
+
 /**
  * What Wikidata and Wikipedia say about the person: a short description, when they were born and died, the first paragraphs of the biography
  * and a photo, each with where it came from and under which license (the biography is CC BY-SA 4.0, the photo has its own). It is there when a
  * person confirmed which Wikidata entity the author is; staff can hide it all, or only the photo, when it is the wrong person.
  */
-export function PersonProfile({ person }) {
+export function PersonProfile({ person, bare = false }) {
   const staff = isStaff(useMe().data);
   const set = useSetProfile(person.id);
   const reset = useResetProfile(person.id);
@@ -320,32 +379,28 @@ export function PersonProfile({ person }) {
 
   return (
     <div className="flex flex-col gap-3">
-    <section aria-label="Perfil" className={`flex flex-col gap-4 rounded-xl border border-border-hairline bg-white p-4 sm:flex-row ${profile.hidden ? 'opacity-70' : ''}`}>
-      {image && (
+    <section
+      aria-label="Perfil"
+      className={bare ? `flex flex-col gap-2 ${profile.hidden ? 'opacity-70' : ''}` : `flex flex-col gap-4 rounded-xl border border-border-hairline bg-white p-4 sm:flex-row ${profile.hidden ? 'opacity-70' : ''}`}
+    >
+      {image && !bare && (
         <figure className="w-32 shrink-0 sm:w-40">
           <img
             src={authenticatedUrl(image.url)}
             alt={`Foto de ${person.displayName}`}
             className={`w-full rounded-lg object-cover ${profile.imageHidden ? 'opacity-50' : ''}`}
           />
-          <figcaption className="mt-1 text-[11px] leading-snug text-ink-faint">
-            Foto{image.credit ? `: ${image.credit}` : ''}
-            {image.license ? ` · ${image.license}` : ''}
-            {image.pageUrl && (
-              <>
-                {' · '}
-                <a href={image.pageUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-brand">Wikimedia Commons</a>
-              </>
-            )}
-          </figcaption>
+          <PhotoCredit image={image} />
         </figure>
       )}
       <div className="flex min-w-0 flex-col gap-2">
-        {profile.description && <p className="text-sm font-medium text-ink">{profile.description}</p>}
+        {profile.description && (
+          <p className={bare ? 'font-display text-xl italic leading-snug text-brand' : 'text-sm font-medium text-ink'}>{profile.description}</p>
+        )}
         {years && <p className="text-[13px] text-ink-soft">{years}</p>}
         {profile.bio && (
           <>
-            <p className="whitespace-pre-line text-sm leading-relaxed text-ink">{profile.bio}</p>
+            <p className={`whitespace-pre-line leading-relaxed text-ink ${bare ? 'text-[15px]' : 'text-sm'}`}>{profile.bio}</p>
             {profile.bioSource && (
               <p className="text-[11px] text-ink-faint">
                 Fonte:{' '}

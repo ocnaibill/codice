@@ -15,3 +15,19 @@ export function formatProfileDate(text) {
   if (!day || Number(day) < 1 || Number(day) > 31) return `${monthName} de ${year}`;
   return `${Number(day)} de ${monthName} de ${year}`;
 }
+
+/** The year of a date of the profile, as it is told in a life span: "1920-10-08" -> "1920", "-0384" -> "384 a.C."; "" when it is not a date. */
+export function formatProfileYear(text) {
+  const match = /^(-?)(\d{1,12})(?:-\d{2})?(?:-\d{2})?$/.exec(String(text ?? '').trim());
+  if (!match) return '';
+  const year = String(Number(match[2]));
+  return match[1] ? `${year} a.C.` : year;
+}
+
+/** "1920 — 1986", "1920 —" for someone who has not died or whose death is not known, "— 1986" when only that is known; "" with neither. */
+export function lifeSpan(born, died) {
+  const from = formatProfileYear(born);
+  const to = formatProfileYear(died);
+  if (!from && !to) return '';
+  return `${from} — ${to}`.trim();
+}

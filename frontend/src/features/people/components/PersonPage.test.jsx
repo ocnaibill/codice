@@ -69,6 +69,68 @@ afterEach(() => {
   useGlobalStore.setState({ personSheetId: null, sheetWorkId: null, collectionSheetId: null });
 });
 
+describe('PersonPage: the head of the page, with the portrait and the numbers together', () => {
+  const stats = { works: 14, finished: 8, inProgress: 4, readingSeconds: 3600 };
+  const profile = {
+    wikidataId: 'Q7934', description: 'escritor americano', born: '1920-10-08', died: '1986-02-11', bornPlace: 'Tacoma', bio: 'Frank Herbert foi um escritor.',
+    image: { url: '/covers/p.jpg', credit: 'Alguém', license: 'CC BY' },
+  };
+
+  it('shows the photo with where and when they lived over it, and the numbers and the themes beside it', async () => {
+    await open({ data: person({ profile, stats, tags: [{ name: 'ecologia', works: 3 }] }) });
+    const head = container.querySelector('h1').closest('.rounded-xl');
+    const photo = head.querySelector('img');
+    expect(photo.alt).toBe('Foto de Herbert, Frank');
+    expect(head.querySelector('figure').textContent).toContain('Tacoma · 1920 — 1986');
+    expect(head.querySelector('figcaption').textContent).toContain('Foto: Alguém · CC BY');
+    expect(head.querySelector('dl[aria-label="Números"]')).toBeTruthy();
+    expect(head.querySelector('ul[aria-label="Temas"] li').textContent).toBe('#ecologia');
+    // The photo is in one place only: the profile text does not carry a second one.
+    expect(container.querySelectorAll('img[alt^="Foto de"]')).toHaveLength(1);
+  });
+
+  it('puts the initials where the photo would be for a person with no profile, and still has the numbers', async () => {
+    await open({ data: person({ profile: null, stats }) });
+    const head = container.querySelector('h1').closest('.rounded-xl');
+    expect(head.querySelector('img')).toBeNull();
+    expect(head.querySelector('figure [aria-hidden="true"]').textContent).toBe('FH');
+    expect(head.querySelector('figure').textContent).not.toContain('·');
+    expect(head.querySelector('dl[aria-label="Números"]')).toBeTruthy();
+  });
+
+  it('puts the initials where the photo would be when the profile has none, and the span of the years alone', async () => {
+    await open({ data: person({ profile: { ...profile, image: undefined, bornPlace: undefined } }) });
+    const portrait = container.querySelector('h1').closest('.rounded-xl').querySelector('figure');
+    expect(portrait.querySelector('[aria-hidden="true"]').textContent).toBe('FH');
+    expect(portrait.textContent).toContain('1920 — 1986');
+    expect(portrait.textContent).not.toContain('Tacoma');
+  });
+
+  it('uses the one initial of a name of one word', async () => {
+    await open({ data: person({ name: 'Madonna', displayName: 'Madonna', profile: null, stats }) });
+    expect(container.querySelector('h1').closest('.rounded-xl').querySelector('figure [aria-hidden="true"]').textContent).toBe('M');
+  });
+
+  it('shows a photo that staff hid faded, so they see it is not shown to the others', async () => {
+    await open({ role: 'admin', data: person({ profile: { ...profile, imageHidden: true }, stats }) });
+    const photo = container.querySelector('figure img');
+    expect(photo.className).toContain('opacity-50');
+  });
+
+  it('shows the photo at full strength when it was not hidden', async () => {
+    await open({ data: person({ profile, stats }) });
+    expect(container.querySelector('figure img').className).not.toContain('opacity-50');
+  });
+
+  it('tells the description in the head and does not wrap the profile in a card of its own', async () => {
+    await open({ data: person({ profile, stats }) });
+    const card = container.querySelector('section[aria-label="Perfil"]');
+    expect(card.className).not.toContain('border');
+    expect(card.closest('.rounded-xl').contains(container.querySelector('h1'))).toBe(true);
+    expect(card.textContent).toContain('escritor americano');
+  });
+});
+
 describe('PersonPage: the page of a person (#186)', () => {
   it('shows the profile of the author above the works, with where it came from, when one was read', async () => {
     await open({ data: person({ profile: { wikidataId: 'Q7934', description: 'escritor americano', born: '1920', bio: 'Frank Herbert foi um escritor.',

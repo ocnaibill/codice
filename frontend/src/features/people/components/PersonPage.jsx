@@ -9,7 +9,7 @@ import { usePerson } from '../api/usePerson';
 import { usePersonHighlights } from '../api/usePersonHighlights';
 import { FeaturedQuote, WorkHighlights } from '../../library/components/WorkHighlights';
 import { isStaff, useMe } from '../../auth/api/useMe';
-import { PersonProfile } from './PersonProfile';
+import { PersonProfile, ProfilePortrait } from './PersonProfile';
 
 // A person's works come in one request of this many: a person with more is paged, and the series shelves are of the page.
 const PAGE_SIZE = 100;
@@ -167,34 +167,48 @@ export function PersonPage() {
       {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir esta página.</LoadError>}
       {person && (
         <div className="mt-4 flex flex-col gap-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl leading-tight text-ink outline-none sm:text-5xl">{person.displayName}</h1>
-            <CorrectNameButton />
+          <div className="grid gap-6 rounded-xl border border-border-hairline bg-white p-5 shadow-sm sm:grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)] lg:p-6">
+            <ProfilePortrait person={person} />
+            <div className="flex min-w-0 flex-col gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl leading-tight text-ink outline-none sm:text-5xl">{person.displayName}</h1>
+                <CorrectNameButton />
+              </div>
+              <PersonProfile person={person} bare />
+
+              {person.aliases.length > 0 && (
+                <p className="text-sm text-ink-soft">
+                  Também aparece como <span className="text-ink">{person.aliases.join(' · ')}</span>
+                </p>
+              )}
+
+              {stats && stats.works > 0 && (
+                <dl aria-label="Números" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <Stat label="Obras no acervo" value={formatCount(stats.works)} />
+                  <Stat label="Que você terminou" value={formatCount(stats.finished)} />
+                  <Stat label="Em andamento" value={formatCount(stats.inProgress)} />
+                  <Stat label="Horas lidas" value={stats.readingSeconds > 0 ? formatReadingTime(stats.readingSeconds) : '—'} />
+                </dl>
+              )}
+
+              {tags.length > 0 && (
+                <div>
+                  <p className="library-eyebrow mb-2">Temas</p>
+                  <ul aria-label="Temas" className="flex flex-wrap gap-2">
+                    {tags.map((tag) => (
+                      <li
+                        key={tag.name}
+                        className="rounded bg-surface-alt px-2.5 py-1 font-mono text-[11px] text-ink-soft"
+                        title={`${tag.works} ${tag.works === 1 ? 'obra' : 'obras'}`}
+                      >
+                        #{tag.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
-          <PersonProfile person={person} />
-
-          {person.aliases.length > 0 && (
-            <p className="text-sm text-ink-soft">
-              Também aparece como <span className="text-ink">{person.aliases.join(' · ')}</span>
-            </p>
-          )}
-
-          {stats && stats.works > 0 && (
-            <dl aria-label="Números" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat label="Obras no acervo" value={formatCount(stats.works)} />
-              <Stat label="Que você terminou" value={formatCount(stats.finished)} />
-              <Stat label="Em andamento" value={formatCount(stats.inProgress)} />
-              <Stat label="Horas lidas" value={stats.readingSeconds > 0 ? formatReadingTime(stats.readingSeconds) : '—'} />
-            </dl>
-          )}
-
-          {tags.length > 0 && (
-            <ul aria-label="Temas" className="flex flex-wrap gap-x-3 gap-y-1">
-              {tags.map((tag) => (
-                <li key={tag.name} className="font-mono text-[11px] text-ink-soft" title={`${tag.works} ${tag.works === 1 ? 'obra' : 'obras'}`}>#{tag.name}</li>
-              ))}
-            </ul>
-          )}
 
           <FeaturedQuote notes={notes} workId={id} showWork onOpen={openNote} />
 
