@@ -7,7 +7,7 @@ import { useWorks } from '../../library/api/useWorks';
 import { ROLES } from '../../reader/credits';
 import { usePerson } from '../api/usePerson';
 import { usePersonHighlights } from '../api/usePersonHighlights';
-import { FeaturedQuote, WorkHighlights } from '../../library/components/WorkHighlights';
+import { FeaturedQuote, WorkHighlights, highlightsOf } from '../../library/components/WorkHighlights';
 import { isStaff, useMe } from '../../auth/api/useMe';
 import { PersonProfile, ProfilePortrait } from './PersonProfile';
 
@@ -15,6 +15,10 @@ import { PersonProfile, ProfilePortrait } from './PersonProfile';
 const PAGE_SIZE = 100;
 
 const ROLE_NAMES = Object.fromEntries(ROLES.map((r) => [r.key, r]));
+
+const TAB = 'inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-lg border px-4 text-sm';
+const TAB_ON = 'border-brand bg-brand text-white';
+const TAB_OFF = 'border-border-hairline bg-white text-ink-soft hover:text-ink';
 
 const keyOf = (text) => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -109,6 +113,7 @@ export function PersonPage() {
   const [text, setText] = React.useState('');
   const [format, setFormat] = React.useState('');
   const [order, setOrder] = React.useState('series'); // 'series' (a shelf for each) or 'year' (one, in chronological order)
+  const [tab, setTab] = React.useState('all'); // 'all', 'series', 'loose' or 'notes'
   const { data: person, isLoading, isError, error, refetch, isRefetching } = usePerson(id);
   const notes = usePersonHighlights(id).data?.data;
 
@@ -119,6 +124,7 @@ export function PersonPage() {
     setText('');
     setFormat('');
     setOrder('series');
+    setTab('all');
   }, [id]);
 
   const roles = person?.roles ?? [];
@@ -147,6 +153,19 @@ export function PersonPage() {
   const shown = filterWorks(loaded, { text, format });
   const filtering = text.trim() !== '' || format !== '';
   const { series, loose } = shelvesOf(shown);
+  // What each tab holds, counted on every work of the page (what is typed in the filter narrows the shelves, not the tabs).
+  const kinds = shelvesOf(loaded);
+  const inSeries = kinds.series.reduce((n, s) => n + s.works.length, 0);
+  const highlights = highlightsOf(notes).length;
+  const tabs = [
+    { key: 'all', label: 'Todas as obras', count: works.data?.total ?? loaded.length },
+    ...(kinds.series.length > 0 && kinds.loose.length > 0 ? [{ key: 'series', label: 'Séries', count: inSeries }, { key: 'loose', label: 'Avulsas', count: kinds.loose.length }] : []),
+    ...(highlights > 0 ? [{ key: 'notes', label: 'Seus destaques', count: highlights }] : []),
+  ];
+  const view = tabs.some((t) => t.key === tab) ? tab : 'all';
+  const withSeries = view !== 'loose';
+  const withLoose = view !== 'series';
+  const inView = view === 'series' ? series.flatMap((s) => s.works) : view === 'loose' ? loose : shown;
   const collectionOf = (name) => (person?.collections ?? []).find((c) => keyOf(c.name) === keyOf(name));
   const stats = person?.stats;
   const tags = person?.tags ?? [];
@@ -210,7 +229,7 @@ export function PersonPage() {
             </div>
           </div>
 
-          <FeaturedQuote notes={notes} workId={id} showWork onOpen={openNote} />
+          {view !== 'notes' && <FeaturedQuote notes={notes} workId={id} showWork onOpen={openNote} />}
 
           {roles.length === 0 ? (
             <p className="rounded-lg border border-dashed border-surface-alt bg-surface/50 px-4 py-8 text-center text-sm text-ink-faint">
@@ -234,8 +253,19 @@ export function PersonPage() {
                 </div>
               )}
 
-              {loaded.length > 1 && (
-                <div className="flex flex-wrap items-center gap-3" role="search" aria-label="Filtrar as obras">
+              {tabs.length > 1 && (
+                <div role="tablist" aria-label="O que ver das obras" className="flex gap-2 overflow-x-auto pb-1">
+                  {tabs.map((t) => (
+                    <button key={t.key} type="button" role="tab" aria-selected={view === t.key} onClick={() => setTab(t.key)} className={`${TAB} ${view === t.key ? TAB_ON : TAB_OFF}`}>
+                      {t.label}
+                      <span className={`rounded-full px-1.5 font-mono text-[11px] ${view === t.key ? 'bg-white/20' : 'bg-surface-alt'}`}>{t.count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {view !== 'notes' && loaded.length > 1 && (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl bg-surface-alt/70 p-3" role="search" aria-label="Filtrar as obras">
                   <input
                     type="search"
                     value={text}
@@ -266,22 +296,25 @@ export function PersonPage() {
                 </div>
               )}
 
-              {works.isError ? (
+              {view === 'notes' ? (
+                <WorkHighlights notes={notes} onOpen={openNote} title="Seus destaques nas obras dele" showWork />
+              ) : works.isError ? (
                 <LoadError error={works.error} onRetry={works.refetch} retrying={works.isRefetching}>Não foi possível carregar as obras.</LoadError>
-              ) : filtering && shown.length === 0 && !works.isLoading ? (
+              ) : filtering && inView.length === 0 && !works.isLoading ? (
                 <p className="rounded-lg border border-dashed border-surface-alt bg-surface/50 px-4 py-8 text-center text-sm text-ink-faint">
                   Nenhuma obra desta pessoa tem isso.
                 </p>
               ) : order === 'year' ? (
-                <Shelf headingId="person-chronological" title="Em ordem cronológica" total={shown.length} items={byYear(shown)} isLoading={works.isLoading} />
+                <Shelf headingId="person-chronological" accent="brand" title="Em ordem cronológica" total={inView.length} items={byYear(inView)} isLoading={works.isLoading} />
               ) : (
                 <>
-                  {series.map((s, i) => {
+                  {withSeries && series.map((s, i) => {
                     const collection = collectionOf(s.name);
                     return (
                       <Shelf
                         key={s.key}
                         headingId={`person-series-${i}`}
+                        accent="brand"
                         title={s.name}
                         total={s.works.length}
                         countWord={s.works.length === 1 ? 'volume no acervo' : 'volumes no acervo'}
@@ -291,10 +324,11 @@ export function PersonPage() {
                       />
                     );
                   })}
-                  {(loose.length > 0 || works.isLoading) && (
+                  {withLoose && (loose.length > 0 || works.isLoading) && (
                     <Shelf
                       headingId="person-loose"
-                      title={series.length > 0 ? 'Demais obras' : role === 'author' || !ROLE_NAMES[role] ? 'Obras' : ROLE_NAMES[role].heading}
+                      accent="success"
+                      title={kinds.series.length > 0 ? 'Demais obras' : role === 'author' || !ROLE_NAMES[role] ? 'Obras' : ROLE_NAMES[role].heading}
                       total={works.isLoading ? undefined : loose.length}
                       items={loose}
                       isLoading={works.isLoading}
@@ -302,7 +336,7 @@ export function PersonPage() {
                   )}
                 </>
               )}
-              {totalPages > 1 && (
+              {view !== 'notes' && totalPages > 1 && (
                 <nav className="library-pagination" aria-label="Páginas das obras da pessoa">
                   <button className="library-button" disabled={page <= 1 || works.isFetching} onClick={() => setPage(page - 1)}>Anterior</button>
                   <span aria-live="polite">{page} de {totalPages}</span>
@@ -312,7 +346,7 @@ export function PersonPage() {
             </>
           )}
 
-          <WorkHighlights notes={notes} onOpen={openNote} title="Seus destaques nas obras dele" showWork />
+          {view === 'all' && <WorkHighlights notes={notes} onOpen={openNote} title="Seus destaques nas obras dele" showWork />}
         </div>
       )}
     </div>
