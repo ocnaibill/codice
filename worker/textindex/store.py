@@ -27,8 +27,8 @@ READERS = {
     'pdf': lambda path, checkpoint, out: pdf_segments(path, checkpoint, out, ocr=out.get('ocr')),
     'txt': lambda path, checkpoint, out: plain_segments(path, 'txt', checkpoint),
     'md': lambda path, checkpoint, out: plain_segments(path, 'md', checkpoint),
-    'cbz': lambda path, checkpoint, out: comic_segments(path, 'cbz', checkpoint),
-    'cbr': lambda path, checkpoint, out: comic_segments(path, 'cbr', checkpoint),
+    'cbz': lambda path, checkpoint, out: comic_segments(path, 'cbz', checkpoint, ocr=out.get('comic_ocr'), direction=out.get('direction')),
+    'cbr': lambda path, checkpoint, out: comic_segments(path, 'cbr', checkpoint, ocr=out.get('comic_ocr'), direction=out.get('direction')),
     **{fmt: (lambda path, checkpoint, out, fmt=fmt: audio_segments(path, fmt, checkpoint))
        for fmt in ('mp3', 'm4a', 'm4b', 'ogg', 'wav', 'flac')},
 }
@@ -116,6 +116,9 @@ class TextIndexer:
             found = {}  # what a reader learns besides the segments: the shape of the book
             if fmt == 'pdf':
                 found['ocr'] = self.recognised_pages(file_id, sha)  # what OCR read of the pages that have no text
+            if fmt in ('cbz', 'cbr'):
+                found['comic_ocr'] = self.comic_pages(file_id, sha)  # what OCR read in the balloons (DEC-176)
+                found['direction'] = self.direction_of(file_id)
             pieces = []  # and a sample of the text, to tell the language when the file does not
             origins = set()
             count = self.write(file_id, generation, self.tracked(reader(full, checkpoint, found), origins), checkpoint, pieces)
@@ -140,6 +143,37 @@ class TextIndexer:
             """SELECT page, text FROM ocr_pages
                WHERE file_id = %s AND source_sha256 IS NOT DISTINCT FROM %s AND state = 'done'""", (file_id, sha))
         return {int(page): text for page, text in rows}
+
+    def comic_pages(self, file_id, sha):
+        """{page index: {'regions', 'width', 'height'}} of the pages of a comic that OCR read and found speech in, for the file as it is."""
+        rows = self.db.fetchall(
+            """SELECT page, regions, width, height FROM comic_ocr_pages
+               WHERE file_id = %s AND source_sha256 IS NOT DISTINCT FROM %s AND state = 'done'""", (file_id, sha))
+        out = {}
+        for row in rows:
+            if len(row) != 4:
+                continue
+            page, regions, width, height = row
+            if isinstance(regions, (str, bytes)):
+                regions = json.loads(regions)
+            out[int(page)] = {'regions': regions or [], 'width': width, 'height': height}
+        return out
+
+    def direction_of(self, file_id):
+        """How the comic is read, for the order of its balloons: what the file declares, else what its series says (DEC-166), else the kind
+        of the work (a manga is read right to left), else left to right."""
+        row = self.db.fetchone(
+            """SELECT f.declared_mode, w.comic_kind,
+                      (SELECT c.reading_direction FROM collection_works cw JOIN collections c ON c.id = cw.collection_id
+                        WHERE cw.work_id = w.id AND cw.official AND c.retired_at IS NULL AND c.reading_direction IS NOT NULL LIMIT 1)
+               FROM files f JOIN editions e ON e.id = f.edition_id JOIN works w ON w.id = e.work_id WHERE f.id = %s""", (file_id,))
+        if not row or len(row) != 3:
+            return 'ltr'
+        declared, kind, series = row
+        for choice in (declared, series):
+            if choice in ('ltr', 'rtl', 'webtoon'):
+                return choice
+        return 'rtl' if kind == 'manga' else 'ltr'
 
     @staticmethod
     def tracked(segments, origins):

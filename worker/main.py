@@ -28,6 +28,7 @@ from health import Heartbeat, Presence
 from textindex.store import TextIndexer
 from embeddings import EmbeddingIndexer, SentenceTransformersProvider
 from ocr import OcrIndexer
+from comic_ocr import ComicOcrIndexer
 from dictionary import DictionaryImporter, connect_from_env
 
 # 1. Loads variables from .env, trying multiple locations
@@ -146,6 +147,8 @@ def build_runner(db, client, heartbeat=None):
     os.makedirs(dictionaries.workdir, exist_ok=True)
     # Only the worker that is given the job type reads by OCR: it is the one the image with the engine is for.
     ocr = OcrIndexer(db, storage_path) if 'ocr' in [t.strip() for t in os.getenv('WORKER_JOB_TYPES', '').split(',')] else None
+    # Reading comics and manga is the job of the service that is given its own job type: it is the image that has the engine and its models.
+    comic_ocr = ComicOcrIndexer(db, storage_path) if 'comic_ocr' in [t.strip() for t in os.getenv('WORKER_JOB_TYPES', '').split(',')] else None
     embeddings = None
     if os.getenv('EMBEDDINGS_PROVIDER', '').lower() in ('labse', 'sentence-transformers'):
         embeddings = EmbeddingIndexer(db, SentenceTransformersProvider(), selectable=True)
@@ -163,6 +166,12 @@ def build_runner(db, client, heartbeat=None):
             print(f"\n🔤 OCR job {job['id']} (work {job['work_id']}, attempt {job['attempts']}/{job['max_attempts']})")
             outcome = ocr.run(job['work_id'], retry_failed=bool(job['payload'].get('retry_failed')), checkpoint=checkpoint) if ocr else {}
             print(f"   🔤 {outcome or 'nothing to read'}")
+            return outcome
+        if job.get('type') == 'comic_ocr':
+            # The pages of a comic are read once, and the text of the file is made from what was read (DEC-176).
+            print(f"\n💬 Comic OCR job {job['id']} (work {job['work_id']}, attempt {job['attempts']}/{job['max_attempts']})")
+            outcome = comic_ocr.run(job['work_id'], checkpoint=checkpoint) if comic_ocr else {}
+            print(f"   💬 {outcome or 'nothing to read'}")
             return outcome
         if job.get('type') == 'provider_test':
             # The owner asked to see whether a provider answers: one fixed, public question, whether it is on or not. It never touches a work.
@@ -250,11 +259,14 @@ def build_runner(db, client, heartbeat=None):
             embeddings.heartbeat()
         if ocr is not None:
             ocr.heartbeat()
+        if comic_ocr is not None:
+            comic_ocr.heartbeat()
     runner = JobRunner(jobs, process, on_start=on_start, on_success=on_success, on_failure=on_failure,
                      on_retry=on_retry, heartbeat_every=max(1.0, LEASE_SECONDS / 4),
                      on_heartbeat=on_job_heartbeat)
     runner.embeddings = embeddings
     runner.ocr = ocr
+    runner.comic_ocr = comic_ocr
     return runner
 
 
@@ -310,6 +322,8 @@ def listen_for_tasks():
             runner.embeddings.enqueue_missing()
         if getattr(runner, 'ocr', None) is not None:
             runner.ocr.enqueue_missing()
+        if getattr(runner, 'comic_ocr', None) is not None:
+            runner.comic_ocr.enqueue_missing()
         resolve_authors(db, allowed)
         last_id = wait_for_work(client, last_id)
 

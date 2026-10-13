@@ -12,6 +12,7 @@ from lxml import etree
 
 from . import Limits, Segment
 from .normalize import chunk, clean
+from comic_regions import locator_region, reading_order
 from extractors.plain_text import plain_description
 
 ITEM = 'ComicInfo.xml'
@@ -69,18 +70,31 @@ def _fields(data):
     return out
 
 
-def comic_segments(path, fmt='cbz', checkpoint=lambda: None):
+def comic_segments(path, fmt='cbz', checkpoint=lambda: None, ocr=None, direction=None):
+    """The description of the comic (ComicInfo.xml), and then the speech OCR read in its pages, if it did (DEC-176).
+
+    `ocr` is {page index: {'regions': [{'box', 'text', 'conf'}], 'width', 'height'}} of the pages that were read; `direction` is the one the
+    comic is read in ('ltr', 'rtl', 'webtoon'), which only puts the balloons of a page in order: what was read does not depend on it."""
     data = _read_comicinfo(path, fmt)
-    if not data:
-        return
-    fields = _fields(data)
-    locator = {'type': 'image', 'index': 0, 'item': ITEM}
-    for tag, label in FIELDS:
+    if data:
+        fields = _fields(data)
+        locator = {'type': 'image', 'index': 0, 'item': ITEM}
+        for tag, label in FIELDS:
+            checkpoint()
+            text = fields.get(tag)
+            if not text:
+                continue
+            # The field may carry HTML (a summary often does): it is text here, never markup.
+            paragraphs = [p for p in (clean(line) for line in plain_description(text)[:Limits.MAX_METADATA_CHARS].split('\n')) if p]
+            for segment, _start in chunk(paragraphs):
+                yield Segment(text=segment, locator=dict(locator), section=label)
+    for page in sorted(ocr or {}):
         checkpoint()
-        text = fields.get(tag)
-        if not text:
-            continue
-        # The field may carry HTML (a summary often does): it is text here, never markup.
-        paragraphs = [p for p in (clean(line) for line in plain_description(text)[:Limits.MAX_METADATA_CHARS].split('\n')) if p]
-        for segment, _start in chunk(paragraphs):
-            yield Segment(text=segment, locator=dict(locator), section=label)
+        read = ocr[page]
+        regions, width, height = read['regions'], read.get('width') or 0, read.get('height') or 0
+        for i in reading_order(regions, direction, height):
+            text = clean(regions[i]['text'])
+            if not text:
+                continue
+            locator = {'type': 'image', 'index': int(page), 'region': locator_region(regions[i]['box'], width, height)}
+            yield Segment(text=text, locator=locator, origin='ocr')
