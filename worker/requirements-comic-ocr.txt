@@ -1,0 +1,5 @@
+-r requirements.txt
+# The engine that reads the balloons of comics and manga (DEC-176): the CPU build of PaddlePaddle and PaddleOCR. numpy, OpenCV and Pillow
+# come with it.
+paddlepaddle>=3.0,<4
+paddleocr>=3.0,<4

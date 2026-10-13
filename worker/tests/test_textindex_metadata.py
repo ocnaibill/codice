@@ -341,3 +341,89 @@ class TestIndexer:
         assert outcome == {7: 'ready'}
         db, outcome = self.run(tmp_path, [file_row(7, 'epub', version=EXTRACTOR_VERSION, source_sha='aa', status='ready')])
         assert outcome == {} and db.calls == [('fetchall', 'files', (9,))]
+
+
+# --- the speech OCR read in the balloons (DEC-176) ---
+
+def balloon(text, x, y, w=300, h=60):
+    return {'box': [x, y, w, h], 'text': text, 'conf': 97.0}
+
+
+PAGES = {
+    0: {'regions': [balloon('PRIMEIRO À DIREITA', 600, 100), balloon('SEGUNDO À ESQUERDA', 100, 110)], 'width': 1000, 'height': 1500},
+    2: {'regions': [balloon('FALA DA TERCEIRA PÁGINA', 200, 800)], 'width': 1000, 'height': 1500},
+}
+
+
+class TestComicOcr:
+    def test_the_speech_is_text_of_origin_ocr_at_the_page_and_the_region_it_was_read_in(self, tmp_path):
+        got = list(comic_segments(cbz(tmp_path), ocr=PAGES, direction='ltr'))
+        assert [s.origin for s in got] == ['ocr', 'ocr', 'ocr']
+        assert got[2].text == 'FALA DA TERCEIRA PÁGINA'
+        assert got[2].locator == {'type': 'image', 'index': 2, 'region': {'x': 0.2, 'y': 0.5333, 'w': 0.3, 'h': 0.04}}
+
+    def test_the_order_of_a_page_is_the_one_of_the_direction_and_changes_with_it(self, tmp_path):
+        path = cbz(tmp_path)
+        ltr = [s.text for s in comic_segments(path, ocr=PAGES, direction='ltr') if s.locator['index'] == 0]
+        rtl = [s.text for s in comic_segments(path, ocr=PAGES, direction='rtl') if s.locator['index'] == 0]
+        assert ltr == ['SEGUNDO À ESQUERDA', 'PRIMEIRO À DIREITA']
+        assert rtl == ['PRIMEIRO À DIREITA', 'SEGUNDO À ESQUERDA']
+
+    def test_the_pages_come_in_order_whatever_the_order_they_were_read_in(self, tmp_path):
+        pages = dict(reversed(list(PAGES.items())))
+        got = list(comic_segments(cbz(tmp_path), ocr=pages, direction='ltr'))
+        assert [s.locator['index'] for s in got] == [0, 0, 2]
+
+    def test_the_description_of_the_file_comes_first_and_stays_native(self, tmp_path):
+        got = list(comic_segments(cbz(tmp_path, info(Summary='Uma corrida longa.')), ocr=PAGES, direction='ltr'))
+        assert [s.origin for s in got] == ['native', 'ocr', 'ocr', 'ocr']
+        assert got[0].locator == IMAGE
+
+    def test_a_comic_with_no_ComicInfo_has_text_when_it_was_read(self, tmp_path):
+        assert len(list(comic_segments(cbz(tmp_path), ocr=PAGES))) == 3
+
+    def test_what_was_not_read_changes_nothing(self, tmp_path):
+        assert list(comic_segments(cbz(tmp_path, info(Summary='x')), ocr=None)) == list(comic_segments(cbz(tmp_path, info(Summary='x'))))
+        assert list(comic_segments(cbz(tmp_path), ocr={})) == []
+
+    def test_text_with_only_spaces_is_not_a_segment(self, tmp_path):
+        pages = {0: {'regions': [balloon('   ', 10, 10)], 'width': 100, 'height': 100}}
+        assert list(comic_segments(cbz(tmp_path), ocr=pages)) == []
+
+
+class FakeComicDB:
+    def __init__(self, pages=(), direction_row=None):
+        self.pages, self.direction_row = list(pages), direction_row
+
+    def fetchall(self, query, params=()):
+        return self.pages if 'FROM comic_ocr_pages' in query else []
+
+    def fetchone(self, query, params=()):
+        return self.direction_row if 'declared_mode' in query else None
+
+
+class TestHowTheStoreHandsItOver:
+    def indexer(self, db):
+        return TextIndexer(db, '/tmp')
+
+    def test_the_pages_that_were_read_come_with_their_regions_and_size(self):
+        db = FakeComicDB(pages=[(3, json.dumps([balloon('Oi', 1, 2)]), 800, 1200)])
+        assert self.indexer(db).comic_pages(9, 'sha') == {3: {'regions': [balloon('Oi', 1, 2)], 'width': 800, 'height': 1200}}
+
+    def test_regions_that_the_driver_already_decoded_are_taken_as_they_are(self):
+        db = FakeComicDB(pages=[(0, [balloon('Oi', 1, 2)], 800, 1200)])
+        assert self.indexer(db).comic_pages(9, 'sha')[0]['regions'] == [balloon('Oi', 1, 2)]
+
+    def test_the_direction_is_the_file_then_the_series_then_the_kind_of_the_work(self):
+        for row, expected in [
+            (('rtl', None, None), 'rtl'),            # the file declares
+            ((None, 'manga', 'webtoon'), 'webtoon'),  # the series, over the kind of the work
+            ((None, 'manga', None), 'rtl'),          # a manga is read right to left
+            ((None, 'comic', None), 'ltr'),
+            ((None, None, None), 'ltr'),
+            (('quatro', None, 'ltr'), 'ltr'),        # what is not a direction is not one
+        ]:
+            assert self.indexer(FakeComicDB(direction_row=row)).direction_of(1) == expected
+
+    def test_a_file_that_is_not_there_is_read_left_to_right(self):
+        assert self.indexer(FakeComicDB(direction_row=None)).direction_of(1) == 'ltr'

@@ -240,6 +240,38 @@ services:
       - codice_network
     restart: unless-stopped
 
+  # Optional reading of the balloons of comics and manga by OCR (DEC-176, #27). It is a profile of its own: the image carries PaddleOCR
+  # (the image is about 1.8 GB, 1.4 GB more than the common worker) and is only built when asked for (COMPOSE_PROFILES=comic-ocr, or `docker compose --profile comic-ocr up -d`).
+  # It starts idle: the owner chooses a model in the app (Administração → IA local), which is then downloaded to the volume of the models,
+  # and only then are the pages read, once each, in the background. What it reads is kept for everyone.
+  comic-ocr:
+    profiles: ["comic-ocr"]
+    build:
+      context: ./worker
+      target: comic-ocr
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-codice_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codice_db}?sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CODICE_STORAGE_PATH: /app/storage
+      WORKER_JOB_TYPES: comic_ocr
+      JOBS_MAX_CONCURRENT: 1
+      COMIC_OCR_MAX_PAGES: ${COMIC_OCR_MAX_PAGES:-2000}
+      WORKER_HEALTH_MAX_AGE: ${WORKER_HEALTH_MAX_AGE:-}
+    volumes:
+      - codice_storage:/app/storage
+      - codice_comic_models:/app/models
+    depends_on:
+      backend:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - codice_network
+    restart: unless-stopped
+
   # 5. Web app: static files plus a reverse proxy to the API. The only entry point.
   frontend:
     build:
@@ -277,3 +309,4 @@ volumes:
   codice_storage:
   codice_backups:
   codice_model_cache:
+  codice_comic_models:

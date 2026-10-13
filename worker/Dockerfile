@@ -26,6 +26,18 @@ RUN apt-get update \
     tesseract-ocr-spa tesseract-ocr-fra tesseract-ocr-ita tesseract-ocr-cat tesseract-ocr-ron \
  && rm -rf /var/lib/apt/lists/*
 
+FROM base AS comic-ocr-dependencies
+# The engine that reads the balloons of comics and manga (DEC-176): PaddlePaddle and PaddleOCR, CPU only. OpenCV, which comes with them,
+# needs these system libraries. Only this image has them. The models (13 or 132 MB) are downloaded when the owner chooses one, to a folder
+# that is a volume, so they are not downloaded again when the container is made again.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libgomp1 \
+ && rm -rf /var/lib/apt/lists/*
+COPY requirements-comic-ocr.txt .
+RUN pip install -r requirements-comic-ocr.txt \
+ && mkdir -p /app/models && chown codice:codice /app/models
+ENV PADDLE_PDX_CACHE_HOME=/app/models PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+
 FROM base AS runtime
 COPY --chown=codice:codice . .
 USER codice
@@ -41,6 +53,13 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD ["py
 CMD ["python", "main.py"]
 
 FROM ocr-dependencies AS ocr
+COPY --chown=codice:codice . .
+USER codice
+ENV CODICE_STORAGE_PATH=/app/storage
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD ["python", "health.py"]
+CMD ["python", "main.py"]
+
+FROM comic-ocr-dependencies AS comic-ocr
 COPY --chown=codice:codice . .
 USER codice
 ENV CODICE_STORAGE_PATH=/app/storage
