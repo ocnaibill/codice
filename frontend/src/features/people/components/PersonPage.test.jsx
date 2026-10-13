@@ -131,6 +131,129 @@ describe('PersonPage: the head of the page, with the portrait and the numbers to
   });
 });
 
+describe('PersonPage: the tabs of the works (DEC-175)', () => {
+  const volume = (id, title, series, seriesIndex) => ({ ...work(id, title), series, seriesIndex });
+  const mixed = {
+    data: [volume(1, 'Duna', 'Crônicas de Duna', 1), volume(2, 'Messias', 'Crônicas de Duna', 2), work(8, 'O Cérebro Verde'), work(9, 'Destino: Vazio'), work(10, 'O Dragão no Mar')],
+    total: 5, totalPages: 1,
+  };
+  const notes = { total: 2, data: [
+    { id: 1, kind: 'highlight', quote: 'Não terei medo. O medo é o assassino da mente, a pequena morte.', body: '', tags: [], workId: 1, workTitle: 'Duna', fileId: 10, chapter: 'Capítulo 1', locator: { type: 'epub', href: 'c1.xhtml' } },
+    { id: 3, kind: 'highlight', quote: 'A mais alta função da ecologia é a compreensão das consequências.', body: '', tags: [], workId: 2, workTitle: 'Messias', fileId: 11, chapter: 'Capítulo 2', locator: { type: 'epub', href: 'c2.xhtml' } },
+  ] };
+  const tabs = () => [...container.querySelectorAll('[role="tab"]')];
+  const tab = (label) => tabs().find((t) => t.textContent.startsWith(label));
+  const headings = () => [...container.querySelectorAll('.library-shelf h2')].map((h) => h.textContent);
+
+  it('has four, with how many each holds, when the person has series, loose works and highlights', async () => {
+    await open({ works: mixed, notes });
+    expect(tabs().map((t) => t.textContent)).toEqual(['Todas as obras5', 'Séries2', 'Avulsas3', 'Seus destaques2']);
+    expect(tab('Todas').getAttribute('aria-selected')).toBe('true');
+    expect(headings()).toEqual(['Crônicas de Duna', 'Demais obras']);
+    // The highlights are at the bottom of the first tab.
+    expect(container.querySelector('section[aria-label="Seus destaques nas obras dele"]')).toBeTruthy();
+  });
+
+  it('shows only the shelves of the series in one, and only the rest in the other', async () => {
+    await open({ works: mixed, notes });
+    await click(tab('Séries'));
+    expect(headings()).toEqual(['Crônicas de Duna']);
+    expect(container.querySelector('section[aria-label="Seus destaques nas obras dele"]')).toBeNull();
+    await click(tab('Avulsas'));
+    expect(headings()).toEqual(['Demais obras']);
+    expect(container.querySelectorAll('.library-book')).toHaveLength(3);
+    await click(tab('Todas'));
+    expect(headings()).toEqual(['Crônicas de Duna', 'Demais obras']);
+  });
+
+  it('puts the highlights alone in theirs, with no shelves, no filter and no pages', async () => {
+    await open({ works: mixed, notes });
+    expect(container.querySelector('figure[aria-label="Um destaque seu"]')).toBeTruthy();
+    await click(tab('Seus destaques'));
+    expect(headings()).toEqual([]);
+    // The one picked for the top is not shown over the list that has it.
+    expect(container.querySelector('figure[aria-label="Um destaque seu"]')).toBeNull();
+    expect(container.querySelector('[role="search"]')).toBeNull();
+    const section = container.querySelector('section[aria-label="Seus destaques nas obras dele"]');
+    expect(section.textContent).toContain('2 anotações salvas');
+    expect(container.querySelectorAll('section[aria-label="Seus destaques nas obras dele"]')).toHaveLength(1);
+  });
+
+  it('keeps the counts of the tabs when something is typed in the filter', async () => {
+    await open({ works: mixed, notes });
+    await setValue(container.querySelector('input[type="search"]'), 'cérebro');
+    expect(tabs().map((t) => t.textContent)).toEqual(['Todas as obras5', 'Séries2', 'Avulsas3', 'Seus destaques2']);
+    expect(container.querySelectorAll('.library-book')).toHaveLength(1);
+    // Narrowed to the series, nothing of the series has it.
+    await click(tab('Séries'));
+    expect(container.textContent).toContain('Nenhuma obra desta pessoa tem isso.');
+  });
+
+  it('puts the works of the tab in chronological order when that is the order', async () => {
+    await open({ works: { ...mixed, data: mixed.data.map((w, i) => ({ ...w, originalYear: 1980 - i })) }, notes });
+    await click(tab('Avulsas'));
+    const order = container.querySelector('select');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(order, 'year');
+      order.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(headings()).toEqual(['Em ordem cronológica']);
+    expect(container.querySelectorAll('.library-book')).toHaveLength(3);
+  });
+
+  it('goes back to the first tab when the one it was on is not there for the works of another role', async () => {
+    const onlyLoose = { data: [work(20, 'Tradução A'), work(21, 'Tradução B')], total: 2, totalPages: 1 };
+    await open({ works: (q) => (q.get('role') === 'translator' ? onlyLoose : mixed) });
+    await click(tab('Séries'));
+    expect(headings()).toEqual(['Crônicas de Duna']);
+    await click(chip('Tradutor'));
+    expect(tabs()).toHaveLength(0);
+    expect(headings()).toEqual(['Tradução']);
+    expect(container.querySelectorAll('.library-book')).toHaveLength(2);
+  });
+
+  it('keeps the title of the rest when what is typed leaves none of the series', async () => {
+    await open({ works: mixed });
+    await setValue(container.querySelector('input[type="search"]'), 'cérebro');
+    expect(headings()).toEqual(['Demais obras']);
+  });
+
+  it('has no pages in the highlights', async () => {
+    await open({ works: { ...mixed, totalPages: 2 }, notes });
+    expect(container.querySelector('nav[aria-label="Páginas das obras da pessoa"]')).toBeTruthy();
+    await click(tab('Seus destaques'));
+    expect(container.querySelector('nav[aria-label="Páginas das obras da pessoa"]')).toBeNull();
+  });
+
+  it('starts on the first tab for another person', async () => {
+    await open({ works: mixed, notes });
+    await click(tab('Avulsas'));
+    api.get.mockImplementation(async (url) => (url === '/people/10' ? { data: person({ id: 10, displayName: 'Outra' }) } : url === '/auth/me' ? { data: { role: 'reader' } } : url === '/notes' ? { data: notes } : { data: mixed }));
+    await act(async () => { useGlobalStore.setState({ personSheetId: 10 }); });
+    await flush();
+    await flush();
+    expect(tab('Todas').getAttribute('aria-selected')).toBe('true');
+    expect(headings()).toEqual(['Crônicas de Duna', 'Demais obras']);
+  });
+
+  it('has no tabs for a person with only series and no highlights, or only loose works', async () => {
+    await open({ works: { data: [volume(1, 'Duna', 'Crônicas de Duna', 1), volume(2, 'Messias', 'Crônicas de Duna', 2)], total: 2, totalPages: 1 } });
+    expect(tabs()).toHaveLength(0);
+    expect(headings()).toEqual(['Crônicas de Duna']);
+  });
+
+  it('has only the first and the highlights when the works are all of one kind', async () => {
+    await open({ notes });
+    expect(tabs().map((t) => t.textContent)).toEqual(['Todas as obras2', 'Seus destaques2']);
+  });
+
+  it('puts a dot of a color before each shelf and none on the plain ones of the home', async () => {
+    await open({ works: mixed });
+    const dots = [...container.querySelectorAll('.library-section-heading > span[aria-hidden="true"]')];
+    expect(dots.map((d) => d.className.includes('bg-brand') ? 'brand' : d.className.includes('bg-success') ? 'success' : '?')).toEqual(['brand', 'success']);
+  });
+});
+
 describe('PersonPage: the page of a person (#186)', () => {
   it('shows the profile of the author above the works, with where it came from, when one was read', async () => {
     await open({ data: person({ profile: { wikidataId: 'Q7934', description: 'escritor americano', born: '1920', bio: 'Frank Herbert foi um escritor.',

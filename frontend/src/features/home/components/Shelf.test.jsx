@@ -36,6 +36,17 @@ describe('Shelf', () => {
     expect(document.body.textContent).toContain('[ 0 obras ]');
   });
 
+  it('has no dot before the heading unless it is given a color of the system, and no other color', async () => {
+    view = await mount(<Shelf title="A" total={1} items={[work(1, 'Duna')]} />);
+    expect(document.body.querySelector('.library-section-heading > span[aria-hidden="true"]')).toBeNull();
+    view.unmount();
+    view = await mount(<Shelf title="A" total={1} accent="brand" items={[work(1, 'Duna')]} />);
+    expect(document.body.querySelector('.library-section-heading > span[aria-hidden="true"]').className).toContain('bg-brand');
+    view.unmount();
+    view = await mount(<Shelf title="A" total={1} accent="vermelho" items={[work(1, 'Duna')]} />);
+    expect(document.body.querySelector('.library-section-heading > span[aria-hidden="true"]')).toBeNull();
+  });
+
   it('counts by the word it is given, and has no count when it is not told one', async () => {
     view = await mount(<Shelf title="A" total={5} countWord="itens" items={[work(1, 'Duna')]} />);
     expect(document.body.textContent).toContain('[ 5 itens ]');
