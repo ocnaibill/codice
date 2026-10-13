@@ -1,6 +1,7 @@
 """Optional, local embeddings for equivalent-position evidence (#31)."""
 import json
 import os
+import threading
 
 
 PREPROCESSING_VERSION = 1
@@ -10,10 +11,46 @@ SUPPORTED_MODELS = {
     DEFAULT_MODEL,
     'intfloat/multilingual-e5-small',
 }
+# What each model weighs when downloaded (MB), as the administration says it: the percentage of a download is what is on disk of it.
+MODEL_MB = {DEFAULT_MODEL: 1880, 'intfloat/multilingual-e5-small': 471}
+
+
+def hf_cache_root():
+    """The folder the models are downloaded to (the one huggingface_hub uses)."""
+    try:
+        from huggingface_hub.constants import HF_HUB_CACHE
+        return HF_HUB_CACHE
+    except Exception:
+        return None
+
+
+def cache_bytes(model):
+    """What is on disk of the download of a model, finished or not (a file that is still arriving counts)."""
+    root = hf_cache_root()
+    if not root:
+        return 0
+    blobs = os.path.join(root, 'models--' + model.replace('/', '--'), 'blobs')
+    try:
+        return sum(os.path.getsize(os.path.join(blobs, name)) for name in os.listdir(blobs))
+    except OSError:
+        return 0
+
+
+def progress_of(model, have=None):
+    """The percentage of a download, 0 to 99 (100 is the model being ready, which is said by the state), or None when its size is not known."""
+    expected = MODEL_MB.get(model, 0) * 1024 * 1024
+    if not expected:
+        return None
+    have = cache_bytes(model) if have is None else have
+    return max(0, min(99, int(100 * have / expected)))
 
 
 class SentenceTransformersProvider:
     name = 'sentence-transformers'
+
+    @property
+    def loaded(self):
+        return self._encoder is not None
 
     def __init__(self, model=None, revision=None):
         self.model = model or os.getenv('EMBEDDINGS_MODEL', DEFAULT_MODEL)
@@ -31,10 +68,44 @@ class SentenceTransformersProvider:
         return self._encoder.encode(texts, batch_size=BATCH, normalize_embeddings=True, show_progress_bar=False).tolist()
 
 
+class DownloadWatcher:
+    """While a model is being downloaded, says how much of it is on disk, now and then, until it is stopped. The download happens inside a
+    call that does not return until it is done, so this has a thread of its own, and the one that reports has a connection of its own."""
+
+    def __init__(self, model, report, interval=2.0, measure=progress_of):
+        self.model, self.report, self.interval, self.measure = model, report, interval, measure
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def tick(self):
+        progress = self.measure(self.model)
+        if progress is not None:
+            self.report(progress)
+
+    def _loop(self):
+        while not self._stop.wait(self.interval):
+            try:
+                self.tick()
+            except Exception as err:  # never a reason to stop preparing the model
+                print(f"   ⚠️ could not report the download of {self.model}: {err}")
+
+    def start(self):
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=5)
+
+
 class EmbeddingIndexer:
-    def __init__(self, db, provider, log=print, selectable=False):
+    def __init__(self, db, provider, log=print, selectable=False, watch_db=None):
         self.db, self.provider, self.log, self.selectable = db, provider, log, selectable
         self.state, self.error = 'idle', ''
+        self.progress = None
+        # A connection for the thread that watches a download (the job's own is busy); made when it is first needed.
+        self.watch_db = watch_db
 
     def select_configured_model(self):
         if not self.selectable:
@@ -52,10 +123,22 @@ class EmbeddingIndexer:
             self.state = state
         if error is not None:
             self.error = error
-        value = json.dumps({'provider': self.provider.name, 'model': self.provider.model,
-                            'revision': self.provider.revision, 'state': self.state, 'error': self.error})
-        self.db.execute("""INSERT INTO settings (key, value) VALUES ('embeddings.worker', %s::jsonb)
-            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""", (value,))
+        self._write(self.db, self.progress)
+
+    def _write(self, db, progress):
+        body = {'provider': self.provider.name, 'model': self.provider.model,
+                'revision': self.provider.revision, 'state': self.state, 'error': self.error}
+        if progress is not None and self.state == 'preparing':
+            body['progress'] = progress  # the administration shows the percentage of the download (DEC-176)
+        db.execute("""INSERT INTO settings (key, value) VALUES ('embeddings.worker', %s::jsonb)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""", (json.dumps(body),))
+
+    def _report_download(self, progress):
+        self.progress = progress
+        if self.watch_db is None:
+            from db import CodiceDatabase
+            self.watch_db = CodiceDatabase()
+        self._write(self.watch_db, progress)
 
     def enabled(self):
         row = self.db.fetchone("""SELECT COALESCE(
@@ -85,13 +168,23 @@ class EmbeddingIndexer:
             self.heartbeat('idle', '')
             return {}
         self.heartbeat('preparing', '')
+        # The model is downloaded the first time it is used, inside the first encoding: while that lasts, the percentage is reported.
+        watcher = None if getattr(self.provider, 'loaded', True) else DownloadWatcher(self.provider.model, self._report_download).start()
         try:
             outcome = self._run(work_id, checkpoint)
+            if watcher:
+                watcher.stop()
+                watcher = None
+            self.progress = None
             self.heartbeat('ready')
             return outcome
         except Exception as err:
+            self.progress = None
             self.heartbeat('error', f'{type(err).__name__}: {err}'[:500])
             raise
+        finally:
+            if watcher:
+                watcher.stop()
 
     def _run(self, work_id, checkpoint=lambda: None):
         files = self.db.fetchall("""

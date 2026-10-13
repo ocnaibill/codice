@@ -100,6 +100,8 @@ func newRouter(d routerDeps) http.Handler {
 	previewHandler := &handlers.PreviewHandler{DB: db}
 	ratingsHandler := &handlers.RatingsHandler{DB: db}
 	embeddingsAdmin := &handlers.EmbeddingsAdminHandler{DB: db}
+	modelsAdmin := &handlers.ModelsAdminHandler{DB: db}
+	servicesAdmin := &handlers.ServicesHandler{DB: db, Redis: d.RedisClient}
 	dictionaryAdmin := &handlers.DictionaryAdminHandler{DB: db, RedisClient: d.RedisClient}
 	dictionaryLookup := &handlers.DictionaryLookupHandler{DB: db}
 	ocrAdmin := &handlers.OCRHandler{DB: db}
@@ -380,6 +382,9 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Post("/admin/dictionaries/{id}/cancel", dictionaryAdmin.Cancel)
 	r.With(owner).Delete("/admin/dictionaries/{id}", dictionaryAdmin.Remove)
 	r.With(owner).Get("/admin/embeddings", embeddingsAdmin.Get)
+	r.With(owner).Get("/admin/models", modelsAdmin.Get)
+	r.With(owner).Put("/admin/models/comic-ocr", modelsAdmin.SetComicOCR)
+	r.With(staff).Get("/admin/services", servicesAdmin.Get)
 	r.With(owner).Put("/admin/embeddings", embeddingsAdmin.Set)
 	r.With(staff).Get("/admin/ocr", ocrAdmin.List)
 	r.With(staff).Post("/admin/works/{id}/ocr/retry", ocrAdmin.Retry)

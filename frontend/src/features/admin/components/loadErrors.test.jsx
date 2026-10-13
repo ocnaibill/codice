@@ -56,7 +56,7 @@ const CASES = [
   ['o estado do sistema', () => <SystemTab />, 'Não foi possível carregar o estado do sistema.', { lastBackup: null, queue: { pending: 0, running: 0, failedRecent: 0, oldestWaiting: null }, storage: null, components: { database: 'ok', redis: 'ok' } }],
   ['a lista do OCR', () => <OcrTab isOwner />, 'Não foi possível carregar a lista.', { enabled: true, available: true, language: 'por', data: [] }],
   ['a configuração do OCR', () => <OcrTab isOwner />, 'Não foi possível carregar a configuração do OCR.', { enabled: true, available: true, language: 'por', data: [] }],
-  ['a configuração da IA local', () => <EmbeddingsTab isOwner />, 'Não foi possível carregar a configuração.', { enabled: false, model: 'labse', available: true, models: [] }],
+  ['os modelos da IA local', () => <EmbeddingsTab isOwner />, 'Não foi possível carregar os modelos.', { controls: { semantic: 'none', comicOcr: 'none' }, services: { semantic: true, comicOcr: true }, models: [] }],
 ];
 
 describe('the admin tabs that cannot load what they show', () => {

@@ -24,7 +24,7 @@ from db import CodiceDatabase
 from analyzer import Analyzer, MediaStatus
 from pipeline import analyze_file, ensure_file
 from runner import JobRunner, JobsClient, new_owner_name, poll_once
-from health import Heartbeat
+from health import Heartbeat, Presence
 from textindex.store import TextIndexer
 from embeddings import EmbeddingIndexer, SentenceTransformersProvider
 from ocr import OcrIndexer
@@ -290,7 +290,9 @@ def listen_for_tasks():
     if asks_providers():
         repair_descriptions(db)  # once, for the descriptions an older version stored with their HTML (#58)
     client = connect_redis()
-    heartbeat = Heartbeat()
+    # The worker that analyses files says in the database that it is here, for the system tab; the other workers (OCR, embeddings) already
+    # say it about themselves.
+    heartbeat = Heartbeat(on_beat=Presence(db, 'worker.jobs') if asks_providers() else None)
     runner = build_runner(db, client, heartbeat)
     heartbeat.beat("starting")
     last_id = '$'

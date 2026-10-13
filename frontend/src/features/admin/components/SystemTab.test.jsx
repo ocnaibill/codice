@@ -23,10 +23,23 @@ const OFF = { enabled: false, packages: [], job: null };
 const QUIET = { pending: 0, running: 0, failedRecent: 0, oldestWaiting: null };
 const ROOMY = { freeBytes: 80 * 1024 ** 3, totalBytes: 100 * 1024 ** 3 };
 
-async function open({ last = null, queue = QUIET, storage = ROOMY, health = { status: 'ok', components: { database: 'ok', redis: 'ok' } }, backupError, panel = OFF, isOwner = false } = {}) {
+const SERVICES = [
+  { id: 'database', label: 'Banco de dados', status: 'ok' },
+  { id: 'redis', label: 'Redis', status: 'ok' },
+  { id: 'jobs', label: 'Serviço de trabalhos (worker)', status: 'ok' },
+  { id: 'ocr', label: 'OCR de PDFs escaneados', status: 'off', detail: 'Desligado.' },
+  { id: 'comic_ocr', label: 'OCR de quadrinhos e mangás', status: 'off', detail: 'Nenhum modelo escolhido.' },
+  { id: 'semantic', label: 'Correspondência semântica', status: 'off', detail: 'Desligada.' },
+];
+
+async function open({ last = null, queue = QUIET, storage = ROOMY, health = { status: 'ok', components: { database: 'ok', redis: 'ok' } }, backupError, panel = OFF, isOwner = false, services = SERVICES, servicesError } = {}) {
   api.get.mockImplementation(async (url) => {
     if (url === '/admin/performance') return { data: QUIET_PERFORMANCE };
     if (url === '/healthz') return { data: health };
+    if (url === '/admin/services') {
+      if (servicesError) throw servicesError;
+      return { data: { services } };
+    }
     if (url === '/admin/backup') {
       if (backupError) throw backupError;
       return { data: { lastBackup: last, queue, storage, panel: typeof panel === 'function' ? panel() : panel } };
@@ -67,6 +80,47 @@ describe('SystemTab: health', () => {
     view.unmount();
     await open({ health: { status: 'ok', components: { database: 'ok', redis: 'off' } } });
     expect(text()).toContain('não usado');
+  });
+});
+
+describe('SystemTab: services (DEC-176)', () => {
+  const row = (label) => [...view.container.querySelectorAll('ul[aria-label="Serviços"] li')].find((li) => li.textContent.includes(label));
+
+  it('says whether the worker and the OCR and model services are working, apart from the database and Redis above', async () => {
+    await open();
+    const list = view.container.querySelector('ul[aria-label="Serviços"]');
+    expect(list.querySelectorAll('li')).toHaveLength(4);
+    expect(row('Serviço de trabalhos').textContent).toContain('funcionando');
+    expect(list.textContent).not.toContain('Banco de dados');
+    expect(list.textContent).not.toContain('Redis');
+  });
+
+  it('says that what the owner has not turned on is off, with why, and that it is not a defect', async () => {
+    await open();
+    expect(row('OCR de quadrinhos').textContent).toContain('desligado');
+    expect(row('OCR de quadrinhos').textContent).toContain('Nenhum modelo escolhido.');
+    expect(row('OCR de quadrinhos').querySelector('.text-danger')).toBeNull();
+    expect(text()).toContain('isso não é defeito');
+  });
+
+  it('says in red a service that was turned on and is not running, and one that says it cannot work', async () => {
+    await open({ services: [
+      ...SERVICES.slice(0, 3),
+      { id: 'ocr', label: 'OCR de PDFs escaneados', status: 'down', detail: 'O serviço de OCR não está em execução.' },
+      { id: 'comic_ocr', label: 'OCR de quadrinhos e mangás', status: 'error', detail: 'modelo corrompido' },
+      SERVICES[5],
+    ] });
+    expect(row('OCR de PDFs').textContent).toContain('parado');
+    expect(row('OCR de PDFs').textContent).toContain('não está em execução');
+    expect(row('OCR de PDFs').querySelector('.text-danger')).not.toBeNull();
+    expect(row('OCR de quadrinhos').textContent).toContain('com erro');
+    expect(row('OCR de quadrinhos').textContent).toContain('modelo corrompido');
+  });
+
+  it('says it could not ask, without taking the rest of the tab with it', async () => {
+    await open({ servicesError: new Error('boom') });
+    expect(text()).toContain('Não foi possível perguntar pelos serviços');
+    expect(text()).toContain('Banco de dados');
   });
 });
 
