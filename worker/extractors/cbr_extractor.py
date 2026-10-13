@@ -17,7 +17,8 @@ class CbrExtractor(BaseExtractor):
         meta = ExtractedMetadata(format='cbr')
 
         try:
-            import rarfile
+            import rar_support
+            rarfile = rar_support.load()
             with rarfile.RarFile(file_path) as rf:
                 # 1. Try to parse ComicInfo.xml
                 for name in rf.namelist():

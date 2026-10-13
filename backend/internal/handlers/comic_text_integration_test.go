@@ -110,13 +110,14 @@ func TestComicText_TheKindOfAWorkDecidesTheOrderWhenNothingElseDoes(t *testing.T
 	}
 }
 
-func TestComicOCRReread_ReadsAgainOnlyWhatAnotherModelRead(t *testing.T) {
+func TestComicOCRReread_ReadsAgainWhatAnotherModelReadAndWhatFailed(t *testing.T) {
 	s := newCatalogStack(t)
 	duna := s.addWork("Mangá", "Autor", "m.cbz", "cbz")
 	s.readByOCR(duna, "mobile", "done", 0, 1)
 	s.readByOCR(duna, "mobile", "blank", 2)
 	s.readByOCR(duna, "server", "done", 3)
 	s.readByOCR(duna, "mobile", "failed", 4)
+	s.readByOCR(duna, "server", "failed", 5) // the model that is chosen failed too: after the cause is dealt with, it is read again
 
 	// No model is chosen, though the service is running: there is nothing to read with, and nothing is "another model's".
 	s.beat("comic_ocr.worker", `{"model":"server","state":"ready","pages":1}`)
@@ -127,25 +128,25 @@ func TestComicOCRReread_ReadsAgainOnlyWhatAnotherModelRead(t *testing.T) {
 		t.Fatalf("no model: %d", rec.Code)
 	}
 	s.do(admin, "PUT", "/admin/models/comic-ocr", `{"model":"server"}`)
-	if got := s.models(); got.ComicOcr.OtherModelPages != 3 {
-		t.Fatalf("pages of another model = %d, want 3 (the failed one is not counted)", got.ComicOcr.OtherModelPages)
+	if got := s.models(); got.ComicOcr.OtherModelPages != 3 || got.ComicOcr.FailedPages != 2 {
+		t.Fatalf("pages of another model = %d (want 3), failed = %d (want 2)", got.ComicOcr.OtherModelPages, got.ComicOcr.FailedPages)
 	}
 
 	rec := s.do(admin, "POST", "/admin/models/comic-ocr/reread", ``)
 	if rec.Code != 200 {
 		t.Fatalf("reread: %d %s", rec.Code, rec.Body.String())
 	}
-	if n := s.scalar(`SELECT count(*) FROM comic_ocr_pages WHERE model = 'server'`); n != "1" {
-		t.Errorf("pages of the chosen model = %s, want the one that is there", n)
+	if n := s.scalar(`SELECT count(*) FROM comic_ocr_pages`); n != "1" {
+		t.Errorf("pages left = %s, want only the one the chosen model read", n)
 	}
-	if n := s.scalar(`SELECT count(*) FROM comic_ocr_pages WHERE model = 'mobile'`); n != "1" {
-		t.Errorf("pages of the other model = %s, want only the failed one", n)
+	if n := s.scalar(`SELECT page FROM comic_ocr_pages`); n != "3" {
+		t.Errorf("the page that is left = %s, want 3", n)
 	}
-	if got := s.models(); got.ComicOcr.OtherModelPages != 0 {
-		t.Errorf("still to read again = %d", got.ComicOcr.OtherModelPages)
+	if got := s.models(); got.ComicOcr.OtherModelPages != 0 || got.ComicOcr.FailedPages != 0 {
+		t.Errorf("still to read again = %d other, %d failed", got.ComicOcr.OtherModelPages, got.ComicOcr.FailedPages)
 	}
-	if n := s.scalar(`SELECT details->>'pages' FROM audit_log WHERE action = 'models.comic_ocr.reread'`); n != "3" {
-		t.Errorf("audit pages = %q", n)
+	if n := s.scalar(`SELECT details->>'pages' || '/' || (details->>'otherModel') || '/' || (details->>'failed') FROM audit_log WHERE action = 'models.comic_ocr.reread'`); n != "5/3/2" {
+		t.Errorf("audit pages/other/failed = %q", n)
 	}
 }
 

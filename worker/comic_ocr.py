@@ -1,7 +1,7 @@
 """Reads the pages of comics and manga by OCR (DEC-176, #27).
 
 A comic is a folder of pictures: its text is in the balloons. Here each page is read by PaddleOCR (the engine that measured best in the
-laboratory, lab/ocr) and what it found is turned into regions of speech (comic_regions.py): balloons and captions, without the
+laboratory) and what it found is turned into regions of speech (comic_regions.py): balloons and captions, without the
 onomatopoeia, each with its box in the pixels of the page. A page is read once and kept, in `comic_ocr_pages`; the text the search sees is
 made from those rows every time the text of the file is read (textindex/comic.py), in the order the direction of the series asks for, so
 choosing a direction later reads nothing again.
@@ -40,6 +40,10 @@ MAX_SIDE = 1600           # a page is read at most this wide or tall: the detect
 MAX_PAGES = int(os.getenv('COMIC_OCR_MAX_PAGES', '2000'))
 MAX_CONSECUTIVE_FAILURES = 5
 HEARTBEAT_EVERY = 5       # pages
+# oneDNN (MKLDNN) makes the CPU inference faster, but the PP-OCRv6 models fail with it on x86-64 in Paddle 3.3.1 ("ConvertPirAttribute2RuntimeAttribute
+# not support", PaddlePaddle/Paddle#79749). 'auto' uses it and goes without it, for that engine, at the first failure of this kind; 'on' and
+# 'off' force it.
+MKLDNN = os.getenv('COMIC_OCR_MKLDNN', 'auto').strip().lower()
 
 
 class EngineMissing(Exception):
@@ -74,9 +78,11 @@ class PaddleEngine:
     """The detector and the recogniser of one choice, loaded when they are first needed (and downloaded then, if they are not here)."""
     name = ENGINE_NAME
 
-    def __init__(self, model):
+    def __init__(self, model, log=print):
         self.model = model
+        self.log = log
         self._ocr = None
+        self._mkldnn = MKLDNN != 'off'
 
     @property
     def loaded(self):
@@ -96,7 +102,8 @@ class PaddleEngine:
             raise EngineMissing(f'PaddleOCR is not installed: {err}')
         spec = MODELS[self.model]
         self._ocr = PaddleOCR(text_detection_model_name=spec['det'], text_recognition_model_name=spec['rec'],
-                              use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False)
+                              use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False,
+                              enable_mkldnn=self._mkldnn)
 
     def read(self, data):
         """([lines], (width, height)) of a page given as the bytes of its picture. A line is {'x', 'y', 'w', 'h', 'text', 'conf'} in the
@@ -108,8 +115,23 @@ class PaddleEngine:
         scale = min(1.0, MAX_SIDE / max(width, height))
         if scale < 1:
             image = image.resize((max(1, int(width * scale)), max(1, int(height * scale))))
-        result = self._ocr.predict(np.array(image)[:, :, ::-1].copy())
+        array = np.array(image)[:, :, ::-1].copy()
+        try:
+            result = self._ocr.predict(array)
+        except Exception as err:
+            if not (self._mkldnn and MKLDNN == 'auto' and mkldnn_failure(err)):
+                raise
+            self.log(f'   ⚠️ {self.model}: the engine does not run with oneDNN here ({type(err).__name__}); going on without it')
+            self._mkldnn = False
+            self.load()
+            result = self._ocr.predict(array)
         return lines_of(result, scale), (width, height)
+
+
+def mkldnn_failure(err):
+    """Whether an error of the engine is the oneDNN path not being able to run the model (and not a page that cannot be read)."""
+    text = f'{type(err).__name__} {err}'.lower()
+    return any(mark in text for mark in ('onednn', 'mkldnn', 'convertpirattribute'))
 
 
 def lines_of(result, scale=1.0):
@@ -143,7 +165,8 @@ class Archive:
     def __enter__(self):
         if self.fmt == 'cbr':
             try:
-                import rarfile
+                import rar_support
+                rarfile = rar_support.load()
             except ImportError:
                 raise ValueError('CBR files cannot be read here (rarfile is not installed)')
             try:

@@ -96,23 +96,32 @@ function ModelsTable({ models }) {
   );
 }
 
-/** The pages that a model other than the chosen one read: the owner decides whether they are read again (DEC-176). */
-function RereadNote({ pages, modelName, serviceUp, mutation }) {
+/** The pages that another model read, and the ones that failed: the owner decides whether they are read again (DEC-176). */
+function RereadNote({ other, failed, modelName, serviceUp, mutation }) {
   const [asking, setAsking] = useState(false);
+  const pages = other + failed;
   const count = pages.toLocaleString('pt-BR');
-  const noun = pages === 1 ? 'página foi lida' : 'páginas foram lidas';
+  const plural = (n, one, many) => (n === 1 ? one : many);
   return (
     <div className="mt-3 rounded-lg bg-surface-alt px-3 py-2 text-xs text-ink-soft">
-      <p>
-        {count} {noun} com outro modelo. O texto delas continua na busca até a nova leitura.
-      </p>
+      {other > 0 && (
+        <p>
+          {other.toLocaleString('pt-BR')} {plural(other, 'página foi lida', 'páginas foram lidas')} com outro modelo. O texto {plural(other, 'dela continua', 'delas continua')} na busca
+          até a nova leitura.
+        </p>
+      )}
+      {failed > 0 && (
+        <p>
+          {failed.toLocaleString('pt-BR')} {plural(failed, 'página não pôde ser lida', 'páginas não puderam ser lidas')}. Se a causa já foi resolvida, leia de novo.
+        </p>
+      )}
       <button
         type="button"
         onClick={() => setAsking(true)}
         disabled={!serviceUp || mutation.isPending}
         className="mt-2 min-h-11 rounded-full border border-border-hairline bg-white px-4 text-[13px] font-medium text-ink transition-[background-color,transform] duration-150 hover:bg-surface active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Reler {count} {pages === 1 ? 'página' : 'páginas'} com este modelo
+        Reler {count} {plural(pages, 'página', 'páginas')} com este modelo
       </button>
       {mutation.isSuccess && !mutation.isPending && <p role="status" className="mt-2">As páginas entraram na fila para serem lidas de novo.</p>}
       {asking && (
@@ -120,7 +129,7 @@ function RereadNote({ pages, modelName, serviceUp, mutation }) {
           title="Reler as páginas com este modelo?"
           message={
             <p>
-              {count} {pages === 1 ? 'página será lida' : 'páginas serão lidas'} de novo, em segundo plano, com {modelName}. Cada página leva de alguns segundos
+              {count} {plural(pages, 'página será lida', 'páginas serão lidas')} de novo, em segundo plano, com {modelName}. Cada página leva de alguns segundos
               a mais de um minuto, e o texto que está na busca só é trocado quando a leitura nova termina.
             </p>
           }
@@ -178,9 +187,10 @@ export function EmbeddingsTab() {
           onChoose={chooseComic}
         />
         <ErrorNote>{comic.isError && describeError(comic.error)}</ErrorNote>
-        {data.controls.comicOcr !== NONE && data.comicOcr?.otherModelPages > 0 && (
+        {data.controls.comicOcr !== NONE && (data.comicOcr?.otherModelPages > 0 || data.comicOcr?.failedPages > 0) && (
           <RereadNote
-            pages={data.comicOcr.otherModelPages}
+            other={data.comicOcr.otherModelPages ?? 0}
+            failed={data.comicOcr.failedPages ?? 0}
             modelName={data.models.find((m) => m.id === data.controls.comicOcr)?.name ?? 'o modelo escolhido'}
             serviceUp={data.services.comicOcr}
             mutation={reread}

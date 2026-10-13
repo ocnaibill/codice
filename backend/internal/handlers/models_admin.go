@@ -186,8 +186,12 @@ func (h *ModelsAdminHandler) state(ctx context.Context) (map[string]any, error) 
 	if semanticOn {
 		semanticChoice = semanticModel
 	}
-	// The pages read with a model that is not the one chosen: what "read again with this model" would read (DEC-176).
-	otherPages := 0
+	// What "read again with this model" would read (DEC-176): the pages read with a model that is not the one chosen, and the pages that
+	// failed (a page that failed is not tried again by itself: it is the owner's button, after the cause was dealt with).
+	otherPages, failedPages := 0, 0
+	if err := h.DB.QueryRowContext(ctx, `SELECT count(*) FROM comic_ocr_pages WHERE state = 'failed'`).Scan(&failedPages); err != nil {
+		return nil, err
+	}
 	if comicChoice != noModel {
 		if err := h.DB.QueryRowContext(ctx, `SELECT count(*) FROM comic_ocr_pages WHERE model <> $1 AND state IN ('done', 'blank')`, comicChoice).Scan(&otherPages); err != nil {
 			return nil, err
@@ -197,7 +201,7 @@ func (h *ModelsAdminHandler) state(ctx context.Context) (map[string]any, error) 
 		"controls": map[string]string{"semantic": semanticChoice, "comicOcr": comicChoice},
 		"services": map[string]bool{"semantic": semantic.Fresh, "comicOcr": comic.Fresh},
 		"models":   models,
-		"comicOcr": map[string]int{"otherModelPages": otherPages},
+		"comicOcr": map[string]int{"otherModelPages": otherPages, "failedPages": failedPages},
 	}, nil
 }
 
@@ -248,9 +252,10 @@ func (h *ModelsAdminHandler) SetComicOCR(w http.ResponseWriter, r *http.Request)
 	h.Get(w, r)
 }
 
-// RereadComicOCR answers POST /admin/models/comic-ocr/reread (owner): the pages that were read with another model are read again with the
-// one chosen. Their rows are dropped, which makes the comics unread again for the service, that queues them; the text of each file stays
-// as it was until the new reading replaces it, so the search is never left without it. A model must be chosen and its service running.
+// RereadComicOCR answers POST /admin/models/comic-ocr/reread (owner): the pages that were read with another model, and the ones that
+// failed, are read again with the one chosen. Their rows are dropped, which makes the comics unread again for the service, that queues
+// them; the text of each file stays as it was until the new reading replaces it, so the search is never left without it. A model must
+// be chosen and its service running.
 func (h *ModelsAdminHandler) RereadComicOCR(w http.ResponseWriter, r *http.Request) {
 	choice, err := h.chosenComicOCR(r.Context())
 	if err != nil {
@@ -270,12 +275,17 @@ func (h *ModelsAdminHandler) RereadComicOCR(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "O serviço de OCR de quadrinhos não está em execução.", http.StatusConflict)
 		return
 	}
-	res, err := h.DB.ExecContext(r.Context(), `DELETE FROM comic_ocr_pages WHERE model <> $1 AND state IN ('done', 'blank')`, choice)
+	var failed, other int64
+	err = h.DB.QueryRowContext(r.Context(), `
+		WITH gone AS (
+			DELETE FROM comic_ocr_pages WHERE state = 'failed' OR (model <> $1 AND state IN ('done', 'blank')) RETURNING state
+		)
+		SELECT count(*) FILTER (WHERE state = 'failed'), count(*) FILTER (WHERE state <> 'failed') FROM gone`, choice).Scan(&failed, &other)
 	if err != nil {
 		http.Error(w, "Error reading the pages again", http.StatusInternalServerError)
 		return
 	}
-	pages, _ := res.RowsAffected()
-	_ = audit.Record(r.Context(), h.DB, currentUserID(r), "models.comic_ocr.reread", "settings", comicOCRSetting, map[string]any{"model": choice, "pages": pages})
+	_ = audit.Record(r.Context(), h.DB, currentUserID(r), "models.comic_ocr.reread", "settings", comicOCRSetting,
+		map[string]any{"model": choice, "pages": failed + other, "otherModel": other, "failed": failed})
 	h.Get(w, r)
 }

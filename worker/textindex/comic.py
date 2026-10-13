@@ -32,7 +32,8 @@ def _read_comicinfo(path, fmt):
     """The bytes of the ComicInfo.xml of a CBZ or CBR, or None when it has none. Too large is read as none."""
     if fmt == 'cbr':
         try:
-            import rarfile
+            import rar_support
+            rarfile = rar_support.load()
         except ImportError:
             raise ValueError('CBR files cannot be read here (rarfile is not installed)')
         try:
