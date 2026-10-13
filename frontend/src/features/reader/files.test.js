@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findFile, languageName, formatSize, positionFromLocator, placeLabel, parseTags, completionText, whereYouAre, candidateLabel } from './files';
+import { findFile, languageName, formatSize, positionFromLocator, regionFromLocator, placeLabel, parseTags, completionText, whereYouAre, candidateLabel } from './files';
 
 const work = {
   id: 1, fileId: 10, fileUrl: '/file/10', format: 'epub',
@@ -104,5 +104,25 @@ describe('reading summary texts', () => {
     expect(candidateLabel({ method: 'semantic', confidence: 'high' })).toBe('mesma passagem pelo sentido, alta confiança');
     expect(candidateLabel({ method: 'unknown' })).toBe('correspondência aproximada');
     expect(candidateLabel(undefined)).toBe('correspondência aproximada');
+  });
+});
+
+describe('regionFromLocator', () => {
+  it('gives the rectangle of a hit read from a balloon, with the page it is on', () => {
+    expect(regionFromLocator({ type: 'image', index: 4, region: { x: 0.1, y: 0.2, w: 0.3, h: 0.25 } })).toEqual({ index: 4, x: 0.1, y: 0.2, w: 0.3, h: 0.25 });
+    // Up to the edge of the page, with the rounding a division leaves.
+    expect(regionFromLocator({ type: 'image', index: 0, region: { x: 0.5, y: 0.5, w: 0.5, h: 0.5 } })).not.toBeNull();
+  });
+
+  it('does not make a mark of what is not a rectangle inside the page', () => {
+    expect(regionFromLocator(null)).toBeNull();
+    expect(regionFromLocator({ type: 'image', index: 4 })).toBeNull();
+    expect(regionFromLocator({ type: 'pdf', page: 2, region: { x: 0, y: 0, w: 1, h: 1 } })).toBeNull();
+    expect(regionFromLocator({ type: 'image', index: 4, region: { x: '0.1', y: 0, w: 0.5, h: 0.5 } })).toBeNull();
+    expect(regionFromLocator({ type: 'image', index: 4, region: { x: -0.1, y: 0, w: 0.5, h: 0.5 } })).toBeNull();
+    expect(regionFromLocator({ type: 'image', index: 4, region: { x: 0.8, y: 0, w: 0.5, h: 0.5 } })).toBeNull();
+    expect(regionFromLocator({ type: 'image', index: 4, region: { x: 0, y: 0, w: 0, h: 0.5 } })).toBeNull();
+    expect(regionFromLocator({ type: 'image', index: 4, region: { x: NaN, y: 0, w: 0.5, h: 0.5 } })).toBeNull();
+    expect(regionFromLocator({ type: 'image', index: -1, region: { x: 0, y: 0, w: 0.5, h: 0.5 } })).toBeNull();
   });
 });

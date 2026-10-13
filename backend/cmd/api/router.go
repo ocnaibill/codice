@@ -384,6 +384,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Get("/admin/embeddings", embeddingsAdmin.Get)
 	r.With(owner).Get("/admin/models", modelsAdmin.Get)
 	r.With(owner).Put("/admin/models/comic-ocr", modelsAdmin.SetComicOCR)
+	r.With(owner).Post("/admin/models/comic-ocr/reread", modelsAdmin.RereadComicOCR)
 	r.With(staff).Get("/admin/services", servicesAdmin.Get)
 	r.With(owner).Put("/admin/embeddings", embeddingsAdmin.Set)
 	r.With(staff).Get("/admin/ocr", ocrAdmin.List)

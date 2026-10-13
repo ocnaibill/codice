@@ -5,7 +5,7 @@ import { useWorkSeries } from '../api/useWorkSeries';
 import { useReadingHeartbeat } from '../api/useReadingHeartbeat';
 import { useFavoriteToggle } from '../api/useFavoriteToggle';
 import { useFileProgress } from '../api/useFileProgress';
-import { findFile, isReadOnScreen, languageName, placeLabel, positionFromLocator } from '../files';
+import { findFile, isReadOnScreen, languageName, placeLabel, positionFromLocator, regionFromLocator } from '../files';
 import { useWakeLock } from '../../../lib/useWakeLock';
 import { otherVersionsInProgress } from '../finishPrompt';
 import { useSetWorkFinished } from '../api/useCompletion';
@@ -253,7 +253,7 @@ export function Reader() {
         return <EpubViewer fileUrl={fileUrl} title={book.title} onSelection={setSelection} marks={marks} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'cbz':
       case 'cbr':
-        return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} declaredMode={file.declaredMode} seriesDirection={book.metadata?.seriesDirection} comicKind={book.metadata?.comicKind} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
+        return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} highlight={seek ? regionFromLocator(seek.locator) : null} declaredMode={file.declaredMode} seriesDirection={book.metadata?.seriesDirection} comicKind={book.metadata?.comicKind} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'txt':
         return <TextViewer fileUrl={fileUrl} onSelection={setSelection} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'md':

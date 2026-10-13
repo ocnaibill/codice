@@ -48,6 +48,16 @@ export function positionFromLocator(locator) {
   }
 }
 
+// The part of a comic page a search hit points to (the balloon the text was read from, DEC-176), as fractions of the page. Anything that is
+// not a rectangle inside the page is not a mark: the page opens without one.
+export function regionFromLocator(locator) {
+  const r = locator?.type === 'image' ? locator.region : null;
+  if (!r || ![r.x, r.y, r.w, r.h].every((n) => typeof n === 'number' && Number.isFinite(n))) return null;
+  if (r.x < 0 || r.y < 0 || r.w <= 0 || r.h <= 0 || r.x + r.w > 1.001 || r.y + r.h > 1.001) return null;
+  if (!Number.isInteger(locator.index) || locator.index < 0) return null;
+  return { index: locator.index, x: r.x, y: r.y, w: r.w, h: r.h };
+}
+
 // Where a locator points, in words, for a person.
 export function placeLabel(locator) {
   switch (locator?.type) {

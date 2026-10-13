@@ -99,6 +99,61 @@ describe('IA local: the choices', () => {
   });
 });
 
+describe('IA local: reading again with the chosen model', () => {
+  const rereadButton = () => [...view.container.querySelectorAll('button')].find((b) => b.textContent.startsWith('Reler'));
+  const dialog = () => document.querySelector('[role="dialog"]');
+  const dialogButton = (label) => [...dialog().querySelectorAll('button')].find((b) => b.textContent === label);
+  const withOthers = (pages, over = {}) => ({ ...modelsOf({ controls: { comicOcr: 'server' }, ...over }), comicOcr: { otherModelPages: pages } });
+
+  it('offers nothing when no page was read by another model, or when no model is chosen', async () => {
+    await open(withOthers(0));
+    expect(rereadButton()).toBeUndefined();
+    view.unmount();
+    await open({ ...modelsOf(), comicOcr: { otherModelPages: 40 } });
+    expect(rereadButton()).toBeUndefined();
+  });
+
+  it('says how many pages another model read, and asks before reading them again', async () => {
+    await open(withOthers(1234));
+    expect(view.text()).toContain('1.234 páginas foram lidas com outro modelo');
+    expect(rereadButton().textContent).toBe('Reler 1.234 páginas com este modelo');
+    await view.click(rereadButton());
+    expect(api.post).not.toHaveBeenCalled();
+    expect(dialog().textContent).toContain('Servidor (PaddleOCR médio)');
+    expect(dialog().textContent).toContain('o texto que está na busca só é trocado quando a leitura nova termina');
+    await view.click(dialogButton('Reler as páginas'));
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith('/admin/models/comic-ocr/reread');
+  });
+
+  it('does not read again when the question is cancelled', async () => {
+    await open(withOthers(3));
+    await view.click(rereadButton());
+    await view.click(dialogButton('Cancelar'));
+    expect(dialog()).toBeNull();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('speaks of one page in the singular', async () => {
+    await open(withOthers(1));
+    expect(view.text()).toContain('1 página foi lida com outro modelo');
+    expect(rereadButton().textContent).toBe('Reler 1 página com este modelo');
+  });
+
+  it('is not offered while the service that reads is not running', async () => {
+    await open(withOthers(5, { services: { comicOcr: false } }));
+    expect(rereadButton().disabled).toBe(true);
+  });
+
+  it('says what the server refused', async () => {
+    await open(withOthers(5));
+    api.post.mockRejectedValue({ response: { status: 409, data: 'O serviço de OCR de quadrinhos não está em execução.\n' } });
+    await view.click(rereadButton());
+    await view.click(dialogButton('Reler as páginas'));
+    expect(view.container.querySelector('[role="alert"]').textContent).toContain('não está em execução');
+  });
+});
+
 describe('IA local: the models and their state', () => {
   const row = (name) => [...view.container.querySelectorAll('ul[aria-label="Modelos locais"] li')].find((li) => li.textContent.includes(name));
 

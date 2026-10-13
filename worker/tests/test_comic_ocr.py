@@ -45,6 +45,7 @@ class Engine:
 
     def __init__(self, model, pages=None, fails=()):
         self.model, self.loaded, self.pages, self.fails, self.read_calls = model, False, pages or {}, set(fails), []
+        self.on_read = None  # called with how many pages were read, after each one
 
     def load(self):
         self.loaded = True
@@ -56,6 +57,8 @@ class Engine:
         self.read_calls.append(data)
         if data in self.fails:
             raise RuntimeError('o motor falhou')
+        if self.on_read:
+            self.on_read(len(self.read_calls))
         return self.pages.get(data, []), (1000, 1500)
 
 
@@ -159,9 +162,11 @@ class TestTheJob:
     def file_row(self, path, file_id=7):
         return [(file_id, 'sha', 'cbz', 'managed', None, path)]
 
-    def run_job(self, tmp_path, pages, engine, known=(), choice=None):
+    def run_job(self, tmp_path, pages, engine, known=(), choice=None, during=None, more_files=()):
         path = comic(tmp_path, pages)
-        db = DB(choice=choice or {'model': 'mobile'}, files=self.file_row('c.cbz'), known=known)
+        db = DB(choice=choice or {'model': 'mobile'}, files=self.file_row('c.cbz') + [self.file_row('c.cbz', file_id=i)[0] for i in more_files], known=known)
+        if during:
+            engine.on_read = lambda n: during(db, n)
         ix, made = indexer(db, tmp_path, engines={'mobile': engine})
         made_text = []
         original = comic_ocr.TextIndexer
@@ -222,6 +227,38 @@ class TestTheJob:
         engine = Engine('mobile')
         db, outcome, text, _ = self.run_job(tmp_path, [('1.png', b'a')], engine, choice={'model': 'none'})
         assert outcome == {} and engine.read_calls == [] and text == [] and db.saved() == []
+
+    def test_a_model_chosen_while_it_runs_stops_the_job_at_the_page_that_is_next_and_the_text_is_made_of_what_was_read(self, tmp_path):
+        engine = Engine('mobile', pages={b'a': [line('PRIMEIRA FALA AQUI')], b'b': [line('SEGUNDA FALA AQUI')]})
+
+        def choose_another(db, n):
+            if n == 1:
+                db.choice = {'model': 'server'}
+
+        db, outcome, text, _ = self.run_job(tmp_path, [('1.png', b'a'), ('2.png', b'b'), ('3.png', b'c')], engine, during=choose_another)
+        assert engine.read_calls == [b'a']  # the model of the job is no longer the chosen: the pages that are left are not read with it
+        assert outcome == {7: {'read': 1, 'failed': 0}}
+        assert [r[1] for r in db.saved()] == [0]
+        assert text == [(5, True, {7})]
+
+    def test_the_files_that_are_left_are_not_started_with_a_model_that_is_no_longer_the_chosen(self, tmp_path):
+        engine = Engine('mobile', pages={b'a': [line('PRIMEIRA FALA AQUI')]})
+
+        def choose_another(db, n):
+            db.choice = {'model': 'server'}
+
+        _, outcome, text, _ = self.run_job(tmp_path, [('1.png', b'a')], engine, during=choose_another, more_files=[8, 9])
+        assert list(outcome) == [7]  # the other two were not opened, and no text was made of them
+        assert text == [(5, True, {7})]
+
+    def test_a_model_taken_away_while_it_runs_stops_it_too(self, tmp_path):
+        engine = Engine('mobile', pages={b'a': [line('PRIMEIRA FALA AQUI')]})
+
+        def turn_off(db, n):
+            db.choice = {'model': 'none'}
+
+        _, outcome, _, _ = self.run_job(tmp_path, [('1.png', b'a'), ('2.png', b'b')], engine, during=turn_off)
+        assert engine.read_calls == [b'a'] and outcome == {7: {'read': 1, 'failed': 0}}
 
     def test_what_was_read_of_another_version_of_the_file_is_thrown_away(self, tmp_path):
         engine = Engine('mobile')

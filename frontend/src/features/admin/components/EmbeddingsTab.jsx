@@ -1,4 +1,6 @@
-import { describeError, useModels, useSetComicOcr, useSetEmbeddings } from '../api/admin';
+import { useState } from 'react';
+import { describeError, useModels, useRereadComicOcr, useSetComicOcr, useSetEmbeddings } from '../api/admin';
+import { ConfirmDialog } from './ConfirmDialog';
 import { ErrorNote, Loading, Section } from './ui';
 import { LoadError } from '../../../components/ui/LoadError';
 
@@ -94,10 +96,51 @@ function ModelsTable({ models }) {
   );
 }
 
+/** The pages that a model other than the chosen one read: the owner decides whether they are read again (DEC-176). */
+function RereadNote({ pages, modelName, serviceUp, mutation }) {
+  const [asking, setAsking] = useState(false);
+  const count = pages.toLocaleString('pt-BR');
+  const noun = pages === 1 ? 'página foi lida' : 'páginas foram lidas';
+  return (
+    <div className="mt-3 rounded-lg bg-surface-alt px-3 py-2 text-xs text-ink-soft">
+      <p>
+        {count} {noun} com outro modelo. O texto delas continua na busca até a nova leitura.
+      </p>
+      <button
+        type="button"
+        onClick={() => setAsking(true)}
+        disabled={!serviceUp || mutation.isPending}
+        className="mt-2 min-h-11 rounded-full border border-border-hairline bg-white px-4 text-[13px] font-medium text-ink transition-[background-color,transform] duration-150 hover:bg-surface active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Reler {count} {pages === 1 ? 'página' : 'páginas'} com este modelo
+      </button>
+      {mutation.isSuccess && !mutation.isPending && <p role="status" className="mt-2">As páginas entraram na fila para serem lidas de novo.</p>}
+      {asking && (
+        <ConfirmDialog
+          title="Reler as páginas com este modelo?"
+          message={
+            <p>
+              {count} {pages === 1 ? 'página será lida' : 'páginas serão lidas'} de novo, em segundo plano, com {modelName}. Cada página leva de alguns segundos
+              a mais de um minuto, e o texto que está na busca só é trocado quando a leitura nova termina.
+            </p>
+          }
+          choices={[{ label: 'Reler as páginas', value: true, tone: 'primary' }]}
+          onChoose={() => {
+            setAsking(false);
+            mutation.mutate();
+          }}
+          onCancel={() => setAsking(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 export function EmbeddingsTab() {
   const { data, isLoading, isError, error, refetch, isRefetching } = useModels();
   const semantic = useSetEmbeddings();
   const comic = useSetComicOcr();
+  const reread = useRereadComicOcr();
   if (isLoading) return <Loading />;
   if (isError || !data) return <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar os modelos.</LoadError>;
 
@@ -135,6 +178,15 @@ export function EmbeddingsTab() {
           onChoose={chooseComic}
         />
         <ErrorNote>{comic.isError && describeError(comic.error)}</ErrorNote>
+        {data.controls.comicOcr !== NONE && data.comicOcr?.otherModelPages > 0 && (
+          <RereadNote
+            pages={data.comicOcr.otherModelPages}
+            modelName={data.models.find((m) => m.id === data.controls.comicOcr)?.name ?? 'o modelo escolhido'}
+            serviceUp={data.services.comicOcr}
+            mutation={reread}
+          />
+        )}
+        <ErrorNote>{reread.isError && describeError(reread.error)}</ErrorNote>
       </Section>
       <Section title="Modelos" hint="O que está escolhido, em que ponto está o download e quanto cada modelo já foi usado.">
         <ModelsTable models={data.models} />
