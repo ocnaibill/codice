@@ -501,7 +501,7 @@ class TestWiring:
 
             with patch.object(main, 'CodiceDatabase', lambda: 'db'), patch.object(main, 'report_keys', lambda db: None), \
                     patch.object(main, 'db_gate', lambda db: 'gate'), patch.object(main, 'connect_redis', lambda: 'redis'), \
-                    patch.object(main, 'Heartbeat', lambda: SimpleNamespace(beat=lambda *a, **k: None)), \
+                    patch.object(main, 'Heartbeat', lambda **kw: SimpleNamespace(beat=lambda *a, **k: None)), \
                     patch.object(main, 'build_runner', lambda db, client, heartbeat: SimpleNamespace(embeddings=None, ocr=runner_ocr)), \
                     patch.object(main, 'poll_once', lambda runner, heartbeat: (events.append('poll'), 'idle')[1]), \
                     patch.object(main, 'resolve_authors', lambda db, allowed: None), patch.object(main, 'wait_for_work', wait):

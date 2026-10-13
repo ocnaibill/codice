@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { describeError, useBackup, useHealth, useRunBackup, useVerifyBackup } from '../api/admin';
+import { describeError, useBackup, useHealth, useRunBackup, useServices, useVerifyBackup } from '../api/admin';
 import { messageOf } from '../../../lib/serverMessage';
 import { formatAge, formatBytes, formatDate } from '../format';
 import { LOW_SPACE, STALE_AFTER, STUCK_AFTER } from '../systemLimits';
@@ -32,6 +32,35 @@ function Health() {
               </li>
             );
           })}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+const SERVICE_TONE = { ok: 'text-success', off: 'text-ink-faint', down: 'text-danger', error: 'text-danger' };
+const SERVICE_WORD = { ok: 'funcionando', off: 'desligado', down: 'parado', error: 'com erro' };
+
+/** Whether the worker and the services of OCR and of the local models are working (DEC-176). The database and Redis are above, from the
+ *  public health, which answers even when the database does not. */
+function Services() {
+  const { data, isLoading, isError, error, refetch, isRefetching } = useServices();
+  const rows = (data?.services ?? []).filter((s) => s.id !== 'database' && s.id !== 'redis');
+  return (
+    <Section title="Serviços" hint="O que cada serviço diz de si. Um que você não ligou aparece como desligado, e isso não é defeito.">
+      {isLoading && <Loading />}
+      {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível perguntar pelos serviços.</LoadError>}
+      {data && (
+        <ul className="divide-y divide-border-hairline" aria-label="Serviços">
+          {rows.map((s) => (
+            <li key={s.id} className="py-2 text-[13px]">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="font-medium text-ink">{s.label}</span>
+                <span className={SERVICE_TONE[s.status]}>{SERVICE_WORD[s.status] ?? s.status}</span>
+              </div>
+              {s.detail && <p className={`mt-0.5 text-xs ${s.status === 'off' ? 'text-ink-faint' : 'text-ink-soft'}`}>{s.detail}</p>}
+            </li>
+          ))}
         </ul>
       )}
     </Section>
@@ -311,6 +340,7 @@ export function SystemTab({ isOwner = false }) {
   return (
     <div className="flex flex-col gap-5">
       <Health />
+      <Services />
       <Section title="Fila de trabalhos e espaço" hint="O que o sistema tem para fazer e quanto lugar sobra para os livros e as capas.">
         {isLoading && <Loading />}
         {isError && <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar o estado do sistema.</LoadError>}

@@ -12,44 +12,127 @@ let view;
 afterEach(() => view.unmount());
 beforeEach(() => vi.clearAllMocks());
 
-async function open(state) {
-  state = { models: [
-    { id: 'intfloat/multilingual-e5-small', name: 'Leve (e5-small)', downloadMB: 471, scope: 'Português e inglês' },
-    { id: 'sentence-transformers/LaBSE', name: 'Multilíngue amplo (LaBSE)', downloadMB: 1880, scope: 'Alfabetos distantes' },
-  ], ...state };
+const entry = (over) => ({
+  id: 'x', kind: 'semantic', name: 'Modelo', scope: 'Escopo', sizeMB: 100, selected: false, state: 'off', inUse: false,
+  usage: { count: 0, unit: 'arquivos preparados' }, ...over,
+});
+const E5 = 'intfloat/multilingual-e5-small';
+const LABSE = 'sentence-transformers/LaBSE';
+
+function modelsOf(over = {}) {
+  return {
+    controls: { semantic: 'none', comicOcr: 'none', ...(over.controls || {}) },
+    services: { semantic: true, comicOcr: true, ...(over.services || {}) },
+    models: over.models || [
+      entry({ id: E5, name: 'Leve (e5-small)', scope: 'Português e inglês', sizeMB: 471 }),
+      entry({ id: LABSE, name: 'Multilíngue amplo (LaBSE)', scope: 'Alfabetos distantes', sizeMB: 1880 }),
+      entry({ id: 'mobile', kind: 'comic_ocr', name: 'Leve (PaddleOCR mobile)', scope: 'Quadrinhos e mangás', sizeMB: 13, usage: { count: 0, unit: 'páginas lidas' } }),
+      entry({ id: 'server', kind: 'comic_ocr', name: 'Servidor (PaddleOCR médio)', scope: 'Mais fiel', sizeMB: 132, usage: { count: 0, unit: 'páginas lidas' } }),
+    ],
+  };
+}
+
+async function open(state = modelsOf()) {
   api.get.mockResolvedValue({ data: state });
-  api.put.mockResolvedValue({ data: { ...state, enabled: true } });
+  api.put.mockResolvedValue({ data: state });
   view = await mount(<EmbeddingsTab />);
 }
 
-describe('EmbeddingsTab', () => {
-  it('starts off and enables the local model explicitly', async () => {
-    await open({ enabled: false, available: true, state: 'idle', model: 'sentence-transformers/LaBSE', error: '' });
-    const toggle = view.container.querySelector('input[type="checkbox"]');
-    expect(toggle.checked).toBe(false);
-    await view.click(toggle);
-    expect(api.put).toHaveBeenCalledWith('/admin/embeddings', { enabled: true, model: 'sentence-transformers/LaBSE' });
+const radio = (group, label) => [...view.container.querySelectorAll(`input[type="radio"][name="${group}"]`)].find((r) => r.closest('label').textContent.includes(label));
+
+describe('IA local: the choices', () => {
+  it('offers none among the choices of each use, and starts with none chosen', async () => {
+    await open();
+    expect(radio('semantic-model', 'Nenhum').checked).toBe(true);
+    expect(radio('comic-ocr-model', 'Nenhum').checked).toBe(true);
+    expect(view.container.querySelectorAll('input[name="comic-ocr-model"]')).toHaveLength(3);
+    expect(view.container.querySelectorAll('input[name="semantic-model"]')).toHaveLength(3);
   });
 
-  it('lets the owner choose the lighter model before enabling it', async () => {
-    await open({ enabled: false, available: true, state: 'idle', model: 'sentence-transformers/LaBSE', error: '' });
-    const light = [...view.container.querySelectorAll('input[type="radio"]')][0];
-    await view.click(light);
-    expect(api.put).toHaveBeenCalledWith('/admin/embeddings', { enabled: false, model: 'intfloat/multilingual-e5-small' });
+  it('says what each model is and how much it downloads', async () => {
+    await open();
     expect(view.text()).toContain('471 MB');
+    expect(view.text()).toContain('1880 MB');
+    expect(view.text()).toContain('13 MB');
+    expect(view.text()).toContain('132 MB');
   });
 
-  it('does not pretend it can enable a worker that is absent', async () => {
-    await open({ enabled: false, available: false, state: '', model: '', error: '' });
-    expect(view.container.querySelector('input[type="checkbox"]').disabled).toBe(true);
-    expect(view.text()).toContain('não está em execução');
+  it('chooses the model that reads comics, with its own request, apart from the semantic one', async () => {
+    await open();
+    await view.click(radio('comic-ocr-model', 'Servidor'));
+    expect(api.put).toHaveBeenCalledWith('/admin/models/comic-ocr', { model: 'server' });
+    expect(api.put).not.toHaveBeenCalledWith('/admin/embeddings', expect.anything());
   });
 
-  it('shows preparation and worker errors', async () => {
-    await open({ enabled: true, available: true, state: 'preparing', model: 'sentence-transformers/LaBSE', error: '' });
-    expect(view.text()).toContain('Baixando ou preparando');
+  it('turns the reading of comics off by choosing none', async () => {
+    await open(modelsOf({ controls: { comicOcr: 'mobile' }, models: undefined }));
+    await view.click(radio('comic-ocr-model', 'Nenhum'));
+    expect(api.put).toHaveBeenCalledWith('/admin/models/comic-ocr', { model: 'none' });
+  });
+
+  it('turns the semantic matching on with the model chosen, and off by choosing none, keeping the model that was on', async () => {
+    await open();
+    await view.click(radio('semantic-model', 'Leve (e5-small)'));
+    expect(api.put).toHaveBeenCalledWith('/admin/embeddings', { enabled: true, model: E5 });
     view.unmount();
-    await open({ enabled: true, available: true, state: 'error', model: 'sentence-transformers/LaBSE', error: 'download failed' });
-    expect(view.text()).toContain('download failed');
+    const on = modelsOf({ controls: { semantic: LABSE } });
+    on.models[1] = { ...on.models[1], selected: true, state: 'ready', inUse: true };
+    await open(on);
+    await view.click(radio('semantic-model', 'Nenhum'));
+    expect(api.put).toHaveBeenLastCalledWith('/admin/embeddings', { enabled: false, model: LABSE });
+  });
+
+  it('does not offer a model of a service that is not running, and says what to do', async () => {
+    await open(modelsOf({ services: { comicOcr: false, semantic: false } }));
+    expect(radio('comic-ocr-model', 'Servidor').disabled).toBe(true);
+    expect(radio('semantic-model', 'Leve').disabled).toBe(true);
+    expect(radio('comic-ocr-model', 'Nenhum').disabled).toBe(false);
+    expect(view.text()).toContain('comic-ocr');
+    expect(view.text()).toContain('worker de embeddings não está em execução');
+  });
+
+  it('says what the server refused', async () => {
+    await open();
+    api.put.mockRejectedValue({ response: { status: 409, data: 'O serviço de OCR de quadrinhos não está em execução.\n' } });
+    await view.click(radio('comic-ocr-model', 'Leve (PaddleOCR mobile)'));
+    expect(view.container.querySelector('[role="alert"]').textContent).toContain('não está em execução');
+  });
+});
+
+describe('IA local: the models and their state', () => {
+  const row = (name) => [...view.container.querySelectorAll('ul[aria-label="Modelos locais"] li')].find((li) => li.textContent.includes(name));
+
+  it('says the percentage of a download, with a bar that a screen reader can read', async () => {
+    const state = modelsOf({ controls: { comicOcr: 'server' } });
+    state.models[3] = { ...state.models[3], selected: true, state: 'downloading', progress: 37 };
+    await open(state);
+    expect(row('Servidor').textContent).toContain('Baixando 37%');
+    const bar = row('Servidor').querySelector('[role="progressbar"]');
+    expect(bar.getAttribute('aria-valuenow')).toBe('37');
+  });
+
+  it('says which model is in use and how much it was used', async () => {
+    const state = modelsOf({ controls: { comicOcr: 'mobile' } });
+    state.models[2] = { ...state.models[2], selected: true, state: 'ready', inUse: true, usage: { count: 1234, unit: 'páginas lidas' } };
+    await open(state);
+    expect(row('Leve (PaddleOCR mobile)').textContent).toContain('Pronto, em uso');
+    expect(row('Leve (PaddleOCR mobile)').textContent).toContain('1.234 páginas lidas');
+    expect(row('Servidor').textContent).toContain('Desativado');
+  });
+
+  it('says a service that is not running and a model that failed, with why', async () => {
+    const state = modelsOf({ controls: { comicOcr: 'mobile', semantic: LABSE } });
+    state.models[2] = { ...state.models[2], selected: true, state: 'error', error: 'sem memória' };
+    state.models[1] = { ...state.models[1], selected: true, state: 'service_missing' };
+    await open(state);
+    expect(row('Leve (PaddleOCR mobile)').textContent).toContain('Com erro');
+    expect(row('Leve (PaddleOCR mobile)').textContent).toContain('sem memória');
+    expect(row('LaBSE').textContent).toContain('Serviço parado');
+  });
+
+  it('says it could not load them', async () => {
+    api.get.mockRejectedValue(new Error('boom'));
+    view = await mount(<EmbeddingsTab />);
+    expect(view.text()).toContain('Não foi possível carregar os modelos');
   });
 });

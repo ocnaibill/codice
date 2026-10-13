@@ -42,9 +42,10 @@ def max_age():
 class Heartbeat:
     """Writes the heartbeat file. Failing to write never stops the worker."""
 
-    def __init__(self, path=None, clock=time.time):
+    def __init__(self, path=None, clock=time.time, on_beat=None):
         self.path = path or health_file()
         self.clock = clock
+        self.on_beat = on_beat
 
     def beat(self, state="idle", job=None):
         body = {"at": self.clock(), "state": state, "pid": os.getpid()}
@@ -57,6 +58,30 @@ class Heartbeat:
             os.replace(tmp, self.path)  # a reader never sees a half-written file
         except OSError as err:
             print(f"   ⚠️ could not write the health file: {err}")
+        if self.on_beat is not None:
+            try:
+                self.on_beat(state, job)
+            except Exception as err:  # telling the administration is never a reason to stop working
+                print(f"   ⚠️ could not tell the administration that the worker is here: {err}")
+
+
+class Presence:
+    """Tells the administration, in the database, that this worker is here (DEC-176): the file is for the container's check, this is for the
+    "Serviços" of the system tab. It writes at most once in `every` seconds, so a worker that beats on every poll does not write on every poll."""
+
+    def __init__(self, db, key, every=30.0, clock=time.time):
+        self.db, self.key, self.every, self.clock = db, key, every, clock
+        self.last = None
+
+    def __call__(self, state="idle", job=None):
+        now = self.clock()
+        if self.last is not None and now - self.last < self.every:
+            return
+        self.last = now
+        self.db.execute(
+            """INSERT INTO settings (key, value) VALUES (%s, %s::jsonb)
+               ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""",
+            (self.key, json.dumps({"state": state, "pid": os.getpid()})))
 
 
 def check(path=None, limit=None, now=None):

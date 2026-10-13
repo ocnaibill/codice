@@ -85,6 +85,7 @@ type route struct{ method, path string }
 
 // Routes the specification reserves to owner and admin (DEC-003, RF-007).
 var staffRoutes = []route{
+	{"GET", "/admin/services"},
 	{"GET", "/admin/logins"},
 	{"GET", "/admin/performance"},
 	{"GET", "/users/" + someUUID + "/sessions"},
@@ -403,7 +404,7 @@ func TestOwnerOnlyRoutes_ThatNeedTheDatabaseAreStillGuarded(t *testing.T) {
 	// Removing an authorised directory reaches the database once past the guard,
 	// so only the guard itself is checked here.
 	h := testRouter(t)
-	for _, rt := range []route{{"DELETE", "/admin/storage/roots/1"}, {"GET", "/admin/trash/policy/preview"}, {"DELETE", "/ownership/transfer"}, {"GET", "/admin/ldap"}, {"POST", "/admin/ldap/check"}, {"GET", "/admin/embeddings"}, {"PUT", "/admin/embeddings"}, {"POST", "/admin/dictionaries/wikt-pt/install"}, {"POST", "/admin/dictionaries/wikt-pt/cancel"}, {"DELETE", "/admin/dictionaries/wikt-pt"}, {"GET", "/admin/ocr/settings"}, {"PUT", "/admin/ocr/settings"}} {
+	for _, rt := range []route{{"DELETE", "/admin/storage/roots/1"}, {"GET", "/admin/trash/policy/preview"}, {"DELETE", "/ownership/transfer"}, {"GET", "/admin/ldap"}, {"POST", "/admin/ldap/check"}, {"GET", "/admin/embeddings"}, {"PUT", "/admin/embeddings"}, {"POST", "/admin/dictionaries/wikt-pt/install"}, {"POST", "/admin/dictionaries/wikt-pt/cancel"}, {"DELETE", "/admin/dictionaries/wikt-pt"}, {"GET", "/admin/ocr/settings"}, {"PUT", "/admin/ocr/settings"}, {"GET", "/admin/models"}, {"PUT", "/admin/models/comic-ocr"}} {
 		for _, role := range []string{"admin", "reader"} {
 			if rec := do(h, rt.method, rt.path, tokenFor(t, role), ""); rec.Code != http.StatusForbidden {
 				t.Errorf("%s %s as %s: got %d, want 403", rt.method, rt.path, role, rec.Code)

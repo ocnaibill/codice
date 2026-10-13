@@ -70,6 +70,8 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	byID := &FileByIDHandler{DB: db, StorageRoot: storageDir}
 	pages := &PageHandler{DB: db}
 	embeddingsAdmin := &EmbeddingsAdminHandler{DB: db}
+	modelsAdmin := &ModelsAdminHandler{DB: db}
+	servicesAdmin := &ServicesHandler{DB: db}
 	dictionaryAdmin := &DictionaryAdminHandler{DB: db}
 	dictionaryLookup := &DictionaryLookupHandler{DB: db}
 
@@ -153,6 +155,9 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Post("/admin/jobs/{id}/cancel", jobsAdmin.Cancel)
 	r.Get("/admin/embeddings", embeddingsAdmin.Get)
 	r.Put("/admin/embeddings", embeddingsAdmin.Set)
+	r.Get("/admin/models", modelsAdmin.Get)
+	r.Put("/admin/models/comic-ocr", modelsAdmin.SetComicOCR)
+	r.Get("/admin/services", servicesAdmin.Get)
 	r.Post("/works/bulk-import", upload.HandleBulkImport)
 	r.Get("/works", lib.GetWorks)
 	r.Get("/works/{id}", lib.GetWorkByID)

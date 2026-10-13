@@ -271,3 +271,54 @@ class TestTheWorkerStartsReporting:
         except Stop:
             pass
         assert [who for who, _ in installed] == ['main', 'server'] and installed[1][1] is server.SearchHandler.registry
+
+
+# --- the worker says in the database that it is here (DEC-176) ---
+
+from health import Heartbeat, Presence
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+class PresenceDB:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, query, params=()):
+        self.calls.append((' '.join(query.split()), params))
+
+
+class TestPresence:
+    def test_it_writes_the_state_under_its_key_and_at_most_once_in_the_interval(self):
+        clock, db = Clock(), PresenceDB()
+        presence = Presence(db, 'worker.jobs', every=30, clock=clock)
+        presence('idle')
+        presence('working')       # the same second: not written
+        clock.now += 29
+        presence('working')       # still inside the interval
+        assert len(db.calls) == 1
+        query, params = db.calls[0]
+        assert 'INSERT INTO settings' in query and params[0] == 'worker.jobs' and '"state": "idle"' in params[1]
+        clock.now += 2
+        presence('working')
+        assert len(db.calls) == 2 and '"state": "working"' in db.calls[1][1][1]
+
+    def test_the_heartbeat_tells_it_after_writing_its_file(self, tmp_path):
+        seen = []
+        Heartbeat(path=str(tmp_path / 'beat'), on_beat=lambda state, job: seen.append((state, job))).beat('working', 7)
+        assert seen == [('working', 7)]
+        assert (tmp_path / 'beat').exists()
+
+    def test_a_database_that_fails_does_not_stop_the_worker_or_its_file(self, tmp_path, capsys):
+        def boom(state, job):
+            raise RuntimeError('database down')
+
+        Heartbeat(path=str(tmp_path / 'beat'), on_beat=boom).beat('idle')
+        assert (tmp_path / 'beat').exists()
+        assert 'could not tell the administration' in capsys.readouterr().out

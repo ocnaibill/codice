@@ -132,6 +132,31 @@ export function useDictionaries() {
 export const useAccounts = list('accounts', '/users');
 export const useLdap = list('ldap', '/admin/ldap');
 export const useEmbeddings = list('embeddings', '/admin/embeddings');
+
+/** The local models, each with its state, the percentage of its download and how much it was used (DEC-176). It asks again while a
+ *  chosen model is being prepared or downloaded, so the percentage moves on its own, and now and then otherwise. */
+export function useModels() {
+  return useQuery({
+    queryKey: ['admin', 'models'],
+    queryFn: async () => (await api.get('/admin/models')).data,
+    staleTime: 0,
+    refetchInterval: (query) => {
+      const models = query.state.data?.models ?? [];
+      if (models.some((m) => m.selected && (m.state === 'preparing' || m.state === 'downloading'))) return 2000;
+      return models.some((m) => m.selected) ? 15000 : false;
+    },
+  });
+}
+
+/** Whether each part of the system is working: the database, Redis, the worker and the services of OCR and of the models (DEC-176). */
+export function useServices() {
+  return useQuery({
+    queryKey: ['admin', 'services'],
+    queryFn: async () => (await api.get('/admin/services')).data,
+    staleTime: 0,
+    refetchInterval: 30000,
+  });
+}
 export const useInvitations = list('invitations', '/invitations');
 export const usePasswordResets = list('password-resets', '/password-resets');
 
@@ -330,6 +355,8 @@ export const useInstallDictionary = () => useAdminAction(async (id) => (await ap
 export const useCancelDictionary = () => useAdminAction(async (id) => (await api.post(`/admin/dictionaries/${id}/cancel`)).data);
 export const useRemoveDictionary = () => useAdminAction((id) => api.delete(`/admin/dictionaries/${id}`));
 export const useSetEmbeddings = () => useAdminAction(async (settings) => (await api.put('/admin/embeddings', settings)).data);
+/** Chooses the model that reads comics and manga, or none (owner, DEC-176). */
+export const useSetComicOcr = () => useAdminAction(async (model) => (await api.put('/admin/models/comic-ocr', { model })).data);
 export const useCheckLdap = () => useMutation({ mutationFn: async () => (await api.post('/admin/ldap/check')).data });
 
 /** The record of sign-ins (DEC-121), a page at a time, newest first. `filters` is { result, username, from }; each page
