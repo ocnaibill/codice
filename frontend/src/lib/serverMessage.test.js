@@ -167,6 +167,11 @@ describe('what the server says', () => {
     'targetId and formerRole are required',
     'workId is the other work',
     'not found', // the sentinel of the wiki store: the handler answers with "Wiki not found" or "Entity not found" instead
+    'not eligible', // sentinels of the wiki queue: the handler answers in Portuguese instead
+    'not in that state',
+    'the sealed key does not open with this master key', // the handler says to type the key again, in Portuguese
+    'invalid provider', // the tab of the wiki only sends the fields of its form
+    'invalid scope', // the tab only sends a work or a series it listed
   ];
 
   it('is read from the source of the server', () => {

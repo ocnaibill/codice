@@ -55,6 +55,8 @@ type routerDeps struct {
 	// Optional overrides, so route tests can run without a database.
 	FileLookup  handlers.FileLookup
 	CoverLookup handlers.FileLookup
+	// SecretKey is the master key of the deployment (CODICE_SECRET_KEY), which seals the key of the wiki provider (DEC-185).
+	SecretKey string
 }
 
 // newRouter wires every HTTP route. Keeping it separate from main lets tests
@@ -109,6 +111,7 @@ func newRouter(d routerDeps) http.Handler {
 	notesHandler := &handlers.NotesHandler{DB: db}
 	graphHandler := &handlers.GraphHandler{DB: db}
 	wikiHandler := &handlers.WikiHandler{DB: db}
+	wikiAdmin := &handlers.WikiAdminHandler{DB: db, RedisClient: d.RedisClient, SecretKey: d.SecretKey}
 	statsHandler := &handlers.StatsHandler{DB: db}
 
 	r := chi.NewRouter()
@@ -427,6 +430,17 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Get("/wiki/{id}/graph", wikiHandler.Graph)
 	r.With(staff).Post("/admin/wiki/import", wikiHandler.Import)
 	r.With(staff).Delete("/admin/wiki/{id}", wikiHandler.Delete)
+	// Its tab in the administration (DEC-185): the provider is the owner's (DEC-177), the queue and the works are owner's and admins'.
+	r.With(staff).Get("/admin/wiki-provider", wikiAdmin.Provider)
+	r.With(owner).Put("/admin/wiki-provider", wikiAdmin.SetProvider)
+	r.With(owner).Delete("/admin/wiki-provider", wikiAdmin.DeleteProvider)
+	r.With(owner).Post("/admin/wiki-provider/test", wikiAdmin.TestProvider)
+	r.With(staff).Get("/admin/wiki-runs", wikiAdmin.Runs)
+	r.With(staff).Post("/admin/wiki-runs", wikiAdmin.Generate)
+	r.With(staff).Post("/admin/wiki-runs/all", wikiAdmin.GenerateAll)
+	r.With(staff).Post("/admin/wiki-runs/{id}/{action:pause|resume|cancel}", wikiAdmin.ControlRun)
+	r.With(staff).Get("/admin/wiki-library", wikiAdmin.Library)
+	r.With(staff).Put("/admin/wiki-exclusions", wikiAdmin.SetExcluded)
 
 	r.With(auth).Get("/graph/types", graphHandler.Types)
 	r.With(auth).Get("/concepts", graphHandler.ListConcepts)

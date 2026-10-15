@@ -14,6 +14,7 @@ import { SuggestionsTab } from './components/SuggestionsTab';
 import { ProvidersTab } from './components/ProvidersTab';
 import { OcrTab } from './components/OcrTab';
 import { DictionariesTab } from './components/DictionariesTab';
+import { WikiTab } from './components/WikiTab';
 import { useSuggestionQueue } from './api/admin';
 
 /** The administration area. Owner and admin see it; some actions are the owner's alone. */
@@ -62,6 +63,7 @@ export function AdminPage({ isOwner, onClose }) {
         {tab === 'duplicates' && <DuplicatesTab />}
         {tab === 'ocr' && <OcrTab isOwner={isOwner} />}
         {tab === 'dictionaries' && <DictionariesTab isOwner={isOwner} />}
+        {tab === 'wiki' && <WikiTab isOwner={isOwner} />}
         {tab === 'accounts' && <AccountsTab isOwner={isOwner} />}
         {tab === 'ldap' && isOwner && <LdapTab />}
         {tab === 'embeddings' && isOwner && <EmbeddingsTab />}

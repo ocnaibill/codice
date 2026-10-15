@@ -125,6 +125,7 @@ const EXACT = {
   // The automatic wiki (RF-050)
   'Wiki not found': 'Essa obra não tem wiki, ou ela foi apagada.',
   'Entity not found': 'Essa página da wiki não existe, ou fica além do ponto em que você está.',
+  'Generation not found': 'Essa geração da wiki não existe mais.',
   'Edition not found': 'Essa edição não está mais na obra.',
   'Contributor not found': 'Essa pessoa não está mais creditada nessa função.',
   'Work not found': 'Obra não encontrada.',

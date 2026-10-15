@@ -84,6 +84,9 @@ services:
       # Without the file the buttons stay off; the codice-admin command works either way.
       CODICE_BACKUP_DIR: ${CODICE_BACKUP_DIR:-/backups}
       CODICE_BACKUP_PASSPHRASE_FILE: ${CODICE_BACKUP_PASSPHRASE_FILE:-}
+      # Master key that seals the API key of the wiki provider in the database (DEC-185): the same value here and in the worker,
+      # at least 32 characters (`openssl rand -hex 32`). Empty: the wiki can be read, but no provider key can be kept.
+      CODICE_SECRET_KEY: ${CODICE_SECRET_KEY:-}
       # How many heavy reads of the catalog (the list, the counters, the search, the favorites) run at once. The rest wait a
       # little, and are answered "busy" if the wait is long, so that the sign-in, the health check and the reading position
       # are never stuck behind them while a big library is being imported. Empty: 8 (of a pool of 25); 0: no limit.
@@ -158,6 +161,8 @@ services:
       CODICE_CONTACT: ${CODICE_CONTACT:-}
       GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY:-}
       COMICVINE_API_KEY: ${COMICVINE_API_KEY:-}
+      # Opens the API key of the wiki provider, sealed by the backend (the same value as there, DEC-185).
+      CODICE_SECRET_KEY: ${CODICE_SECRET_KEY:-}
     # The healthcheck itself is in the image (worker/Dockerfile).
     volumes:
       - codice_storage:/app/storage

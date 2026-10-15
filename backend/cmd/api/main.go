@@ -22,6 +22,7 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"github.com/ocnaibill/codice/backend/internal/storage"
 	"github.com/ocnaibill/codice/backend/internal/version"
+	"github.com/ocnaibill/codice/backend/internal/wiki"
 )
 
 func main() {
@@ -88,6 +89,13 @@ func main() {
 	// Behind a reverse proxy (nginx, a tunnel) every client would look like the proxy
 	// and share one login rate limit. Naming the proxies lets their X-Forwarded-For be
 	// believed, and only theirs.
+	// The master key that seals the key of the wiki provider (DEC-185). Without it the wiki can still be read, but no key is kept.
+	secretKey := os.Getenv("CODICE_SECRET_KEY")
+	if secretKey != "" && len(secretKey) < wiki.MinMasterKey {
+		log.Printf("⚠️ CODICE_SECRET_KEY has fewer than %d characters: it is ignored, and the key of the wiki provider cannot be kept", wiki.MinMasterKey)
+		secretKey = ""
+	}
+
 	trustedProxies, err := appMiddleware.ParseTrustedProxies(os.Getenv("CODICE_TRUSTED_PROXIES"))
 	if err != nil {
 		log.Fatal(err)
@@ -238,6 +246,7 @@ func main() {
 		Mover:       mover,
 
 		TrustedProxies: trustedProxies,
+		SecretKey:      secretKey,
 		PublicURL:      publicURL,
 		Logins:         loginRecord,
 		DataExport:     dataExport,

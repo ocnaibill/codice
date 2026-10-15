@@ -41,6 +41,8 @@ type catalogStack struct {
 	router  http.Handler
 	storage string
 	tuning  *performance.Live
+	// wikiAdmin is the tab of the wiki, kept so that a test can take its master key away.
+	wikiAdmin *WikiAdminHandler
 }
 
 func newCatalogStack(t *testing.T) *catalogStack {
@@ -124,6 +126,17 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/wiki/{id}/graph", wikiH.Graph)
 	r.Post("/admin/wiki/import", wikiH.Import)
 	r.Delete("/admin/wiki/{id}", wikiH.Delete)
+	wikiA := &WikiAdminHandler{DB: db, SecretKey: "0123456789abcdef0123456789abcdef"}
+	r.Get("/admin/wiki-provider", wikiA.Provider)
+	r.Put("/admin/wiki-provider", wikiA.SetProvider)
+	r.Delete("/admin/wiki-provider", wikiA.DeleteProvider)
+	r.Post("/admin/wiki-provider/test", wikiA.TestProvider)
+	r.Get("/admin/wiki-runs", wikiA.Runs)
+	r.Post("/admin/wiki-runs", wikiA.Generate)
+	r.Post("/admin/wiki-runs/all", wikiA.GenerateAll)
+	r.Post("/admin/wiki-runs/{id}/{action:pause|resume|cancel}", wikiA.ControlRun)
+	r.Get("/admin/wiki-library", wikiA.Library)
+	r.Put("/admin/wiki-exclusions", wikiA.SetExcluded)
 	r.Post("/admin/editions/{id}/split", ver.Split)
 	r.Get("/admin/people/merges", ppl.List)
 	r.Post("/admin/people/merges/{id}/merge", ppl.Merge)
@@ -277,7 +290,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/opds/recent", opds.RecentFeed)
 	r.Get("/opds/search", opds.SearchFeed)
 
-	return &catalogStack{t: t, db: db, router: r, storage: storageDir, tuning: tuning}
+	return &catalogStack{t: t, db: db, router: r, storage: storageDir, tuning: tuning, wikiAdmin: wikiA}
 }
 
 // identityFromHeaders stands in for the authentication middleware in tests.

@@ -409,3 +409,59 @@ export function useSetPerformance() {
     onSuccess: (data) => queryClient.setQueryData(['admin', 'performance'], data),
   });
 }
+
+/** The provider of the wiki (DEC-185): all of it but the key to the owner, which service and model to admins. */
+export function useWikiProvider() {
+  return useQuery({
+    queryKey: ['admin', 'wiki-provider'],
+    queryFn: async () => (await api.get('/admin/wiki-provider')).data,
+    staleTime: 0,
+  });
+}
+
+/** Configures the provider of the wiki (owner). The key goes only when it changes, and never comes back. */
+export const useSetWikiProvider = () => useAdminAction(async (body) => (await api.put('/admin/wiki-provider', body)).data);
+
+/** Turns the generation of the wiki off (owner). */
+export const useDeleteWikiProvider = () => useAdminAction(() => api.delete('/admin/wiki-provider'));
+
+/** Asks the model of the wiki for one short answer (owner): whether it answered, in how long, and what went wrong. */
+export function useTestWikiProvider() {
+  return useMutation({ mutationFn: async () => (await api.post('/admin/wiki-provider/test')).data });
+}
+
+const LIVE_RUN = ['queued', 'running', 'paused'];
+
+/** The generations of the wiki, live and recent. It asks again every three seconds while one is queued or running. */
+export function useWikiRuns() {
+  return useQuery({
+    queryKey: ['admin', 'wiki-runs'],
+    queryFn: async () => (await api.get('/admin/wiki-runs')).data,
+    staleTime: 0,
+    refetchInterval: (query) => (query.state.data?.runs?.some((r) => r.state === 'queued' || r.state === 'running') ? 3000 : false),
+  });
+}
+
+export const isLiveRun = (run) => LIVE_RUN.includes(run?.state);
+
+/** Queues the generation of one work or series ({ kind, id }). */
+export const useGenerateWiki = () => useAdminAction(async (scope) => (await api.post('/admin/wiki-runs', scope)).data);
+
+/** Queues every work and series without a wiki, but the exceptions; says how many. */
+export const useGenerateAllWikis = () => useAdminAction(async () => (await api.post('/admin/wiki-runs/all')).data);
+
+/** Pauses, resumes or cancels a generation ({ id, action }). */
+export const useControlWikiRun = () => useAdminAction(({ id, action }) => api.post(`/admin/wiki-runs/${id}/${action}`));
+
+/** The works and series that can have a wiki, a page at a time, by what is typed and by state. */
+export function useWikiLibrary({ q = '', filter = '', page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ['admin', 'wiki-library', q, filter, page],
+    queryFn: async () => (await api.get('/admin/wiki-library', { params: { q: q || undefined, filter: filter || undefined, limit, offset: (page - 1) * limit } })).data,
+    placeholderData: keepPreviousData,
+    staleTime: 0,
+  });
+}
+
+/** Marks or unmarks a work or series as "não gerar wiki" ({ kind, id, excluded }). */
+export const useSetWikiExclusion = () => useAdminAction(({ kind, id, excluded }) => api.put('/admin/wiki-exclusions', { kind, id, excluded }));

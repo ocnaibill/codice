@@ -10,6 +10,7 @@ export const ADMIN_TABS = [
   ['duplicates', 'Duplicatas'],
   ['ocr', 'OCR'],
   ['dictionaries', 'Dicionários'],
+  ['wiki', 'Wiki'],
   ['accounts', 'Contas'],
   ['logins', 'Entradas'],
 ];
