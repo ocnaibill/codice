@@ -6,6 +6,7 @@ import { Reader } from './features/reader/components/Reader';
 import { WorkPage } from './features/library/components/WorkPage';
 import { CollectionPage } from './features/collections/components/CollectionPage';
 import { PersonPage } from './features/people/components/PersonPage';
+import { WikiPage } from './features/wiki/components/WikiPage';
 import { NotesPage } from './features/notes/NotesPage';
 import { EditBookModal } from './features/library/components/EditBookModal';
 import { useGlobalStore } from './store/useGlobalStore';
@@ -55,6 +56,8 @@ function App() {
   const queryClient = useQueryClient();
   const activeBookId = useGlobalStore((state) => state.activeBookId);
   const closeBook = useGlobalStore((state) => state.closeBook);
+  const goHome = useGlobalStore((state) => state.goHome);
+  const wikiWorkId = useGlobalStore((state) => state.wikiWorkId);
   const searchQuery = useGlobalStore((state) => state.searchQuery);
   const setSearchQuery = useGlobalStore((state) => state.setSearchQuery);
   const adminOpen = useGlobalStore((state) => state.adminOpen);
@@ -154,6 +157,8 @@ function App() {
       readerWasOpen.current = false;
       refreshLibrary(queryClient);
       queryClient.invalidateQueries({ queryKey: ['notes'] });
+      // The wiki shows up to the reading position (DEC-179): where the person stopped is where it now goes.
+      for (const key of ['wiki', 'wiki-entity', 'wiki-graph']) queryClient.invalidateQueries({ queryKey: [key] });
     }
   }, [activeBookId, queryClient]);
 
@@ -301,7 +306,7 @@ function App() {
         <AppShell
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onGoHome={closeBook}
+          onGoHome={goHome}
           onLogout={handleLogout}
           onChangePassword={() => openAccountDialog('senha')}
           onOpenPreferences={() => openAccountDialog('preferencias')}
@@ -311,7 +316,9 @@ function App() {
           canAdmin={staff}
           onOpenAdmin={openAdmin}
         >
-          {sheetWorkId ? (
+          {wikiWorkId ? (
+            <WikiPage />
+          ) : sheetWorkId ? (
             <WorkPage />
           ) : personSheetId ? (
             <PersonPage />

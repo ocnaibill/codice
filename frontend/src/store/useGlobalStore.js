@@ -7,14 +7,14 @@ export const useGlobalStore = create((set) => ({
   libraryPage: 1,
   librarySort: 'added', // 'added' (newest first), 'title' or 'author' (as the account shows names, #64)
   libraryViewMode: 'grid',
-  setLibraryView: (libraryView) => set({ libraryView, libraryPage: 1, searchQuery: '', adminOpen: false, notesOpen: false, categoryPageId: null, activeBookId: null, activeFileId: null, sheetWorkId: null, collectionSheetId: null, personSheetId: null }),
+  setLibraryView: (libraryView) => set({ libraryView, libraryPage: 1, searchQuery: '', adminOpen: false, notesOpen: false, categoryPageId: null, activeBookId: null, activeFileId: null, sheetWorkId: null, collectionSheetId: null, personSheetId: null, wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }),
   setLibraryPage: (libraryPage) => set({ libraryPage }),
   setLibrarySort: (librarySort) => set({ librarySort, libraryPage: 1 }),
   setLibraryViewMode: (libraryViewMode) => set({ libraryViewMode }),
   // The category whose page is open, if any (DEC-140): the page of the library that lists its works, in the place of the shelves. The sheet of a
   // work opens over it. Opening another one (a subcategory) starts again from the first page.
   categoryPageId: null,
-  openCategory: (id) => set({ categoryPageId: id, libraryPage: 1, searchQuery: '', adminOpen: false, notesOpen: false, activeBookId: null, activeFileId: null, sheetWorkId: null, collectionSheetId: null, personSheetId: null }),
+  openCategory: (id) => set({ categoryPageId: id, libraryPage: 1, searchQuery: '', adminOpen: false, notesOpen: false, activeBookId: null, activeFileId: null, sheetWorkId: null, collectionSheetId: null, personSheetId: null, wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }),
   closeCategory: () => set({ categoryPageId: null, libraryPage: 1 }),
   // The work whose page (edition, language and file choice) is open, if any.
   sheetWorkId: null,
@@ -22,11 +22,23 @@ export const useGlobalStore = create((set) => ({
   collectionSheetId: null,
   // The person whose page is open, if any (#186, DEC-157). It opens from the page of a work, which it replaces; the page of a work opens over it.
   personSheetId: null,
-  openPerson: (id) => set({ personSheetId: id, sheetWorkId: null }),
+  openPerson: (id) => set({ personSheetId: id, sheetWorkId: null, wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }),
   closePerson: () => set({ personSheetId: null }),
   // A collection opens in the place of the sheet of a work or of a person that opened it (one change, so that the address sees it as one).
-  openCollection: (id) => set({ collectionSheetId: id, sheetWorkId: null, personSheetId: null }),
+  openCollection: (id) => set({ collectionSheetId: id, sheetWorkId: null, personSheetId: null, wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }),
   closeCollection: () => set({ collectionSheetId: null }),
+  // The automatic wiki of a work (RF-050, DEC-183): its index, the page of one entity (by slug) or the graph. It opens in the place of
+  // the page of the work; the reader opens over it, so that closing a book opened at a reference comes back to it.
+  wikiWorkId: null,
+  wikiEntity: null,
+  wikiGraph: false,
+  // The book the wiki was opened from, when it was the reader ({ workId, fileId, label }), so that it can go back to the paragraph.
+  wikiFrom: null,
+  openWiki: (workId, entity = null, from = null) =>
+    set({ wikiWorkId: workId, wikiEntity: entity, wikiGraph: false, wikiFrom: from, activeBookId: null, activeFileId: null, seek: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null }),
+  openWikiEntity: (slug) => set({ wikiEntity: slug, wikiGraph: false }),
+  openWikiGraph: () => set({ wikiGraph: true }),
+  closeWiki: () => set({ wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }),
   // The work whose metadata and suggestions are open for owner/admin (#70), and which part ('suggestions' or 'edit').
   metadataWorkId: null,
   metadataTab: 'suggestions',
@@ -45,18 +57,20 @@ export const useGlobalStore = create((set) => ({
 
   // Actions
   isUploadModalOpen: false,
-  setSearchQuery: (query) => set({ searchQuery: query, ...(query.trim() ? { adminOpen: false, notesOpen: false, categoryPageId: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null } : {}) }),
+  setSearchQuery: (query) => set({ searchQuery: query, ...(query.trim() ? { adminOpen: false, notesOpen: false, categoryPageId: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null, wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null } : {}) }),
   // The page of a work (DEC-149) takes the place of whatever is on screen, the notes included, and going back finds it as it was.
-  openWork: (id) => set({ sheetWorkId: id, activeBookId: null, activeFileId: null, adminOpen: false }),
+  openWork: (id) => set({ sheetWorkId: id, activeBookId: null, activeFileId: null, adminOpen: false, wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }),
   closeSheet: () => set({ sheetWorkId: null }),
   // `context` says what asked for the place ({ quote } of a note, or of a search hit), for when the place cannot be
-  // opened and the reader has to say what it was.
-  openBook: (id, fileId = null, { fromStart = false, locator = null, context = null } = {}) =>
+  // opened and the reader has to say what it was. `peek` opens the place only to look at it (a reference of the wiki): the
+  // reading position is not moved there until the person says they go on reading from it, since that position is what decides
+  // how far the wiki shows (DEC-179).
+  openBook: (id, fileId = null, { fromStart = false, locator = null, context = null, peek = false } = {}) =>
     set((state) => ({
       activeBookId: id,
       activeFileId: fileId,
       fromStart,
-      seek: locator ? { locator, context, n: (state.seek?.n ?? 0) + 1 } : null,
+      seek: locator ? { locator, context, peek: !!peek, n: (state.seek?.n ?? 0) + 1 } : null,
       sheetWorkId: null,
       collectionSheetId: null,
       personSheetId: null,
@@ -65,11 +79,13 @@ export const useGlobalStore = create((set) => ({
   clearSeek: () => set({ seek: null }),
   // Closing the book goes back to what it was opened from, the screen of every note included.
   closeBook: () => set({ activeBookId: null, activeFileId: null, fromStart: false, seek: null, sheetWorkId: null, adminOpen: false }),
+  // The name of the library goes home: the book closed and the wiki too.
+  goHome: () => set({ activeBookId: null, activeFileId: null, fromStart: false, seek: null, sheetWorkId: null, adminOpen: false, wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }),
   adminOpen: false,
   // The tab of the administration that is open (#182): in the store so that the address can say it.
   adminTab: 'jobs',
   setAdminTab: (adminTab) => set({ adminTab }),
-  openAdmin: () => set({ adminOpen: true, adminTab: 'jobs', notesOpen: false, categoryPageId: null, activeBookId: null, activeFileId: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null }),
+  openAdmin: () => set({ adminOpen: true, adminTab: 'jobs', notesOpen: false, categoryPageId: null, activeBookId: null, activeFileId: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null, wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }),
   // The dialogs of the account that are open ('senha', 'preferencias', 'aplicativos', 'sobre', 'sessoes'), the last over the others (#182):
   // they are in the store so that the address says them, and the back button closes them.
   accountDialogs: [],
@@ -77,7 +93,7 @@ export const useGlobalStore = create((set) => ({
   closeAccountDialog: (name) => set((state) => (state.accountDialogs.includes(name) ? { accountDialogs: state.accountDialogs.filter((open) => open !== name) } : state)),
   // All of the person's own notes, highlights and bookmarks (#13).
   notesOpen: false,
-  openNotes: () => set({ notesOpen: true, adminOpen: false, categoryPageId: null, searchQuery: '', activeBookId: null, activeFileId: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null }),
+  openNotes: () => set({ notesOpen: true, adminOpen: false, categoryPageId: null, searchQuery: '', activeBookId: null, activeFileId: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null, wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }),
   setBooks: (books) => set({ books }),
   openUploadModal: () => set({ isUploadModalOpen: true }),
   closeUploadModal: () => set({ isUploadModalOpen: false }),

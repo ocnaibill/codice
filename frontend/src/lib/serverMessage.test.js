@@ -166,6 +166,7 @@ describe('what the server says', () => {
     'state is ok, missing or conflict',
     'targetId and formerRole are required',
     'workId is the other work',
+    'not found', // the sentinel of the wiki store: the handler answers with "Wiki not found" or "Entity not found" instead
   ];
 
   it('is read from the source of the server', () => {

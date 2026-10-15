@@ -29,6 +29,7 @@ import { peopleOf, ROLES } from '../../reader/credits';
 import { COMIC_KINDS, unitLabel } from '../../collections/text';
 import { otherTitles, titleInUse } from '../../reader/titles';
 import { AuthorLinks } from '../../people/components/AuthorLinks';
+import { useWiki } from '../../wiki/api/useWiki';
 
 /**
  * The other names of the work, under the one it goes by (#185): smaller than it, each on a line, with its language when it has one.
@@ -302,6 +303,19 @@ function FavoriteHeart({ work }) {
   );
 }
 
+/** The automatic wiki of the work or of its series (RF-051), when it has one: everyone who sees the work may read it, up to their point. */
+function WikiButton({ workId }) {
+  const openWiki = useGlobalStore((state) => state.openWiki);
+  const { data } = useWiki(workId);
+  if (!data?.wiki) return null;
+  return (
+    <button type="button" onClick={() => openWiki(workId)} className="library-button min-h-11">
+      Wiki
+      <span className="ml-2 rounded bg-surface-alt px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">experimental</span>
+    </button>
+  );
+}
+
 /** "Ler depois": the work goes to a list the Códice keeps for the person (DEC-152), beside the heart that makes it a favorite. */
 function ReadLaterButton({ work }) {
   const toggle = useReadLaterToggle(work.id);
@@ -507,6 +521,7 @@ export function WorkPage() {
                   )}
                   <FavoriteHeart work={work} />
                   <ReadLaterButton work={work} />
+                  <WikiButton workId={work.id} />
                 </div>
                 {canContinue && last?.chapter && (
                   <p className="text-sm text-ink-soft">

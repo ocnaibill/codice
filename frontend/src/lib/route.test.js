@@ -80,7 +80,7 @@ describe('the address of the screens (#182)', () => {
   it('says what the store is to be set to, with no place asked for and the saved position for the reader', () => {
     expect(stateFromRoute(routeFromHash('#/mangas?p=2&obra=12&leitor=7&arquivo=33'))).toEqual({
       adminOpen: false, adminTab: 'jobs', notesOpen: false, searchQuery: '', accountDialogs: [], libraryView: 'mangas', libraryPage: 2, librarySort: 'added',
-      sheetWorkId: 12, collectionSheetId: null, categoryPageId: null, personSheetId: null, activeBookId: 7, activeFileId: 33, fromStart: false, seek: null,
+      sheetWorkId: 12, collectionSheetId: null, categoryPageId: null, personSheetId: null, wikiWorkId: null, wikiEntity: null, wikiGraph: false, activeBookId: 7, activeFileId: 33, fromStart: false, seek: null,
     });
     expect(stateFromRoute(HOME)).toMatchObject({ adminOpen: false, notesOpen: false, libraryView: 'all', sheetWorkId: null, activeBookId: null });
     expect(stateFromRoute(routeFromHash('#/admin/storage'))).toMatchObject({ adminOpen: true, adminTab: 'storage', notesOpen: false });
@@ -225,5 +225,37 @@ describe('the page of a category in the address (DEC-140)', () => {
     expect(isNewPlace(route('#/categorias/7'), route('#/acervo'))).toBe(true);
     expect(isNewPlace(route('#/categorias/7'), route('#/categorias/8'))).toBe(true);
     expect(isNewPlace(route('#/categorias/7'), route('#/categorias/7?p=2'))).toBe(false);
+  });
+});
+
+describe('the address of the wiki of a work (RF-050)', () => {
+  it('says the work, the entity and the graph, and reads them back', () => {
+    expect(hashOf({ wikiWorkId: 12 })).toBe('#/acervo?wiki=12');
+    expect(hashOf({ wikiWorkId: 12, wikiEntity: 'citra-terranova' })).toBe('#/acervo?wiki=12&entidade=citra-terranova');
+    expect(hashOf({ wikiWorkId: 12, wikiGraph: true })).toBe('#/acervo?wiki=12&vista=grafo');
+    expect(routeFromHash('#/acervo?wiki=12&entidade=citra-terranova')).toMatchObject({ wiki: 12, entidade: 'citra-terranova', vista: null });
+    expect(stateFromRoute(routeFromHash('#/acervo?wiki=12&vista=grafo'))).toMatchObject({ wikiWorkId: 12, wikiEntity: null, wikiGraph: true });
+  });
+
+  it('keeps the reader over the wiki, so that closing the book comes back to it', () => {
+    expect(hashOf({ wikiWorkId: 12, wikiEntity: 'luc', activeBookId: 12, activeFileId: 30 })).toBe('#/acervo?wiki=12&leitor=12&arquivo=30&entidade=luc');
+  });
+
+  it('ignores an entity or a view without a wiki, and a slug that is not one', () => {
+    expect(hashOf({ wikiEntity: 'luc', wikiGraph: true })).toBe('#/acervo');
+    expect(routeFromHash('#/acervo?entidade=luc&vista=grafo')).toEqual(HOME);
+    for (const slug of ['', '-luc', 'a b', '<x>', 'x'.repeat(121)]) {
+      expect(routeFromHash(`#/acervo?wiki=3&entidade=${encodeURIComponent(slug)}`).entidade).toBeNull();
+    }
+    expect(routeFromHash('#/acervo?wiki=3&entidade=jo%C3%A3o-2').entidade).toBe('joão-2');
+    expect(routeFromHash('#/acervo?wiki=3&vista=outra').vista).toBeNull();
+  });
+
+  it('is a new place for each entity and for the graph', () => {
+    const route = (hash) => routeFromHash(hash);
+    expect(isNewPlace(route('#/acervo?obra=12'), route('#/acervo?wiki=12'))).toBe(true);
+    expect(isNewPlace(route('#/acervo?wiki=12'), route('#/acervo?wiki=12&entidade=luc'))).toBe(true);
+    expect(isNewPlace(route('#/acervo?wiki=12&entidade=luc'), route('#/acervo?wiki=12&entidade=bea'))).toBe(true);
+    expect(isNewPlace(route('#/acervo?wiki=12'), route('#/acervo?wiki=12&vista=grafo'))).toBe(true);
   });
 });

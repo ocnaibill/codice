@@ -122,6 +122,9 @@ const EXACT = {
   'Book not found': 'Obra não encontrada.',
   'Collection not found': 'Coleção não encontrada.',
   'Title not found': 'Esse título não está mais na obra.',
+  // The automatic wiki (RF-050)
+  'Wiki not found': 'Essa obra não tem wiki, ou ela foi apagada.',
+  'Entity not found': 'Essa página da wiki não existe, ou fica além do ponto em que você está.',
   'Edition not found': 'Essa edição não está mais na obra.',
   'Contributor not found': 'Essa pessoa não está mais creditada nessa função.',
   'Work not found': 'Obra não encontrada.',
