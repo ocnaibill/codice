@@ -186,3 +186,21 @@ def test_a_server_that_stops_answering_pauses_the_run_instead_of_losing_it():
         for n in range(10):
             llm.ask_json('s', f'p{n}', EXAMPLE, need_ok, retries=0)
     assert stop.value.reason == 'paused' and 'retome quando ele voltar' in stop.value.message
+
+
+def test_a_long_wait_asked_by_the_server_pauses_the_run_with_what_it_said(make):
+    fake, llm = make([(429, "You've used this period's free allowance. Next period: 22 Oct. Key sk-chave.", {'Retry-After': '3600'})])
+    with pytest.raises(Stop) as stop:
+        llm.ask_json('s', 'p', EXAMPLE, need_ok)
+    assert stop.value.reason == 'paused'
+    assert 'esperar 60 min' in stop.value.message and 'free allowance' in stop.value.message
+    assert 'sk-chave' not in stop.value.message and 'retome quando puder' in stop.value.message
+    assert len(fake.requests) == 1
+
+
+def test_a_short_wait_is_still_waited_for_in_steps(make):
+    slept = []
+    fake, llm = make([(429, 'devagar', {'Retry-After': '120'}), ok({'ok': 9})])
+    llm.sleep = slept.append
+    assert llm.ask_json('s', 'p', EXAMPLE, need_ok)[0] == {'ok': 9}
+    assert sum(slept) == 120.0

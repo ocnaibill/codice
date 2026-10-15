@@ -86,14 +86,34 @@ def extract_json(text):
 
 class Llm:
     def __init__(self, provider, cache=None, control=None, usage=None, min_interval=0.2, stall=300.0, max_request=3600.0,
-                 sleep=time.sleep, max_failures=25):
+                 sleep=time.sleep, max_failures=25, longest_wait=300.0):
         self.provider, self.cache, self.control = provider, cache, control or (lambda: None)
         self.usage = usage or Usage()
         self.min_interval, self.stall, self.max_request, self.sleep = min_interval, stall or None, max_request, sleep
         self.max_failures = max_failures
+        self.longest_wait = longest_wait   # a wait asked for by the server that is longer than this pauses the run
         self._lock = threading.Lock()
         self._last = 0.0
         self._streak = 0
+
+    @staticmethod
+    def _human(seconds):
+        minutes = round(seconds / 60)
+        return f'{minutes} min' if minutes < 120 else f'{round(minutes / 60)} h'
+
+    @staticmethod
+    def _said(detail, key):
+        """What the server said in its error, short, and never the key."""
+        try:
+            data = json.loads(detail)
+            msg = data.get('error', data) if isinstance(data, dict) else detail
+            msg = msg.get('message', '') if isinstance(msg, dict) else str(msg)
+        except ValueError:
+            msg = detail
+        msg = ' '.join(str(msg).split())
+        if key:
+            msg = msg.replace(key, '[chave]')
+        return msg[:240] if msg else 'sem explicação.'
 
     # ---------------------------------------------------------------- one request
     def _wait_turn(self):
@@ -188,8 +208,14 @@ class Llm:
                     raise Fatal('O servidor não conhece este endereço ou este modelo.')
                 if err.code == 429 and attempt < 7:
                     retry = err.headers.get('Retry-After') if err.headers else None
+                    wait = float(retry) if retry and retry.replace('.', '', 1).isdigit() else min(60, 15 * (attempt + 1))
                     self.usage.add(throttled=1)
-                    self._sleep(float(retry) if retry and retry.replace('.', '', 1).isdigit() else min(60, 15 * (attempt + 1)))
+                    if wait > self.longest_wait:
+                        # not a limit per minute: the allowance of the period is spent. Waiting here for hours says nothing to anyone, and
+                        # holds the queue: the run is paused with what the server said, and resumed when it can
+                        raise Stop('paused', f'O servidor pediu para esperar {self._human(wait)}: {self._said(detail, p.key)}'
+                                             ' A geração foi pausada e guarda o que já fez; retome quando puder.')
+                    self._sleep(wait)
                     continue
                 if err.code == 400 and attempt < 7:
                     # the server does not take a field: without the JSON mode first, then without the one for reasoning
