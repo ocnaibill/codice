@@ -731,6 +731,8 @@ type UpdateWorkRequest struct {
 	// VolumeNumber and StoryArc (DEC-169): the bound volume that collected a chapter, and its arc; an empty one clears, an absent one leaves.
 	VolumeNumber *string `json:"volume_number"`
 	StoryArc     *string `json:"story_arc"`
+	// SpinOff (DEC-188): the work is outside the main line of its series; an absent one leaves.
+	SpinOff *bool `json:"spin_off"`
 
 	TitleLock           *bool `json:"title_lock"`
 	AuthorLock          *bool `json:"author_lock"`
@@ -852,6 +854,9 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "A unidade é volume, capítulo, único ou complementar.", http.StatusBadRequest)
 			return
 		}
+	}
+	if req.SpinOff != nil {
+		next.SpinOff = *req.SpinOff
 	}
 	if req.VolumeNumber != nil {
 		n, ok := cleanVolumeNumber(*req.VolumeNumber)

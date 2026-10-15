@@ -249,13 +249,13 @@ class WikiService:
     def load_books(self, work_id, collection_id, progress):
         if collection_id:
             rows = self.db.fetchall("""
-                SELECT cw.work_id, w.original_title, cw.position FROM collection_works cw JOIN works w ON w.id = cw.work_id
+                SELECT cw.work_id, w.original_title, w.spin_off FROM collection_works cw JOIN works w ON w.id = cw.work_id
                 WHERE cw.collection_id = %s AND cw.official AND w.retired_at IS NULL
                 ORDER BY cw.position NULLS LAST, w.series_index, w.id""", (collection_id,))
         else:
-            rows = self.db.fetchall('SELECT id, original_title, NULL::real FROM works WHERE id = %s AND retired_at IS NULL', (work_id,))
+            rows = self.db.fetchall('SELECT id, original_title, FALSE FROM works WHERE id = %s AND retired_at IS NULL', (work_id,))
         books = []
-        for wid, title, position in rows:
+        for wid, title, spin_off in rows:
             file = self.db.fetchone("""
                 SELECT f.id, f.sha256, l.mode, l.root, l.path
                 FROM editions e JOIN files f ON f.edition_id = e.id
@@ -280,9 +280,8 @@ class WikiService:
             read = epub.read(full)
             if not read['chapters']:
                 continue
-            # a position that is not a whole number is a side story ("3,5"): it has its own line and does not count in the order
-            side = collection_id is not None and position is not None and float(position) != int(position)
-            books.append({'id': file_id, 'work_id': wid, 'titulo': title or read['title'], 'kind': 'side' if side else 'main', 'sha256': sha,
+            # a work the person marked as outside the main line (DEC-188) has a line of its own and does not count in the order
+            books.append({'id': file_id, 'work_id': wid, 'titulo': title or read['title'], 'kind': 'side' if spin_off else 'main', 'sha256': sha,
                           'chapters': {c['index']: c for c in read['chapters']}, 'mapa': {}})
         if not books:
             raise RunFailed('Nenhum livro em EPUB com o texto lido: não há o que gerar.')

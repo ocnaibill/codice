@@ -48,7 +48,8 @@ const hasText = `EXISTS (SELECT 1 FROM editions e JOIN files f ON f.edition_id =
 var units = `
 	WITH units AS (
 		SELECT 'series' AS kind, c.id::bigint AS id, c.name::text AS title, count(*)::int AS books,
-		       count(*) FILTER (WHERE ` + strings.Replace(hasText, "%s", "w.id", 1) + `)::int AS readable
+		       count(*) FILTER (WHERE ` + strings.Replace(hasText, "%s", "w.id", 1) + `)::int AS readable,
+		       count(*) FILTER (WHERE w.spin_off)::int AS spin_offs
 		FROM collections c
 		JOIN collection_works cw ON cw.collection_id = c.id AND cw.official
 		JOIN works w ON w.id = cw.work_id AND w.retired_at IS NULL
@@ -56,7 +57,7 @@ var units = `
 		GROUP BY c.id
 		UNION ALL
 		SELECT 'work', w.id::bigint, w.original_title::text, 1,
-		       CASE WHEN ` + strings.Replace(hasText, "%s", "w.id", 1) + ` THEN 1 ELSE 0 END
+		       CASE WHEN ` + strings.Replace(hasText, "%s", "w.id", 1) + ` THEN 1 ELSE 0 END, 0
 		FROM works w
 		WHERE w.retired_at IS NULL AND NOT EXISTS (
 			SELECT 1 FROM collection_works cw JOIN collections c ON c.id = cw.collection_id
@@ -69,6 +70,7 @@ type LibraryItem struct {
 	Title    string     `json:"title"`
 	Books    int        `json:"books"`
 	Readable int        `json:"readable"` // books with text the generator can read
+	SpinOffs int        `json:"spinOffs"` // books of the series outside its main line (DEC-188)
 	Excluded bool       `json:"excluded"`
 	Wiki     *WikiState `json:"wiki"`
 	Run      *RunState  `json:"run"`
@@ -109,7 +111,7 @@ func Library(ctx context.Context, db *sql.DB, q, filter string, limit, offset in
 		where = append(where, "r.id IS NOT NULL")
 	}
 	from := units + `
-		SELECT u.kind, u.id, u.title, u.books, u.readable, x.id IS NOT NULL,
+		SELECT u.kind, u.id, u.title, u.books, u.readable, u.spin_offs, x.id IS NOT NULL,
 		       p.id, p.state, p.review, p.generated_at, r.id, r.state, r.stage, count(*) OVER ()
 		FROM units u
 		LEFT JOIN wiki_projects p ON (u.kind = 'series' AND p.collection_id = u.id) OR (u.kind = 'work' AND p.work_id = u.id)
@@ -132,7 +134,7 @@ func Library(ctx context.Context, db *sql.DB, q, filter string, limit, offset in
 		var pid, rid sql.NullInt64
 		var pstate, preview, rstate, rstage sql.NullString
 		var pgen sql.NullTime
-		if err := rows.Scan(&it.Kind, &it.ID, &it.Title, &it.Books, &it.Readable, &it.Excluded,
+		if err := rows.Scan(&it.Kind, &it.ID, &it.Title, &it.Books, &it.Readable, &it.SpinOffs, &it.Excluded,
 			&pid, &pstate, &preview, &pgen, &rid, &rstate, &rstage, &total); err != nil {
 			return nil, 0, err
 		}

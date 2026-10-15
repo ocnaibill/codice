@@ -325,6 +325,7 @@ function LibraryRow({ item, canGenerate }) {
         <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-ink-soft">
           <span>{item.kind === 'series' ? `série · ${item.books} ${item.books === 1 ? 'livro' : 'livros'}` : 'obra'}</span>
           {item.readable < item.books && <span>{item.readable} com texto para ler</span>}
+          {item.spinOffs > 0 && <span>{item.spinOffs} fora da linha principal</span>}
           <span className={CHIP}>{wikiState}</span>
           {item.run && <span className={CHIP}>{RUN_STATE[item.run.state] ?? item.run.state}</span>}
         </p>
@@ -361,7 +362,7 @@ function LibrarySection({ canGenerate }) {
   return (
     <Section
       title="Obras e séries"
-      hint="Só livros em EPUB com o texto lido pelo Códice podem ter wiki; uma série tem uma wiki só, com todos os livros. As marcadas “Não gerar wiki” ficam fora do “gerar para todas” e da atualização de livro novo, mas podem ser geradas aqui uma a uma."
+      hint="Só livros em EPUB com o texto lido pelo Códice podem ter wiki; uma série tem uma wiki só, com todos os livros. Um livro que não é da linha principal (spin-off, contos, algo fora do cânone) se marca nos metadados dele, perto da série, e ganha uma linha própria na wiki. As marcadas “Não gerar wiki” ficam fora do “gerar para todas” e da atualização de livro novo, mas podem ser geradas aqui uma a uma."
       actions={
         <Btn tone="primary" onClick={() => setConfirmAll(true)} disabled={!canGenerate || all.isPending}>
           Gerar para todas que ainda não têm wiki

@@ -42,6 +42,7 @@ type libraryAnswer struct {
 		Books    int    `json:"books"`
 		Readable int    `json:"readable"`
 		Excluded bool   `json:"excluded"`
+		SpinOffs int    `json:"spinOffs"`
 		Wiki     *struct {
 			ProjectID int64 `json:"projectId"`
 		} `json:"wiki"`
@@ -438,5 +439,39 @@ func TestWikiDelete_TakesWhatTheModelAnsweredForThatWikiAlong(t *testing.T) {
 	s.db.QueryRow(`SELECT string_agg(key, ',') FROM wiki_llm_cache`).Scan(&keys)
 	if keys != "k2" {
 		t.Errorf("cache after deleting = %q", keys)
+	}
+}
+
+func TestSpinOff_APersonSaysItBesideTheSeriesAndTheWikiGivesItALineOfItsOwn(t *testing.T) {
+	s := newCatalogStack(t)
+	s.configureWiki("https://modelo.exemplo.com/v1")
+	series, books := s.readableSeries("Scythe", 3)
+	if s.scalar(`SELECT spin_off::text FROM works WHERE id = $1`, books[2]) != "false" {
+		t.Fatal("a work starts inside the main line")
+	}
+	if code := s.editWork(books[2], `,"spin_off":true`); code != 200 {
+		t.Fatalf("edit: %d", code)
+	}
+	if s.scalar(`SELECT spin_off::text FROM works WHERE id = $1`, books[2]) != "true" {
+		t.Error("the choice was not kept")
+	}
+	d, _ := s.detail(ana, books[2])
+	if !d.Metadata.SpinOff {
+		t.Errorf("the metadata of the work does not say it: %+v", d.Metadata)
+	}
+	// The origin is the person, like any field changed by hand; an edit that does not say it leaves it as it is.
+	if got := s.scalar(`SELECT source FROM work_field_sources WHERE work_id = $1 AND field = 'spin_off'`, books[2]); got != "manual" {
+		t.Errorf("origin = %q", got)
+	}
+	if code := s.editWork(books[2], ``); code != 200 || s.scalar(`SELECT spin_off::text FROM works WHERE id = $1`, books[2]) != "true" {
+		t.Errorf("an edit that does not say it changed it: %d", code)
+	}
+	// The tab of the wiki says how many books of the series are outside the line.
+	lib := s.wikiLibrary("")
+	if len(lib.Items) != 1 || lib.Items[0].ID != series || lib.Items[0].SpinOffs != 1 || lib.Items[0].Books != 3 {
+		t.Errorf("library = %+v", lib.Items)
+	}
+	if code := s.editWork(books[2], `,"spin_off":false`); code != 200 || s.scalar(`SELECT spin_off::text FROM works WHERE id = $1`, books[2]) != "false" {
+		t.Errorf("unchecking: %d", code)
 	}
 }
