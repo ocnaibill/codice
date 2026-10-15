@@ -164,8 +164,8 @@ func TestWiki_AReaderSeesNothingBeyondTheChapterTheyAreIn(t *testing.T) {
 		}
 	}
 	// The quote of a reference is found in the file, for opening the reader at it.
-	if !strings.Contains(page, `"sequence":0`) {
-		t.Errorf("the quote's segment is missing: %s", page)
+	if !strings.Contains(page, `"sequence":0`) || !strings.Contains(page, `"locator":{`) {
+		t.Errorf("the quote's segment or its locator is missing: %s", page)
 	}
 	// An entity that has not appeared yet is not found at all, and the graph does not have it.
 	if rec := s.do(ana, "GET", fmt.Sprintf("/wiki/%d/entities/vilao", sum.Wiki.Project.ID), ""); rec.Code != 404 {
