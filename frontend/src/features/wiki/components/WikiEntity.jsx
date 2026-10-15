@@ -1,7 +1,9 @@
 import React from 'react';
 import { LoadError } from '../../../components/ui/LoadError';
-import { useWikiEntity } from '../api/useWiki';
+import { useHideSentence, useWikiEntity } from '../api/useWiki';
 import { GROUPS, kindName, plural, pointLabel } from '../wiki';
+import { IdentityPanel } from './IdentityPanel';
+import { ManualPanel } from './ManualPanel';
 import { MiniGraph } from './MiniGraph';
 
 const CARD = 'rounded-xl border border-border-hairline bg-white p-5 shadow-sm lg:p-6';
@@ -22,11 +24,36 @@ function goToReference(n) {
   target?.focus?.({ preventScroll: true });
 }
 
+// What the staff can do to a sentence (RF-052): `mark(sentence, hidden)`; null for a reader, who gets no button.
+const Correction = React.createContext(null);
+
 function Sentences({ sentences }) {
+  const correct = React.useContext(Correction);
   return sentences.map((s, i) => (
     <React.Fragment key={s.id}>
       {i > 0 && ' '}
-      {s.text}
+      {s.hidden ? <del className="text-ink-faint" title="Marcada como errada: nenhum leitor a vê">{s.text}</del> : s.text}
+      {s.by && (
+        <sup className="ml-0.5 text-[11px] text-ink-faint" title={`Escrito à mão por ${s.by}`} aria-label={`Escrito à mão por ${s.by}`}>
+          ✎
+        </sup>
+      )}
+      {s.hidden && correct && (
+        <button type="button" onClick={() => correct.mark(s, false)} className="ml-1 text-[12px] text-brand hover:underline">
+          Mostrar de novo
+        </button>
+      )}
+      {!s.hidden && correct && (
+        <button
+          type="button"
+          onClick={() => correct.mark(s, true)}
+          title="Isto está errado? Marque a frase e ela deixa de aparecer para todos."
+          aria-label="Marcar esta frase como errada"
+          className="ml-0.5 align-super text-[11px] text-ink-faint hover:text-danger"
+        >
+          ⚑
+        </button>
+      )}
       {s.refs.map((n) => (
         <sup key={n} className="ml-0.5 font-mono text-[10px]">
           <button type="button" onClick={() => goToReference(n)} className="text-brand hover:underline" aria-label={`Referência ${n}`}>
@@ -297,34 +324,15 @@ function Ficha({ page, onOpen }) {
   );
 }
 
-function Suggestions({ suggestions }) {
-  if (!suggestions?.length) return null;
-  return (
-    <section aria-labelledby="wiki-suggestions" className="rounded-xl border border-warning/30 bg-warning-soft/40 p-5">
-      <h2 id="wiki-suggestions" className="font-display text-xl text-ink">Identidade a conferir</h2>
-      <p className="mt-1 text-[13px] text-ink-soft">Só administradores veem isto (DEC-181).</p>
-      <ul className="mt-3 flex flex-col gap-3">
-        {suggestions.map((s) => (
-          <li key={s.id} className="text-sm text-ink">
-            <p className="font-semibold">
-              {s.kind === 'merge' ? <>Pode ser a mesma entidade que <span className="text-brand">{s.otherName || s.other}</span></> : 'Pode juntar menções de entidades diferentes'}
-            </p>
-            {s.evidence && <p className="mt-1 text-[13px] text-ink-soft">{s.evidence}</p>}
-          </li>
-        ))}
-      </ul>
-      <p className="mt-3 text-[12px] text-ink-faint">Confirmar, recusar ou separar entra com a revisão da wiki na administração.</p>
-    </section>
-  );
-}
-
 /**
  * The page of an entity (DEC-178, DEC-183): header with the situation at this point, "Quem é", the biography of the parts read, the
  * part in progress chapter by chapter and what is kept back, personality, timeline and references; at the side the ficha, the
  * minigraph and, for staff, the identity suggestions. On a phone the ficha comes after "Quem é", as the box of a wiki comes after its lead.
  */
-export function WikiEntity({ project, books, slug, cursor, graph, onOpen, onExpandGraph, onOpenAt }) {
+export function WikiEntity({ project, books, index, slug, cursor, graph, staff = false, onOpen, onExpandGraph, onOpenAt }) {
   const { data, isLoading, isError, error, refetch, isRefetching } = useWikiEntity(project.id, slug, cursor);
+  const { mutate: setHidden } = useHideSentence(project.id);
+  const correction = React.useMemo(() => (staff ? { mark: (sentence, hidden) => setHidden({ id: sentence.id, hidden }) } : null), [staff, setHidden]);
 
   // A page that opens gives the focus to its name, for who goes by the keyboard or a screen reader.
   const loaded = !!data;
@@ -360,6 +368,7 @@ export function WikiEntity({ project, books, slug, cursor, graph, onOpen, onExpa
   const shown = data.cursor;
 
   return (
+    <Correction.Provider value={correction}>
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:grid-rows-[auto_auto_1fr]">
       <div className="lg:col-span-2">
         <Header page={page} cursor={shown} books={books} />
@@ -372,7 +381,8 @@ export function WikiEntity({ project, books, slug, cursor, graph, onOpen, onExpa
       <aside aria-label="Ficha e vínculos" className="flex flex-col gap-6 lg:col-start-2 lg:row-span-2 lg:row-start-2 lg:self-start">
         <Ficha page={page} onOpen={onOpen} />
         <MiniGraph graph={graph} slug={page.slug} onOpen={onOpen} onExpand={onExpandGraph} />
-        <Suggestions suggestions={page.suggestions} />
+        {staff && <IdentityPanel projectId={project.id} page={page} index={index} onOpen={onOpen} />}
+        {staff && <ManualPanel projectId={project.id} page={page} books={books} index={index} shown={shown} onGone={() => onOpen(null)} />}
       </aside>
       <article className={`flex min-w-0 flex-col gap-6 lg:col-start-1 ${page.who ? 'lg:row-start-3' : 'lg:row-start-2'}`}>
         <Biography biography={page.biography} inProgress={page.inProgress} hidden={page.hidden} cursor={shown} />
@@ -384,5 +394,6 @@ export function WikiEntity({ project, books, slug, cursor, graph, onOpen, onExpa
         )}
       </article>
     </div>
+    </Correction.Provider>
   );
 }

@@ -180,6 +180,13 @@ class WikiService:
                 raise RunFailed('A chave guardada não abre com a chave mestra deste servidor: digite a chave do provedor de novo.')
         return Provider(v.get('kind', 'openai'), v.get('baseUrl', ''), v.get('model', ''), key)
 
+    def identity_rules(self, work_id, collection_id):
+        """What the staff decided about who is who (DEC-181) for this work or series: followed by every generation."""
+        rows = self.db.fetchall(
+            'SELECT kind, a_key, b_key FROM wiki_identity_rules WHERE (work_id IS NOT NULL AND work_id = %s) '
+            'OR (collection_id IS NOT NULL AND collection_id = %s)', (work_id, collection_id))
+        return [{'kind': k, 'a': a, 'b': b} for k, a, b in rows]
+
     def min_chapters(self):
         row = self.db.fetchone("SELECT value FROM settings WHERE key = 'wiki.settings'")
         try:
@@ -294,7 +301,7 @@ class WikiService:
         for b in books:
             self.log(f"   📖 {b['titulo']} ({b['kind']}): {len(b['chapters'])} capítulos")
         bundle, partial = generate(llm, books, self.min_chapters(), progress, control, self.parallel, provider.kind, provider.model,
-                                   self.is_remote(provider))
+                                   self.is_remote(provider), rules=self.identity_rules(work_id, collection_id))
         self.log(f'   ✅ {len(bundle["entities"])} entities, {len(bundle["edges"])} edges' + (' (partial)' if partial else ''))
         return bundle, partial
 

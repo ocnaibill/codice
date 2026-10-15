@@ -79,6 +79,18 @@ const graph = {
   ],
 };
 
+const review = {
+  review: 'pending',
+  changes: [
+    { slug: 'recem', name: 'Recém-chegado', kind: 'person', page: true, new: true, labels: ['Quem é, até Parte I'] },
+    { slug: 'citra', name: 'Citra Terranova', kind: 'person', page: true, new: false, labels: ['Biografia, Parte 2'], added: [] },
+    { slug: 'rowan', name: 'Rowan Damisch', kind: 'person', page: true, new: false, labels: ['Biografia, Parte 3'], undone: true },
+  ],
+};
+
+let rules = [];
+let manual = [];
+
 let container;
 let root;
 let asked;
@@ -98,8 +110,14 @@ async function open({ role = 'reader', summary = wiki(), entity = page(), state 
       return { data: { cursor: wiki().cursor, page: entity } };
     }
     if (url === `/wiki/${PROJECT}/graph`) return { data: graph };
+    if (url === `/wiki/${PROJECT}/review`) return { data: review };
+    if (url === `/wiki/${PROJECT}/identity`) return { data: { rules } };
+    if (url === `/wiki/${PROJECT}/manual`) return { data: { items: manual } };
     throw new Error(`unexpected GET ${url}`);
   });
+  api.post.mockResolvedValue({ data: { hidden: 2, slug: 'citra' } });
+  api.delete.mockResolvedValue({});
+  api.put.mockResolvedValue({});
   useGlobalStore.setState({ wikiWorkId: WORK, wikiEntity: null, wikiGraph: false, wikiFrom: null, activeBookId: null, seek: null, ...state });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // A second opening in the same test starts from nothing: the queries of the first one belong to its client.
@@ -112,6 +130,8 @@ async function open({ role = 'reader', summary = wiki(), entity = page(), state 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  rules = [];
+  manual = [];
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -265,7 +285,7 @@ describe('WikiPage: the index of what appeared up to the reader', () => {
     expect(text()).toContain('Esta wiki está parcial');
     expect(text()).toContain('está em revisão');
     await open({ role: 'admin', summary: wiki({ project: { ...wiki().project, review: 'pending' } }) });
-    expect(text()).toContain('falta revisar o que mudou');
+    expect(text()).toContain('falta revisar');
   });
 });
 
@@ -347,14 +367,6 @@ describe('WikiPage: the page of an entity', () => {
     expect(timeline.textContent).toContain('2 registros');
   });
 
-  it('shows the identity suggestions only when the server sends them (to staff)', async () => {
-    await open({ state: { wikiEntity: 'citra' } });
-    expect(text()).not.toContain('Identidade a conferir');
-    await open({ role: 'admin', state: { wikiEntity: 'citra' }, entity: page({ suggestions: [{ id: 1, kind: 'merge', entity: 'citra', other: 'ceifadora-anastasia', otherName: 'Ceifadora Anastásia', evidence: 'Cap. 30: o nome dado na ordenação.' }] }) });
-    expect(text()).toContain('Pode ser a mesma entidade que Ceifadora Anastásia');
-    expect(text()).toContain('Cap. 30: o nome dado na ordenação.');
-  });
-
   it('says an entity beyond the point is not there, without telling more', async () => {
     const notFound = Object.assign(new Error('404'), { response: { status: 404 } });
     await open({ state: { wikiEntity: 'vilao' }, entity: notFound });
@@ -426,5 +438,201 @@ describe('WikiPage: the graph', () => {
     await flush();
     expect(container.querySelectorAll('[aria-label="Entidades e vínculos"] g[role="button"]')).toHaveLength(2);
     expect([...container.querySelectorAll('select')].find((s) => s.closest('[aria-label="Grafo da wiki"]')).value).toBe('2');
+  });
+});
+
+describe('WikiPage: the review of an update and the sentences marked wrong (DEC-180, RF-052)', () => {
+  const pending = (over = {}) => wiki({ project: { ...wiki().project, review: 'pending' }, ...over });
+  const flag = () => [...container.querySelectorAll('button[aria-label="Marcar esta frase como errada"]')];
+
+  it('shows the staff what the update changed, and undoes what one entity gained', async () => {
+    await open({ role: 'admin', summary: pending() });
+    const banner = container.querySelector('[aria-label="Revisão da atualização"]');
+    expect(banner.textContent).toContain('1 página nova e 2 páginas que ganharam seções');
+    expect(banner.textContent).not.toContain('Recém-chegado'); // closed until asked: the names of a later book are spoilers
+    await click(button('Ver o que mudou'));
+    const list = banner.querySelector('[aria-label="O que mudou"]');
+    expect([...list.querySelectorAll('li')].map((li) => li.querySelector('button').textContent)).toEqual(['Recém-chegado', 'Citra Terranova', 'Rowan Damisch']);
+    expect(list.textContent).toContain('Ganhou: Biografia, Parte 2');
+    expect(list.textContent).toContain('desfeito');
+    await click([...list.querySelectorAll('button')].find((b) => b.textContent === 'Desfazer'));
+    expect(api.post).toHaveBeenCalledWith(`/wiki/${PROJECT}/review/undo`, { slug: 'recem' });
+    await click(button('Marcar como revisada'));
+    expect(api.post).toHaveBeenCalledWith(`/wiki/${PROJECT}/review/approve`);
+    await click(list.querySelector('button'));
+    expect(useGlobalStore.getState().wikiEntity).toBe('recem');
+  });
+
+  it('shows no review to a reader, who is only told it is being reviewed', async () => {
+    await open({ role: 'reader', summary: pending() });
+    expect(container.querySelector('[aria-label="Revisão da atualização"]')).toBeNull();
+    expect(text()).toContain('está em revisão');
+    expect(api.get.mock.calls.some(([url]) => url.endsWith('/review'))).toBe(false);
+  });
+
+  it('lets the staff mark a sentence as wrong, and show it again; a reader has no button', async () => {
+    await open({ role: 'admin', state: { wikiEntity: 'citra' } });
+    expect(flag().length).toBeGreaterThan(0);
+    await click(flag()[0]);
+    expect(api.put).toHaveBeenCalledWith(`/wiki/${PROJECT}/sentences/1/hidden`, { hidden: true });
+    const struck = page({ who: { ...page().who, paragraphs: [[{ ...page().who.paragraphs[0][0], hidden: true }, page().who.paragraphs[0][1]]] } });
+    await open({ role: 'admin', state: { wikiEntity: 'citra' }, entity: struck });
+    expect(container.querySelector('del').textContent).toBe('Citra é aprendiz de ceifador.');
+    await click(button('Mostrar de novo'));
+    expect(api.put).toHaveBeenLastCalledWith(`/wiki/${PROJECT}/sentences/1/hidden`, { hidden: false });
+    await open({ role: 'reader', state: { wikiEntity: 'citra' } });
+    expect(flag()).toHaveLength(0);
+  });
+});
+
+describe('WikiPage: who is who (DEC-181)', () => {
+  const merge = { id: 1, kind: 'merge', entity: 'citra', other: 'faraday', otherName: 'Ceifador Faraday', evidence: 'O modelo achou que são a mesma, sem prova.' };
+  const select = (label) => [...container.querySelectorAll('label')].find((l) => l.textContent.includes(label)).querySelector('select');
+  const choose = (el, value) => act(async () => {
+    el.value = value;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  const identity = () => container.querySelector('[aria-labelledby="wiki-identity"]');
+
+  it('is only for the staff, and shows what the generator could not prove', async () => {
+    await open({ role: 'reader', state: { wikiEntity: 'citra' }, entity: page({ suggestions: [merge] }) });
+    expect(identity()).toBeNull();
+    await open({ role: 'admin', state: { wikiEntity: 'citra' }, entity: page({ suggestions: [merge] }) });
+    const list = identity().querySelector('[aria-label="Sugestões de identidade"]');
+    expect(list.textContent).toContain('Pode ser a mesma que Ceifador Faraday');
+    expect(list.textContent).toContain('sem prova');
+  });
+
+  it('keeps two entities apart, in one click', async () => {
+    await open({ role: 'admin', state: { wikiEntity: 'citra' }, entity: page({ suggestions: [merge] }) });
+    await click(button('Manter distintas'));
+    expect(api.post).toHaveBeenCalledWith(`/wiki/${PROJECT}/identity`, { action: 'distinct', entity: 'citra', other: 'faraday', suggestion: 1 });
+  });
+
+  it('asks again before joining, since it cannot be undone in this wiki, and goes to the page that stayed', async () => {
+    await open({ role: 'admin', state: { wikiEntity: 'citra' }, entity: page({ suggestions: [merge] }) });
+    api.post.mockResolvedValueOnce({ data: { slug: 'faraday' } });
+    await click(button('Confirmar junção'));
+    expect(api.post).not.toHaveBeenCalledWith(`/wiki/${PROJECT}/identity`, expect.anything());
+    const dialog = container.querySelector('[role="alertdialog"]');
+    expect(dialog.textContent).toContain('Para separar de novo é preciso gerar a wiki outra vez');
+    await click([...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Juntar'));
+    expect(api.post).toHaveBeenCalledWith(`/wiki/${PROJECT}/identity`, { action: 'merge', entity: 'citra', other: 'faraday', suggestion: 1, label: 'Ceifador Faraday' });
+    expect(useGlobalStore.getState().wikiEntity).toBe('faraday');
+  });
+
+  it('joins with an entity chosen from the index, and takes a mention away', async () => {
+    await open({ role: 'admin', state: { wikiEntity: 'citra' } });
+    await choose(select('Juntar com outra entidade'), 'rowan');
+    await click([...identity().querySelectorAll('button')].find((b) => b.textContent === 'Juntar'));
+    await click([...container.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent === 'Juntar'));
+    expect(api.post).toHaveBeenLastCalledWith(`/wiki/${PROJECT}/identity`, expect.objectContaining({ action: 'merge', entity: 'citra', other: 'rowan' }));
+    await choose(select('Separar uma menção'), 'Citra');
+    await click(button('Separar'));
+    expect(api.post).toHaveBeenLastCalledWith(`/wiki/${PROJECT}/identity`, { action: 'mention', entity: 'citra', mention: 'Citra' });
+  });
+
+  it('lists what was decided and takes it back for the next generations', async () => {
+    rules = [{ id: 4, kind: 'same', a: 'Bea', b: 'Beatriz' }, { id: 5, kind: 'mention', a: 'Luc', b: 'o Mestre dos Mares' }];
+    await open({ role: 'admin', state: { wikiEntity: 'citra' } });
+    const list = identity().querySelector('details');
+    expect(list.textContent).toContain('Juntas: Bea e Beatriz');
+    expect(list.textContent).toContain('“o Mestre dos Mares” não é de Luc');
+    await click([...list.querySelectorAll('button')].find((b) => b.textContent === 'Esquecer'));
+    expect(api.delete).toHaveBeenCalledWith(`/wiki/${PROJECT}/identity/4`);
+  });
+});
+
+describe('WikiPage: written by hand (DEC-186)', () => {
+  const panel = () => container.querySelector('[aria-labelledby="wiki-manual"]');
+  const type = (el, value) => act(async () => {
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const submit = async (form) => { await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); }); await flush(); };
+
+  it('is only for the staff', async () => {
+    await open({ role: 'reader', state: { wikiEntity: 'faraday' }, entity: page({ slug: 'faraday', name: 'Ceifador Faraday', page: false, who: null }) });
+    expect(panel()).toBeNull();
+    await open({ role: 'admin', state: { wikiEntity: 'faraday' }, entity: page({ slug: 'faraday', name: 'Ceifador Faraday', page: false, who: null }) });
+    expect(panel()).not.toBeNull();
+    expect(button('Escrever a página')).toBeTruthy();
+  });
+
+  it('writes the page of who has none, from a chapter, one paragraph at a time', async () => {
+    await open({ role: 'admin', state: { wikiEntity: 'faraday' }, entity: page({ slug: 'faraday', name: 'Ceifador Faraday', page: false, who: null }) });
+    await click(button('Escrever a página'));
+    const form = panel().querySelector('form');
+    expect(form.querySelector('button[type="submit"]').disabled).toBe(true);
+    await type(form.querySelector('textarea'), 'Faraday é um ceifador.\n\nÉ mestre de Citra.');
+    await submit(form);
+    expect(api.post).toHaveBeenCalledWith(`/wiki/${PROJECT}/manual`, {
+      items: [{ kind: 'section', entity: 'faraday', book: 0, chapter: 4, data: { kind: 'who', part: '', paragraphs: ['Faraday é um ceifador.', 'É mestre de Citra.'] } }],
+    });
+  });
+
+  it('records a moment and a tie, and ties it to another entity in the graph', async () => {
+    await open({ role: 'admin', state: { wikiEntity: 'citra' } });
+    await click(button('Registrar um momento'));
+    await type(panel().querySelector('textarea'), 'Corta o cabelo.');
+    await submit(panel().querySelector('form'));
+    expect(api.post).toHaveBeenLastCalledWith(`/wiki/${PROJECT}/manual`, { items: [{ kind: 'state', entity: 'citra', book: 0, chapter: 4, data: { text: 'Corta o cabelo.' } }] });
+
+    await click(button('Ligar a outra entidade'));
+    const form = panel().querySelector('form');
+    expect(form.querySelector('button[type="submit"]').disabled).toBe(true);
+    const select = [...form.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.value === 'rowan'));
+    await act(async () => { select.value = 'rowan'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    await type(form.querySelector('input'), 'colega de treino');
+    await submit(form);
+    expect(api.post).toHaveBeenLastCalledWith(`/wiki/${PROJECT}/manual`, {
+      items: [{ kind: 'edge', entity: 'citra', other: 'rowan', book: 0, chapter: 4, data: { label: 'colega de treino' } }],
+    });
+  });
+
+  it('lists what was written, corrects it and takes it away after asking', async () => {
+    manual = [
+      { id: 7, kind: 'state', entity: 'citra', data: { text: 'Corta o cabelo.' }, book: 0, chapter: 3, author: 'ana', createdAt: '2026-10-15T12:00:00Z' },
+      { id: 8, kind: 'entity', entity: 'citra', data: { kind: 'person', aliases: [] }, book: 0, chapter: 1, author: 'ana', createdAt: '2026-10-15T12:00:00Z' },
+    ];
+    await open({ role: 'admin', state: { wikiEntity: 'citra' } });
+    const list = panel().querySelector('[aria-label="Escrito à mão"]');
+    expect(list.textContent).toContain('Momento · cap. 3 · por ana');
+    expect(list.textContent).toContain('Corta o cabelo.');
+    await click(button('Corrigir'));
+    await type(panel().querySelector('textarea'), 'Corta o cabelo bem curto.');
+    await submit(panel().querySelector('li form'));
+    expect(api.put).toHaveBeenCalledWith(`/wiki/${PROJECT}/manual/7`, { book: 0, chapter: 3, data: { text: 'Corta o cabelo bem curto.' } });
+    await click(button('Apagar'));
+    expect(api.delete).not.toHaveBeenCalled();
+    await click([...container.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent === 'Apagar'));
+    expect(api.delete).toHaveBeenCalledWith(`/wiki/${PROJECT}/manual/7`);
+  });
+
+  it('creates a new entity from the index, with its text and who took part, in one request', async () => {
+    await open({ role: 'admin' });
+    api.post.mockResolvedValue({ data: { ids: [1, 2, 3], slugs: ['o-baile', '', ''] } });
+    await click(button('Nova entidade'));
+    const form = container.querySelector('form[aria-label="Nova entidade"]');
+    expect(form.querySelector('button[type="submit"]').disabled).toBe(true);
+    await type(form.querySelector('input'), 'O Baile');
+    await type(form.querySelector('textarea'), 'Um baile na praça.');
+    const box = [...form.querySelectorAll('label')].find((l) => l.textContent.includes('Citra Terranova')).querySelector('input');
+    await click(box);
+    await submit(form);
+    expect(api.post).toHaveBeenCalledWith(`/wiki/${PROJECT}/manual`, {
+      items: [
+        { kind: 'entity', name: 'O Baile', book: 0, chapter: 4, data: { kind: 'event', aliases: [] } },
+        { kind: 'section', entity: '@0', book: 0, chapter: 4, data: { kind: 'who', part: '', paragraphs: ['Um baile na praça.'] } },
+        { kind: 'edge', entity: '@0', other: 'citra', book: 0, chapter: 4, data: { label: 'participou' } },
+      ],
+    });
+    expect(useGlobalStore.getState().wikiEntity).toBe('o-baile');
+  });
+
+  it('gives a reader no way to create an entity', async () => {
+    await open({ role: 'reader' });
+    expect(button('Nova entidade')).toBeUndefined();
   });
 });

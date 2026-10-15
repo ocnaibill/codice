@@ -4,7 +4,7 @@ import collections
 import re
 
 from .registry import build_registry, head_of, merge_series
-from .text import CONNECTORS, core, fold, kind_of
+from .text import CONNECTORS, core, fold, key, kind_of
 
 MIN_CHAPTERS = 2   # an entity seen in a single chapter is not an entity of the series
 
@@ -41,7 +41,7 @@ def _looks_like_name(a):
     return len(words) >= 2 and all(w[:1].isupper() for w in words) and not re.search(r'\d', a)
 
 
-def build_series(llm, books, progress=None):
+def build_series(llm, books, rules=()):
     """Returns (series, merge_log). `series` is:
       {'series': [{'id','titulo','kind','partes','capitulos','extras'}],
        'entidades': [{'nome','tipo','aliases','livros','caps','linha','relacoes','relacoes_inversas','notas'}]}
@@ -56,14 +56,16 @@ def build_series(llm, books, progress=None):
     entries = [e for e in entries if e['caps']]
     for i, e in enumerate(entries):
         e['id'] = i
-    groups, log = merge_series(llm, entries)
+    groups, log = merge_series(llm, entries, rules)
     groups = [g for g in groups if sum(len(x['caps']) for x in g) >= MIN_CHAPTERS]
     groups.sort(key=lambda g: (-sum(len(x['caps']) for x in g), head_of(g)[0]))
 
     ents = []
     for g in groups:
         name, names = head_of(g)
-        aliases = [n for n, _ in names.most_common(14) if core(n) and n != name]
+        # a mention that the staff took away from this entity (DEC-181) is not one of its names
+        gone = {r['b'] for r in rules if r.get('kind') == 'mention' and r['a'] in {key(n) for n in names}}
+        aliases = [n for n, _ in names.most_common(14) if core(n) and n != name and key(n) not in gone]
         kind = collections.Counter(x['tipo'] for x in g for _ in x['caps']).most_common(1)[0][0]
         # a one-word name that is a title ("Timbre") with a person's name among the aliases: the person's name becomes the main one
         if kind == 'personagem' and len(core(name)) == 1:

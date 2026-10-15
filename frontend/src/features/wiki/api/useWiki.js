@@ -1,4 +1,4 @@
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 
 /**
@@ -44,5 +44,109 @@ export function useWikiGraph(projectId, cursor = null, { enabled = true } = {}) 
     queryFn: async () => (await api.get(`/wiki/${projectId}/graph`, { params: cursorParams(cursor) })).data,
     enabled: !!projectId && enabled,
     placeholderData: keepPreviousData,
+  });
+}
+
+/** What the last update of the wiki changed, for the staff (DEC-180). Not in the summary: a later book's names are spoilers. */
+export function useWikiReview(projectId, enabled = true) {
+  return useQuery({
+    queryKey: ['wiki-review', projectId],
+    queryFn: async () => (await api.get(`/wiki/${projectId}/review`)).data,
+    enabled: !!projectId && enabled,
+  });
+}
+
+const refreshWiki = (queryClient) => {
+  for (const key of ['wiki', 'wiki-entity', 'wiki-graph', 'wiki-review']) queryClient.invalidateQueries({ queryKey: [key] });
+};
+
+/** The review of an update: `approve` closes it, `undo` hides what one entity gained ({ slug }). */
+export function useWikiReviewActions(projectId) {
+  const queryClient = useQueryClient();
+  const approve = useMutation({
+    mutationFn: async () => (await api.post(`/wiki/${projectId}/review/approve`)).data,
+    onSuccess: () => refreshWiki(queryClient),
+  });
+  const undo = useMutation({
+    mutationFn: async (slug) => (await api.post(`/wiki/${projectId}/review/undo`, { slug })).data,
+    onSuccess: () => refreshWiki(queryClient),
+  });
+  return { approve, undo };
+}
+
+/** Marks a sentence as wrong (no reader gets it) or shows it again ({ id, hidden }). */
+export function useHideSentence(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, hidden }) => (await api.put(`/wiki/${projectId}/sentences/${id}/hidden`, { hidden })).data,
+    onSuccess: () => refreshWiki(queryClient),
+  });
+}
+
+/** What the staff decided about who is who in this work or series (DEC-181). */
+export function useWikiIdentity(projectId, enabled = true) {
+  return useQuery({
+    queryKey: ['wiki-identity', projectId],
+    queryFn: async () => (await api.get(`/wiki/${projectId}/identity`)).data,
+    enabled: !!projectId && enabled,
+  });
+}
+
+/** Joins two entities, keeps them apart, or takes a mention away from one. The answer is the slug the page goes on to show. */
+export function useDecideIdentity(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (decision) => (await api.post(`/wiki/${projectId}/identity`, decision)).data,
+    onSuccess: () => {
+      for (const key of ['wiki', 'wiki-entity', 'wiki-graph', 'wiki-review', 'wiki-identity']) queryClient.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
+/** Takes a decision back for the next generations (what was done in the wiki that exists stays until it is generated again). */
+export function useForgetIdentity(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ruleId) => (await api.delete(`/wiki/${projectId}/identity/${ruleId}`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['wiki-identity'] }),
+  });
+}
+
+const MANUAL_KEYS = ['wiki', 'wiki-entity', 'wiki-graph', 'wiki-review', 'wiki-manual'];
+const refreshManual = (queryClient) => {
+  for (const key of MANUAL_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+};
+
+/** What the staff wrote by hand about an entity (DEC-186): its page, its moments, its ties and its edges. */
+export function useWikiManual(projectId, slug, enabled = true) {
+  return useQuery({
+    queryKey: ['wiki-manual', projectId, slug],
+    queryFn: async () => (await api.get(`/wiki/${projectId}/manual`, { params: { entity: slug } })).data,
+    enabled: !!projectId && !!slug && enabled,
+  });
+}
+
+/** Writes items by hand, all or nothing; `"@0"` in `entity` or `other` is the entity the item 0 of the same request creates. */
+export function useCreateManual(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (items) => (await api.post(`/wiki/${projectId}/manual`, { items })).data,
+    onSuccess: () => refreshManual(queryClient),
+  });
+}
+
+export function useUpdateManual(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...item }) => (await api.put(`/wiki/${projectId}/manual/${id}`, item)).data, // the id is in the address
+    onSuccess: () => refreshManual(queryClient),
+  });
+}
+
+export function useDeleteManual(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => (await api.delete(`/wiki/${projectId}/manual/${id}`)).data,
+    onSuccess: () => refreshManual(queryClient),
   });
 }

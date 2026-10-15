@@ -219,3 +219,108 @@ export function layoutGraph(nodes, edges, { iterations = 300 } = {}) {
 /** "deepseek" → "DeepSeek": the providers the generator knows, by the name people know them by. */
 const PROVIDERS = { deepseek: 'DeepSeek', nim: 'NVIDIA NIM', tokenharbor: 'Tokenharbor', ollama: 'Ollama', openai: 'OpenAI', anthropic: 'Anthropic' };
 export const providerName = (key) => PROVIDERS[String(key ?? '').toLowerCase()] ?? key;
+
+/** The points of the wiki a person can write at (DEC-186): every chapter of every book, as the options of a choice. */
+export function pointOptions(books) {
+  const several = (books ?? []).length > 1;
+  return (books ?? []).flatMap((book) =>
+    book.chapters.map((c) => ({
+      value: pointValue(book.position, c.chapter),
+      label: `${several ? `${book.title} · ` : ''}${chapterName(c)}`,
+    })),
+  );
+}
+
+/** What each kind of thing written by hand is called, and the sections a page can have. */
+export const MANUAL_KINDS = {
+  section: 'Texto da página',
+  state: 'Momento',
+  relation: 'Vínculo na ficha',
+  edge: 'Ligação no grafo',
+  entity: 'Entidade criada à mão',
+};
+export const SECTION_KINDS = {
+  who: 'Quem é',
+  bio: 'Biografia',
+  personality: 'Personalidade',
+};
+
+/** The paragraphs of a text typed with blank lines between them. */
+export const paragraphsOfText = (text) =>
+  String(text ?? '')
+    .replace(/\r\n/g, '\n')
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+/**
+ * The item the server takes (DEC-186) from what the form of an entity has: `form` is { point, text, section, part, group, role, other,
+ * otherName, label }. Returns null while something that is needed is missing.
+ */
+export function manualItem(kind, form, slug) {
+  const point = pointOf(form.point);
+  if (!point) return null;
+  const base = { kind, entity: slug, book: point.book, chapter: point.chapter };
+  switch (kind) {
+    case 'section': {
+      const paragraphs = paragraphsOfText(form.text);
+      if (paragraphs.length === 0) return null;
+      return { ...base, data: { kind: form.section || 'who', part: form.section === 'bio' ? String(form.part ?? '').trim() : '', paragraphs } };
+    }
+    case 'state': {
+      const text = String(form.text ?? '').trim();
+      return text ? { ...base, data: { text } } : null;
+    }
+    case 'relation': {
+      const otherName = String(form.otherName ?? '').trim();
+      if (!form.other && !otherName) return null;
+      const data = { group: form.group || 'others', role: String(form.role ?? '').trim() };
+      return form.other ? { ...base, other: form.other, data } : { ...base, otherName, data };
+    }
+    case 'edge':
+      return form.other ? { ...base, other: form.other, data: { label: String(form.label ?? '').trim() } } : null;
+    default:
+      return null;
+  }
+}
+
+/** A line about an item written by hand, for the list of the staff. */
+export function describeManual(item, nameOf = (x) => x) {
+  const d = item.data ?? {};
+  switch (item.kind) {
+    case 'section':
+      return `${SECTION_KINDS[d.kind] ?? 'Texto'}${d.part ? ` · ${d.part}` : ''}: ${(d.paragraphs ?? []).join(' ')}`;
+    case 'state':
+      return d.text ?? '';
+    case 'relation':
+      return `${GROUPS[d.group] ?? d.group}: ${item.other}${d.role ? ` · ${d.role}` : ''}`;
+    case 'edge':
+      return `${nameOf(item.other)}${d.label ? ` · ${d.label}` : ''}`;
+    case 'entity':
+      return `${kindName(d.kind)}${(d.aliases ?? []).length ? ` · também: ${d.aliases.join(', ')}` : ''}`;
+    default:
+      return '';
+  }
+}
+
+/**
+ * The items a new entity written by hand becomes (DEC-186): the entity, its text when it has one, and an edge to each one it is tied
+ * to; the ones after the first point at it by "@0". `form` is { name, kind, aliases, point, text, label, tied }.
+ */
+export function newEntityItems(form) {
+  const point = pointOf(form.point);
+  const name = String(form.name ?? '').trim();
+  if (!point || !name || !form.kind) return null;
+  const at = { book: point.book, chapter: point.chapter };
+  const aliases = String(form.aliases ?? '')
+    .split(/[,;\n]/)
+    .map((a) => a.trim())
+    .filter(Boolean);
+  const items = [{ kind: 'entity', name, ...at, data: { kind: form.kind, aliases } }];
+  const paragraphs = paragraphsOfText(form.text);
+  if (paragraphs.length > 0) items.push({ kind: 'section', entity: '@0', ...at, data: { kind: 'who', part: '', paragraphs } });
+  for (const other of form.tied ?? []) {
+    items.push({ kind: 'edge', entity: '@0', other, ...at, data: { label: String(form.label ?? '').trim() } });
+  }
+  return items;
+}

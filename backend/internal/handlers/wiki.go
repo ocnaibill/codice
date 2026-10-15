@@ -353,3 +353,230 @@ func (h *WikiHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// Review is what an update changed, for owner and admins (DEC-180): the entities that came and the sections that were added. It is not
+// in the summary every reader gets, since the names of what a later book brings are spoilers.
+func (h *WikiHandler) Review(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	if !ok {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	rev, err := wiki.LoadReview(r.Context(), h.DB, id)
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error reading a wiki review:", err)
+		http.Error(w, "Error reading the wiki", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, rev)
+	}
+}
+
+// Approve closes the review of an update: it was seen.
+func (h *WikiHandler) Approve(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	if !ok {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	switch err := wiki.Approve(r.Context(), h.DB, id, currentUserID(r)); {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error approving a wiki update:", err)
+		http.Error(w, "Error saving the review", http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// UndoChange hides what one entity gained in the update.
+func (h *WikiHandler) UndoChange(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	var req struct {
+		Slug string `json:"slug"`
+	}
+	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&req) != nil || req.Slug == "" {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	n, err := wiki.Undo(r.Context(), h.DB, id, req.Slug, currentUserID(r))
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error undoing a wiki change:", err)
+		http.Error(w, "Error saving the review", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"hidden": n})
+	}
+}
+
+// SetSentenceHidden marks a sentence as wrong, or shows it again.
+func (h *WikiHandler) SetSentenceHidden(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	sid, err := strconv.ParseInt(chi.URLParam(r, "sid"), 10, 64)
+	var req struct {
+		Hidden bool `json:"hidden"`
+	}
+	if !ok || err != nil || sid <= 0 || json.NewDecoder(http.MaxBytesReader(w, r.Body, 256)).Decode(&req) != nil {
+		http.Error(w, "Entity not found", http.StatusNotFound)
+		return
+	}
+	switch err := wiki.SetSentenceHidden(r.Context(), h.DB, id, sid, req.Hidden, currentUserID(r)); {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error hiding a wiki sentence:", err)
+		http.Error(w, "Error saving the correction", http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// Identity applies a decision about who is who (DEC-181): join two entities, keep them apart, or take a mention away from one.
+func (h *WikiHandler) Identity(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	var d wiki.Decision
+	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048)).Decode(&d) != nil {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	var bad wiki.ErrIdentity
+	slug, err := wiki.Decide(r.Context(), h.DB, id, d, currentUserID(r))
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case errors.As(err, &bad):
+		http.Error(w, bad.Msg, http.StatusBadRequest)
+	case err != nil:
+		log.Println("Error deciding a wiki identity:", err)
+		http.Error(w, "Error saving the decision", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"slug": slug})
+	}
+}
+
+// IdentityRules lists the decisions of the work or series.
+func (h *WikiHandler) IdentityRules(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	if !ok {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	rules, err := wiki.Rules(r.Context(), h.DB, id)
+	if err != nil {
+		log.Println("Error listing wiki identity rules:", err)
+		http.Error(w, "Error reading the wiki", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rules": rules})
+}
+
+// ForgetIdentityRule takes a decision back for the next generations.
+func (h *WikiHandler) ForgetIdentityRule(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	rule, err := strconv.ParseInt(chi.URLParam(r, "rule"), 10, 64)
+	if !ok || err != nil || rule <= 0 {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	switch err := wiki.ForgetRule(r.Context(), h.DB, id, rule, currentUserID(r)); {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error forgetting a wiki identity rule:", err)
+		http.Error(w, "Error saving the decision", http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// CreateManual writes what the staff typed (an entity, a section, a tie, a state, an edge), all or nothing (DEC-186).
+func (h *WikiHandler) CreateManual(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	var req struct {
+		Items []wiki.ManualInput `json:"items"`
+	}
+	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&req) != nil {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	var bad wiki.ErrIdentity
+	ids, slugs, err := wiki.CreateManual(r.Context(), h.DB, id, req.Items, currentUserID(r))
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case errors.As(err, &bad):
+		http.Error(w, bad.Msg, http.StatusBadRequest)
+	case err != nil:
+		log.Println("Error writing a manual wiki item:", err)
+		http.Error(w, "Error saving", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusCreated, map[string]any{"ids": ids, "slugs": slugs})
+	}
+}
+
+// ListManual lists what was written by hand about an entity.
+func (h *WikiHandler) ListManual(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	if !ok {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	items, err := wiki.ListManual(r.Context(), h.DB, id, r.URL.Query().Get("entity"))
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error listing manual wiki items:", err)
+		http.Error(w, "Error reading the wiki", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	}
+}
+
+// UpdateManual rewrites an item.
+func (h *WikiHandler) UpdateManual(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	item, err := strconv.ParseInt(chi.URLParam(r, "item"), 10, 64)
+	var in wiki.ManualInput
+	if !ok || err != nil || json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&in) != nil {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	var bad wiki.ErrIdentity
+	switch err := wiki.UpdateManual(r.Context(), h.DB, id, item, in, currentUserID(r)); {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case errors.As(err, &bad):
+		http.Error(w, bad.Msg, http.StatusBadRequest)
+	case err != nil:
+		log.Println("Error updating a manual wiki item:", err)
+		http.Error(w, "Error saving", http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// DeleteManual takes an item away.
+func (h *WikiHandler) DeleteManual(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	item, err := strconv.ParseInt(chi.URLParam(r, "item"), 10, 64)
+	if !ok || err != nil {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	removed, err := wiki.DeleteManual(r.Context(), h.DB, id, item, currentUserID(r))
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error deleting a manual wiki item:", err)
+		http.Error(w, "Error saving", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"removed": removed})
+	}
+}

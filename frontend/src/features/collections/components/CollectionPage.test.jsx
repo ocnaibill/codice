@@ -1432,3 +1432,24 @@ describe('CollectionPage: the title in the script of the language and how the se
     expect(button('Dados da série')).toBeUndefined();
   });
 });
+
+describe('CollectionPage: a book outside the main line of the series (DEC-188)', () => {
+  const book = (n, extra = {}) => ({
+    entryId: n * 10, id: n, title: `Livro ${n}`, author: 'Autora', coverUrl: `/c/${n}.jpg`, position: n, completed: false, available: true,
+    unit: 'volume', percent: 0, started: false, formats: ['epub'], rating: 0, notes: 0, bookmarks: 0, ...extra,
+  });
+  it('says it in the row of the book, and only there', async () => {
+    const works = [book(1), book(2), book(3, { spinOff: true, title: 'As Foices' })];
+    await open({
+      role: 'reader',
+      data: {
+        collection: { id: 5, kind: 'official', name: 'Scythe', workCount: 3, completedCount: 0, coverUrl: '/c/1.jpg' }, works, continue: null,
+        summary: { works: 3, finished: 0, inProgress: 0, percent: 0, readingSeconds: 0, notes: 0, bookmarks: 0, missing: [], authors: [], translators: [], tags: [] },
+      },
+    });
+    const rows = [...container.querySelectorAll('ol li')];
+    const withBadge = rows.filter((li) => li.textContent.includes('Fora da linha principal'));
+    expect(withBadge).toHaveLength(1);
+    expect(withBadge[0].textContent).toContain('As Foices');
+  });
+});

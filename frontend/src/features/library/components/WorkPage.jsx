@@ -475,6 +475,11 @@ export function WorkPage() {
                         meta.series
                       )}
                       {meta.unit ? ` · ${unitLabel(meta.unit, meta.seriesIndex || null)}` : meta.seriesIndex ? ` · Livro ${meta.seriesIndex}` : ''}
+                      {meta.spinOff && (
+                        <span className="ml-2 rounded bg-surface-alt px-1.5 py-0.5 font-normal normal-case tracking-normal text-ink-soft" title="Na wiki, tem linha própria e só aparece com os contos paralelos">
+                          fora da linha principal
+                        </span>
+                      )}
                     </p>
                   )}
                   <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl leading-tight text-ink outline-none sm:text-5xl">{shownTitle}</h1>

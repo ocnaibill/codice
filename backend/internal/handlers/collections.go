@@ -73,6 +73,8 @@ type CollectionWork struct {
 	// VolumeNumber is the bound volume that collected a chapter and StoryArc the arc it is in (DEC-169); empty when nobody said.
 	VolumeNumber *float64 `json:"volumeNumber,omitempty"`
 	StoryArc     string   `json:"storyArc,omitempty"`
+	// SpinOff says the work is outside the main line of its series (DEC-188).
+	SpinOff bool `json:"spinOff,omitempty"`
 	// seconds is the time the caller spent in the work, for the pace of the whole.
 	seconds int
 }
@@ -243,7 +245,7 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(`+authorNames+`, cw.author_label, 'Unknown Author'),
 		       COALESCE(wp.cover_url, ''), cw.position, (rp.completed_at IS NOT NULL),
 		       (w.id IS NOT NULL AND w.retired_at IS NULL), COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''),
-		       w.volume_number, COALESCE(w.story_arc, '')
+		       w.volume_number, COALESCE(w.story_arc, ''), COALESCE(w.spin_off, FALSE)
 		FROM collection_works cw
 		LEFT JOIN works w ON w.id = cw.work_id
 		LEFT JOIN work_primary wp ON wp.work_id = w.id
@@ -266,7 +268,7 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	works := []CollectionWork{}
 	for rows.Next() {
 		var cw CollectionWork
-		if err := rows.Scan(&cw.EntryID, &cw.ID, &cw.Title, &cw.Author, &cw.CoverURL, &cw.Position, &cw.Completed, &cw.Available, &cw.Unit, &cw.ComicKind, &cw.VolumeNumber, &cw.StoryArc); err != nil {
+		if err := rows.Scan(&cw.EntryID, &cw.ID, &cw.Title, &cw.Author, &cw.CoverURL, &cw.Position, &cw.Completed, &cw.Available, &cw.Unit, &cw.ComicKind, &cw.VolumeNumber, &cw.StoryArc, &cw.SpinOff); err != nil {
 			log.Println("Error scanning a work of a collection:", err)
 			continue
 		}

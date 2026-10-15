@@ -8,7 +8,7 @@ must name the other side whole). A pair the model said is different is never joi
 import collections
 import re
 
-from .text import CONNECTORS, TITLE_WORDS, core, fold, kind_of  # noqa: F401
+from .text import CONNECTORS, TITLE_WORDS, core, fold, key, kind_of  # noqa: F401
 
 
 def prefold2(records):
@@ -100,10 +100,12 @@ def compatible(k1, k2):
     return k1 == k2 or (k1 in FLEX and k2 in FLEX)
 
 
-def merge_series(llm, entries):
+def merge_series(llm, entries, rules=()):
     """Joins entries of different books. (1) the same core name; (2) a one-word name that is part of a single longer name of the same
     kind; (3) pairs that the text of the notes ties ("Rowan" shows in the notes of "Lucifer") go to the model, which only joins with proof
-    that it is the same person or thing (adopted name, nickname, assumed identity). Returns (groups, {fusoes, recusadas, pares})."""
+    that it is the same person or thing (adopted name, nickname, assumed identity). `rules` are the decisions of the staff (DEC-181):
+    {'kind': 'same'|'distinct', 'a': key, 'b': key}; the joins are made first and the pairs kept apart are never joined, not even by a
+    rule. Returns (groups, {fusoes, recusadas, pares, sugestoes}); a suggestion is a pair the model took for the same, without proof."""
     parent = list(range(len(entries)))
 
     def find(x):
@@ -112,7 +114,7 @@ def merge_series(llm, entries):
             x = parent[x]
         return x
 
-    fusoes, recusadas, log = [], [], []
+    fusoes, recusadas, log, sugestoes = [], [], [], []
     negativas = {}   # pairs of entries the model said are different: no join unites them later, not even through a third
 
     def members(root):
@@ -121,7 +123,7 @@ def merge_series(llm, entries):
     def chapters_of(root):
         return {(e['book'], c) for e in entries if find(e['id']) == root for c in e['caps']}
 
-    def union(a, b, why, check=False):
+    def union(a, b, why, check=True):
         ra, rb = find(a), find(b)
         if ra != rb:
             if check:
@@ -133,6 +135,24 @@ def merge_series(llm, entries):
                     return
             parent[ra] = rb
             fusoes.append({'a': entries[a]['nome'], 'b': entries[b]['nome'], 'por': why})
+
+    # (0) what people decided: kept apart first, so that no join below undoes it, then joined
+    holders = collections.defaultdict(list)
+    for e in entries:
+        for n in e['nomes']:
+            holders[key(n)].append(e['id'])
+    for r in rules:
+        if r.get('kind') == 'distinct':
+            for x in set(holders.get(r['a'], ())):
+                for y in set(holders.get(r['b'], ())):
+                    if x != y:
+                        negativas[(min(x, y), max(x, y))] = 'decisão do staff'
+    for r in rules:
+        if r.get('kind') == 'same':
+            ids_a, ids_b = sorted(set(holders.get(r['a'], ()))), sorted(set(holders.get(r['b'], ())))
+            for x in ids_a[1:] + ids_b:
+                if ids_a:
+                    union(ids_a[0], x, 'decisão do staff')
 
     # (1) the same core name, in compatible kinds
     by_core = collections.defaultdict(list)
@@ -186,7 +206,7 @@ def merge_series(llm, entries):
                                 # an adopted name usually has few appearances; two big entities ("known as the Bell" in a note of
                                 # another person) would drag a whole character into another: those go to the model, with proof
                                 if min(len(chapters_of(find(e['id']))), len(chapters_of(find(j)))) <= 8:
-                                    union(e['id'], j, 'a própria nota diz: ' + mm.group(0)[:100], check=False)
+                                    union(e['id'], j, 'a própria nota diz: ' + mm.group(0)[:100])
                         break
 
     for rnd in range(2):
@@ -233,7 +253,8 @@ def merge_series(llm, entries):
                     for t in X['notes']:
                         if CUE.search(t) and any(w in t for w in Y['toks']) and not any(w in t for w in X['toks']):
                             hits += 1
-                if hits >= 1:
+                blocked = any((min(x['id'], y['id']), max(x['id'], y['id'])) in negativas for x in A['g'] for y in B['g'])
+                if hits >= 1 and not blocked:   # a pair the staff or the model already answered is not asked again
                     cand.append((hits, A, B))
         cand.sort(key=lambda x: -x[0])
         cand = cand[:70]
@@ -308,12 +329,15 @@ def merge_series(llm, entries):
                 changed += 1
             else:
                 recusadas.append({'a': A['g'][0]['nome'], 'b': B['g'][0]['nome'], 'por': 'prova que não confere: ' + str(x.get('prova', ''))[:120]})
+                # the model thinks they are the same but there is no proof in the notes: it is for a person to decide (DEC-181)
+                sugestoes.append({'a': max(A['names'], key=len), 'b': max(B['names'], key=len),
+                                  'motivo': str(x.get('motivo', ''))[:300], 'prova': str(x.get('prova', ''))[:300]})
         if not changed:
             break
     out = collections.defaultdict(list)
     for e in entries:
         out[find(e['id'])].append(e)
-    return list(out.values()), {'fusoes': fusoes, 'recusadas': recusadas, 'pares': log}
+    return list(out.values()), {'fusoes': fusoes, 'recusadas': recusadas, 'pares': log, 'sugestoes': sugestoes}
 
 
 def head_of(g):
