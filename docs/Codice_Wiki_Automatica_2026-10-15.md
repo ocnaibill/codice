@@ -68,4 +68,18 @@ Modelos locais de 4B a 8B (qwen, gemma, llama) num Mac de 16 GB travaram ou erra
 | C | A tela (DEC-183): página da entidade, índice da obra, entrada pelo leitor, grafo |
 | D1 | A aba da wiki na administração (DEC-185): provedor com a chave cifrada, fila e andamento, obras e séries com o lote e as exceções |
 | D2 | O gerador no worker: o pipeline do lab como job da fila, com progresso por etapa, retomada e a atualização de livro novo |
-| E | Revisão: o que mudou com um livro novo, sugestões de junção, frases marcadas como erradas |
+| E | Revisão e edição manual: o que mudou com um livro novo, sugestões de junção, frases marcadas como erradas, **escrever página à mão, criar entidades no grafo e ligar vínculos e momentos a elas** (DEC-186) |
+
+### Quantas entidades ganham página, por corte de capítulos (medido nos pacotes do laboratório, 15/10/2026)
+
+Capítulos em que a entidade aparece, somando os livros. Tudo o que fica abaixo do corte continua no índice, no grafo e na ficha (DEC-186).
+
+| Corte | Addie LaRue (104 entidades) | Scythe (166 entidades) |
+| --- | --- | --- |
+| 2 ou mais | 103 | 163 |
+| 3 ou mais | 67 | 102 |
+| **5 ou mais (padrão)** | **37** (14 pessoas, 11 lugares, 6 conceitos, 5 objetos, 1 organização) | **63** (34 pessoas, 9 lugares, 8 organizações, 6 conceitos, 4 objetos, 2 eventos) |
+| 8 ou mais | 16 | 40 |
+| 12 ou mais | 9 | 27 |
+
+Entidades sem página que aparecem em alguma aresta do grafo: 98 de 99 na Addie e 161 de 163 no Scythe. Sem teto, o custo cresce com o número de páginas; o preço por página ainda **não foi medido** neste formato e vai ser medido no D2.
