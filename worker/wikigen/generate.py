@@ -11,9 +11,10 @@ class RunFailed(Exception):
     """A run that cannot go on, with the sentence that is said to the administration."""
 
 
-def generate(llm, books, cut, progress, control, parallel, provider_kind, model, remote):
+def generate(llm, books, cut, progress, control, parallel, provider_kind, model, remote, rules=()):
     """`books`: [{'id','titulo','kind','sha256','chapters': {index: chapter}, 'mapa': {}}]. `cut`: the least chapters an entity must
-    appear in to have a full page (DEC-186). Returns (bundle, partial)."""
+    appear in to have a full page (DEC-186). `rules`: what the staff decided about who is who (DEC-181), {'kind', 'a', 'b'} with names
+    folded as `text.key` does. Returns (bundle, partial)."""
     for b in books:
         b['extras'] = assemble.editorial_chapters(b)
 
@@ -58,7 +59,7 @@ def generate(llm, books, cut, progress, control, parallel, provider_kind, model,
     # ---- identity
     progress.begin('identity', 1)
     progress.where('Juntando as entidades dos livros')
-    series, _log = assemble.build_series(llm, books)
+    series, log = assemble.build_series(llm, books, rules)
     progress.tick('identity')
     if not series['entidades']:
         raise RunFailed('O modelo não achou entidades verificáveis no texto: confira o modelo escolhido.')
@@ -99,5 +100,6 @@ def generate(llm, books, cut, progress, control, parallel, provider_kind, model,
             for f in futures:
                 f.cancel()
             raise
-    bundle, _count = build_bundle(books, series, pages, provider_kind, model, remote, partial=partial)
+    bundle, _count = build_bundle(books, series, pages, provider_kind, model, remote, partial=partial,
+                                  suggestions=log.get('sugestoes', []), rules=rules)
     return bundle, partial

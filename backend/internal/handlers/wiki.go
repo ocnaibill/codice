@@ -435,3 +435,61 @@ func (h *WikiHandler) SetSentenceHidden(w http.ResponseWriter, r *http.Request) 
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
+
+// Identity applies a decision about who is who (DEC-181): join two entities, keep them apart, or take a mention away from one.
+func (h *WikiHandler) Identity(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	var d wiki.Decision
+	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048)).Decode(&d) != nil {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	var bad wiki.ErrIdentity
+	slug, err := wiki.Decide(r.Context(), h.DB, id, d, currentUserID(r))
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case errors.As(err, &bad):
+		http.Error(w, bad.Msg, http.StatusBadRequest)
+	case err != nil:
+		log.Println("Error deciding a wiki identity:", err)
+		http.Error(w, "Error saving the decision", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"slug": slug})
+	}
+}
+
+// IdentityRules lists the decisions of the work or series.
+func (h *WikiHandler) IdentityRules(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	if !ok {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	rules, err := wiki.Rules(r.Context(), h.DB, id)
+	if err != nil {
+		log.Println("Error listing wiki identity rules:", err)
+		http.Error(w, "Error reading the wiki", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rules": rules})
+}
+
+// ForgetIdentityRule takes a decision back for the next generations.
+func (h *WikiHandler) ForgetIdentityRule(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	rule, err := strconv.ParseInt(chi.URLParam(r, "rule"), 10, 64)
+	if !ok || err != nil || rule <= 0 {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	switch err := wiki.ForgetRule(r.Context(), h.DB, id, rule, currentUserID(r)); {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error forgetting a wiki identity rule:", err)
+		http.Error(w, "Error saving the decision", http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}

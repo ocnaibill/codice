@@ -8,7 +8,7 @@ import datetime
 import re
 
 from . import pages as wpg
-from .text import core, fold, slugify
+from .text import core, fold, key, slugify
 
 KIND = {'personagem': 'person', 'lugar': 'place', 'organização': 'organization', 'conceito': 'concept', 'objeto': 'object',
         'evento': 'event', 'cargo': 'other', 'outro': 'other'}
@@ -23,7 +23,7 @@ def _limit(text, n):
     return text if len(text) <= n else text[:n - 1] + '…'
 
 
-def build_bundle(books, series, pages, provider, model, remote, partial=False, now=None):
+def build_bundle(books, series, pages, provider, model, remote, partial=False, now=None, suggestions=(), rules=()):
     """`books`: the books as loaded (id, titulo, kind, sha256, chapters). `series`: from assemble.build_series. `pages`: {entity name:
     {'page': build_page result, 'notes': search notes}}."""
     out_books, valid = [], set()
@@ -208,8 +208,21 @@ def build_bundle(books, series, pages, provider, model, remote, partial=False, n
                 seen.add(key)
                 edges.append({'a': e['slug'], 'b': other, 'label': str(rel.get('relacao', ''))[:300], 'book': n['book'], 'chapter': n['cap']})
 
+    # The pairs the model took for the same without proof go to the staff (DEC-181), unless they already decided about them.
+    decided = {frozenset((r['a'], r['b'])) for r in rules if r.get('kind') in ('same', 'distinct')}
+    first_seen = {e['slug']: min((p['book'], p['chapter']) for p in e['appearances']) for e in entities}
+    asked, out_suggestions = set(), []
+    for sg in suggestions:
+        a, b = resolve(sg['a']), resolve(sg['b'])
+        if not a or not b or a == b or frozenset((key(sg['a']), key(sg['b']))) in decided or (a, b) in asked or (b, a) in asked:
+            continue
+        asked.add((a, b))
+        book, chapter = max(first_seen[a], first_seen[b])
+        evidence = _limit(f"O modelo leu as notas e achou que são a mesma, mas sem prova: {sg['motivo']}"
+                          + (f" — {sg['prova']}" if sg.get('prova') else ''), 900)
+        out_suggestions.append({'kind': 'merge', 'entity': a, 'other': b, 'evidence': evidence, 'book': book, 'chapter': chapter})
     for e in entities:
         e.pop('_ent')
     when = (now or datetime.datetime.now(datetime.timezone.utc)).isoformat(timespec='seconds')
     return {'format': 1, 'generated_at': when, 'provider': provider, 'model': model, 'remote': bool(remote), 'partial': bool(partial),
-            'books': out_books, 'entities': entities, 'edges': edges, 'suggestions': []}, npages
+            'books': out_books, 'entities': entities, 'edges': edges, 'suggestions': out_suggestions}, npages

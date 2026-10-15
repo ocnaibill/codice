@@ -82,3 +82,32 @@ export function useHideSentence(projectId) {
     onSuccess: () => refreshWiki(queryClient),
   });
 }
+
+/** What the staff decided about who is who in this work or series (DEC-181). */
+export function useWikiIdentity(projectId, enabled = true) {
+  return useQuery({
+    queryKey: ['wiki-identity', projectId],
+    queryFn: async () => (await api.get(`/wiki/${projectId}/identity`)).data,
+    enabled: !!projectId && enabled,
+  });
+}
+
+/** Joins two entities, keeps them apart, or takes a mention away from one. The answer is the slug the page goes on to show. */
+export function useDecideIdentity(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (decision) => (await api.post(`/wiki/${projectId}/identity`, decision)).data,
+    onSuccess: () => {
+      for (const key of ['wiki', 'wiki-entity', 'wiki-graph', 'wiki-review', 'wiki-identity']) queryClient.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
+/** Takes a decision back for the next generations (what was done in the wiki that exists stays until it is generated again). */
+export function useForgetIdentity(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ruleId) => (await api.delete(`/wiki/${projectId}/identity/${ruleId}`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['wiki-identity'] }),
+  });
+}

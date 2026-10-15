@@ -424,3 +424,176 @@ func TestWikiSentences_TheStaffMarksOneAsWrongAndItGoesForEveryReaderAndComesBac
 		t.Errorf("showing it again: %d", rec.Code)
 	}
 }
+
+// withTwins is the wiki with the same person written twice ("Bea" and "Beatriz"), a mention that is not hers ("o Mestre dos Mares", an
+// alias of Bea that is somebody else's), and the suggestion the generator made about the pair (DEC-181).
+func withTwins(t *testing.T, bundle string) string {
+	t.Helper()
+	var b map[string]any
+	if err := json.Unmarshal([]byte(bundle), &b); err != nil {
+		t.Fatal(err)
+	}
+	point := func(ch int) map[string]any { return map[string]any{"book": 0, "chapter": ch} }
+	ents := b["entities"].([]any)
+	b["entities"] = append(ents,
+		map[string]any{"slug": "bea", "name": "Bea", "kind": "person", "page": false, "appearances": []any{point(1), point(2)},
+			"aliases":   []any{map[string]any{"alias": "o Mestre dos Mares", "book": 0, "chapter": 2}},
+			"states":    []any{map[string]any{"book": 0, "chapter": 1, "text": "Bea chega ao porto."}},
+			"relations": []any{map[string]any{"name": "Mestre", "other": "mestre", "group": "allies", "role": "amiga", "book": 0, "chapter": 1}}},
+		map[string]any{"slug": "beatriz", "name": "Beatriz", "kind": "person", "page": true, "appearances": []any{point(2), point(3)},
+			"states": []any{map[string]any{"book": 0, "chapter": 3, "text": "Beatriz parte."}},
+			"sections": []any{map[string]any{"kind": "who", "book": 0, "chapter_from": 1, "chapter_to": 2, "part": "Parte I",
+				"sentences": []any{map[string]any{"paragraph": 1, "text": "Beatriz é uma viajante.",
+					"refs": []any{map[string]any{"book": 0, "chapter": 2, "fact": "viaja"}}}}}}},
+	)
+	b["edges"] = append(b["edges"].([]any),
+		map[string]any{"a": "bea", "b": "mestre", "label": "amiga de", "book": 0, "chapter": 1},
+		map[string]any{"a": "beatriz", "b": "ana-maria", "label": "cuida de", "book": 0, "chapter": 3},
+		map[string]any{"a": "bea", "b": "beatriz", "label": "se parece com", "book": 0, "chapter": 3})
+	b["suggestions"] = append(b["suggestions"].([]any),
+		map[string]any{"kind": "merge", "entity": "bea", "other": "beatriz", "evidence": "As duas aparecem juntas ao cais.", "book": 0, "chapter": 2})
+	out, _ := json.Marshal(b)
+	return string(out)
+}
+
+func (s *catalogStack) identity(a actor, project int64, body string) int {
+	s.t.Helper()
+	return s.do(a, "POST", fmt.Sprintf("/wiki/%d/identity", project), body).Code
+}
+
+func (s *catalogStack) identityResult(a actor, project int64, body string) (int, string) {
+	s.t.Helper()
+	rec := s.do(a, "POST", fmt.Sprintf("/wiki/%d/identity", project), body)
+	return rec.Code, rec.Body.String()
+}
+
+func TestWikiIdentity_JoiningTwoEntitiesIsRealInTheWikiAndKeptThroughANewGeneration(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _ := s.wikiBook()
+	bundle := withTwins(t, wikiBundle(wikiSHA))
+	if rec := s.importWiki(admin, bundle); rec.Code != 201 {
+		t.Fatalf("import: %d %s", rec.Code, rec.Body.String())
+	}
+	project := func() int64 {
+		var id int64
+		s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+		return id
+	}
+	slugs := func() string {
+		return s.scalar(`SELECT string_agg(slug, ',' ORDER BY slug) FROM wiki_entities WHERE slug IN ('bea', 'beatriz')`)
+	}
+	if slugs() != "bea,beatriz" {
+		t.Fatalf("both start apart: %s", slugs())
+	}
+
+	if code, body := s.identityResult(admin, project(), `{"action":"merge","entity":"bea","other":"beatriz"}`); code != 200 || !strings.Contains(body, `"slug":"beatriz"`) {
+		t.Fatalf("merge: %d %s (it says where the page goes on: the one that stayed)", code, body)
+	}
+	// The one with a page stays. What the other had comes to it, and its name is an alias from where it was first seen.
+	if slugs() != "beatriz" {
+		t.Errorf("after joining: %s", slugs())
+	}
+	checks := map[string]string{
+		"appearances":    `SELECT count(*)::text FROM wiki_appearances a JOIN wiki_entities e ON e.id = a.entity_id WHERE e.slug = 'beatriz'`,
+		"alias Bea":      `SELECT count(*)::text FROM wiki_aliases a JOIN wiki_entities e ON e.id = a.entity_id WHERE e.slug = 'beatriz' AND a.alias = 'Bea'`,
+		"alias mention":  `SELECT count(*)::text FROM wiki_aliases a JOIN wiki_entities e ON e.id = a.entity_id WHERE e.slug = 'beatriz' AND a.alias = 'o Mestre dos Mares'`,
+		"states":         `SELECT count(*)::text FROM wiki_states st JOIN wiki_entities e ON e.id = st.entity_id WHERE e.slug = 'beatriz'`,
+		"the friend":     `SELECT count(*)::text FROM wiki_relations r JOIN wiki_entities e ON e.id = r.entity_id WHERE e.slug = 'beatriz' AND r.other_name = 'Mestre'`,
+		"edge to mestre": `SELECT count(*)::text FROM wiki_edges d JOIN wiki_entities a ON a.id = d.a_id JOIN wiki_entities b ON b.id = d.b_id WHERE a.slug = 'beatriz' AND b.slug = 'mestre'`,
+		"no loop":        `SELECT count(*)::text FROM wiki_edges WHERE a_id = b_id`,
+		"suggestion":     `SELECT state FROM wiki_suggestions WHERE kind = 'merge' AND entity_slug IN ('bea','beatriz') AND other_slug IN ('bea','beatriz')`,
+	}
+	want := map[string]string{"appearances": "3", "alias Bea": "1", "alias mention": "1", "states": "2", "the friend": "1", "edge to mestre": "1", "no loop": "0", "suggestion": "accepted"}
+	for name, q := range checks {
+		if got := s.scalar(q); got != want[name] {
+			t.Errorf("%s = %q, want %q", name, got, want[name])
+		}
+	}
+	if s.scalar(`SELECT count(*)::text FROM wiki_identity_rules WHERE kind = 'same'`) != "1" {
+		t.Error("the decision was not kept as a rule")
+	}
+
+	// A generation writes both again, as it does not know; the decision is applied to it.
+	if rec := s.importWiki(admin, bundle); rec.Code != 201 {
+		t.Fatalf("regenerate: %d", rec.Code)
+	}
+	if slugs() != "beatriz" {
+		t.Errorf("a new generation brought them apart again: %s", slugs())
+	}
+	if s.scalar(`SELECT state FROM wiki_suggestions WHERE kind = 'merge' AND entity_slug IN ('bea','beatriz') AND other_slug IN ('bea','beatriz')`) != "accepted" {
+		t.Error("the suggestion that was answered is open again")
+	}
+}
+
+func TestWikiIdentity_KeepingApartAnsweredTheSuggestionAndTakingAMentionAwayIsKept(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _ := s.wikiBook()
+	bundle := withTwins(t, wikiBundle(wikiSHA))
+	if rec := s.importWiki(admin, bundle); rec.Code != 201 {
+		t.Fatalf("import: %d", rec.Code)
+	}
+	var id int64
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	if code := s.identity(admin, id, `{"action":"distinct","entity":"bea","other":"beatriz"}`); code != 200 {
+		t.Fatalf("distinct: %d", code)
+	}
+	if got := s.scalar(`SELECT state FROM wiki_suggestions WHERE kind = 'merge' AND entity_slug IN ('bea','beatriz') AND other_slug IN ('bea','beatriz')`); got != "declined" {
+		t.Errorf("suggestion = %s", got)
+	}
+	if s.scalar(`SELECT count(*)::text FROM wiki_entities WHERE slug IN ('bea','beatriz')`) != "2" {
+		t.Error("keeping apart changed the entities")
+	}
+	// A mention that is another's: it goes from Bea, and stays gone.
+	if code := s.identity(admin, id, `{"action":"mention","entity":"bea","mention":"O mestre dos MARES"}`); code != 200 {
+		t.Fatalf("mention: %d", code)
+	}
+	aliases := func() string {
+		return s.scalar(`SELECT count(*)::text FROM wiki_aliases a JOIN wiki_entities e ON e.id = a.entity_id WHERE e.slug = 'bea'`)
+	}
+	if aliases() != "0" {
+		t.Errorf("the mention is still there: %s", aliases())
+	}
+	if rec := s.importWiki(admin, bundle); rec.Code != 201 {
+		t.Fatalf("regenerate: %d", rec.Code)
+	}
+	if aliases() != "0" {
+		t.Errorf("a new generation brought the mention back: %s", aliases())
+	}
+	if got := s.scalar(`SELECT state FROM wiki_suggestions WHERE kind = 'merge' AND entity_slug IN ('bea','beatriz') AND other_slug IN ('bea','beatriz')`); got != "declined" {
+		t.Errorf("the answer to the suggestion was lost: %s", got)
+	}
+
+	// What is not allowed.
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	for body, want := range map[string]int{
+		`{"action":"merge","entity":"bea","other":"bea"}`:            400,
+		`{"action":"merge","entity":"bea","other":"nao-existe"}`:     404,
+		`{"action":"mention","entity":"bea","mention":"Bea"}`:        400,
+		`{"action":"mention","entity":"bea","mention":"Nada disso"}`: 400,
+		`{"action":"explodir","entity":"bea"}`:                       400,
+	} {
+		if got := s.identity(admin, id, body); got != want {
+			t.Errorf("%s = %d, want %d", body, got, want)
+		}
+	}
+
+	// The decisions are listed, and one can be taken back (what was done stays until the next generation).
+	rec := s.do(admin, "GET", fmt.Sprintf("/wiki/%d/identity", id), "")
+	var rules struct {
+		Rules []struct {
+			ID   int64  `json:"id"`
+			Kind string `json:"kind"`
+			A, B string
+		} `json:"rules"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &rules)
+	if len(rules.Rules) != 2 {
+		t.Fatalf("rules = %s", rec.Body.String())
+	}
+	if rec := s.do(admin, "DELETE", fmt.Sprintf("/wiki/%d/identity/%d", id, rules.Rules[0].ID), ""); rec.Code != 204 {
+		t.Errorf("forget: %d", rec.Code)
+	}
+	if s.scalar(`SELECT count(*)::text FROM wiki_identity_rules`) != "1" {
+		t.Error("the rule was not forgotten")
+	}
+}

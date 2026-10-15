@@ -22,6 +22,13 @@ def fold(s):
     return unicodedata.normalize('NFKD', str(s).lower()).encode('ascii', 'ignore').decode()
 
 
+def key(s):
+    """What two renderings of a name share, as the backend keeps it for the decisions of the staff (wiki.Key): no accents, no case, no
+    punctuation, single spaces. Not `fold`, which drops what is not ASCII."""
+    base = ''.join(c for c in unicodedata.normalize('NFKD', str(s).lower()) if not unicodedata.combining(c))
+    return re.sub(r'[^\w]+|_+', ' ', base).strip()
+
+
 def norm(text):
     return re.sub(r'[\s"“”\'‘’«»—–-]+', ' ', str(text).lower()).strip()
 

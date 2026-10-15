@@ -433,6 +433,9 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Post("/wiki/{id}/review/approve", wikiHandler.Approve)
 	r.With(staff).Post("/wiki/{id}/review/undo", wikiHandler.UndoChange)
 	r.With(staff).Put("/wiki/{id}/sentences/{sid}/hidden", wikiHandler.SetSentenceHidden)
+	r.With(staff).Post("/wiki/{id}/identity", wikiHandler.Identity)
+	r.With(staff).Get("/wiki/{id}/identity", wikiHandler.IdentityRules)
+	r.With(staff).Delete("/wiki/{id}/identity/{rule}", wikiHandler.ForgetIdentityRule)
 	r.With(staff).Post("/admin/wiki/import", wikiHandler.Import)
 	r.With(staff).Delete("/admin/wiki/{id}", wikiHandler.Delete)
 	// Its tab in the administration (DEC-185): the provider is the owner's (DEC-177), the queue and the works are owner's and admins'.

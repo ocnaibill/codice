@@ -231,6 +231,7 @@ export function WikiPage() {
             <WikiEntity
               project={wiki.project}
               books={wiki.books}
+              index={wiki.index}
               slug={slug}
               cursor={cursor}
               graph={graph.data}

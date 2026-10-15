@@ -438,6 +438,10 @@ func Import(ctx context.Context, db *sql.DB, b *Bundle, userID string) (int64, e
 			return 0, err
 		}
 	}
+	// What the staff decided about who is who is still true of this generation (DEC-181).
+	if err := applyRules(ctx, tx, projectID); err != nil {
+		return 0, err
+	}
 	// What this update brought that the older content did not have, for the staff to review (DEC-180).
 	if oldID.Valid {
 		body, err := json.Marshal(diffBundle(before, b))
