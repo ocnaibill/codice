@@ -118,6 +118,12 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Post("/admin/duplicates/{id}/link", dup.Link)
 	r.Post("/admin/works/{id}/join", ver.Join)
 	r.Post("/admin/works/{id}/not-same-as", ver.NotTheSame)
+	wikiH := &WikiHandler{DB: db}
+	r.Get("/works/{id}/wiki", wikiH.ForWork)
+	r.Get("/wiki/{id}/entities/{slug}", wikiH.Entity)
+	r.Get("/wiki/{id}/graph", wikiH.Graph)
+	r.Post("/admin/wiki/import", wikiH.Import)
+	r.Delete("/admin/wiki/{id}", wikiH.Delete)
 	r.Post("/admin/editions/{id}/split", ver.Split)
 	r.Get("/admin/people/merges", ppl.List)
 	r.Post("/admin/people/merges/{id}/merge", ppl.Merge)

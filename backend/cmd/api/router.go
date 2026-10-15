@@ -108,6 +108,7 @@ func newRouter(d routerDeps) http.Handler {
 	ocrSettings := &handlers.OCRSettingsHandler{DB: db}
 	notesHandler := &handlers.NotesHandler{DB: db}
 	graphHandler := &handlers.GraphHandler{DB: db}
+	wikiHandler := &handlers.WikiHandler{DB: db}
 	statsHandler := &handlers.StatsHandler{DB: db}
 
 	r := chi.NewRouter()
@@ -419,6 +420,14 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Delete("/notes/{id}", notesHandler.DeleteNote)
 
 	// The manual graph: a person's concepts and the relations they draw (DEC-109). All personal.
+	// The automatic wiki (DEC-177 to DEC-183): everyone reads it up to their own point of reading (cut on the server, DEC-179);
+	// owner and admins import and remove it (DEC-180).
+	r.With(auth).Get("/works/{id}/wiki", wikiHandler.ForWork)
+	r.With(auth).Get("/wiki/{id}/entities/{slug}", wikiHandler.Entity)
+	r.With(auth).Get("/wiki/{id}/graph", wikiHandler.Graph)
+	r.With(staff).Post("/admin/wiki/import", wikiHandler.Import)
+	r.With(staff).Delete("/admin/wiki/{id}", wikiHandler.Delete)
+
 	r.With(auth).Get("/graph/types", graphHandler.Types)
 	r.With(auth).Get("/concepts", graphHandler.ListConcepts)
 	r.With(auth).Post("/concepts", graphHandler.CreateConcept)
