@@ -128,3 +128,38 @@ describe('the page of a category (DEC-140)', () => {
     expect(useGlobalStore.getState()).toMatchObject({ categoryPageId: 7, sheetWorkId: 12 });
   });
 });
+
+describe('the wiki of a work (RF-050)', () => {
+  beforeEach(() => useGlobalStore.getState().goHome());
+
+  it('opens in the place of the page of the work, and moves between entities and the graph', () => {
+    const s = () => useGlobalStore.getState();
+    s().openWork(7);
+    s().openWiki(7);
+    expect(s()).toMatchObject({ wikiWorkId: 7, wikiEntity: null, wikiGraph: false, sheetWorkId: null });
+    s().openWikiEntity('luc');
+    expect(s()).toMatchObject({ wikiEntity: 'luc', wikiGraph: false });
+    s().openWikiGraph();
+    expect(s()).toMatchObject({ wikiEntity: 'luc', wikiGraph: true });
+    s().openWikiEntity('bea');
+    expect(s()).toMatchObject({ wikiEntity: 'bea', wikiGraph: false });
+  });
+
+  it('stays under a book opened from it, and closing the book comes back to it', () => {
+    const s = () => useGlobalStore.getState();
+    s().openWiki(7, 'luc');
+    s().openBook(7, 20, { locator: { type: 'epub', href: 'c1.xhtml' } });
+    expect(s()).toMatchObject({ activeBookId: 7, wikiWorkId: 7, wikiEntity: 'luc' });
+    s().closeBook();
+    expect(s()).toMatchObject({ activeBookId: null, wikiWorkId: 7, wikiEntity: 'luc' });
+  });
+
+  it('closes when the person goes elsewhere: home, a shelf, a search, the page of the work', () => {
+    const s = () => useGlobalStore.getState();
+    for (const leave of [() => s().goHome(), () => s().setLibraryView('ebooks'), () => s().setSearchQuery('duna'), () => s().openWork(9), () => s().openNotes(), () => s().closeWiki()]) {
+      s().openWiki(7, 'luc');
+      leave();
+      expect(s()).toMatchObject({ wikiWorkId: null, wikiEntity: null, wikiGraph: false });
+    }
+  });
+});

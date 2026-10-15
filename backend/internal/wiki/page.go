@@ -3,6 +3,7 @@ package wiki
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"sort"
 )
@@ -64,9 +65,10 @@ type HiddenView struct {
 }
 
 type RelationItem struct {
-	Slug string `json:"slug,omitempty"` // set when the other side has a page the reader may open
+	Slug string `json:"slug,omitempty"` // set when the other side is an entity the reader has met: its page may be opened
 	Name string `json:"name"`
 	Role string `json:"role"`
+	Page bool   `json:"page,omitempty"` // the other side has a full page, not only the ficha and the timeline
 }
 
 type RelationGroup struct {
@@ -78,6 +80,8 @@ type RefItem struct {
 	Fact     string `json:"fact"`
 	Quote    string `json:"quote,omitempty"`
 	Sequence *int   `json:"sequence,omitempty"`
+	// Locator is the segment's address in the reader, so the page can open the book at the quoted paragraph.
+	Locator json.RawMessage `json:"locator,omitempty"`
 }
 
 type ReferenceView struct {
@@ -137,6 +141,7 @@ type refRow struct {
 	fact          string
 	quote         sql.NullString
 	sequence      sql.NullInt64
+	locator       []byte
 }
 
 type sectionRow struct {
@@ -248,6 +253,9 @@ func (p *Project) Page(ctx context.Context, db *sql.DB, slug string, c Cursor, s
 			if r.sequence.Valid {
 				seq := int(r.sequence.Int64)
 				item.Sequence = &seq
+			}
+			if len(r.locator) > 0 {
+				item.Locator = r.locator
 			}
 			dup := false
 			for _, x := range rv.Items {
@@ -388,8 +396,8 @@ func (p *Project) Page(ctx context.Context, db *sql.DB, slug string, c Cursor, s
 			continue
 		}
 		item := RelationItem{Name: name, Role: role}
-		if oid.Valid && opage && counts[oid.Int64] > 0 {
-			item.Slug = oslug
+		if oid.Valid && counts[oid.Int64] > 0 {
+			item.Slug, item.Page = oslug, opage
 		}
 		g := groups[grp]
 		if g == nil {
@@ -467,8 +475,12 @@ func loadSections(ctx context.Context, db *sql.DB, entity int64) ([]*sectionRow,
 	}
 	rows.Close()
 	rows, err = db.QueryContext(ctx, `
-		SELECT r.sentence_id, r.book, r.chapter, r.fact, r.quote, r.sequence FROM wiki_references r
+		SELECT r.sentence_id, r.book, r.chapter, r.fact, r.quote, r.sequence, ds.locator FROM wiki_references r
 		JOIN wiki_sentences s ON s.id = r.sentence_id JOIN wiki_sections sec ON sec.id = s.section_id
+		JOIN wiki_entities e ON e.id = sec.entity_id
+		LEFT JOIN wiki_books b ON b.project_id = e.project_id AND b.position = r.book
+		LEFT JOIN text_extractions te ON te.file_id = b.file_id
+		LEFT JOIN document_segments ds ON ds.file_id = b.file_id AND ds.generation = te.generation AND ds.sequence = r.sequence
 		WHERE sec.entity_id = $1 ORDER BY r.id`, entity)
 	if err != nil {
 		return nil, err
@@ -477,7 +489,7 @@ func loadSections(ctx context.Context, db *sql.DB, entity int64) ([]*sectionRow,
 	for rows.Next() {
 		var id int64
 		var r refRow
-		if err := rows.Scan(&id, &r.book, &r.chapter, &r.fact, &r.quote, &r.sequence); err != nil {
+		if err := rows.Scan(&id, &r.book, &r.chapter, &r.fact, &r.quote, &r.sequence, &r.locator); err != nil {
 			return nil, err
 		}
 		if st := bySentence[id]; st != nil {

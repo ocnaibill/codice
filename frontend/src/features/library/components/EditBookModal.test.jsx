@@ -155,6 +155,24 @@ describe('EditBookModal: the metadata of a work (#70)', () => {
     expect(api.put.mock.calls[0][1]).toMatchObject({ original_year: '', original_year_lock: false });
   });
 
+  it('says by a check, beside the series, that a work is outside its main line (DEC-188), and sends it', async () => {
+    await render({ tab: 'edit' });
+    const box = [...container.querySelectorAll('label')].find((l) => l.textContent.includes('Fora da linha principal da série')).querySelector('input');
+    expect(box.checked).toBe(false);
+    await act(async () => { box.click(); });
+    await click(button('Salvar'));
+    expect(api.put.mock.calls[0][1]).toMatchObject({ series: 'Crônicas de Duna', spin_off: true });
+  });
+
+  it('shows the check as it was saved, and unchecking it sends false', async () => {
+    await render({ tab: 'edit', work: { ...record, metadata: { ...record.metadata, spinOff: true } } });
+    const box = [...container.querySelectorAll('label')].find((l) => l.textContent.includes('Fora da linha principal da série')).querySelector('input');
+    expect(box.checked).toBe(true);
+    await act(async () => { box.click(); });
+    await click(button('Salvar'));
+    expect(api.put.mock.calls[0][1]).toMatchObject({ spin_off: false });
+  });
+
   it('starts the author from the first author as it is stored, never from what the sheet shows for the work', async () => {
     await render({ tab: 'edit' });
     expect(input('Frank Herbert')).toBeTruthy();

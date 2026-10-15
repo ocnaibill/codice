@@ -163,6 +163,8 @@ function EditForm({ work, onClose }) {
   const [author, setAuthor] = useState(firstAuthor);
   const [series, setSeries] = useState(meta.series || '');
   const [seriesIndex, setSeriesIndex] = useState(meta.seriesIndex ? String(meta.seriesIndex) : '');
+  // Not of the main line of the series (DEC-188): a spin-off, short stories beside it, something that is not canon.
+  const [spinOff, setSpinOff] = useState(!!meta.spinOff);
   // What a comic or manga work is (#187), said by hand.
   const [unit, setUnit] = useState(meta.unit || '');
   const [comicKind, setComicKind] = useState(meta.comicKind || '');
@@ -217,6 +219,7 @@ function EditForm({ work, onClose }) {
       ...(author !== firstAuthor ? { author } : {}),
       series,
       series_index: seriesIndex ? parseFloat(seriesIndex) : 0,
+      spin_off: spinOff,
       unit,
       comic_kind: comicKind,
       volume_number: volumeNumber.trim(),
@@ -260,6 +263,18 @@ function EditForm({ work, onClose }) {
         <Field label="Número na série">
           <input className={inputClass} type="number" step="0.1" value={seriesIndex} onChange={(e) => setSeriesIndex(e.target.value)} disabled={busy} />
         </Field>
+        <div className="sm:col-span-2">
+          <label className="flex items-start gap-3 text-sm text-ink">
+            <input type="checkbox" className="mt-1" checked={spinOff} onChange={(e) => setSpinOff(e.target.checked)} disabled={busy} />
+            <span>
+              Fora da linha principal da série
+              <span className="block text-xs text-ink-soft">
+                Spin-off, contos ao lado da série ou algo que não é cânone. Na wiki, ganha uma linha própria: não conta na ordem dos livros
+                e só aparece para quem pede os contos paralelos.
+              </span>
+            </span>
+          </label>
+        </div>
         <Field label="Unidade na série">
           <select className={inputClass} value={unit} onChange={(e) => setUnit(e.target.value)} disabled={busy}>
             <option value="">Não informada</option>

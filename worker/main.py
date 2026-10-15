@@ -30,6 +30,8 @@ from embeddings import EmbeddingIndexer, SentenceTransformersProvider
 from ocr import OcrIndexer
 from comic_ocr import ComicOcrIndexer
 from dictionary import DictionaryImporter, connect_from_env
+from wikigen.service import WikiService
+import threading
 
 # 1. Loads variables from .env, trying multiple locations
 env_paths = ["../.env", ".env"]
@@ -307,6 +309,12 @@ def listen_for_tasks():
     heartbeat = Heartbeat(on_beat=Presence(db, 'worker.jobs') if asks_providers() else None)
     runner = build_runner(db, client, heartbeat)
     heartbeat.beat("starting")
+    # The generation of the wiki (DEC-185) is slow and waits on the network, not on this machine: it runs beside the jobs, in a thread of
+    # the worker that asks the providers, and takes its work from the queue of the administration. WIKI_GENERATOR=off leaves it out.
+    if asks_providers() and os.getenv('WIKI_GENERATOR', 'on').lower() != 'off':
+        wiki = WikiService(db, storage_root())
+        threading.Thread(target=wiki.run_forever, args=(threading.Event(),), name='wiki', daemon=True).start()
+        print("📚 Wiki generator waiting for its queue...")
     last_id = '$'
 
     print("⏳ Python Worker waiting for jobs...")

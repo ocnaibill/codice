@@ -27,6 +27,8 @@ import { stepText } from '../../collections/text';
 import { titleInUse } from '../titles';
 import { EquivalentPositionPrompt } from './EquivalentPositionPrompt';
 import { PlaceNotice } from './PlaceNotice';
+import { PeekNotice } from './PeekNotice';
+import { useWiki } from '../../wiki/api/useWiki';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { authenticatedUrl } from '../../../lib/api';
 
@@ -46,6 +48,8 @@ export function Reader() {
   const fromStart = useGlobalStore((state) => state.fromStart);
 
   const { data: book, isLoading, isError } = useWork(activeBookId);
+  // The wiki of the work, when it has one: a button opens it up to where the person is (RF-051).
+  const wiki = useWiki(activeBookId);
   // The work that follows this one in its series, when it is in one (#187): a button in the header, and what is offered when
   // this one is finished.
   const nextStep = useWorkSeries(activeBookId).data?.next ?? null;
@@ -86,6 +90,7 @@ export function Reader() {
   const [immersive, setImmersive] = useState(false);
   useEffect(() => setImmersive(false), [file?.id]);
   const openBook = useGlobalStore((state) => state.openBook);
+  const openWiki = useGlobalStore((state) => state.openWiki);
   const seek = useGlobalStore((state) => state.seek);
   const clearSeek = useGlobalStore((state) => state.clearSeek);
 
@@ -96,6 +101,14 @@ export function Reader() {
     currentLocator.current = fromStart ? null : (seek?.locator ?? progress.data?.locator ?? null);
   }, [file?.id, fromStart, seek, progress.data]);
   const saveProgress = progress.save;
+  // A place opened only to look at it (a reference of the wiki) does not move the reading position: the position stays where it
+  // was until the person chooses to go on reading from here, and then the place they are at is saved at once.
+  // (Worked out while rendering, not in an effect: a viewer may report its first place before the effects of this component run.)
+  const [readOnFrom, setReadOnFrom] = useState(null); // the place asked for (its count) the person chose to go on reading from
+  const peeking = !!seek?.peek && readOnFrom !== seek.n;
+  const peekingRef = useRef(false);
+  peekingRef.current = peeking;
+  const lastExtras = useRef(null);
 
   // A place that cannot be opened is said, not hidden (RF-014). When it was asked for (a note, a search hit), the
   // reader goes on to the position the person had saved and says what the place was; the person may then stay or
@@ -157,6 +170,8 @@ export function Reader() {
   const onProgress = useCallback(
     (locator, extras) => {
       currentLocator.current = locator;
+      lastExtras.current = extras;
+      if (peekingRef.current) return undefined;
       const saved = saveProgress(locator, extras);
       saved?.then?.((state) => {
         if (!state) return;
@@ -339,6 +354,17 @@ export function Reader() {
             <span aria-hidden="true">{book.isFavorite ? '★' : '☆'}</span>
             <span className="hidden sm:inline">{book.isFavorite ? 'Favorito' : 'Favoritar'}</span>
           </button>
+          {wiki.data?.wiki && (
+            <button
+              onClick={() => openWiki(book.id, null, { workId: book.id, fileId: file.id })}
+              className="flex min-h-11 items-center gap-1.5 rounded-lg bg-surface-alt px-3 text-sm text-ink-soft transition-all hover:bg-border-hairline hover:text-ink"
+              aria-label="Wiki desta obra, até onde você leu"
+              title="Wiki desta obra, até onde você leu"
+            >
+              <span aria-hidden="true">◈</span>
+              <span className="hidden sm:inline">Wiki</span>
+            </button>
+          )}
           <button
             onClick={() => setShowNotes((v) => !v)}
             className={`flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm transition-all ${
@@ -387,6 +413,17 @@ export function Reader() {
             });
             setEquivalentDeclined(true);
             openBook(workId, fileId, { locator: candidate.locator, context: { kind: 'equivalent' } });
+          }}
+        />
+      )}
+
+      {peeking && !placeNotice && (
+        <PeekNotice
+          backLabel={seek.context?.kind === 'wiki' ? 'Voltar à wiki' : 'Voltar'}
+          onBack={closeBook}
+          onReadOn={() => {
+            setReadOnFrom(seek.n);
+            if (currentLocator.current) saveProgress(currentLocator.current, lastExtras.current ?? undefined)?.catch?.(() => {});
           }}
         />
       )}

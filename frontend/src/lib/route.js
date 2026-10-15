@@ -35,6 +35,7 @@ const OVERLAYS = [
   ['obra', 'sheetWorkId'],
   ['colecao', 'collectionSheetId'],
   ['pessoa', 'personSheetId'],
+  ['wiki', 'wikiWorkId'],
   ['leitor', 'activeBookId'],
   ['arquivo', 'activeFileId'],
 ];
@@ -42,7 +43,9 @@ const OVERLAYS = [
 /** The default place: the whole library, first page, newest first, nothing open. */
 export const HOME = Object.freeze({
   area: 'library', view: 'all', page: 1, sort: 'added', tab: FIRST_ADMIN_TAB, q: '', conta: [],
-  obra: null, colecao: null, pessoa: null, leitor: null, arquivo: null,
+  obra: null, colecao: null, pessoa: null, wiki: null, leitor: null, arquivo: null,
+  // Inside the wiki of a work: the entity whose page is open (its slug) and whether the graph is (RF-050).
+  entidade: null, vista: null,
   // The category whose page is open (DEC-140): a page of the library, in the place of its shelves.
   categoria: null,
 });
@@ -65,6 +68,10 @@ export function routeFromState(state) {
   for (const [name, field] of OVERLAYS) route[name] = positive(state[field]);
   // A file is only the file of a work being read.
   if (!route.leitor) route.arquivo = null;
+  if (route.wiki) {
+    route.entidade = slugOf(state.wikiEntity);
+    route.vista = state.wikiGraph ? 'grafo' : null;
+  }
   return route;
 }
 
@@ -82,6 +89,8 @@ export function hashFromRoute(route) {
   }
   if (route.area === 'search') params.set('q', route.q);
   for (const [name] of OVERLAYS) if (route[name]) params.set(name, String(route[name]));
+  if (route.wiki && route.entidade) params.set('entidade', route.entidade);
+  if (route.wiki && route.vista) params.set('vista', route.vista);
   if (route.conta.length > 0) params.set('conta', route.conta.join(','));
   const query = params.toString();
   return `#/${word}${query ? `?${query}` : ''}`;
@@ -111,6 +120,10 @@ export function routeFromHash(hash) {
   }
   for (const [name] of OVERLAYS) route[name] = positive(params.get(name));
   if (!route.leitor) route.arquivo = null;
+  if (route.wiki) {
+    route.entidade = slugOf(params.get('entidade'));
+    route.vista = params.get('vista') === 'grafo' ? 'grafo' : null;
+  }
   route.conta = dialogsOf(String(params.get('conta') ?? '').split(','));
   return route;
 }
@@ -130,6 +143,9 @@ export function stateFromRoute(route) {
     collectionSheetId: route.colecao,
     categoryPageId: route.categoria,
     personSheetId: route.pessoa,
+    wikiWorkId: route.wiki,
+    wikiEntity: route.wiki ? route.entidade : null,
+    wikiGraph: !!(route.wiki && route.vista),
     activeBookId: route.leitor,
     activeFileId: route.arquivo,
     // A reader opened by an address opens where the person was (their saved position), not at a place asked for or at the start.
@@ -147,6 +163,7 @@ export function isNewPlace(from, to) {
   if (from.area !== to.area) return true;
   if (from.conta.join() !== to.conta.join()) return true;
   if (from.categoria !== to.categoria) return true;
+  if (from.entidade !== to.entidade || from.vista !== to.vista) return true;
   return OVERLAYS.some(([name]) => from[name] !== to[name]);
 }
 
@@ -158,6 +175,12 @@ function dialogsOf(names) {
 // What was typed in the search, as the search takes it: without the spaces at the ends and cut at its length.
 function searchOf(text) {
   return String(text ?? '').trim().slice(0, SEARCH_LENGTH);
+}
+
+// The slug of an entity of the wiki, as the generator writes it: letters, digits and hyphens, not too long.
+function slugOf(value) {
+  const text = String(value ?? '');
+  return /^[\p{L}\p{N}][\p{L}\p{N}-]{0,119}$/u.test(text) ? text : null;
 }
 
 function positive(value) {

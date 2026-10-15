@@ -31,6 +31,13 @@ func Delete(ctx context.Context, db *sql.DB, projectID int64, userID string) err
 		return err
 	}
 	defer tx.Rollback()
+	// What the model answered for this wiki holds quotes of the books: it goes with the wiki.
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM wiki_llm_cache
+		WHERE work_id = (SELECT work_id FROM wiki_projects WHERE id = $1)
+		   OR collection_id = (SELECT collection_id FROM wiki_projects WHERE id = $1)`, projectID); err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx, `DELETE FROM wiki_projects WHERE id = $1`, projectID)
 	if err != nil {
 		return err

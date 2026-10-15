@@ -509,3 +509,45 @@ func TestMigrate_EditionsAreIndexedByWork(t *testing.T) {
 		t.Error("the index did not come back when the migration was applied again")
 	}
 }
+
+// What a position with a fraction said about a work in a series (3.5: beside the line) is kept, once, as the work's own choice (DEC-188).
+func TestMigrate_ABookAtAFractionalPositionBecomesASpinOffOnce(t *testing.T) {
+	db := testdb.Open(t)
+	if err := database.MigrateTo(db, 82); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]int{}
+	for _, name := range []string{"um", "dois", "tres-e-meio", "fora-de-serie-fracionado", "pessoal-fracionado"} {
+		id, _, _ := testdb.AddWork(t, db, testdb.Work{Title: name, Path: name + ".epub", Format: "epub"})
+		ids[name] = id
+	}
+	var official, personal int64
+	db.QueryRow(`INSERT INTO collections (kind, name, origin) VALUES ('official', 'Série', 'manual') RETURNING id`).Scan(&official)
+	var owner string
+	db.QueryRow(`INSERT INTO users (username, email, role) VALUES ('u', 'u@x', 'reader') RETURNING id`).Scan(&owner)
+	db.QueryRow(`INSERT INTO collections (kind, name, origin, owner_id) VALUES ('personal', 'Minha', 'manual', $1) RETURNING id`, owner).Scan(&personal)
+	for name, pos := range map[string]float64{"um": 1, "dois": 2, "tres-e-meio": 3.5} {
+		if _, err := db.Exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, TRUE, $3)`, official, ids[name], pos); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A fraction in a personal list is only the person's order, not a statement about the book.
+	if _, err := db.Exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, FALSE, 1.5)`, personal, ids["pessoal-fracionado"]); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	db.QueryRow(`SELECT string_agg(title_of, ',' ORDER BY title_of) FROM (
+		SELECT original_title AS title_of FROM works WHERE spin_off) q`).Scan(&got)
+	if got != "tres-e-meio" {
+		t.Errorf("spin-offs after migrating = %q, want only the book at 3.5", got)
+	}
+	if err := database.RollbackTo(db, 82); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("reapply: %v", err)
+	}
+}

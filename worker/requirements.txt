@@ -6,3 +6,5 @@ python-dotenv>=1.0
 lxml>=5.0
 rarfile>=4.0
 mutagen>=1.47
+# Opens the API key of the wiki provider, sealed by the backend with AES-GCM (DEC-185).
+cryptography>=42
