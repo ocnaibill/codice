@@ -15,6 +15,35 @@ const TAB_OFF = 'border-border-hairline bg-white text-ink-soft hover:text-ink';
 
 const DATE = new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
 
+const OWN_CURSOR = { manual: false, side: false };
+const cursorKey = (workId) => `codice:wiki-cursor:${workId}`;
+
+/**
+ * The point chosen in the cursor control, kept in the session of the tab (per work) so that F5 does not lose it. Not in the address:
+ * a link sent to someone else must not carry a point past what they read.
+ */
+function savedCursor(workId) {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(cursorKey(workId)) ?? 'null');
+    if (value && typeof value === 'object') {
+      const manual = !!value.manual && Number.isInteger(value.book) && Number.isInteger(value.chapter);
+      return { manual, side: !!value.side, ...(manual ? { book: value.book, chapter: value.chapter } : {}) };
+    }
+  } catch {
+    // No storage, or something else in it: the reader's own point.
+  }
+  return OWN_CURSOR;
+}
+
+function saveCursor(workId, cursor) {
+  try {
+    if (!cursor.manual && !cursor.side) sessionStorage.removeItem(cursorKey(workId));
+    else sessionStorage.setItem(cursorKey(workId), JSON.stringify(cursor));
+  } catch {
+    // Without storage the choice lasts until the page is reloaded.
+  }
+}
+
 /** What the state of the generation means for who reads (DEC-183): only what is not simply "ready" is said. */
 function StateNotice({ project, staff }) {
   const notices = [];
@@ -68,15 +97,20 @@ export function WikiPage() {
   const openGraph = useGlobalStore((state) => state.openWikiGraph);
   const openWork = useGlobalStore((state) => state.openWork);
   const openBook = useGlobalStore((state) => state.openBook);
+  const resume = useGlobalStore((state) => state.resumeFromWiki);
   const setView = useGlobalStore((state) => state.setLibraryView);
   const staff = isStaff(useMe().data);
   const pageRef = React.useRef(null);
-  const [cursor, setCursor] = React.useState({ manual: false, side: false });
+  const [cursor, setCursorState] = React.useState(() => savedCursor(workId));
   const [kind, setKind] = React.useState('');
+  const setCursor = (next) => {
+    setCursorState(next);
+    saveCursor(workId, next);
+  };
 
-  // Another work starts again from the reader's own point, with every kind.
+  // Another work starts again from the point chosen for it in this tab (or the reader's own), with every kind.
   React.useEffect(() => {
-    setCursor({ manual: false, side: false });
+    setCursorState(savedCursor(workId));
     setKind('');
   }, [workId]);
 
@@ -124,8 +158,8 @@ export function WikiPage() {
         </nav>
         {from && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[11px] text-ink-faint">Você veio do leitor{from.label ? ` · ${from.label}` : ''}</span>
-            <button type="button" className="library-button" onClick={() => openBook(from.workId, from.fileId)}>
+            <span className="font-mono text-[11px] text-ink-faint">Você veio do leitor{wiki?.own?.book >= 0 && wiki.own.label ? ` · ${wiki.own.label}` : ''}</span>
+            <button type="button" className="library-button" onClick={resume}>
               Retomar leitura no parágrafo →
             </button>
           </div>
@@ -153,27 +187,31 @@ export function WikiPage() {
           <CursorBar wiki={wiki} cursor={cursor} onChange={setCursor} />
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div role="group" aria-label="Tipo de entidade" className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => chooseKind('')}
-                aria-pressed={kind === ''}
-                className="min-h-10 rounded-full border border-border-hairline bg-white px-4 text-sm text-ink hover:bg-surface-alt aria-pressed:border-brand aria-pressed:bg-brand aria-pressed:text-white"
-              >
-                Todas<span className="ml-2 font-mono text-[11px] opacity-70">{wiki.index.length}</span>
-              </button>
-              {counts.map((k) => (
+            {graphOpen || !slug ? (
+              <div role="group" aria-label="Tipo de entidade" className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap">
                 <button
-                  key={k.key}
                   type="button"
-                  onClick={() => chooseKind(k.key)}
-                  aria-pressed={kind === k.key}
-                  className="min-h-10 rounded-full border border-border-hairline bg-white px-4 text-sm text-ink hover:bg-surface-alt aria-pressed:border-brand aria-pressed:bg-brand aria-pressed:text-white"
+                  onClick={() => chooseKind('')}
+                  aria-pressed={kind === ''}
+                  className="min-h-10 shrink-0 whitespace-nowrap rounded-full border border-border-hairline bg-white px-4 text-sm text-ink hover:bg-surface-alt aria-pressed:border-brand aria-pressed:bg-brand aria-pressed:text-white"
                 >
-                  {k.many}<span className="ml-2 font-mono text-[11px] opacity-70">{k.count}</span>
+                  Todas<span className="ml-2 font-mono text-[11px] opacity-70">{wiki.index.length}</span>
                 </button>
-              ))}
-            </div>
+                {counts.map((k) => (
+                  <button
+                    key={k.key}
+                    type="button"
+                    onClick={() => chooseKind(k.key)}
+                    aria-pressed={kind === k.key}
+                    className="min-h-10 shrink-0 whitespace-nowrap rounded-full border border-border-hairline bg-white px-4 text-sm text-ink hover:bg-surface-alt aria-pressed:border-brand aria-pressed:bg-brand aria-pressed:text-white"
+                  >
+                    {k.many}<span className="ml-2 font-mono text-[11px] opacity-70">{k.count}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span />
+            )}
             <div role="tablist" aria-label="Vista" className="flex gap-2">
               {[
                 { key: 'index', label: 'Índice', on: !slug && !graphOpen, go: () => openEntity(null) },

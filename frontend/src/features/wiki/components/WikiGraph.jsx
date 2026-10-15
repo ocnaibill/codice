@@ -24,17 +24,45 @@ export function WikiGraph({ query, kind, focus, onOpen }) {
   const places = React.useMemo(() => layoutGraph(nodes, edges), [nodes, edges]);
   const maxWeight = edges.reduce((m, e) => Math.max(m, e.weight), 1);
   const maxSeen = nodes.reduce((m, n) => Math.max(m, n.appearances), 1);
-  const labeled = new Set([...nodes].sort((a, b) => b.appearances - a.appearances).slice(0, LABELED).map((n) => n.slug));
-  const byslug = new Map((graph?.nodes ?? []).map((n) => [n.slug, n]));
+
+  const byslug = React.useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.slug, n])), [graph]);
   const current = chosen && byslug.get(chosen);
-  const links = current
-    ? (graph.edges ?? [])
-        .filter((e) => e.a === chosen || e.b === chosen)
-        .map((e) => ({ ...e, other: byslug.get(e.a === chosen ? e.b : e.a) }))
-        .filter((e) => e.other)
-        .sort((a, b) => b.weight - a.weight)
-    : [];
+  const links = React.useMemo(
+    () =>
+      current
+        ? (graph.edges ?? [])
+            .filter((e) => e.a === chosen || e.b === chosen)
+            .map((e) => ({ ...e, other: byslug.get(e.a === chosen ? e.b : e.a) }))
+            .filter((e) => e.other)
+            .sort((a, b) => b.weight - a.weight)
+        : [],
+    [graph, chosen, current, byslug]
+  );
   const near = new Set(links.map((l) => l.other.slug));
+  const labeled = React.useMemo(() => {
+    // Names are written from the node chosen, its links (strongest first) and then the most present ones, and one that would fall on
+    // a name already written is left for the hover and the list beside.
+    const order = [
+      ...(chosen ? [chosen] : []),
+      ...links.map((l) => l.other.slug),
+      ...[...nodes].sort((a, b) => b.appearances - a.appearances).map((n) => n.slug),
+    ];
+    const names = new Map(nodes.map((n) => [n.slug, n.name]));
+    const taken = [];
+    const out = new Set();
+    for (const slug of order) {
+      if (out.has(slug) || !names.has(slug)) continue;
+      if (out.size >= LABELED + (chosen ? links.length + 1 : 0)) break;
+      const p = places.get(slug);
+      if (!p) continue;
+      const w = names.get(slug).length * 7.6 + 8;
+      const box = { l: p.x * W - w / 2, r: p.x * W + w / 2, t: p.y * H + 2, b: p.y * H + 26 };
+      if (taken.some((o) => box.l < o.r && box.r > o.l && box.t < o.b && box.b > o.t)) continue;
+      taken.push(box);
+      out.add(slug);
+    }
+    return out;
+  }, [nodes, places, chosen, links]);
 
   if (isLoading) return <p className="animate-pulse py-6 text-sm text-ink-faint">Carregando o grafo…</p>;
   if (isError) return <LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível abrir o grafo.</LoadError>;
@@ -101,7 +129,7 @@ export function WikiGraph({ query, kind, focus, onOpen }) {
                 >
                   <title>{n.name}</title>
                   <circle cx={p.x * W} cy={p.y * H} r={r} fill={KIND_COLORS[n.kind] ?? KIND_COLORS.other} stroke={n.slug === chosen ? 'var(--color-ink)' : 'white'} strokeWidth={n.slug === chosen ? 3 : 1.5} />
-                  {(labeled.has(n.slug) || n.slug === chosen || near.has(n.slug)) && (
+                  {labeled.has(n.slug) && (
                     <text x={p.x * W} y={p.y * H + r + 13} textAnchor="middle" className="pointer-events-none fill-ink text-[13px]" paintOrder="stroke" stroke="var(--library-paper)" strokeWidth={4}>
                       {n.name}
                     </text>

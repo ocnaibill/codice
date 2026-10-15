@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chapterName, filterGraph, filterIndex, keptBack, kindCounts, layoutGraph, neighbourhood, pointOf, pointValue } from './wiki';
+import { chapterName, filterGraph, pointLabel, filterIndex, keptBack, kindCounts, layoutGraph, neighbourhood, pointOf, pointValue } from './wiki';
 
 const book = (position, n, side = false) => ({ position, side, title: `L${position}`, chapters: Array.from({ length: n }, (_, i) => ({ chapter: i + 1 })) });
 
@@ -38,6 +38,9 @@ describe('the cursor control', () => {
     expect(chapterName({ chapter: 3, title: 'A praça' })).toBe('3. A praça');
     expect(chapterName({ chapter: 3, title: 'Capítulo 3' })).toBe('Capítulo 3');
     expect(chapterName({ chapter: 3, title: '3' })).toBe('3');
+    expect(chapterName({ chapter: 54, title: '54. Em um ano sem nome', part: '' })).toBe('54. Em um ano sem nome');
+    expect(chapterName({ chapter: 10, title: 'IX', part: 'Parte Um' })).toBe('Parte Um · IX');
+    expect(chapterName({ chapter: 1, title: 'Epígrafe', part: 'Abertura' })).toBe('1. Epígrafe');
   });
   it('writes a point and reads it back, and nothing else is a point', () => {
     expect(pointOf(pointValue(1, 12))).toEqual({ book: 1, chapter: 12 });
@@ -95,5 +98,14 @@ describe('the graph', () => {
       }
     }
     expect(layoutGraph([], []).size).toBe(0);
+  });
+});
+
+describe('a point inside the page', () => {
+  it('drops the title of the book when the wiki has only one', () => {
+    const one = [{ title: 'Addie' }];
+    expect(pointLabel('Addie, Parte Três · IX', one)).toBe('Parte Três · IX');
+    expect(pointLabel('Addie · 3', one)).toBe('3');
+    expect(pointLabel('Addie, Parte Três · IX', [{ title: 'Addie' }, { title: 'Outro' }])).toBe('Addie, Parte Três · IX');
   });
 });

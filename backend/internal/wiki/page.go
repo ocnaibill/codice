@@ -65,9 +65,10 @@ type HiddenView struct {
 }
 
 type RelationItem struct {
-	Slug string `json:"slug,omitempty"` // set when the other side has a page the reader may open
+	Slug string `json:"slug,omitempty"` // set when the other side is an entity the reader has met: its page may be opened
 	Name string `json:"name"`
 	Role string `json:"role"`
+	Page bool   `json:"page,omitempty"` // the other side has a full page, not only the ficha and the timeline
 }
 
 type RelationGroup struct {
@@ -395,8 +396,8 @@ func (p *Project) Page(ctx context.Context, db *sql.DB, slug string, c Cursor, s
 			continue
 		}
 		item := RelationItem{Name: name, Role: role}
-		if oid.Valid && opage && counts[oid.Int64] > 0 {
-			item.Slug = oslug
+		if oid.Valid && counts[oid.Int64] > 0 {
+			item.Slug, item.Page = oslug, opage
 		}
 		g := groups[grp]
 		if g == nil {

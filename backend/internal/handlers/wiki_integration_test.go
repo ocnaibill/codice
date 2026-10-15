@@ -158,7 +158,7 @@ func TestWiki_AReaderSeesNothingBeyondTheChapterTheyAreIn(t *testing.T) {
 	if strings.Contains(page, "SEGREDO") {
 		t.Errorf("the page leaks what lies beyond chapter 2: %s", page)
 	}
-	for _, want := range []string{"Ana Maria é uma aprendiz.", "Chegou à cidade e aprendeu o ofício.", "É paciente.", "Aninha", "aprende o ofício", `"group":"mentors"`} {
+	for _, want := range []string{"Ana Maria é uma aprendiz.", "Chegou à cidade e aprendeu o ofício.", "É paciente.", "Aninha", "aprende o ofício", `"group":"mentors"`, `"slug":"mestre"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the page lacks %q: %s", want, page)
 		}

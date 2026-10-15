@@ -117,6 +117,7 @@ beforeEach(() => {
   root = createRoot(container);
 });
 afterEach(() => {
+  sessionStorage.clear();
   act(() => root.unmount());
   container.remove();
   useGlobalStore.getState().goHome();
@@ -177,6 +178,56 @@ describe('WikiPage: the index of what appeared up to the reader', () => {
     expect(text()).toContain('Você escolheu ir além do que leu');
   });
 
+  it('keeps the point chosen through a reload of the page, in this tab only', async () => {
+    await open();
+    await act(async () => {
+      const s = container.querySelector('select');
+      s.value = '0:7';
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    expect(JSON.parse(sessionStorage.getItem(`codice:wiki-cursor:${WORK}`))).toMatchObject({ manual: true, book: 0, chapter: 7 });
+    await open();
+    expect(container.querySelector('select').value).toBe('0:7');
+    expect(asked.find((a) => a.url === `/works/${WORK}/wiki`).params).toEqual({ book: 0, chapter: 7 });
+    // Back to the reader's own point, nothing is kept.
+    await act(async () => {
+      const s = container.querySelector('select');
+      s.value = 'own';
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(sessionStorage.getItem(`codice:wiki-cursor:${WORK}`)).toBeNull();
+    sessionStorage.setItem(`codice:wiki-cursor:${WORK}`, '{not json');
+    await open();
+    expect(container.querySelector('select').value).toBe('own');
+  });
+
+  it('chooses a book and then a chapter of it, in a series', async () => {
+    const series = wiki({ books: [
+      { position: 0, workId: WORK, fileId: 30, side: false, title: 'O Ceifador', chapters: chapters(10, 4) },
+      { position: 1, workId: 13, fileId: 31, side: false, title: 'A Nuvem', chapters: chapters(8, 0) },
+    ] });
+    await open({ summary: series });
+    const book = container.querySelector('select[aria-label="Livro"]');
+    expect([...book.options].map((o) => o.textContent)).toEqual(['Onde estou (O Ceifador · Título 4)', 'O Ceifador', 'A Nuvem']);
+    expect(container.querySelector('select[aria-label="Capítulo"]')).toBeNull();
+    await act(async () => {
+      book.value = '1';
+      book.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    expect(asked.filter((a) => a.url === `/works/${WORK}/wiki`).at(-1).params).toEqual({ book: 1, chapter: 8 });
+    const chapter = container.querySelector('select[aria-label="Capítulo"]');
+    expect(chapter.value).toBe('1:8');
+    expect(chapter.options[7].textContent).toBe('Capítulo 8 (fim do livro) · não lido');
+    await act(async () => {
+      chapter.value = '1:3';
+      chapter.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    expect(asked.filter((a) => a.url === `/works/${WORK}/wiki`).at(-1).params).toEqual({ book: 1, chapter: 3 });
+  });
+
   it('offers the side books only when the wiki has them, and asks for them', async () => {
     await open();
     expect(text()).not.toContain('Incluir contos paralelos');
@@ -223,14 +274,15 @@ describe('WikiPage: the page of an entity', () => {
     await open({ state: { wikiEntity: 'citra' } });
     expect(container.querySelector('h1').textContent).toBe('Citra Terranova');
     expect(text()).toContain('“Aprendiz de Faraday, treina na casa dele.”');
-    expect(text()).toContain('atualizado ao fim de O Ceifador · Título 2');
+    expect(text()).toContain('atualizado ao fim de Título 2');
     expect(text()).toContain('Citra é aprendiz de ceifador.');
     expect(text()).toContain('Faraday a escolhe como aprendiz.');
     expect(text()).toContain('Parte 2: em andamento');
     const current = container.querySelector('[aria-current="step"]');
     expect(current.textContent).toContain('Título 4');
     expect(current.textContent).toContain('ponto atual');
-    expect(text()).toContain('Capítulos 5 a 10 ocultos');
+    expect(text()).toContain('Os próximos 6 capítulos estão ocultos');
+    expect(text()).toContain('você está em Título 4');
     // The breadcrumb names it.
     expect(container.querySelector('nav [aria-current="page"]').textContent).toBe('Citra Terranova');
   });
@@ -252,6 +304,19 @@ describe('WikiPage: the page of an entity', () => {
     const s = useGlobalStore.getState();
     expect(s).toMatchObject({ activeBookId: WORK, activeFileId: 30, wikiWorkId: WORK, wikiEntity: 'citra' });
     expect(s.seek).toMatchObject({ locator: { type: 'epub', href: 'c1.xhtml' }, peek: true, context: { kind: 'wiki', quote: 'O ceifador entrou sem bater.' } });
+  });
+
+  it('comes back from the book at the reference it opened', async () => {
+    await open({ state: { wikiEntity: 'citra' } });
+    await click(button('Abrir no leitor neste parágrafo'));
+    useGlobalStore.getState().closeBook();
+    await open({ state: { wikiEntity: 'citra' } });
+    await flush();
+    expect(document.activeElement?.id).toBe('wiki-ref-1');
+    // Another time the page opens at its name.
+    await open({ state: { wikiEntity: 'citra' } });
+    await flush();
+    expect(document.activeElement?.hasAttribute('data-wiki-heading')).toBe(true);
   });
 
   it('links the relations that have a page, and groups the ficha', async () => {
@@ -297,10 +362,10 @@ describe('WikiPage: the page of an entity', () => {
   });
 
   it('goes back to the reader where the person was, when it came from there', async () => {
-    await open({ state: { wikiEntity: 'citra', wikiFrom: { workId: WORK, fileId: 30, label: 'Capítulo 4' } } });
-    expect(text()).toContain('Você veio do leitor · Capítulo 4');
+    await open({ state: { wikiEntity: 'citra', wikiFrom: { workId: WORK, fileId: 30 } } });
+    expect(text()).toContain('Você veio do leitor · O Ceifador · Título 4');
     await click(button('Retomar leitura no parágrafo'));
-    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: WORK, activeFileId: 30, seek: null });
+    expect(useGlobalStore.getState()).toMatchObject({ activeBookId: WORK, activeFileId: 30, seek: null, wikiWorkId: null, wikiFrom: null });
   });
 
   it('goes back from a page to the index, and from the index to the work', async () => {

@@ -309,7 +309,7 @@ function WikiButton({ workId }) {
   const { data } = useWiki(workId);
   if (!data?.wiki) return null;
   return (
-    <button type="button" onClick={() => openWiki(workId)} className="library-button min-h-11">
+    <button type="button" onClick={() => openWiki(workId)} className="library-button" style={{ minHeight: '2.75rem' }}>
       Wiki
       <span className="ml-2 rounded bg-surface-alt px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">experimental</span>
     </button>

@@ -32,13 +32,20 @@ export const useGlobalStore = create((set) => ({
   wikiWorkId: null,
   wikiEntity: null,
   wikiGraph: false,
-  // The book the wiki was opened from, when it was the reader ({ workId, fileId, label }), so that it can go back to the paragraph.
+  // The book the wiki was opened from, when it was the reader ({ workId, fileId }), so that it can go back to the paragraph.
   wikiFrom: null,
   openWiki: (workId, entity = null, from = null) =>
     set({ wikiWorkId: workId, wikiEntity: entity, wikiGraph: false, wikiFrom: from, activeBookId: null, activeFileId: null, seek: null, sheetWorkId: null, personSheetId: null, collectionSheetId: null }),
   openWikiEntity: (slug) => set({ wikiEntity: slug, wikiGraph: false }),
   openWikiGraph: () => set({ wikiGraph: true }),
   closeWiki: () => set({ wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }),
+  // Back to the book the wiki was opened from, at the saved position: the wiki closes, as it was not under the reader before.
+  resumeFromWiki: () =>
+    set((state) =>
+      state.wikiFrom
+        ? { activeBookId: state.wikiFrom.workId, activeFileId: state.wikiFrom.fileId, fromStart: false, seek: null, wikiWorkId: null, wikiEntity: null, wikiGraph: false, wikiFrom: null }
+        : state
+    ),
   // The work whose metadata and suggestions are open for owner/admin (#70), and which part ('suggestions' or 'edit').
   metadataWorkId: null,
   metadataTab: 'suggestions',

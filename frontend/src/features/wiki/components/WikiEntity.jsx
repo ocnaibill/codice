@@ -1,7 +1,7 @@
 import React from 'react';
 import { LoadError } from '../../../components/ui/LoadError';
 import { useWikiEntity } from '../api/useWiki';
-import { GROUPS, kindName, plural } from '../wiki';
+import { GROUPS, kindName, plural, pointLabel } from '../wiki';
 import { MiniGraph } from './MiniGraph';
 
 const CARD = 'rounded-xl border border-border-hairline bg-white p-5 shadow-sm lg:p-6';
@@ -11,6 +11,9 @@ const H2 = 'font-display text-2xl leading-tight text-ink';
 const chapterOf = (label) => String(label ?? '').split(' · ').pop();
 
 const refId = (n) => `wiki-ref-${n}`;
+
+// The reference whose paragraph was opened in the reader: coming back from the book, the page opens at it, not at its top.
+let openedReference = null;
 
 /** Goes to a reference below and gives it the focus (the page is under a hash route, so not a link to an anchor). */
 function goToReference(n) {
@@ -43,7 +46,7 @@ function Paragraphs({ paragraphs, className = '' }) {
   ));
 }
 
-function Header({ page, cursor }) {
+function Header({ page, cursor, books }) {
   return (
     <div className={CARD}>
       <div className="flex flex-wrap items-center gap-2">
@@ -67,7 +70,7 @@ function Header({ page, cursor }) {
       )}
       {page.situation && (
         <div className="mt-5 border-l-4 border-brand bg-[var(--library-paper)] px-4 py-3">
-          <p className="library-eyebrow">Situação em {chapterOf(page.situation.label) || cursor.label}</p>
+          <p className="library-eyebrow">Situação em {pointLabel(page.situation.label, books) || cursor.label}</p>
           <p className="mt-1 font-display text-lg italic leading-snug text-ink">“{page.situation.text}”</p>
         </div>
       )}
@@ -75,12 +78,12 @@ function Header({ page, cursor }) {
   );
 }
 
-function Who({ who }) {
+function Who({ who, books }) {
   return (
     <section aria-labelledby="wiki-who" className={CARD}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h2 id="wiki-who" className={H2}>Quem é</h2>
-        <span className="font-mono text-[11px] text-ink-faint">atualizado ao fim de {who.label}</span>
+        <span className="font-mono text-[11px] text-ink-faint">atualizado ao fim de {pointLabel(who.label, books)}</span>
       </div>
       <div className="mt-3 flex flex-col gap-3">
         <Paragraphs paragraphs={who.paragraphs} />
@@ -126,7 +129,7 @@ function Biography({ biography, inProgress, hidden, cursor }) {
               <p className="text-sm font-semibold text-ink">
                 {inProgress.part ? `${inProgress.part}: ` : ''}em andamento
               </p>
-              <span className="font-mono text-[11px] text-brand">você está no cap. {cursor.chapter}</span>
+              <span className="font-mono text-[11px] text-brand">você está em {chapterOf(cursor.label) || `capítulo ${cursor.chapter}`}</span>
             </div>
             <p className="mt-1 text-[13px] text-ink-faint">A biografia desta parte aparece quando você terminar de lê-la. Por enquanto, capítulo a capítulo:</p>
             {inProgress.states.length > 0 ? (
@@ -155,7 +158,7 @@ function Biography({ biography, inProgress, hidden, cursor }) {
           <div className="rounded-lg border border-dashed border-border-hairline px-4 py-5 text-center">
             <p className="text-sm font-semibold text-ink-soft">
               {hidden.chapterFrom > 0
-                ? `${hidden.chapterFrom === hidden.chapterTo ? `Capítulo ${hidden.chapterFrom} oculto` : `Capítulos ${hidden.chapterFrom} a ${hidden.chapterTo} ocultos`}${
+                ? `${hidden.chapterFrom === hidden.chapterTo ? 'O próximo capítulo está oculto' : `Os próximos ${hidden.chapterTo - hidden.chapterFrom + 1} capítulos estão ocultos`}${
                     hidden.laterBooks > 0 ? `, e ${plural(hidden.laterBooks, 'livro depois', 'livros depois')}` : ''
                   }`
                 : `${plural(hidden.laterBooks, 'livro depois oculto', 'livros depois ocultos')}`}
@@ -180,7 +183,7 @@ function Personality({ sentences }) {
   );
 }
 
-function Timeline({ timeline, cursor }) {
+function Timeline({ timeline, cursor, books }) {
   if (timeline.length === 0) return null;
   return (
     <details className={`${CARD} group`}>
@@ -197,7 +200,7 @@ function Timeline({ timeline, cursor }) {
       <ol className="mt-4 flex flex-col gap-3">
         {timeline.map((s) => (
           <li key={`${s.book}-${s.chapter}`} className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-4">
-            <span className="font-mono text-[11px] text-ink-faint">{s.label}</span>
+            <span className="font-mono text-[11px] text-ink-faint">{pointLabel(s.label, books)}</span>
             <span className="text-[15px] leading-6 text-ink">{s.text}</span>
           </li>
         ))}
@@ -206,7 +209,7 @@ function Timeline({ timeline, cursor }) {
   );
 }
 
-function References({ references, books, onOpenAt }) {
+function References({ slug, references, books, onOpenAt }) {
   if (references.length === 0) return null;
   return (
     <section aria-labelledby="wiki-refs" className={CARD}>
@@ -218,7 +221,7 @@ function References({ references, books, onOpenAt }) {
           return (
             <li key={ref.n} id={refId(ref.n)} tabIndex={-1} className="rounded-lg border border-border-hairline p-4 outline-none focus:border-brand">
               <p className="font-mono text-[12px] text-ink-soft">
-                <span className="text-brand">[{ref.n}]</span> {ref.label}
+                <span className="text-brand">[{ref.n}]</span> {pointLabel(ref.label, books)}
               </p>
               <ul className="mt-2 flex flex-col gap-3">
                 {ref.items.map((item, i) => (
@@ -230,7 +233,10 @@ function References({ references, books, onOpenAt }) {
                     {item.locator && book?.fileId && (
                       <button
                         type="button"
-                        onClick={() => onOpenAt(book, item)}
+                        onClick={() => {
+                          openedReference = { slug, n: ref.n };
+                          onOpenAt(book, item);
+                        }}
                         className="mt-1 inline-flex min-h-9 items-center text-[13px] font-semibold text-brand hover:underline"
                       >
                         Abrir no leitor neste parágrafo →
@@ -270,7 +276,14 @@ function Ficha({ page, onOpen }) {
             {g.items.map((item, i) => (
               <li key={`${item.slug ?? item.name}-${i}`} className="text-sm leading-snug">
                 {item.slug ? (
-                  <button type="button" onClick={() => onOpen(item.slug)} className="text-left font-semibold text-brand hover:underline">{item.name}</button>
+                  <button
+                    type="button"
+                    onClick={() => onOpen(item.slug)}
+                    title={item.page ? undefined : 'Sem página completa: abre a ficha e a linha do tempo'}
+                    className={`text-left text-brand hover:underline ${item.page ? 'font-semibold' : ''}`}
+                  >
+                    {item.name}
+                  </button>
                 ) : (
                   <span className="font-semibold text-ink">{item.name}</span>
                 )}
@@ -308,7 +321,7 @@ function Suggestions({ suggestions }) {
 /**
  * The page of an entity (DEC-178, DEC-183): header with the situation at this point, "Quem é", the biography of the parts read, the
  * part in progress chapter by chapter and what is kept back, personality, timeline and references; at the side the ficha, the
- * minigraph and, for staff, the identity suggestions. On a phone the ficha comes after the header, as the box of a wiki does.
+ * minigraph and, for staff, the identity suggestions. On a phone the ficha comes after "Quem é", as the box of a wiki comes after its lead.
  */
 export function WikiEntity({ project, books, slug, cursor, graph, onOpen, onExpandGraph, onOpenAt }) {
   const { data, isLoading, isError, error, refetch, isRefetching } = useWikiEntity(project.id, slug, cursor);
@@ -316,7 +329,20 @@ export function WikiEntity({ project, books, slug, cursor, graph, onOpen, onExpa
   // A page that opens gives the focus to its name, for who goes by the keyboard or a screen reader.
   const loaded = !!data;
   React.useEffect(() => {
-    if (loaded) document.querySelector('[data-wiki-heading]')?.focus?.({ preventScroll: true });
+    if (!loaded) return;
+    const back = openedReference?.slug === slug ? openedReference.n : null;
+    openedReference = null;
+    // After the page has gone to its top (the effect of the page around this one runs after this one).
+    const timer = setTimeout(() => {
+      const target = back ? document.getElementById(refId(back)) : null;
+      if (target) {
+        target.scrollIntoView?.({ block: 'center' });
+        target.focus?.({ preventScroll: true });
+      } else {
+        document.querySelector('[data-wiki-heading]')?.focus?.({ preventScroll: true });
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [slug, loaded]);
 
   if (isLoading) return <p className="animate-pulse py-6 text-sm text-ink-faint">Carregando a página…</p>;
@@ -334,21 +360,25 @@ export function WikiEntity({ project, books, slug, cursor, graph, onOpen, onExpa
   const shown = data.cursor;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:grid-rows-[auto_auto_1fr]">
       <div className="lg:col-span-2">
-        <Header page={page} cursor={shown} />
+        <Header page={page} cursor={shown} books={books} />
       </div>
-      <aside aria-label="Ficha e vínculos" className="flex flex-col gap-6 lg:col-start-2 lg:row-start-2">
+      {page.who && (
+        <div className="min-w-0 lg:col-start-1 lg:row-start-2">
+          <Who who={page.who} books={books} />
+        </div>
+      )}
+      <aside aria-label="Ficha e vínculos" className="flex flex-col gap-6 lg:col-start-2 lg:row-span-2 lg:row-start-2 lg:self-start">
         <Ficha page={page} onOpen={onOpen} />
         <MiniGraph graph={graph} slug={page.slug} onOpen={onOpen} onExpand={onExpandGraph} />
         <Suggestions suggestions={page.suggestions} />
       </aside>
-      <article className="flex min-w-0 flex-col gap-6 lg:col-start-1 lg:row-start-2">
-        {page.who && <Who who={page.who} />}
+      <article className={`flex min-w-0 flex-col gap-6 lg:col-start-1 ${page.who ? 'lg:row-start-3' : 'lg:row-start-2'}`}>
         <Biography biography={page.biography} inProgress={page.inProgress} hidden={page.hidden} cursor={shown} />
         <Personality sentences={page.personality} />
-        <Timeline timeline={page.timeline} cursor={shown} />
-        <References references={page.references} books={books} onOpenAt={onOpenAt} />
+        <Timeline timeline={page.timeline} cursor={shown} books={books} />
+        <References slug={page.slug} references={page.references} books={books} onOpenAt={onOpenAt} />
         {!page.page && !page.who && page.timeline.length === 0 && (
           <p className="text-sm text-ink-faint">Esta entidade aparece no livro, mas não tem página completa: veja os vínculos na ficha.</p>
         )}

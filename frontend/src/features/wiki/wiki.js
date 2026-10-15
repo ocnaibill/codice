@@ -70,11 +70,16 @@ export function keptBack(books, cursor) {
   return { chapters, books: main.filter((b) => b.position > cursor.book).length };
 }
 
-/** The name of a chapter in the cursor control: its number, and its title when the reader may know it. */
+/**
+ * The name of a chapter in the cursor control: its title when the reader may know it, with its part ("Parte Um · IX", since the
+ * numbering of a book can start again in each part), or with its place in the book when the title says no number of its own.
+ */
 export function chapterName(c) {
   const title = String(c.title ?? '').trim();
   if (!title) return `Capítulo ${c.chapter}`;
-  return /^\d+$/.test(title) || /^cap/i.test(title) ? title : `${c.chapter}. ${title}`;
+  const part = String(c.part ?? '').trim();
+  if (part && part !== 'Abertura' && part !== 'Final') return `${part} · ${title}`;
+  return /^(\d|cap)/i.test(title) ? title : `${c.chapter}. ${title}`;
 }
 
 /** The value of a point in the cursor control ("book:chapter") and back. */
@@ -82,6 +87,18 @@ export const pointValue = (book, chapter) => `${book}:${chapter}`;
 export function pointOf(value) {
   const [book, chapter] = String(value).split(':').map(Number);
   return Number.isInteger(book) && Number.isInteger(chapter) ? { book, chapter } : null;
+}
+
+/**
+ * A point as said inside the page: without the title of the book when the wiki has only one ("Addie, Parte Três · IX" → "Parte
+ * Três · IX"), since it would repeat on every line.
+ */
+export function pointLabel(label, books) {
+  const text = String(label ?? '');
+  if ((books ?? []).length !== 1) return text;
+  const title = books[0].title;
+  for (const sep of [', ', ' · ']) if (text.startsWith(title + sep)) return text.slice(title.length + sep.length);
+  return text;
 }
 
 /** "1 capítulo", "3 capítulos". */
@@ -135,7 +152,8 @@ export function layoutGraph(nodes, edges, { iterations = 300 } = {}) {
     .map((e) => [index.get(e.a), index.get(e.b), e.weight])
     .filter(([a, b]) => a !== undefined && b !== undefined && a !== b);
   const maxWeight = links.reduce((m, [, , w]) => Math.max(m, w), 1);
-  const ideal = Math.min(0.18, 0.9 / Math.sqrt(n));
+  const ideal = Math.min(0.18, 1.2 / Math.sqrt(n));
+  const reach = (4 * ideal) ** 2;
   const dx = new Float64Array(n);
   const dy = new Float64Array(n);
   for (let step = 0; step < iterations; step += 1) {
@@ -152,6 +170,8 @@ export function layoutGraph(nodes, edges, { iterations = 300 } = {}) {
           ey = ((i * 3 + j) % 11) / 1100 - 0.005;
           d2 = ex * ex + ey * ey;
         }
+        // Far nodes do not push: pieces that are not linked stay near the others instead of being thrown to the corners.
+        if (d2 > reach) continue;
         const f = (ideal * ideal) / d2;
         dx[i] += ex * f;
         dy[i] += ey * f;

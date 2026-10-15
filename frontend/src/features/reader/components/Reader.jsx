@@ -356,7 +356,7 @@ export function Reader() {
           </button>
           {wiki.data?.wiki && (
             <button
-              onClick={() => openWiki(book.id, null, { workId: book.id, fileId: file.id, label: placeLabel(currentLocator.current) })}
+              onClick={() => openWiki(book.id, null, { workId: book.id, fileId: file.id })}
               className="flex min-h-11 items-center gap-1.5 rounded-lg bg-surface-alt px-3 text-sm text-ink-soft transition-all hover:bg-border-hairline hover:text-ink"
               aria-label="Wiki desta obra, até onde você leu"
               title="Wiki desta obra, até onde você leu"

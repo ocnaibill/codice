@@ -2,6 +2,9 @@ import React from 'react';
 import { chapterName, keptBack, plural, pointOf, pointValue } from '../wiki';
 
 const OWN = 'own';
+const SELECT = 'min-h-10 min-w-0 max-w-full flex-1 rounded-lg border border-border-hairline bg-white px-3 text-sm text-ink sm:max-w-xs';
+
+const lastOf = (book) => book.chapters.at(-1)?.chapter ?? 0;
 
 /** Whether a point is past another: a later book, or a later chapter of the same book. */
 const beyond = (a, b) => a.book > b.book || (a.book === b.book && a.chapter > b.chapter);
@@ -19,6 +22,15 @@ export function CursorBar({ wiki, cursor, onChange }) {
   const back = keptBack(wiki.books, shown);
   const past = shown.source === 'manual' && own && beyond(shown, own.book < 0 ? { book: -1, chapter: 0 } : own);
   const multiple = main.length > 1;
+
+  const ownName = own?.book >= 0 ? `Onde estou (${own.label})` : 'Onde estou na leitura';
+  const chosenBook = cursor?.manual ? main.find((b) => b.position === cursor.book) : null;
+  // A book chosen shows all of it: its last chapter.
+  const chooseBook = (event) => {
+    const book = main.find((b) => String(b.position) === event.target.value);
+    if (!book) onChange({ ...cursor, manual: false, book: undefined, chapter: undefined });
+    else onChange({ ...cursor, manual: true, book: book.position, chapter: lastOf(book) });
+  };
 
   const choose = (event) => {
     const point = pointOf(event.target.value);
@@ -47,24 +59,40 @@ export function CursorBar({ wiki, cursor, onChange }) {
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <label className="flex min-w-0 items-center gap-2 text-sm text-ink-soft">
-            <span className="shrink-0">Mostrar até</span>
-            <select
-              value={value}
-              onChange={choose}
-              className="min-h-10 min-w-0 max-w-full flex-1 rounded-lg border border-border-hairline bg-white px-3 text-sm text-ink sm:max-w-xs"
-            >
-              <option value={OWN}>{own?.book >= 0 ? `Onde estou (${own.label})` : 'Onde estou na leitura'}</option>
-              {main.map((book) => {
-                const options = book.chapters.map((c) => (
-                  <option key={c.chapter} value={pointValue(book.position, c.chapter)}>
-                    {multiple ? `${book.title} · ` : ''}{chapterName(c)}{c.read ? '' : ' (não lido)'}
-                  </option>
-                ));
-                return multiple ? <optgroup key={book.position} label={book.title}>{options}</optgroup> : options;
-              })}
-            </select>
-          </label>
+          {multiple ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-ink-soft">
+              <span className="shrink-0">Mostrar até</span>
+              <select aria-label="Livro" value={cursor?.manual ? String(cursor.book) : OWN} onChange={chooseBook} className={SELECT}>
+                <option value={OWN}>{ownName}</option>
+                {main.map((book) => (
+                  <option key={book.position} value={String(book.position)}>{book.title}</option>
+                ))}
+              </select>
+              {cursor?.manual && chosenBook && (
+                <select aria-label="Capítulo" value={value} onChange={choose} className={SELECT}>
+                  {chosenBook.chapters.map((c) => (
+                    <option key={c.chapter} value={pointValue(chosenBook.position, c.chapter)}>
+                      {c.chapter === lastOf(chosenBook) ? `${chapterName(c)} (fim do livro)` : chapterName(c)}{c.read ? '' : ' · não lido'}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ) : (
+            <label className="flex min-w-0 items-center gap-2 text-sm text-ink-soft">
+              <span className="shrink-0">Mostrar até</span>
+              <select aria-label="Mostrar até" value={value} onChange={choose} className={SELECT}>
+                <option value={OWN}>{ownName}</option>
+                {main.flatMap((book) =>
+                  book.chapters.map((c) => (
+                    <option key={c.chapter} value={pointValue(book.position, c.chapter)}>
+                      {chapterName(c)}{c.read ? '' : ' (não lido)'}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+          )}
           {wiki.hasSide && (
             <label className="flex min-h-10 items-center gap-2 text-sm text-ink-soft">
               <input type="checkbox" checked={!!cursor?.side} onChange={(e) => onChange({ ...cursor, side: e.target.checked })} className="h-4 w-4 accent-brand" />
