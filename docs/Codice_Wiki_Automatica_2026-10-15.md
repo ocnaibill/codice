@@ -66,5 +66,6 @@ Modelos locais de 4B a 8B (qwen, gemma, llama) num Mac de 16 GB travaram ou erra
 | A | Esta especificação: DEC-177 a DEC-183, RF-050 a RF-052 |
 | B | Backend: tabelas, API de leitura com o **filtro de spoiler no servidor** e um importador das saídas do lab |
 | C | A tela (DEC-183): página da entidade, índice da obra, entrada pelo leitor, grafo |
-| D | O gerador no worker: o pipeline do lab como job, com provedor configurado, progresso e retomada |
-| E | Administração: gerar e atualizar, revisar o que mudou com um livro novo, sugestões de junção, frases marcadas como erradas |
+| D1 | A aba da wiki na administração (DEC-185): provedor com a chave cifrada, fila e andamento, obras e séries com o lote e as exceções |
+| D2 | O gerador no worker: o pipeline do lab como job da fila, com progresso por etapa, retomada e a atualização de livro novo |
+| E | Revisão: o que mudou com um livro novo, sugestões de junção, frases marcadas como erradas |
