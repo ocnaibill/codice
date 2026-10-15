@@ -465,3 +465,17 @@ export function useWikiLibrary({ q = '', filter = '', page = 1, limit = 50 } = {
 
 /** Marks or unmarks a work or series as "não gerar wiki" ({ kind, id, excluded }). */
 export const useSetWikiExclusion = () => useAdminAction(({ kind, id, excluded }) => api.put('/admin/wiki-exclusions', { kind, id, excluded }));
+
+/** What is chosen for the generation (the cut for full pages, DEC-186) and, for the cut asked for, how many entities of each wiki that
+ *  exists would have a page. `min` previews a value before it is saved. */
+export function useWikiSettings(min) {
+  return useQuery({
+    queryKey: ['admin', 'wiki-settings', min ?? null],
+    queryFn: async () => (await api.get('/admin/wiki-settings', { params: min ? { min } : undefined })).data,
+    placeholderData: keepPreviousData,
+    staleTime: 0,
+  });
+}
+
+/** Sets the least chapters an entity must appear in to have a full page (owner). */
+export const useSetWikiSettings = () => useAdminAction(async (body) => (await api.put('/admin/wiki-settings', body)).data);

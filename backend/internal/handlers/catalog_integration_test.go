@@ -131,6 +131,8 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Put("/admin/wiki-provider", wikiA.SetProvider)
 	r.Delete("/admin/wiki-provider", wikiA.DeleteProvider)
 	r.Post("/admin/wiki-provider/test", wikiA.TestProvider)
+	r.Get("/admin/wiki-settings", wikiA.Settings)
+	r.Put("/admin/wiki-settings", wikiA.SetSettings)
 	r.Get("/admin/wiki-runs", wikiA.Runs)
 	r.Post("/admin/wiki-runs", wikiA.Generate)
 	r.Post("/admin/wiki-runs/all", wikiA.GenerateAll)

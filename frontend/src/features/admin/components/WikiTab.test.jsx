@@ -23,14 +23,20 @@ const run = (over = {}) => ({
 });
 const item = (over = {}) => ({ kind: 'work', id: 9, title: 'Addie', books: 1, readable: 1, excluded: false, wiki: null, run: null, ...over });
 
-async function open({ provider = ownerProvider(), runs = [], items = [item()], isOwner = true } = {}) {
+const settings = (over = {}) => ({
+  minChapters: 5, default: 5, max: 200, previewMin: 5,
+  preview: [{ projectId: 1, title: 'Scythe', entities: 166, pages: 3, would: 63, byKind: { person: 34 } }], ...over,
+});
+
+async function open({ provider = ownerProvider(), runs = [], items = [item()], isOwner = true, cut = settings() } = {}) {
   api.get.mockImplementation(async (url, config) => {
     if (url === '/admin/wiki-provider') return { data: provider };
+    if (url === '/admin/wiki-settings') return { data: { ...cut, previewMin: config?.params?.min ?? cut.minChapters } };
     if (url === '/admin/wiki-runs') return { data: { runs } };
     if (url === '/admin/wiki-library') return { data: { items: typeof items === 'function' ? items(config?.params ?? {}) : items, total: 1 } };
     throw new Error(`unexpected GET ${url}`);
   });
-  api.put.mockImplementation(async (url, body) => ({ data: url === '/admin/wiki-provider' ? ownerProvider({ model: body.model }) : {} }));
+  api.put.mockImplementation(async (url, body) => ({ data: url === '/admin/wiki-provider' ? ownerProvider({ model: body.model }) : url === '/admin/wiki-settings' ? settings({ minChapters: body.minChapters }) : {} }));
   api.post.mockImplementation(async (url) => {
     if (url === '/admin/wiki-provider/test') return { data: { ok: true, ms: 840, reply: 'OK' } };
     if (url === '/admin/wiki-runs/all') return { data: { queued: 3 } };
@@ -115,6 +121,36 @@ describe('WikiTab: the provider', () => {
   });
 });
 
+describe('WikiTab: the cut for full pages (DEC-186)', () => {
+  it('shows the cut in use and what each wiki would have, and the owner changes it', async () => {
+    await open();
+    const input = field('Mínimo de capítulos');
+    expect(input.value).toBe('5');
+    expect(view.text()).toContain('Em uso: 5 (o padrão)');
+    expect(view.text()).toContain('63 de 166 entidades teriam página com 5 capítulos ou mais');
+    expect(view.text()).toContain('(hoje: 3)');
+    const saves = () => [...document.body.querySelectorAll('button')].filter((b) => b.textContent === 'Salvar');
+    expect(saves().at(-1).disabled).toBe(true);
+    await view.type(input, '3');
+    await flush();
+    expect(api.get.mock.calls.filter(([url]) => url === '/admin/wiki-settings').at(-1)[1]).toEqual({ params: { min: 3 } });
+    expect(saves().at(-1).disabled).toBe(false);
+    await view.click(saves().at(-1));
+    expect(api.put).toHaveBeenLastCalledWith('/admin/wiki-settings', { minChapters: 3 });
+  });
+
+  it('is only read by an admin', async () => {
+    await open({ isOwner: false, provider: { configured: true, kind: 'openai', model: 'm', host: 'x.com', remote: true } });
+    expect(field('Mínimo de capítulos').disabled).toBe(true);
+    expect([...document.body.querySelectorAll('button')].some((b) => b.textContent === 'Salvar')).toBe(false);
+  });
+
+  it('says that there is nothing to count before the first wiki', async () => {
+    await open({ cut: settings({ preview: [] }) });
+    expect(view.text()).toContain('Nenhuma wiki gerada ainda');
+  });
+});
+
 describe('WikiTab: the queue', () => {
   it('says the stage, the counts, where it is, the time and what went wrong', async () => {
     await open({ runs: [run({ errors: [{ at: 'x', message: 'Limite de pedidos (429), esperando 30 s' }], resumes: 1 }), run({ id: 2, title: 'Addie', state: 'queued', stage: '', progress: {}, position: 1, startedAt: null })] });
@@ -129,6 +165,11 @@ describe('WikiTab: the queue', () => {
     expect(first).toContain('Limite de pedidos (429)');
     expect(rows[0].querySelector('[aria-current="step"]').textContent).toContain('Mapear capítulos23 de 47');
     expect(view.text()).toContain('Na fila · 1º');
+  });
+
+  it('says what the run has asked of the provider, and how much the cache already had', async () => {
+    await open({ runs: [run({ progress: { map: { done: 3, total: 9 }, usage: { requests: 1240, hits: 310, tokensIn: 1_500_000, tokensOut: 250_000, throttled: 2 } } })] });
+    expect(view.text()).toContain('1.240 pedidos · 310 já guardados · 1,8 mi de tokens · 2 esperas por limite do servidor');
   });
 
   it('pauses, resumes and cancels', async () => {

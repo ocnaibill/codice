@@ -8,12 +8,14 @@ import {
   useGenerateWiki,
   useSetWikiExclusion,
   useSetWikiProvider,
+  useSetWikiSettings,
   useTestWikiProvider,
+  useWikiSettings,
   useWikiLibrary,
   useWikiProvider,
   useWikiRuns,
 } from '../api/admin';
-import { KIND_NAMES, RUN_STATE, WIKI_STATE, silent, stagesOf, timing } from '../wikiAdminText';
+import { KIND_NAMES, RUN_STATE, WIKI_STATE, silent, stagesOf, timing, usageLine } from '../wikiAdminText';
 import { Btn, Empty, ErrorNote, Loading, Section } from './ui';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LoadError } from '../../../components/ui/LoadError';
@@ -158,6 +160,65 @@ function ProviderSection({ isOwner }) {
   );
 }
 
+/** Who gets a full page (DEC-186): the least chapters an entity must appear in. Anyone below it is still in the index, the graph and the
+ *  ficha of the others. The owner sets it; admins see it. The preview counts what an existing wiki would have with the value typed. */
+function CutSection({ isOwner }) {
+  const [typed, setTyped] = useState('');
+  const asked = Number(typed);
+  const previewMin = Number.isInteger(asked) && asked >= 1 && asked <= 200 ? asked : undefined;
+  const { data, isLoading, isError, error, refetch, isRefetching } = useWikiSettings(previewMin);
+  const save = useSetWikiSettings();
+  useEffect(() => {
+    if (data && typed === '') setTyped(String(data.minChapters));
+  }, [data, typed]);
+  if (isLoading) return <Section title="Páginas completas"><Loading /></Section>;
+  if (isError || !data) return <Section title="Páginas completas"><LoadError error={error} onRetry={refetch} retrying={isRefetching}>Não foi possível carregar a configuração.</LoadError></Section>;
+  const changed = previewMin !== undefined && previewMin !== data.minChapters;
+  return (
+    <Section
+      title="Páginas completas"
+      hint="Quem aparece em pelo menos tantos capítulos (somando os livros da série) ganha uma página completa, escrita pelo modelo. Quem fica abaixo continua no índice, no grafo e na ficha dos outros, e a página pode ser escrita à mão. Sem teto de quantidade: quanto menor o número, mais páginas e mais custo."
+    >
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm text-ink">
+          Mínimo de capítulos
+          <input
+            type="number"
+            min={1}
+            max={data.max}
+            value={typed}
+            disabled={!isOwner}
+            onChange={(e) => setTyped(e.target.value)}
+            className={`${FIELD} w-28`}
+          />
+        </label>
+        {isOwner && (
+          <Btn tone="primary" disabled={!changed || save.isPending} onClick={() => save.mutate({ minChapters: previewMin })}>
+            {save.isPending ? 'Salvando…' : 'Salvar'}
+          </Btn>
+        )}
+        <span className="pb-2 text-xs text-ink-faint">Em uso: {data.minChapters}{data.minChapters === data.default ? ' (o padrão)' : ''}</span>
+      </div>
+      <ErrorNote>{save.isError && describeError(save.error)}</ErrorNote>
+      {data.preview.length > 0 ? (
+        <ul className="mt-3 divide-y divide-border-hairline text-sm text-ink" aria-label="Quantas páginas cada wiki teria">
+          {data.preview.map((p) => (
+            <li key={p.projectId} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+              <span className="font-medium">{p.title}</span>
+              <span className="text-xs text-ink-soft">
+                {p.would} de {p.entities} entidades teriam página com {data.previewMin} {data.previewMin === 1 ? 'capítulo' : 'capítulos'} ou mais
+                {p.would !== p.pages && <span className="text-ink-faint"> (hoje: {p.pages})</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-[13px] text-ink-faint">Nenhuma wiki gerada ainda: a conta aparece aqui depois da primeira. O valor é lido quando a geração chega às páginas.</p>
+      )}
+    </Section>
+  );
+}
+
 function Stages({ run }) {
   return (
     <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px]" aria-label="Etapas">
@@ -205,6 +266,7 @@ function RunRow({ run }) {
         )}
       </div>
       {(run.state !== 'queued' || run.stage) && <Stages run={run} />}
+      {usageLine(run) && <p className="mt-1 text-[12px] text-ink-faint">{usageLine(run)}</p>}
       {silent(run) && <ErrorNote>O worker não dá notícia há mais de cinco minutos: confira se ele está em execução.</ErrorNote>}
       {errors.length > 0 && (
         <ul className="mt-2 space-y-0.5 text-[12px] text-danger">
@@ -367,6 +429,7 @@ export function WikiTab({ isOwner }) {
   return (
     <div className="flex flex-col gap-6">
       <ProviderSection isOwner={isOwner} />
+      <CutSection isOwner={isOwner} />
       <RunsSection />
       <LibrarySection canGenerate={!!provider?.configured} />
     </div>

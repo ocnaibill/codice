@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/ocnaibill/codice/backend/internal/wiki"
 )
 
 var owner = actor{idAdmin, "owner"}
@@ -315,5 +318,125 @@ func TestWikiLibrary_GenerateForAllLeavesOutTheExceptionsAndWhatHasAWiki(t *test
 	s.do(admin, "PUT", "/admin/wiki-exclusions", fmt.Sprintf(`{"kind":"work","id":%d,"excluded":false}`, excluded))
 	if l := s.wikiLibrary("?filter=excluded"); len(l.Items) != 0 {
 		t.Errorf("still excluded: %+v", l.Items)
+	}
+}
+
+// handOver puts a run at the hand-over, as the worker leaves it when it is done: stage import, state running, with its bundle.
+func (s *catalogStack) handOver(work int, origin, bundle string) int64 {
+	s.t.Helper()
+	var id int64
+	if err := s.db.QueryRow(`INSERT INTO wiki_runs (work_id, origin, state, stage, requested_by, started_at)
+		VALUES ($1, $2, 'running', 'import', $3, now()) RETURNING id`, work, origin, idAdmin).Scan(&id); err != nil {
+		s.t.Fatal(err)
+	}
+	s.exec(`INSERT INTO wiki_run_bundles (run_id, bundle) VALUES ($1, $2::jsonb)`, id, bundle)
+	return id
+}
+
+func TestWikiImporter_StoresWhatTheWorkerHandedOverClosesTheRunAndMarksANewBookToReview(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _ := s.wikiBook()
+	id := s.handOver(work, "manual", wikiBundle(wikiSHA))
+	worked, err := wiki.ImportNext(context.Background(), s.db, "importer:test")
+	if err != nil || !worked {
+		t.Fatalf("ImportNext = %v, %v", worked, err)
+	}
+	var state, review string
+	var bundles int
+	s.db.QueryRow(`SELECT state FROM wiki_runs WHERE id = $1`, id).Scan(&state)
+	s.db.QueryRow(`SELECT review FROM wiki_projects WHERE work_id = $1`, work).Scan(&review)
+	s.db.QueryRow(`SELECT count(*) FROM wiki_run_bundles`).Scan(&bundles)
+	if state != "done" || review != "none" || bundles != 0 {
+		t.Errorf("after: run %s, review %s, bundles kept %d", state, review, bundles)
+	}
+	if again, _ := wiki.ImportNext(context.Background(), s.db, "importer:test"); again {
+		t.Error("imported the same run twice")
+	}
+
+	// A book that came into a series: the wiki is updated and waits for the staff (DEC-180).
+	s.handOver(work, "new_book", wikiBundle(wikiSHA))
+	wiki.ImportNext(context.Background(), s.db, "importer:test")
+	s.db.QueryRow(`SELECT review FROM wiki_projects WHERE work_id = $1`, work).Scan(&review)
+	if review != "pending" {
+		t.Errorf("review after a new book = %q", review)
+	}
+}
+
+func TestWikiImporter_ABundleItCannotStoreFailsTheRunWithTheReason(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _ := s.wikiBook()
+	id := s.handOver(work, "manual", wikiBundle("cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"))
+	wiki.ImportNext(context.Background(), s.db, "importer:test")
+	var state, errs string
+	s.db.QueryRow(`SELECT state, errors::text FROM wiki_runs WHERE id = $1`, id).Scan(&state, &errs)
+	if state != "failed" || !strings.Contains(errs, "não está no acervo") {
+		t.Errorf("run = %s, errors = %s", state, errs)
+	}
+	var projects int
+	s.db.QueryRow(`SELECT count(*) FROM wiki_projects`).Scan(&projects)
+	if projects != 0 {
+		t.Errorf("a wiki was stored from a bundle that failed")
+	}
+}
+
+func TestWikiSettings_TheCutIsTheOwnersAndThePreviewCountsWhatWouldHaveAPage(t *testing.T) {
+	s := newCatalogStack(t)
+	s.wikiBook()
+	if rec := s.importWiki(admin, wikiBundle(wikiSHA)); rec.Code != 201 {
+		t.Fatalf("import: %d %s", rec.Code, rec.Body.String())
+	}
+	get := func(query string) (min int, preview []wiki.PreviewItem) {
+		rec := s.do(admin, "GET", "/admin/wiki-settings"+query, "")
+		var out struct {
+			MinChapters int                `json:"minChapters"`
+			PreviewMin  int                `json:"previewMin"`
+			Preview     []wiki.PreviewItem `json:"preview"`
+		}
+		json.Unmarshal(rec.Body.Bytes(), &out)
+		return out.PreviewMin, out.Preview
+	}
+	if min, _ := get(""); min != wiki.DefaultMinChapters {
+		t.Errorf("default cut = %d", min)
+	}
+	// The bundle has ana-maria in chapters 1 to 3, mestre in 1 and vilao in 3.
+	_, one := get("?min=1")
+	_, two := get("?min=2")
+	_, big := get("?min=4")
+	if len(one) != 1 || one[0].Entities != 3 || one[0].Would != 3 || one[0].Pages != 2 || one[0].ByKind["person"] != 3 {
+		t.Errorf("min=1: %+v", one)
+	}
+	if two[0].Would != 1 || big[0].Would != 0 {
+		t.Errorf("min=2: %+v, min=4: %+v", two, big)
+	}
+	if rec := s.do(owner, "PUT", "/admin/wiki-settings", `{"minChapters":3}`); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"minChapters":3`) {
+		t.Errorf("set: %d %s", rec.Code, rec.Body.String())
+	}
+	for _, body := range []string{`{"minChapters":0}`, `{"minChapters":500}`, `{"minChapters":"x"}`, `{}`} {
+		if rec := s.do(owner, "PUT", "/admin/wiki-settings", body); rec.Code != 400 {
+			t.Errorf("%s accepted: %d", body, rec.Code)
+		}
+	}
+	if min, _ := get(""); min != 3 {
+		t.Errorf("cut after saving = %d", min)
+	}
+}
+
+func TestWikiDelete_TakesWhatTheModelAnsweredForThatWikiAlong(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _ := s.wikiBook()
+	if rec := s.importWiki(admin, wikiBundle(wikiSHA)); rec.Code != 201 {
+		t.Fatalf("import: %d", rec.Code)
+	}
+	other := s.readableWork("Outra")
+	s.exec(`INSERT INTO wiki_llm_cache (key, response, work_id) VALUES ('k1', '{}', $1), ('k2', '{}', $2)`, work, other)
+	var id int64
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	if rec := s.do(admin, "DELETE", fmt.Sprintf("/admin/wiki/%d", id), ""); rec.Code != 204 {
+		t.Fatalf("delete: %d", rec.Code)
+	}
+	var keys string
+	s.db.QueryRow(`SELECT string_agg(key, ',') FROM wiki_llm_cache`).Scan(&keys)
+	if keys != "k2" {
+		t.Errorf("cache after deleting = %q", keys)
 	}
 }

@@ -435,6 +435,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(owner).Put("/admin/wiki-provider", wikiAdmin.SetProvider)
 	r.With(owner).Delete("/admin/wiki-provider", wikiAdmin.DeleteProvider)
 	r.With(owner).Post("/admin/wiki-provider/test", wikiAdmin.TestProvider)
+	r.With(staff).Get("/admin/wiki-settings", wikiAdmin.Settings)
+	r.With(owner).Put("/admin/wiki-settings", wikiAdmin.SetSettings)
 	r.With(staff).Get("/admin/wiki-runs", wikiAdmin.Runs)
 	r.With(staff).Post("/admin/wiki-runs", wikiAdmin.Generate)
 	r.With(staff).Post("/admin/wiki-runs/all", wikiAdmin.GenerateAll)

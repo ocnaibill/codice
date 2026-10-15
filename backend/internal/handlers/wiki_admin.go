@@ -284,3 +284,43 @@ func (h *WikiAdminHandler) SetExcluded(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
+
+// Settings says what is chosen for the generation (who gets a full page) and, for the cut asked for (?min=N, or the chosen one), how
+// many entities of each wiki that already exists would have one. Owner and admins see it; only the owner changes it.
+func (h *WikiAdminHandler) Settings(w http.ResponseWriter, r *http.Request) {
+	s, err := wiki.LoadSettings(r.Context(), h.DB)
+	if err != nil {
+		log.Println("Error reading the wiki settings:", err)
+		http.Error(w, "Error reading the wiki settings", http.StatusInternalServerError)
+		return
+	}
+	min := s.MinChapters
+	if n, err := strconv.Atoi(r.URL.Query().Get("min")); err == nil && n >= 1 && n <= wiki.MaxMinChapters {
+		min = n
+	}
+	preview, err := wiki.Preview(r.Context(), h.DB, min)
+	if err != nil {
+		log.Println("Error previewing the wiki cut:", err)
+		http.Error(w, "Error reading the wiki settings", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"minChapters": s.MinChapters, "default": wiki.DefaultMinChapters, "max": wiki.MaxMinChapters,
+		"previewMin": min, "preview": preview})
+}
+
+// SetSettings stores the cut for full pages (owner). It is read when a generation reaches the pages, so it also changes a run that
+// is already mapping.
+func (h *WikiAdminHandler) SetSettings(w http.ResponseWriter, r *http.Request) {
+	var req wiki.Settings
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&req); err != nil || req.MinChapters < 1 || req.MinChapters > wiki.MaxMinChapters {
+		http.Error(w, "O mínimo de capítulos é um número de 1 a "+strconv.Itoa(wiki.MaxMinChapters)+".", http.StatusBadRequest)
+		return
+	}
+	if err := wiki.SaveSettings(r.Context(), h.DB, req, currentUserID(r)); err != nil {
+		log.Println("Error saving the wiki settings:", err)
+		http.Error(w, "Error saving the wiki settings", http.StatusInternalServerError)
+		return
+	}
+	_ = audit.Record(r.Context(), h.DB, currentUserID(r), "wiki.settings", "settings", wiki.SettingGeneration, map[string]any{"minChapters": req.MinChapters})
+	h.Settings(w, r)
+}

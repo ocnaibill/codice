@@ -196,6 +196,8 @@ func main() {
 			types = append(types, t)
 		}
 	}
+	// The wiki the worker generated is stored here, by the importer that owns the bundle format (DEC-185).
+	go wiki.RunImporter(context.Background(), db, 5*time.Second)
 	startFileJobs(context.Background(), &jobs.Runner{
 		DB: db, Owner: jobs.NewOwnerName("api"), Types: types, MaxRunning: 1, LeaseSeconds: 300, Handlers: fileHandlers,
 	}, mover, &storage.Trash{DB: db, Root: storagePath})

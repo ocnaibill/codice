@@ -141,6 +141,7 @@ var staffRoutes = []route{
 	{"POST", "/admin/wiki/import"},
 	{"DELETE", "/admin/wiki/1"},
 	{"GET", "/admin/wiki-provider"},
+	{"GET", "/admin/wiki-settings"},
 	{"GET", "/admin/wiki-runs"},
 	{"POST", "/admin/wiki-runs"},
 	{"POST", "/admin/wiki-runs/all"},
@@ -416,7 +417,7 @@ func TestOwnerOnlyRoutes_ThatNeedTheDatabaseAreStillGuarded(t *testing.T) {
 	// Removing an authorised directory reaches the database once past the guard,
 	// so only the guard itself is checked here.
 	h := testRouter(t)
-	for _, rt := range []route{{"DELETE", "/admin/storage/roots/1"}, {"GET", "/admin/trash/policy/preview"}, {"DELETE", "/ownership/transfer"}, {"GET", "/admin/ldap"}, {"POST", "/admin/ldap/check"}, {"GET", "/admin/embeddings"}, {"PUT", "/admin/embeddings"}, {"POST", "/admin/dictionaries/wikt-pt/install"}, {"POST", "/admin/dictionaries/wikt-pt/cancel"}, {"DELETE", "/admin/dictionaries/wikt-pt"}, {"GET", "/admin/ocr/settings"}, {"PUT", "/admin/ocr/settings"}, {"GET", "/admin/models"}, {"PUT", "/admin/models/comic-ocr"}, {"POST", "/admin/models/comic-ocr/reread"}, {"PUT", "/admin/wiki-provider"}, {"DELETE", "/admin/wiki-provider"}, {"POST", "/admin/wiki-provider/test"}} {
+	for _, rt := range []route{{"DELETE", "/admin/storage/roots/1"}, {"GET", "/admin/trash/policy/preview"}, {"DELETE", "/ownership/transfer"}, {"GET", "/admin/ldap"}, {"POST", "/admin/ldap/check"}, {"GET", "/admin/embeddings"}, {"PUT", "/admin/embeddings"}, {"POST", "/admin/dictionaries/wikt-pt/install"}, {"POST", "/admin/dictionaries/wikt-pt/cancel"}, {"DELETE", "/admin/dictionaries/wikt-pt"}, {"GET", "/admin/ocr/settings"}, {"PUT", "/admin/ocr/settings"}, {"GET", "/admin/models"}, {"PUT", "/admin/models/comic-ocr"}, {"POST", "/admin/models/comic-ocr/reread"}, {"PUT", "/admin/wiki-provider"}, {"PUT", "/admin/wiki-settings"}, {"DELETE", "/admin/wiki-provider"}, {"POST", "/admin/wiki-provider/test"}} {
 		for _, role := range []string{"admin", "reader"} {
 			if rec := do(h, rt.method, rt.path, tokenFor(t, role), ""); rec.Code != http.StatusForbidden {
 				t.Errorf("%s %s as %s: got %d, want 403", rt.method, rt.path, role, rec.Code)

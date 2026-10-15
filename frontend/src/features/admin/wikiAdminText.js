@@ -86,3 +86,17 @@ export function silent(run, now = Date.now(), limitMs = 5 * 60 * 1000) {
   if (run.state !== 'running' || !run.heartbeatAt) return false;
   return now - new Date(run.heartbeatAt).getTime() > limitMs;
 }
+
+const NUMBER = new Intl.NumberFormat('pt-BR');
+
+/** What the run has asked of the provider so far: requests, the ones the cache already had, and tokens. Empty before it asked anything. */
+export function usageLine(run) {
+  const u = run.progress?.usage;
+  if (!u || (!u.requests && !u.hits)) return '';
+  const parts = [`${NUMBER.format(u.requests)} ${u.requests === 1 ? 'pedido' : 'pedidos'}`];
+  if (u.hits) parts.push(`${NUMBER.format(u.hits)} já guardados`);
+  const tokens = (u.tokensIn || 0) + (u.tokensOut || 0);
+  if (tokens) parts.push(tokens >= 1e6 ? `${(tokens / 1e6).toFixed(1).replace('.', ',')} mi de tokens` : `${NUMBER.format(Math.round(tokens / 100) * 100)} tokens`);
+  if (u.throttled) parts.push(`${u.throttled} esperas por limite do servidor`);
+  return parts.join(' · ');
+}
