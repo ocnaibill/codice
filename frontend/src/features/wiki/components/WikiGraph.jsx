@@ -6,6 +6,8 @@ const W = 1000;
 const H = 720;
 // Names written on the graph without hovering: the most present ones, so that it can be read and does not become a blot.
 const LABELED = 30;
+// Past this many links, the graph opens showing only those seen at least twice.
+const BUSY = 300;
 
 /**
  * The whole graph of the wiki up to the cursor (DEC-182): every kind of entity, so that the places, events and objects of the story are
@@ -14,7 +16,9 @@ const LABELED = 30;
  */
 export function WikiGraph({ query, kind, focus, onOpen }) {
   const { data: graph, isLoading, isError, error, refetch, isRefetching } = query;
-  const [weight, setWeight] = React.useState(1);
+  // A big graph starts without the links seen only once, which make it a blot; the person may ask for them.
+  const [chosenWeight, setWeight] = React.useState(null);
+  const weight = chosenWeight ?? ((graph?.edges?.length ?? 0) > BUSY ? 2 : 1);
   const [chosen, setChosen] = React.useState(focus ?? null);
   const { nodes, edges, alone } = React.useMemo(() => filterGraph(graph, { kind, weight }), [graph, kind, weight]);
   const places = React.useMemo(() => layoutGraph(nodes, edges), [nodes, edges]);

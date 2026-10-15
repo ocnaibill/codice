@@ -344,4 +344,22 @@ describe('WikiPage: the graph', () => {
     expect(container.querySelectorAll('[aria-label="Entidades e vínculos"] g[role="button"]')).toHaveLength(3);
     expect(text()).toContain('1 sem vínculo neste filtro');
   });
+
+  it('opens a big graph without the links seen only once', async () => {
+    const many = Array.from({ length: 301 }, (_, i) => ({ a: 'citra', b: `n${i}`, weight: i === 0 ? 2 : 1, labels: [] }));
+    const big = { ...graph, nodes: [...graph.nodes, ...many.map((e) => ({ slug: e.b, name: e.b, kind: 'other', page: false, appearances: 1 }))], edges: many };
+    api.get.mockImplementation(async (url) => {
+      if (url === '/auth/me') return { data: { id: 'u', role: 'reader' } };
+      if (url === `/works/${WORK}/wiki`) return { data: { wiki: wiki() } };
+      if (url === `/wiki/${PROJECT}/graph`) return { data: big };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    useGlobalStore.setState({ wikiWorkId: WORK, wikiEntity: null, wikiGraph: true });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WikiPage /></QueryClientProvider>); });
+    await flush();
+    await flush();
+    expect(container.querySelectorAll('[aria-label="Entidades e vínculos"] g[role="button"]')).toHaveLength(2);
+    expect([...container.querySelectorAll('select')].find((s) => s.closest('[aria-label="Grafo da wiki"]')).value).toBe('2');
+  });
 });
