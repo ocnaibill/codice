@@ -3,6 +3,7 @@ import { LoadError } from '../../../components/ui/LoadError';
 import { useHideSentence, useWikiEntity } from '../api/useWiki';
 import { GROUPS, kindName, plural, pointLabel } from '../wiki';
 import { IdentityPanel } from './IdentityPanel';
+import { ManualPanel } from './ManualPanel';
 import { MiniGraph } from './MiniGraph';
 
 const CARD = 'rounded-xl border border-border-hairline bg-white p-5 shadow-sm lg:p-6';
@@ -32,6 +33,11 @@ function Sentences({ sentences }) {
     <React.Fragment key={s.id}>
       {i > 0 && ' '}
       {s.hidden ? <del className="text-ink-faint" title="Marcada como errada: nenhum leitor a vê">{s.text}</del> : s.text}
+      {s.by && (
+        <sup className="ml-0.5 text-[11px] text-ink-faint" title={`Escrito à mão por ${s.by}`} aria-label={`Escrito à mão por ${s.by}`}>
+          ✎
+        </sup>
+      )}
       {s.hidden && correct && (
         <button type="button" onClick={() => correct.mark(s, false)} className="ml-1 text-[12px] text-brand hover:underline">
           Mostrar de novo
@@ -376,6 +382,7 @@ export function WikiEntity({ project, books, index, slug, cursor, graph, staff =
         <Ficha page={page} onOpen={onOpen} />
         <MiniGraph graph={graph} slug={page.slug} onOpen={onOpen} onExpand={onExpandGraph} />
         {staff && <IdentityPanel projectId={project.id} page={page} index={index} onOpen={onOpen} />}
+        {staff && <ManualPanel projectId={project.id} page={page} books={books} index={index} shown={shown} onGone={() => onOpen(null)} />}
       </aside>
       <article className={`flex min-w-0 flex-col gap-6 lg:col-start-1 ${page.who ? 'lg:row-start-3' : 'lg:row-start-2'}`}>
         <Biography biography={page.biography} inProgress={page.inProgress} hidden={page.hidden} cursor={shown} />

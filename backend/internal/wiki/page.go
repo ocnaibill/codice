@@ -18,6 +18,8 @@ type SentenceView struct {
 	Refs []int  `json:"refs"` // numbers of the references below
 	// Hidden is a sentence the staff marked as wrong (RF-052): no reader gets it, and the staff gets it struck through, to show again.
 	Hidden bool `json:"hidden,omitempty"`
+	// By is who wrote it by hand (DEC-186); empty for what the generator wrote.
+	By string `json:"by,omitempty"`
 }
 
 type Paragraph []SentenceView
@@ -136,6 +138,7 @@ type sentenceRow struct {
 	position  int
 	text      string
 	hidden    bool
+	by        string
 	refs      []refRow
 }
 
@@ -153,6 +156,7 @@ type sectionRow struct {
 	book, from, to sql.NullInt64
 	part           string
 	position       int
+	by             string
 	sentences      []*sentenceRow
 }
 
@@ -239,7 +243,7 @@ func (p *Project) Page(ctx context.Context, db *sql.DB, slug string, c Cursor, s
 	refNumber := map[Point]int{}
 	refs := map[Point]*ReferenceView{}
 	number := func(s *sentenceRow) SentenceView {
-		sv := SentenceView{ID: s.id, Text: s.text, Refs: []int{}, Hidden: s.hidden}
+		sv := SentenceView{ID: s.id, Text: s.text, Refs: []int{}, Hidden: s.hidden, By: s.by}
 		for _, r := range s.refs {
 			pt := Point{r.book, r.chapter}
 			n, ok := refNumber[pt]
@@ -441,7 +445,7 @@ func sortedPoints(m map[Point]*ReferenceView) []Point {
 }
 
 func loadSections(ctx context.Context, db *sql.DB, entity int64, staff bool) ([]*sectionRow, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, kind, book, chapter_from, chapter_to, part, position FROM wiki_sections WHERE entity_id = $1 ORDER BY position`, entity)
+	rows, err := db.QueryContext(ctx, `SELECT id, kind, book, chapter_from, chapter_to, part, position, COALESCE(manual_by, '') FROM wiki_sections WHERE entity_id = $1 ORDER BY position, id`, entity)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +453,7 @@ func loadSections(ctx context.Context, db *sql.DB, entity int64, staff bool) ([]
 	byID := map[int64]*sectionRow{}
 	for rows.Next() {
 		s := &sectionRow{}
-		if err := rows.Scan(&s.id, &s.kind, &s.book, &s.from, &s.to, &s.part, &s.position); err != nil {
+		if err := rows.Scan(&s.id, &s.kind, &s.book, &s.from, &s.to, &s.part, &s.position, &s.by); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -474,6 +478,7 @@ func loadSections(ctx context.Context, db *sql.DB, entity int64, staff bool) ([]
 			rows.Close()
 			return nil, err
 		}
+		st.by = byID[st.section].by
 		byID[st.section].sentences = append(byID[st.section].sentences, st)
 		bySentence[st.id] = st
 	}

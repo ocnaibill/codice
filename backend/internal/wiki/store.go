@@ -442,6 +442,10 @@ func Import(ctx context.Context, db *sql.DB, b *Bundle, userID string) (int64, e
 	if err := applyRules(ctx, tx, projectID); err != nil {
 		return 0, err
 	}
+	// And what the staff wrote by hand (DEC-186) is put back.
+	if err := applyManualItems(ctx, tx, projectID); err != nil {
+		return 0, err
+	}
 	// What this update brought that the older content did not have, for the staff to review (DEC-180).
 	if oldID.Valid {
 		body, err := json.Marshal(diffBundle(before, b))

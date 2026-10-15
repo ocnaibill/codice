@@ -241,7 +241,7 @@ export function WikiPage() {
               onOpenAt={openAt}
             />
           ) : (
-            <WikiIndex index={wiki.index} kind={kind} onOpen={openEntity} />
+            <WikiIndex index={wiki.index} kind={kind} onOpen={openEntity} staff={staff} projectId={wiki.project.id} books={wiki.books} shown={wiki.cursor} />
           )}
 
           <ProviderNote project={wiki.project} />

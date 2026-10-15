@@ -493,3 +493,90 @@ func (h *WikiHandler) ForgetIdentityRule(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
+
+// CreateManual writes what the staff typed (an entity, a section, a tie, a state, an edge), all or nothing (DEC-186).
+func (h *WikiHandler) CreateManual(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	var req struct {
+		Items []wiki.ManualInput `json:"items"`
+	}
+	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&req) != nil {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	var bad wiki.ErrIdentity
+	ids, slugs, err := wiki.CreateManual(r.Context(), h.DB, id, req.Items, currentUserID(r))
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case errors.As(err, &bad):
+		http.Error(w, bad.Msg, http.StatusBadRequest)
+	case err != nil:
+		log.Println("Error writing a manual wiki item:", err)
+		http.Error(w, "Error saving", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusCreated, map[string]any{"ids": ids, "slugs": slugs})
+	}
+}
+
+// ListManual lists what was written by hand about an entity.
+func (h *WikiHandler) ListManual(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	if !ok {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	items, err := wiki.ListManual(r.Context(), h.DB, id, r.URL.Query().Get("entity"))
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error listing manual wiki items:", err)
+		http.Error(w, "Error reading the wiki", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	}
+}
+
+// UpdateManual rewrites an item.
+func (h *WikiHandler) UpdateManual(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	item, err := strconv.ParseInt(chi.URLParam(r, "item"), 10, 64)
+	var in wiki.ManualInput
+	if !ok || err != nil || json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&in) != nil {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	var bad wiki.ErrIdentity
+	switch err := wiki.UpdateManual(r.Context(), h.DB, id, item, in, currentUserID(r)); {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case errors.As(err, &bad):
+		http.Error(w, bad.Msg, http.StatusBadRequest)
+	case err != nil:
+		log.Println("Error updating a manual wiki item:", err)
+		http.Error(w, "Error saving", http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// DeleteManual takes an item away.
+func (h *WikiHandler) DeleteManual(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	item, err := strconv.ParseInt(chi.URLParam(r, "item"), 10, 64)
+	if !ok || err != nil {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	removed, err := wiki.DeleteManual(r.Context(), h.DB, id, item, currentUserID(r))
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error deleting a manual wiki item:", err)
+		http.Error(w, "Error saving", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"removed": removed})
+	}
+}

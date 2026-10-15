@@ -597,3 +597,193 @@ func TestWikiIdentity_KeepingApartAnsweredTheSuggestionAndTakingAMentionAwayIsKe
 		t.Error("the rule was not forgotten")
 	}
 }
+
+func (s *catalogStack) manual(a actor, project int64, items string) (int, string) {
+	s.t.Helper()
+	rec := s.do(a, "POST", fmt.Sprintf("/wiki/%d/manual", project), `{"items":`+items+`}`)
+	return rec.Code, rec.Body.String()
+}
+
+func TestWikiManual_TheStaffWritesAPageAnEventAndTiesAndTheyOutliveANewGeneration(t *testing.T) {
+	s := newCatalogStack(t)
+	work, file := s.wikiBook()
+	bundle := wikiBundle(wikiSHA)
+	if rec := s.importWiki(admin, bundle); rec.Code != 201 {
+		t.Fatalf("import: %d", rec.Code)
+	}
+	var id int64
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	readTo(s, ana, file, "Text/c2.xhtml")
+	readTo(s, admin, file, "Text/c2.xhtml")
+
+	// A page for who has none ("mestre"), written from chapter 2; an event in chapter 3 with who took part in it; a state; a tie.
+	code, body := s.manual(admin, id, `[
+		{"kind":"section","entity":"mestre","book":0,"chapter":1,"data":{"kind":"who","paragraphs":["O Mestre é o dono da oficina da cidade.\n\nEnsina o ofício a quem chega."]}},
+		{"kind":"entity","name":"A Coroação","book":0,"chapter":3,"data":{"kind":"event","aliases":["o dia da coroa"]}},
+		{"kind":"edge","entity":"ana-maria","other":"mestre","book":0,"chapter":1,"data":{"label":"discípula do ofício"}},
+		{"kind":"state","entity":"mestre","book":0,"chapter":2,"data":{"text":"O Mestre fecha a oficina por um dia."}},
+		{"kind":"relation","entity":"mestre","otherName":"a Guilda dos Ofícios","book":0,"chapter":1,"data":{"group":"places","role":"sede"}}
+	]`)
+	if code != 201 {
+		t.Fatalf("manual: %d %s", code, body)
+	}
+	one := func(q string) string { return s.scalar(q) }
+	if one(`SELECT page::text FROM wiki_entities WHERE slug = 'mestre'`) != "true" {
+		t.Error("an entity that got a page of its own still says it has none")
+	}
+	pageOf := func(a actor, slug string) string {
+		return s.do(a, "GET", fmt.Sprintf("/wiki/%d/entities/%s", id, slug), "").Body.String()
+	}
+	got := pageOf(ana, "mestre")
+	for _, want := range []string{"O Mestre é o dono da oficina da cidade.", "Ensina o ofício a quem chega.", `"by":"adm"`, "Escrito à mão por adm",
+		"O Mestre fecha a oficina por um dia.", "a Guilda dos Ofícios"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the page lacks %q: %s", want, got)
+		}
+	}
+	// The event is from chapter 3: Ana is at chapter 2, so it is not found, and not in the graph; the staff reading on sees it.
+	if rec := s.do(ana, "GET", fmt.Sprintf("/wiki/%d/entities/a-coroacao", id), ""); rec.Code != 404 {
+		t.Errorf("an event from chapter 3 for a reader at chapter 2: %d", rec.Code)
+	}
+	if g := s.do(ana, "GET", fmt.Sprintf("/wiki/%d/graph", id), "").Body.String(); strings.Contains(g, "a-coroacao") {
+		t.Errorf("the graph leaks the event: %s", g)
+	}
+	if rec := s.do(ana, "GET", fmt.Sprintf("/wiki/%d/entities/ana-maria?book=0&chapter=3", id), ""); rec.Code != 200 {
+		t.Fatalf("ana looking further: %d", rec.Code)
+	}
+	if rec := s.do(ana, "GET", fmt.Sprintf("/wiki/%d/entities/a-coroacao?book=0&chapter=3", id), ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"name":"A Coroação"`) {
+		t.Errorf("the event from the point it happens: %d %s", rec.Code, rec.Body.String())
+	}
+
+	if got := s.do(ana, "GET", fmt.Sprintf("/wiki/%d/entities/a-coroacao?book=0&chapter=3", id), "").Body.String(); !strings.Contains(got, "o dia da coroa") {
+		t.Errorf("the event lacks its other name: %s", got)
+	}
+
+	// A new generation, which knows nothing of it, gets all of it back.
+	if rec := s.importWiki(admin, bundle); rec.Code != 201 {
+		t.Fatalf("regenerate: %d", rec.Code)
+	}
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	if got := pageOf(ana, "mestre"); !strings.Contains(got, "Ensina o ofício a quem chega.") || !strings.Contains(got, "a Guilda dos Ofícios") {
+		t.Errorf("a generation lost what was written by hand: %s", got)
+	}
+	if one(`SELECT count(*)::text FROM wiki_entities WHERE slug = 'a-coroacao' AND kind = 'event'`) != "1" ||
+		one(`SELECT count(*)::text FROM wiki_aliases a JOIN wiki_entities e ON e.id = a.entity_id WHERE e.slug = 'a-coroacao'`) != "1" ||
+		one(`SELECT count(*)::text FROM wiki_edges d JOIN wiki_entities a ON a.id = d.a_id WHERE a.slug = 'ana-maria' AND d.label = 'discípula do ofício'`) != "1" {
+		t.Errorf("the event, its alias or the edge did not come back: %s / %s / %s",
+			one(`SELECT count(*)::text FROM wiki_entities WHERE slug = 'a-coroacao'`),
+			one(`SELECT count(*)::text FROM wiki_aliases a JOIN wiki_entities e ON e.id = a.entity_id WHERE e.slug = 'a-coroacao'`),
+			one(`SELECT count(*)::text FROM wiki_edges d JOIN wiki_entities a ON a.id = d.a_id WHERE d.label = 'aprendiz de'`))
+	}
+
+	// Edit the text, then take it away: from the wiki and from the next generations.
+	rec := s.do(admin, "GET", fmt.Sprintf("/wiki/%d/manual?entity=mestre", id), "")
+	var list struct {
+		Items []struct {
+			ID   int64  `json:"id"`
+			Kind string `json:"kind"`
+		} `json:"items"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &list)
+	var sectionID int64
+	for _, it := range list.Items {
+		if it.Kind == "section" {
+			sectionID = it.ID
+		}
+	}
+	if len(list.Items) < 3 || sectionID == 0 { // section, state, relation and the edge that ends at it
+		t.Fatalf("list = %s", rec.Body.String())
+	}
+	put := s.do(admin, "PUT", fmt.Sprintf("/wiki/%d/manual/%d", id, sectionID), `{"book":0,"chapter":1,"data":{"kind":"who","paragraphs":["O Mestre agora tem um aprendiz."]}}`)
+	if put.Code != 204 {
+		t.Fatalf("update: %d %s", put.Code, put.Body.String())
+	}
+	if got := pageOf(ana, "mestre"); !strings.Contains(got, "O Mestre agora tem um aprendiz.") || strings.Contains(got, "dono da oficina") {
+		t.Errorf("the update did not replace the text: %s", got)
+	}
+	if rec := s.do(admin, "DELETE", fmt.Sprintf("/wiki/%d/manual/%d", id, sectionID), ""); rec.Code != 200 {
+		t.Fatalf("delete: %d", rec.Code)
+	}
+	if got := pageOf(ana, "mestre"); strings.Contains(got, "O Mestre agora tem um aprendiz.") {
+		t.Errorf("the text is still there: %s", got)
+	}
+	if rec := s.importWiki(admin, bundle); rec.Code != 201 {
+		t.Fatalf("regenerate: %d", rec.Code)
+	}
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	if got := pageOf(ana, "mestre"); strings.Contains(got, "O Mestre agora tem um aprendiz.") {
+		t.Errorf("a generation brought back what was taken away: %s", got)
+	}
+}
+
+func TestWikiManual_WhatIsNotAllowedIsRefusedAndTakingAnEntityTakesWhatWasWrittenAboutIt(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _ := s.wikiBook()
+	if rec := s.importWiki(admin, wikiBundle(wikiSHA)); rec.Code != 201 {
+		t.Fatalf("import: %d", rec.Code)
+	}
+	var id int64
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	for name, items := range map[string]string{
+		"a point the wiki does not have": `[{"kind":"state","entity":"mestre","book":0,"chapter":99,"data":{"text":"x"}}]`,
+		"an empty text":                  `[{"kind":"section","entity":"mestre","book":0,"chapter":1,"data":{"kind":"who","paragraphs":["   "]}}]`,
+		"an unknown group":               `[{"kind":"relation","entity":"mestre","otherName":"x","book":0,"chapter":1,"data":{"group":"amigos"}}]`,
+		"an unknown kind of entity":      `[{"kind":"entity","name":"Algo","book":0,"chapter":1,"data":{"kind":"deus"}}]`,
+		"an edge with nobody":            `[{"kind":"edge","entity":"mestre","book":0,"chapter":1,"data":{}}]`,
+		"an entity that is not there":    `[{"kind":"state","entity":"fantasma","book":0,"chapter":1,"data":{"text":"x"}}]`,
+	} {
+		if code, _ := s.manual(admin, id, items); code != 400 && code != 404 {
+			t.Errorf("%s: %d", name, code)
+		}
+	}
+	if s.scalar(`SELECT count(*)::text FROM wiki_manual_items`) != "0" {
+		t.Error("something was kept from a request that was refused")
+	}
+	// All or nothing: a good item beside a bad one is not kept.
+	if code, _ := s.manual(admin, id, `[{"kind":"state","entity":"mestre","book":0,"chapter":1,"data":{"text":"bom"}},{"kind":"state","entity":"mestre","book":0,"chapter":99,"data":{"text":"ruim"}}]`); code != 400 {
+		t.Errorf("a batch with a bad item: %d", code)
+	}
+	if s.scalar(`SELECT count(*)::text FROM wiki_manual_items`) != "0" {
+		t.Error("a batch was kept in part")
+	}
+
+	code, body := s.manual(admin, id, `[
+		{"kind":"entity","name":"Cidade Nova","book":0,"chapter":1,"data":{"kind":"place"}},
+		{"kind":"state","entity":"ana-maria","book":0,"chapter":1,"data":{"text":"Ana vê a Cidade Nova."}},
+		{"kind":"relation","entity":"ana-maria","otherName":"Cidade Nova","book":0,"chapter":1,"data":{"group":"places","role":"onde chega"}}]`)
+	if code != 201 {
+		t.Fatalf("manual: %d %s", code, body)
+	}
+	var entityItem int64
+	s.db.QueryRow(`SELECT id FROM wiki_manual_items WHERE kind = 'entity'`).Scan(&entityItem)
+	rec := s.do(admin, "DELETE", fmt.Sprintf("/wiki/%d/manual/%d", id, entityItem), "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"removed":2`) {
+		t.Errorf("delete the entity: %d %s", rec.Code, rec.Body.String())
+	}
+	if s.scalar(`SELECT count(*)::text FROM wiki_entities WHERE slug = 'cidade-nova'`) != "0" || s.scalar(`SELECT count(*)::text FROM wiki_manual_items`) != "1" {
+		t.Error("the entity or what depended on it is still there")
+	}
+}
+
+func TestWikiManual_ANewEntityCanBeWrittenAboutInTheSameRequest(t *testing.T) {
+	s := newCatalogStack(t)
+	work, _ := s.wikiBook()
+	if rec := s.importWiki(admin, wikiBundle(wikiSHA)); rec.Code != 201 {
+		t.Fatalf("import: %d", rec.Code)
+	}
+	var id int64
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	code, body := s.manual(admin, id, `[
+		{"kind":"entity","name":"O Baile","book":0,"chapter":1,"data":{"kind":"event"}},
+		{"kind":"section","entity":"@0","book":0,"chapter":1,"data":{"kind":"who","paragraphs":["Um baile na praça."]}},
+		{"kind":"edge","entity":"@0","other":"ana-maria","book":0,"chapter":1,"data":{"label":"Ana vai ao baile"}}]`)
+	if code != 201 || !strings.Contains(body, `"slugs":["o-baile","",""]`) {
+		t.Fatalf("manual: %d %s", code, body)
+	}
+	if s.scalar(`SELECT count(*)::text FROM wiki_edges WHERE label = 'Ana vai ao baile'`) != "1" {
+		t.Error("the edge of the new entity was not written")
+	}
+	if code, _ := s.manual(admin, id, `[{"kind":"state","entity":"@3","book":0,"chapter":1,"data":{"text":"x"}}]`); code != 400 {
+		t.Errorf("a reference to an item that is not there: %d", code)
+	}
+}

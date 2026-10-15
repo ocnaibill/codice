@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chapterName, filterGraph, pointLabel, filterIndex, keptBack, kindCounts, layoutGraph, neighbourhood, pointOf, pointValue } from './wiki';
+import { describeManual, manualItem, newEntityItems, pointOptions, chapterName, filterGraph, pointLabel, filterIndex, keptBack, kindCounts, layoutGraph, neighbourhood, pointOf, pointValue } from './wiki';
 
 const book = (position, n, side = false) => ({ position, side, title: `L${position}`, chapters: Array.from({ length: n }, (_, i) => ({ chapter: i + 1 })) });
 
@@ -107,5 +107,45 @@ describe('a point inside the page', () => {
     expect(pointLabel('Addie, Parte Três · IX', one)).toBe('Parte Três · IX');
     expect(pointLabel('Addie · 3', one)).toBe('3');
     expect(pointLabel('Addie, Parte Três · IX', [{ title: 'Addie' }, { title: 'Outro' }])).toBe('Addie, Parte Três · IX');
+  });
+});
+
+describe('what is written by hand (DEC-186)', () => {
+  it('lists every chapter of every book as a point, with the book only when there are several', () => {
+    expect(pointOptions([book(0, 2)]).map((o) => o.value)).toEqual(['0:1', '0:2']);
+    expect(pointOptions([book(0, 1), book(1, 1)]).map((o) => o.label)).toEqual(['L0 · Capítulo 1', 'L1 · Capítulo 1']);
+  });
+
+  it('builds the item of each kind, and nothing while something is missing', () => {
+    const slug = 'citra';
+    expect(manualItem('section', { point: '0:3', text: '  Um.\n\n\nDois.  ', section: 'bio', part: ' Parte 1 ' }, slug)).toEqual({
+      kind: 'section', entity: slug, book: 0, chapter: 3, data: { kind: 'bio', part: 'Parte 1', paragraphs: ['Um.', 'Dois.'] },
+    });
+    // a part name only belongs to the biography
+    expect(manualItem('section', { point: '0:3', text: 'Um.', section: 'who', part: 'x' }, slug).data.part).toBe('');
+    expect(manualItem('section', { point: '0:3', text: '   ', section: 'who' }, slug)).toBeNull();
+    expect(manualItem('state', { point: '0:3', text: ' Foge. ' }, slug).data).toEqual({ text: 'Foge.' });
+    expect(manualItem('state', { point: '', text: 'x' }, slug)).toBeNull();
+    expect(manualItem('relation', { point: '0:1', group: 'places', role: 'sede', other: '', otherName: 'Guilda' }, slug)).toEqual({
+      kind: 'relation', entity: slug, otherName: 'Guilda', book: 0, chapter: 1, data: { group: 'places', role: 'sede' },
+    });
+    expect(manualItem('relation', { point: '0:1', other: '', otherName: ' ' }, slug)).toBeNull();
+    expect(manualItem('edge', { point: '0:1', other: 'rowan', label: 'rival' }, slug).other).toBe('rowan');
+    expect(manualItem('edge', { point: '0:1', other: '', label: 'rival' }, slug)).toBeNull();
+  });
+
+  it('turns a new entity into the entity, its text and an edge to each one it is tied to', () => {
+    expect(newEntityItems({ name: ' O Baile ', kind: 'event', aliases: 'a festa, o baile da praça ;', point: '0:2', text: '', label: 'participou', tied: ['citra', 'rowan'] })).toEqual([
+      { kind: 'entity', name: 'O Baile', book: 0, chapter: 2, data: { kind: 'event', aliases: ['a festa', 'o baile da praça'] } },
+      { kind: 'edge', entity: '@0', other: 'citra', book: 0, chapter: 2, data: { label: 'participou' } },
+      { kind: 'edge', entity: '@0', other: 'rowan', book: 0, chapter: 2, data: { label: 'participou' } },
+    ]);
+    expect(newEntityItems({ name: ' ', kind: 'event', point: '0:2' })).toBeNull();
+  });
+
+  it('describes each item in a line', () => {
+    expect(describeManual({ kind: 'section', data: { kind: 'bio', part: 'Parte 1', paragraphs: ['Um.', 'Dois.'] } })).toBe('Biografia · Parte 1: Um. Dois.');
+    expect(describeManual({ kind: 'edge', other: 'rowan', data: { label: 'rival' } }, () => 'Rowan')).toBe('Rowan · rival');
+    expect(describeManual({ kind: 'relation', other: 'Guilda', data: { group: 'places', role: 'sede' } })).toBe('Lugares: Guilda · sede');
   });
 });

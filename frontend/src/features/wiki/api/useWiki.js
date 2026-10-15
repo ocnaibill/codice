@@ -111,3 +111,42 @@ export function useForgetIdentity(projectId) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['wiki-identity'] }),
   });
 }
+
+const MANUAL_KEYS = ['wiki', 'wiki-entity', 'wiki-graph', 'wiki-review', 'wiki-manual'];
+const refreshManual = (queryClient) => {
+  for (const key of MANUAL_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+};
+
+/** What the staff wrote by hand about an entity (DEC-186): its page, its moments, its ties and its edges. */
+export function useWikiManual(projectId, slug, enabled = true) {
+  return useQuery({
+    queryKey: ['wiki-manual', projectId, slug],
+    queryFn: async () => (await api.get(`/wiki/${projectId}/manual`, { params: { entity: slug } })).data,
+    enabled: !!projectId && !!slug && enabled,
+  });
+}
+
+/** Writes items by hand, all or nothing; `"@0"` in `entity` or `other` is the entity the item 0 of the same request creates. */
+export function useCreateManual(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (items) => (await api.post(`/wiki/${projectId}/manual`, { items })).data,
+    onSuccess: () => refreshManual(queryClient),
+  });
+}
+
+export function useUpdateManual(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...item }) => (await api.put(`/wiki/${projectId}/manual/${id}`, item)).data, // the id is in the address
+    onSuccess: () => refreshManual(queryClient),
+  });
+}
+
+export function useDeleteManual(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => (await api.delete(`/wiki/${projectId}/manual/${id}`)).data,
+    onSuccess: () => refreshManual(queryClient),
+  });
+}
