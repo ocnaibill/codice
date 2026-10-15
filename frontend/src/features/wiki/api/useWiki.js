@@ -1,4 +1,4 @@
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 
 /**
@@ -44,5 +44,41 @@ export function useWikiGraph(projectId, cursor = null, { enabled = true } = {}) 
     queryFn: async () => (await api.get(`/wiki/${projectId}/graph`, { params: cursorParams(cursor) })).data,
     enabled: !!projectId && enabled,
     placeholderData: keepPreviousData,
+  });
+}
+
+/** What the last update of the wiki changed, for the staff (DEC-180). Not in the summary: a later book's names are spoilers. */
+export function useWikiReview(projectId, enabled = true) {
+  return useQuery({
+    queryKey: ['wiki-review', projectId],
+    queryFn: async () => (await api.get(`/wiki/${projectId}/review`)).data,
+    enabled: !!projectId && enabled,
+  });
+}
+
+const refreshWiki = (queryClient) => {
+  for (const key of ['wiki', 'wiki-entity', 'wiki-graph', 'wiki-review']) queryClient.invalidateQueries({ queryKey: [key] });
+};
+
+/** The review of an update: `approve` closes it, `undo` hides what one entity gained ({ slug }). */
+export function useWikiReviewActions(projectId) {
+  const queryClient = useQueryClient();
+  const approve = useMutation({
+    mutationFn: async () => (await api.post(`/wiki/${projectId}/review/approve`)).data,
+    onSuccess: () => refreshWiki(queryClient),
+  });
+  const undo = useMutation({
+    mutationFn: async (slug) => (await api.post(`/wiki/${projectId}/review/undo`, { slug })).data,
+    onSuccess: () => refreshWiki(queryClient),
+  });
+  return { approve, undo };
+}
+
+/** Marks a sentence as wrong (no reader gets it) or shows it again ({ id, hidden }). */
+export function useHideSentence(projectId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, hidden }) => (await api.put(`/wiki/${projectId}/sentences/${id}/hidden`, { hidden })).data,
+    onSuccess: () => refreshWiki(queryClient),
   });
 }

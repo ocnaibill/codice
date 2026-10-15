@@ -16,6 +16,8 @@ type SentenceView struct {
 	ID   int64  `json:"id"`
 	Text string `json:"text"`
 	Refs []int  `json:"refs"` // numbers of the references below
+	// Hidden is a sentence the staff marked as wrong (RF-052): no reader gets it, and the staff gets it struck through, to show again.
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 type Paragraph []SentenceView
@@ -133,6 +135,7 @@ type sentenceRow struct {
 	paragraph int
 	position  int
 	text      string
+	hidden    bool
 	refs      []refRow
 }
 
@@ -229,14 +232,14 @@ func (p *Project) Page(ctx context.Context, db *sql.DB, slug string, c Cursor, s
 	v.InProgress, v.Hidden = p.progress(c, v.Timeline)
 
 	// Sections and sentences.
-	sections, err := loadSections(ctx, db, e.id)
+	sections, err := loadSections(ctx, db, e.id, staff)
 	if err != nil {
 		return nil, err
 	}
 	refNumber := map[Point]int{}
 	refs := map[Point]*ReferenceView{}
 	number := func(s *sentenceRow) SentenceView {
-		sv := SentenceView{ID: s.id, Text: s.text, Refs: []int{}}
+		sv := SentenceView{ID: s.id, Text: s.text, Refs: []int{}, Hidden: s.hidden}
 		for _, r := range s.refs {
 			pt := Point{r.book, r.chapter}
 			n, ok := refNumber[pt]
@@ -437,7 +440,7 @@ func sortedPoints(m map[Point]*ReferenceView) []Point {
 	return out
 }
 
-func loadSections(ctx context.Context, db *sql.DB, entity int64) ([]*sectionRow, error) {
+func loadSections(ctx context.Context, db *sql.DB, entity int64, staff bool) ([]*sectionRow, error) {
 	rows, err := db.QueryContext(ctx, `SELECT id, kind, book, chapter_from, chapter_to, part, position FROM wiki_sections WHERE entity_id = $1 ORDER BY position`, entity)
 	if err != nil {
 		return nil, err
@@ -458,15 +461,16 @@ func loadSections(ctx context.Context, db *sql.DB, entity int64) ([]*sectionRow,
 		return list, nil
 	}
 	rows, err = db.QueryContext(ctx, `
-		SELECT s.id, s.section_id, s.paragraph, s.position, s.text FROM wiki_sentences s JOIN wiki_sections sec ON sec.id = s.section_id
-		WHERE sec.entity_id = $1 AND s.hidden_at IS NULL ORDER BY s.section_id, s.position`, entity)
+		SELECT s.id, s.section_id, s.paragraph, s.position, s.text, s.hidden_at IS NOT NULL
+		FROM wiki_sentences s JOIN wiki_sections sec ON sec.id = s.section_id
+		WHERE sec.entity_id = $1 AND ($2 OR s.hidden_at IS NULL) ORDER BY s.section_id, s.position`, entity, staff)
 	if err != nil {
 		return nil, err
 	}
 	bySentence := map[int64]*sentenceRow{}
 	for rows.Next() {
 		st := &sentenceRow{}
-		if err := rows.Scan(&st.id, &st.section, &st.paragraph, &st.position, &st.text); err != nil {
+		if err := rows.Scan(&st.id, &st.section, &st.paragraph, &st.position, &st.text, &st.hidden); err != nil {
 			rows.Close()
 			return nil, err
 		}

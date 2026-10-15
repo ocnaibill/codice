@@ -272,6 +272,11 @@ function WorkRow({ work, label, index, count, staff, movable, confirming, busy, 
           </span>
         </button>
         {gone && <span className="shrink-0 rounded-full bg-surface-alt px-2 py-0.5 font-mono text-[10px] text-ink-soft" title="A obra saiu do acervo: a lista guarda o que ela era">Fora do acervo</span>}
+        {work.spinOff && (
+          <span className="shrink-0 rounded-full bg-surface-alt px-2 py-0.5 font-mono text-[10px] text-ink-soft" title="Fora da linha principal da série: na wiki, tem linha própria (DEC-188)">
+            Fora da linha principal
+          </span>
+        )}
         {status && <span className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] ${status.tone}`}>{status.text}</span>}
         {staff && (
           <div className="flex shrink-0 basis-full items-center justify-end gap-1 sm:basis-auto">

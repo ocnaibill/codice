@@ -79,6 +79,15 @@ const graph = {
   ],
 };
 
+const review = {
+  review: 'pending',
+  changes: [
+    { slug: 'recem', name: 'Recém-chegado', kind: 'person', page: true, new: true, labels: ['Quem é, até Parte I'] },
+    { slug: 'citra', name: 'Citra Terranova', kind: 'person', page: true, new: false, labels: ['Biografia, Parte 2'], added: [] },
+    { slug: 'rowan', name: 'Rowan Damisch', kind: 'person', page: true, new: false, labels: ['Biografia, Parte 3'], undone: true },
+  ],
+};
+
 let container;
 let root;
 let asked;
@@ -98,8 +107,11 @@ async function open({ role = 'reader', summary = wiki(), entity = page(), state 
       return { data: { cursor: wiki().cursor, page: entity } };
     }
     if (url === `/wiki/${PROJECT}/graph`) return { data: graph };
+    if (url === `/wiki/${PROJECT}/review`) return { data: review };
     throw new Error(`unexpected GET ${url}`);
   });
+  api.post.mockResolvedValue({ data: { hidden: 2 } });
+  api.put.mockResolvedValue({});
   useGlobalStore.setState({ wikiWorkId: WORK, wikiEntity: null, wikiGraph: false, wikiFrom: null, activeBookId: null, seek: null, ...state });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // A second opening in the same test starts from nothing: the queries of the first one belong to its client.
@@ -265,7 +277,7 @@ describe('WikiPage: the index of what appeared up to the reader', () => {
     expect(text()).toContain('Esta wiki está parcial');
     expect(text()).toContain('está em revisão');
     await open({ role: 'admin', summary: wiki({ project: { ...wiki().project, review: 'pending' } }) });
-    expect(text()).toContain('falta revisar o que mudou');
+    expect(text()).toContain('falta revisar');
   });
 });
 
@@ -426,5 +438,49 @@ describe('WikiPage: the graph', () => {
     await flush();
     expect(container.querySelectorAll('[aria-label="Entidades e vínculos"] g[role="button"]')).toHaveLength(2);
     expect([...container.querySelectorAll('select')].find((s) => s.closest('[aria-label="Grafo da wiki"]')).value).toBe('2');
+  });
+});
+
+describe('WikiPage: the review of an update and the sentences marked wrong (DEC-180, RF-052)', () => {
+  const pending = (over = {}) => wiki({ project: { ...wiki().project, review: 'pending' }, ...over });
+  const flag = () => [...container.querySelectorAll('button[aria-label="Marcar esta frase como errada"]')];
+
+  it('shows the staff what the update changed, and undoes what one entity gained', async () => {
+    await open({ role: 'admin', summary: pending() });
+    const banner = container.querySelector('[aria-label="Revisão da atualização"]');
+    expect(banner.textContent).toContain('1 página nova e 2 páginas que ganharam seções');
+    expect(banner.textContent).not.toContain('Recém-chegado'); // closed until asked: the names of a later book are spoilers
+    await click(button('Ver o que mudou'));
+    const list = banner.querySelector('[aria-label="O que mudou"]');
+    expect([...list.querySelectorAll('li')].map((li) => li.querySelector('button').textContent)).toEqual(['Recém-chegado', 'Citra Terranova', 'Rowan Damisch']);
+    expect(list.textContent).toContain('Ganhou: Biografia, Parte 2');
+    expect(list.textContent).toContain('desfeito');
+    await click([...list.querySelectorAll('button')].find((b) => b.textContent === 'Desfazer'));
+    expect(api.post).toHaveBeenCalledWith(`/wiki/${PROJECT}/review/undo`, { slug: 'recem' });
+    await click(button('Marcar como revisada'));
+    expect(api.post).toHaveBeenCalledWith(`/wiki/${PROJECT}/review/approve`);
+    await click(list.querySelector('button'));
+    expect(useGlobalStore.getState().wikiEntity).toBe('recem');
+  });
+
+  it('shows no review to a reader, who is only told it is being reviewed', async () => {
+    await open({ role: 'reader', summary: pending() });
+    expect(container.querySelector('[aria-label="Revisão da atualização"]')).toBeNull();
+    expect(text()).toContain('está em revisão');
+    expect(api.get.mock.calls.some(([url]) => url.endsWith('/review'))).toBe(false);
+  });
+
+  it('lets the staff mark a sentence as wrong, and show it again; a reader has no button', async () => {
+    await open({ role: 'admin', state: { wikiEntity: 'citra' } });
+    expect(flag().length).toBeGreaterThan(0);
+    await click(flag()[0]);
+    expect(api.put).toHaveBeenCalledWith(`/wiki/${PROJECT}/sentences/1/hidden`, { hidden: true });
+    const struck = page({ who: { ...page().who, paragraphs: [[{ ...page().who.paragraphs[0][0], hidden: true }, page().who.paragraphs[0][1]]] } });
+    await open({ role: 'admin', state: { wikiEntity: 'citra' }, entity: struck });
+    expect(container.querySelector('del').textContent).toBe('Citra é aprendiz de ceifador.');
+    await click(button('Mostrar de novo'));
+    expect(api.put).toHaveBeenLastCalledWith(`/wiki/${PROJECT}/sentences/1/hidden`, { hidden: false });
+    await open({ role: 'reader', state: { wikiEntity: 'citra' } });
+    expect(flag()).toHaveLength(0);
   });
 });

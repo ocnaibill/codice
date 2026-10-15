@@ -1,6 +1,6 @@
 import React from 'react';
 import { LoadError } from '../../../components/ui/LoadError';
-import { useWikiEntity } from '../api/useWiki';
+import { useHideSentence, useWikiEntity } from '../api/useWiki';
 import { GROUPS, kindName, plural, pointLabel } from '../wiki';
 import { MiniGraph } from './MiniGraph';
 
@@ -22,11 +22,31 @@ function goToReference(n) {
   target?.focus?.({ preventScroll: true });
 }
 
+// What the staff can do to a sentence (RF-052): `mark(sentence, hidden)`; null for a reader, who gets no button.
+const Correction = React.createContext(null);
+
 function Sentences({ sentences }) {
+  const correct = React.useContext(Correction);
   return sentences.map((s, i) => (
     <React.Fragment key={s.id}>
       {i > 0 && ' '}
-      {s.text}
+      {s.hidden ? <del className="text-ink-faint" title="Marcada como errada: nenhum leitor a vê">{s.text}</del> : s.text}
+      {s.hidden && correct && (
+        <button type="button" onClick={() => correct.mark(s, false)} className="ml-1 text-[12px] text-brand hover:underline">
+          Mostrar de novo
+        </button>
+      )}
+      {!s.hidden && correct && (
+        <button
+          type="button"
+          onClick={() => correct.mark(s, true)}
+          title="Isto está errado? Marque a frase e ela deixa de aparecer para todos."
+          aria-label="Marcar esta frase como errada"
+          className="ml-0.5 align-super text-[11px] text-ink-faint hover:text-danger"
+        >
+          ⚑
+        </button>
+      )}
       {s.refs.map((n) => (
         <sup key={n} className="ml-0.5 font-mono text-[10px]">
           <button type="button" onClick={() => goToReference(n)} className="text-brand hover:underline" aria-label={`Referência ${n}`}>
@@ -323,8 +343,10 @@ function Suggestions({ suggestions }) {
  * part in progress chapter by chapter and what is kept back, personality, timeline and references; at the side the ficha, the
  * minigraph and, for staff, the identity suggestions. On a phone the ficha comes after "Quem é", as the box of a wiki comes after its lead.
  */
-export function WikiEntity({ project, books, slug, cursor, graph, onOpen, onExpandGraph, onOpenAt }) {
+export function WikiEntity({ project, books, slug, cursor, graph, staff = false, onOpen, onExpandGraph, onOpenAt }) {
   const { data, isLoading, isError, error, refetch, isRefetching } = useWikiEntity(project.id, slug, cursor);
+  const { mutate: setHidden } = useHideSentence(project.id);
+  const correction = React.useMemo(() => (staff ? { mark: (sentence, hidden) => setHidden({ id: sentence.id, hidden }) } : null), [staff, setHidden]);
 
   // A page that opens gives the focus to its name, for who goes by the keyboard or a screen reader.
   const loaded = !!data;
@@ -360,6 +382,7 @@ export function WikiEntity({ project, books, slug, cursor, graph, onOpen, onExpa
   const shown = data.cursor;
 
   return (
+    <Correction.Provider value={correction}>
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:grid-rows-[auto_auto_1fr]">
       <div className="lg:col-span-2">
         <Header page={page} cursor={shown} books={books} />
@@ -384,5 +407,6 @@ export function WikiEntity({ project, books, slug, cursor, graph, onOpen, onExpa
         )}
       </article>
     </div>
+    </Correction.Provider>
   );
 }

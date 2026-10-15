@@ -624,3 +624,22 @@ describe('WorkPage: the page of the work (DEC-149)', () => {
     useGlobalStore.getState().setSearchQuery('');
   });
 });
+
+describe('WorkPage: a work outside the main line of its series (DEC-188)', () => {
+  async function show(w) {
+    api.get.mockResolvedValue({ data: w });
+    useGlobalStore.setState({ sheetWorkId: 7, activeBookId: null, activeFileId: null, fromStart: false });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><WorkPage /></QueryClientProvider>); });
+    await flush();
+  }
+
+  it('says so beside the series, and says nothing for a work of the main line', async () => {
+    await show({ ...work, metadata: { ...work.metadata, spinOff: true } });
+    expect(container.textContent).toContain('fora da linha principal');
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show(work);
+    expect(container.textContent).not.toContain('fora da linha principal');
+  });
+});

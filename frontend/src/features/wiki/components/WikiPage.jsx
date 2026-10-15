@@ -7,6 +7,7 @@ import { kindCounts, providerName } from '../wiki';
 import { CursorBar } from './CursorBar';
 import { WikiEntity } from './WikiEntity';
 import { WikiGraph } from './WikiGraph';
+import { ReviewBanner } from './ReviewBanner';
 import { WikiIndex } from './WikiIndex';
 
 const TAB = 'inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-lg border px-4 text-sm';
@@ -50,9 +51,7 @@ function StateNotice({ project, staff }) {
   if (project.state === 'generating') notices.push('A wiki está sendo gerada de novo. O que aparece aqui é a versão anterior.');
   if (project.state === 'partial') notices.push('Esta wiki está parcial: alguma etapa da geração não terminou, e podem faltar páginas ou vínculos.');
   if (project.state === 'failed') notices.push('A última geração falhou. O que aparece aqui é a versão anterior.');
-  if (project.review === 'pending') {
-    notices.push(staff ? 'Um livro novo atualizou esta wiki e falta revisar o que mudou.' : 'Esta wiki foi atualizada com um livro novo e está em revisão.');
-  }
+  if (project.review === 'pending' && !staff) notices.push('Esta wiki foi atualizada com um livro novo e está em revisão.');
   if (notices.length === 0) return null;
   return (
     <div role="status" className="rounded-lg bg-warning-soft px-4 py-3 text-sm text-warning">
@@ -184,6 +183,7 @@ export function WikiPage() {
             </header>
           )}
           <StateNotice project={wiki.project} staff={staff} />
+          {staff && wiki.project.review === 'pending' && <ReviewBanner projectId={wiki.project.id} onOpen={openEntity} />}
           <CursorBar wiki={wiki} cursor={cursor} onChange={setCursor} />
 
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -234,6 +234,7 @@ export function WikiPage() {
               slug={slug}
               cursor={cursor}
               graph={graph.data}
+              staff={staff}
               onOpen={openEntity}
               onExpandGraph={openGraph}
               onOpenAt={openAt}

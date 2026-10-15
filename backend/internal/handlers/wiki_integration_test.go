@@ -285,3 +285,142 @@ func TestWiki_ImportKeepsWhatAnAdminDecidedAndRejectsWhatIsNotInTheLibrary(t *te
 		t.Errorf("audit entries = %s", n)
 	}
 }
+
+// withUpdate is the bundle of a later generation: the same wiki, a new entity with a page, and a section that Ana Maria did not have.
+func withUpdate(t *testing.T, bundle string) string {
+	t.Helper()
+	var b map[string]any
+	if err := json.Unmarshal([]byte(bundle), &b); err != nil {
+		t.Fatal(err)
+	}
+	ents := b["entities"].([]any)
+	for _, e := range ents {
+		m := e.(map[string]any)
+		if m["slug"] == "ana-maria" {
+			m["sections"] = append(m["sections"].([]any), map[string]any{
+				"kind": "bio", "book": 0, "chapter_from": 2, "chapter_to": 2, "part": "Parte Nova",
+				"sentences": []any{map[string]any{"paragraph": 1, "text": "Ana Maria soube de uma frase nova da atualização.",
+					"refs": []any{map[string]any{"book": 0, "chapter": 2, "fact": "nova"}}}},
+			})
+		}
+	}
+	b["entities"] = append(ents, map[string]any{
+		"slug": "recem-chegado", "name": "Recém-chegado", "kind": "person", "page": true,
+		"appearances": []any{map[string]any{"book": 0, "chapter": 2}},
+		"sections": []any{map[string]any{"kind": "who", "book": 0, "chapter_from": 1, "chapter_to": 2, "part": "Parte I",
+			"sentences": []any{map[string]any{"paragraph": 1, "text": "O Recém-chegado chegou com a atualização.",
+				"refs": []any{map[string]any{"book": 0, "chapter": 2, "fact": "chegou"}}}}}},
+	})
+	out, _ := json.Marshal(b)
+	return string(out)
+}
+
+func TestWikiReview_AnUpdateListsWhatItBroughtAndTheStaffApprovesOrUndoesIt(t *testing.T) {
+	s := newCatalogStack(t)
+	work, file := s.wikiBook()
+	if rec := s.importWiki(admin, wikiBundle(wikiSHA)); rec.Code != 201 {
+		t.Fatalf("first import: %d", rec.Code)
+	}
+	var id int64
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	if rec := s.do(admin, "GET", fmt.Sprintf("/wiki/%d/review", id), ""); !strings.Contains(rec.Body.String(), `"changes":[]`) {
+		t.Errorf("a first generation has nothing to review: %s", rec.Body.String())
+	}
+
+	if rec := s.importWiki(admin, withUpdate(t, wikiBundle(wikiSHA))); rec.Code != 201 {
+		t.Fatalf("update: %d %s", rec.Code, rec.Body.String())
+	}
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	s.exec(`UPDATE wiki_projects SET review = 'pending' WHERE id = $1`, id) // what the worker's import does for a new book
+	rec := s.do(admin, "GET", fmt.Sprintf("/wiki/%d/review", id), "")
+	var rev struct {
+		Review  string `json:"review"`
+		Changes []struct {
+			Slug   string   `json:"slug"`
+			New    bool     `json:"new"`
+			Page   bool     `json:"page"`
+			Labels []string `json:"labels"`
+			Undone bool     `json:"undone"`
+		} `json:"changes"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &rev)
+	if rev.Review != "pending" || len(rev.Changes) != 2 || rev.Changes[0].Slug != "recem-chegado" || !rev.Changes[0].New ||
+		rev.Changes[1].Slug != "ana-maria" || rev.Changes[1].New || len(rev.Changes[1].Labels) != 1 || !strings.Contains(rev.Changes[1].Labels[0], "Parte Nova") {
+		t.Fatalf("review = %s", rec.Body.String())
+	}
+
+	// Ana, who is at chapter 2, sees the new sentence until the staff undoes what the entity gained.
+	readTo(s, ana, file, "Text/c2.xhtml")
+	readTo(s, admin, file, "Text/c2.xhtml") // the staff is held to their own point of reading too (DEC-179)
+	page := func(a actor) string {
+		return s.do(a, "GET", fmt.Sprintf("/wiki/%d/entities/ana-maria", id), "").Body.String()
+	}
+	if !strings.Contains(page(ana), "frase nova da atualização") {
+		t.Fatalf("the update is not shown: %s", page(ana))
+	}
+	rec = s.do(admin, "POST", fmt.Sprintf("/wiki/%d/review/undo", id), `{"slug":"ana-maria"}`)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"hidden":1`) {
+		t.Fatalf("undo: %d %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(page(ana), "frase nova da atualização") {
+		t.Error("a reader still sees what the staff undid")
+	}
+	if got := page(admin); !strings.Contains(got, "frase nova da atualização") || !strings.Contains(got, `"hidden":true`) {
+		t.Errorf("the staff does not see it struck through: %s", got)
+	}
+	if rec := s.do(admin, "POST", fmt.Sprintf("/wiki/%d/review/undo", id), `{"slug":"nao-existe"}`); rec.Code != 404 {
+		t.Errorf("undo of an entity that did not change: %d", rec.Code)
+	}
+	if rec := s.do(admin, "POST", fmt.Sprintf("/wiki/%d/review/approve", id), ""); rec.Code != 204 {
+		t.Fatalf("approve: %d", rec.Code)
+	}
+	var state string
+	s.db.QueryRow(`SELECT review FROM wiki_projects WHERE id = $1`, id).Scan(&state)
+	if state != "none" {
+		t.Errorf("review after approving = %s", state)
+	}
+	// What was hidden stays hidden through a generation that writes the same text.
+	if rec := s.importWiki(admin, withUpdate(t, wikiBundle(wikiSHA))); rec.Code != 201 {
+		t.Fatalf("regenerate: %d", rec.Code)
+	}
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	if strings.Contains(page(ana), "frase nova da atualização") {
+		t.Error("a generation brought back a sentence the staff hid")
+	}
+}
+
+func TestWikiSentences_TheStaffMarksOneAsWrongAndItGoesForEveryReaderAndComesBack(t *testing.T) {
+	s := newCatalogStack(t)
+	work, file := s.wikiBook()
+	if rec := s.importWiki(admin, wikiBundle(wikiSHA)); rec.Code != 201 {
+		t.Fatalf("import: %d", rec.Code)
+	}
+	var id, sentence int64
+	s.db.QueryRow(`SELECT id FROM wiki_projects WHERE work_id = $1`, work).Scan(&id)
+	s.db.QueryRow(`SELECT s.id FROM wiki_sentences s WHERE s.text = 'Ana Maria é uma aprendiz.'`).Scan(&sentence)
+	readTo(s, ana, file, "Text/c2.xhtml")
+	readTo(s, admin, file, "Text/c2.xhtml")
+	body := func(a actor) string {
+		return s.do(a, "GET", fmt.Sprintf("/wiki/%d/entities/ana-maria", id), "").Body.String()
+	}
+	url := fmt.Sprintf("/wiki/%d/sentences/%d/hidden", id, sentence)
+	if !strings.Contains(body(ana), "Ana Maria é uma aprendiz.") {
+		t.Fatal("the sentence is not there to begin with")
+	}
+	if rec := s.do(admin, "PUT", url, `{"hidden":true}`); rec.Code != 204 {
+		t.Fatalf("hide: %d", rec.Code)
+	}
+	if strings.Contains(body(ana), "Ana Maria é uma aprendiz.") {
+		t.Error("a reader still gets a sentence marked wrong")
+	}
+	if got := body(admin); !strings.Contains(got, "Ana Maria é uma aprendiz.") || !strings.Contains(got, `"hidden":true`) {
+		t.Errorf("the staff does not get it flagged: %s", got)
+	}
+	// A sentence of another wiki is not found through this one.
+	if rec := s.do(admin, "PUT", fmt.Sprintf("/wiki/%d/sentences/999999/hidden", id), `{"hidden":true}`); rec.Code != 404 {
+		t.Errorf("an unknown sentence: %d", rec.Code)
+	}
+	if rec := s.do(admin, "PUT", url, `{"hidden":false}`); rec.Code != 204 || !strings.Contains(body(ana), "Ana Maria é uma aprendiz.") {
+		t.Errorf("showing it again: %d", rec.Code)
+	}
+}

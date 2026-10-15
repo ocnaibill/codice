@@ -3,6 +3,7 @@ package wiki
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -211,7 +212,12 @@ func Import(ctx context.Context, db *sql.DB, b *Bundle, userID string) (int64, e
 	}
 	var hidden []keptSentence
 	var decided []keptDecision
+	var before map[string]map[SectionKey]bool
 	if oldID.Valid {
+		var err error
+		if before, err = snapshotSections(ctx, tx, oldID.Int64); err != nil {
+			return 0, err
+		}
 		rows, err := tx.QueryContext(ctx, `
 			SELECT e.slug, s.text, s.hidden_at, s.hidden_by::text FROM wiki_sentences s
 			JOIN wiki_sections sec ON sec.id = s.section_id JOIN wiki_entities e ON e.id = sec.entity_id
@@ -429,6 +435,16 @@ func Import(ctx context.Context, db *sql.DB, b *Bundle, userID string) (int64, e
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO wiki_suggestions (project_id, kind, entity_slug, other_slug, evidence, book, chapter, state, decided_by, decided_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::uuid, $10)`,
 			projectID, s.Kind, s.Entity, other, s.Evidence, s.Book, s.Chapter, state, d.decidedBy, d.decidedAt); err != nil {
+			return 0, err
+		}
+	}
+	// What this update brought that the older content did not have, for the staff to review (DEC-180).
+	if oldID.Valid {
+		body, err := json.Marshal(diffBundle(before, b))
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE wiki_projects SET changes = $2::jsonb WHERE id = $1`, projectID, body); err != nil {
 			return 0, err
 		}
 	}

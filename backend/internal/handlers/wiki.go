@@ -353,3 +353,85 @@ func (h *WikiHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// Review is what an update changed, for owner and admins (DEC-180): the entities that came and the sections that were added. It is not
+// in the summary every reader gets, since the names of what a later book brings are spoilers.
+func (h *WikiHandler) Review(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	if !ok {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	rev, err := wiki.LoadReview(r.Context(), h.DB, id)
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error reading a wiki review:", err)
+		http.Error(w, "Error reading the wiki", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, rev)
+	}
+}
+
+// Approve closes the review of an update: it was seen.
+func (h *WikiHandler) Approve(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	if !ok {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	switch err := wiki.Approve(r.Context(), h.DB, id, currentUserID(r)); {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error approving a wiki update:", err)
+		http.Error(w, "Error saving the review", http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// UndoChange hides what one entity gained in the update.
+func (h *WikiHandler) UndoChange(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	var req struct {
+		Slug string `json:"slug"`
+	}
+	if !ok || json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&req) != nil || req.Slug == "" {
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+		return
+	}
+	n, err := wiki.Undo(r.Context(), h.DB, id, req.Slug, currentUserID(r))
+	switch {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Wiki not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error undoing a wiki change:", err)
+		http.Error(w, "Error saving the review", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"hidden": n})
+	}
+}
+
+// SetSentenceHidden marks a sentence as wrong, or shows it again.
+func (h *WikiHandler) SetSentenceHidden(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectParam(r)
+	sid, err := strconv.ParseInt(chi.URLParam(r, "sid"), 10, 64)
+	var req struct {
+		Hidden bool `json:"hidden"`
+	}
+	if !ok || err != nil || sid <= 0 || json.NewDecoder(http.MaxBytesReader(w, r.Body, 256)).Decode(&req) != nil {
+		http.Error(w, "Entity not found", http.StatusNotFound)
+		return
+	}
+	switch err := wiki.SetSentenceHidden(r.Context(), h.DB, id, sid, req.Hidden, currentUserID(r)); {
+	case errors.Is(err, wiki.ErrNotFound):
+		http.Error(w, "Entity not found", http.StatusNotFound)
+	case err != nil:
+		log.Println("Error hiding a wiki sentence:", err)
+		http.Error(w, "Error saving the correction", http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}

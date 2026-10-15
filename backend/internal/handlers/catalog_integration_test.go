@@ -124,6 +124,10 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/works/{id}/wiki", wikiH.ForWork)
 	r.Get("/wiki/{id}/entities/{slug}", wikiH.Entity)
 	r.Get("/wiki/{id}/graph", wikiH.Graph)
+	r.Get("/wiki/{id}/review", wikiH.Review)
+	r.Post("/wiki/{id}/review/approve", wikiH.Approve)
+	r.Post("/wiki/{id}/review/undo", wikiH.UndoChange)
+	r.Put("/wiki/{id}/sentences/{sid}/hidden", wikiH.SetSentenceHidden)
 	r.Post("/admin/wiki/import", wikiH.Import)
 	r.Delete("/admin/wiki/{id}", wikiH.Delete)
 	wikiA := &WikiAdminHandler{DB: db, SecretKey: "0123456789abcdef0123456789abcdef"}

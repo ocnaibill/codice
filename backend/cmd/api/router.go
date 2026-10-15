@@ -428,6 +428,11 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Get("/works/{id}/wiki", wikiHandler.ForWork)
 	r.With(auth).Get("/wiki/{id}/entities/{slug}", wikiHandler.Entity)
 	r.With(auth).Get("/wiki/{id}/graph", wikiHandler.Graph)
+	// What the staff does with a wiki that was updated or has a wrong sentence (DEC-180, RF-052).
+	r.With(staff).Get("/wiki/{id}/review", wikiHandler.Review)
+	r.With(staff).Post("/wiki/{id}/review/approve", wikiHandler.Approve)
+	r.With(staff).Post("/wiki/{id}/review/undo", wikiHandler.UndoChange)
+	r.With(staff).Put("/wiki/{id}/sentences/{sid}/hidden", wikiHandler.SetSentenceHidden)
 	r.With(staff).Post("/admin/wiki/import", wikiHandler.Import)
 	r.With(staff).Delete("/admin/wiki/{id}", wikiHandler.Delete)
 	// Its tab in the administration (DEC-185): the provider is the owner's (DEC-177), the queue and the works are owner's and admins'.
