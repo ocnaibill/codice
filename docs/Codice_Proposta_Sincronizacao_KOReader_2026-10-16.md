@@ -50,19 +50,30 @@ Todas, menos o registro, mandam `x-auth-user` (o nome) e `x-auth-key`. O cliente
 ## 4 Etapas propostas
 
 1. **Servidor KOSync:** token com escopo, coluna e preenchimento do hash, os quatro endpoints, o mapeamento do EPUB, do PDF e do CBZ, testes de integração, e **um roteiro de teste no Kindle do mantenedor** (KOReader com `auto_sync` ligado, ler, fechar, conferir no leitor web e o caminho de volta).
-2. **Tela de Dispositivos:** o token, as instruções e a lista de aparelhos.
+2. **Tela de Dispositivos:** o token, a lista de aparelhos e o **arquivo `kosync.lua` pronto para baixar** (ver seção 5), no lugar de ensinar a digitar o endereço e a senha no aparelho.
 3. **Anotações:** importar `My Clippings.txt` (serve também ao Kindle sem jailbreak) e os destaques do KOReader, como notas do Códice (DEC-109 e a regra de notas).
 4. **Envio por e-mail** para o Kindle sem jailbreak.
 5. **Plugin em Lua** (estantes, favoritos e notas dentro do KOReader): só depois de 1 a 3 mostrarem uso.
 
 Isto entra no que a especificação já chama de "KOReader e OPDS Progression: adaptadores candidatos" (E3, QA-018); a matriz de clientes homologados passa a ter o KOReader no Kindle 10ª geração.
 
-## 5 O que não sei e é preciso medir
+## 5 O que foi medido e o que falta
 
-- Que valor o KOReader manda em `x-auth-key` (suposição: `md5(senha)`).
-- O MD5 parcial exato (o deslocamento da primeira amostra) contra um arquivo real do acervo e o hash que o aparelho calcula do mesmo arquivo baixado por OPDS.
-- Quanto o `DocFragment` de um EPUB do acervo corresponde ao item do spine que o Códice usa (EPUBs com itens não lineares ou com a capa fora da lista).
-- Se o KOReader do Kindle acorda o Wi-Fi a tempo de puxar o progresso (é uma opção do plugin que depende do aparelho).
+**Medido em 16/10/2026** num Kindle de 10ª geração (o KOReader o chama de `KindleBasic3`), firmware 5.17.1.0.3, com jailbreak, contra um servidor de mentira que só registrava as chamadas:
+
+- **A chave é o MD5 da senha.** Com a senha `teste123`, o registro mandou `password` = `aa1bf4646de67fd9086cf6c79007026c`, que é exatamente o MD5 dela, e as chamadas seguintes mandaram o mesmo valor em `x-auth-key`, com o nome em `x-auth-user`. O código do KOReader confirma (`local userkey = md5(password)`; guarda só esse valor). O desenho da seção 3, item 1, está certo.
+- **O hash do arquivo é o MD5 parcial com a primeira amostra no início do arquivo** (deslocamento 0, e não 256). O hash que o aparelho mandou (`836c0286...`) é o do EPUB `As foices` do acervo do mantenedor, e os dois exemplares idênticos da pasta dão o mesmo hash.
+- **O progresso de um EPUB** vem como `/body/DocFragment[6]/body/div/p[166]/text().0`, com `percentage` = `0.0625`, `device` = `KindleBasic3` e um `device_id` de 32 caracteres. `DocFragment[6]` é o **sexto item da lista de leitura (spine)** do EPUB: no arquivo, o sexto item é `Text/cap02.xhtml`, que tem 181 parágrafos (o `p[166]` cabe), e o Códice conhece esse capítulo pelo mesmo `href`. O `DocFragment` é, portanto, 1-based no spine.
+- **Quando fala:** ao abrir o livro, o KOReader fez o `GET` do progresso; 33 segundos depois, ao virar páginas, fez o `PUT`. O servidor respondeu `{}` ao `GET` (sem progresso) e o KOReader aceitou.
+- **Padrões do KOReader (do código):** `auto_sync` **desligado**; "sincronizar para frente" em **perguntar**; "para trás" em **nunca**. A pessoa precisa ligar o `auto_sync` uma vez.
+
+**Ainda falta:**
+
+- Como o KOReader reage a um `GET` com progresso de outro aparelho (a pergunta "ir para o ponto do outro aparelho?"), e o salto para o `DocFragment`: testar contra o servidor de mentira com um progresso pré-gravado.
+- PDF e CBZ: o formato de `progress` nesses (a página, pelo código).
+- Se o KOReader do Kindle acorda o Wi-Fi a tempo de puxar ao acordar o aparelho.
+
+**A configuração fica num arquivo.** O plugin guarda tudo em `settings/kosync.lua` (chaves `custom_server`, `username`, `userkey`, `auto_sync`, `sync_forward`...). O Códice pode gerar esse arquivo já preenchido (endereço da instância, nome, o `userkey` que o aparelho calcularia e `auto_sync` ligado) e a pessoa só o copia para a pasta `settings` do KOReader: **sem digitar nada no Kindle**. É bem menos do que um plugin e resolve o incômodo de configurar na mão. Isso fica como alternativa de interface na etapa 2.
 
 ## 6 O que depende do mantenedor
 
