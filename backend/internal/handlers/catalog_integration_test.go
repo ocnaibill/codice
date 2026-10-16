@@ -300,6 +300,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Delete("/relations/{id}", graphs.DeleteRelation)
 	r.Get("/stats", stats.GetStats)
 	r.Get("/works/{id}/text", media.ServeText)
+	r.Get("/opds/catalog", opds.RootCatalog)
 	r.Get("/opds/recent", opds.RecentFeed)
 	r.Get("/opds/search", opds.SearchFeed)
 
