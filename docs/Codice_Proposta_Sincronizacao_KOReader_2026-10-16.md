@@ -66,8 +66,25 @@ Isto entra no que a especificação já chama de "KOReader e OPDS Progression: a
 
 ## 6 O que depende do mantenedor
 
-1. **Última gravação vale** (recomendado) ou recusar gravação do KOReader que seja mais antiga que a do leitor web?
-2. **Precisão de capítulo na v1** (recomendado) ou esperar até haver precisão de parágrafo?
-3. **O progresso do KOReader move o ponto da wiki**, sempre para o começo do item (recomendado), ou a wiki só segue o leitor do Códice?
+Confirmadas pelo mantenedor em 16/10/2026:
+
+1. **Última gravação vale.** Uma gravação do KOReader nunca é recusada por ser mais antiga que a do leitor web.
+2. **O progresso do KOReader move o ponto da wiki**, sempre para o começo do capítulo (seção 3, item 5).
+
+Ainda em aberto:
+
+3. **Precisão de capítulo na v1** (recomendado) ou esperar até haver precisão de parágrafo?
 4. **Token separado com escopo `koreader`** (recomendado) ou aceitar qualquer token de aplicativo?
 5. Vale registrar como DEC e abrir a issue de acompanhamento antes de começar?
+
+## 7 Levar o livro ao aparelho
+
+O KOSync só leva o **progresso**; o livro vai por outro caminho, e cada aparelho tem o seu:
+
+| Aparelho | Como o livro chega | Quem puxa e quem empurra |
+| --- | --- | --- |
+| Kindle com KOReader | **OPDS** (o Códice já tem): o KOReader lista o acervo e baixa; também a **sincronização de uma pasta** pela nuvem do KOReader (WebDAV, FTP ou Dropbox), que traria os livros novos sozinha, mas pede um servidor WebDAV ao lado do Códice | o aparelho puxa |
+| Kindle sem jailbreak | **Enviar por e-mail** para o endereço do Kindle (a Amazon aceita EPUB e converte); precisa de SMTP configurado no Códice e do endereço do servidor na lista de remetentes aprovados da conta Amazon | o Códice empurra |
+| qualquer um | USB | a pessoa |
+
+A v1 desta proposta usa o OPDS que já existe; a pasta WebDAV e o e-mail são extensões separadas (etapa 4).
