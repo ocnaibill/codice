@@ -8,10 +8,10 @@ must name the other side whole). A pair the model said is different is never joi
 import collections
 import re
 
-from .text import CONNECTORS, TITLE_WORDS, core, fold, key, kind_of  # noqa: F401
+from .text import CONNECTORS, TITLE_WORDS, core, describes_another, fold, key, kind_of  # noqa: F401
 
 
-def prefold2(records):
+def prefold2(records, common=frozenset()):
     """Joins, inside a book, what is the same name. A name that is only a title ("Doctor") identifies no one and goes. A one-word name that is
     part of a single longer name of the same kind ("Souza" / "Ana Souza") goes into it."""
     groups = collections.OrderedDict()
@@ -24,7 +24,9 @@ def prefold2(records):
     canon = {}
     for c in groups:
         if len(c) == 1 and len(c[0]) >= 4:
-            owners = [o for o in groups if len(o) > 1 and c[0] in o and kind[o] == kind[c]]
+            # "Pai de Addie" holds "Addie" but is someone else: it is not a longer form of the name
+            owners = [o for o in groups if len(o) > 1 and c[0] in o and kind[o] == kind[c]
+                      and not all(describes_another(r['nome'], common) for r in groups[o])]
             if len(owners) == 1:
                 canon[c] = owners[0]
                 continue
@@ -35,7 +37,7 @@ def prefold2(records):
     return merged
 
 
-def build_registry(books):
+def build_registry(books, common=frozenset()):
     """A list of entries {book, nomes, tipo, caps, notas}, by book (names already joined inside the book)."""
     entries = []
     for bi, b in enumerate(books):
@@ -46,13 +48,13 @@ def build_registry(books):
                     e = dict(e)
                     e['_cap'] = cap
                     records.append(e)
-        for key, rs in prefold2(records).items():
+        for key, rs in prefold2(records, common).items():
             names = collections.Counter(r['nome'] for r in rs)
             # "apprentice of the baker", "knife": a generic description in lower case, not an entity with a name
             if not any(re.search(r'[A-ZÀ-Ý]', n) for n in names):
                 continue
             entries.append({
-                'id': len(entries), 'book': bi, 'nomes': names, 'nome': max(names, key=lambda n: (len(core(n)), names[n])),
+                'id': len(entries), 'book': bi, 'nomes': names, 'nome': max(names, key=lambda n: (not re.search(r'[()/]', n), len(core(n)), names[n])),
                 'tipo': collections.Counter(kind_of(r.get('tipo')) for r in rs).most_common(1)[0][0],
                 'caps': sorted({r['_cap'] for r in rs}),
                 'notas': [{'book': bi, 'cap': r['_cap'], 'papel': r.get('papel') or '', 'novo': [str(x) for x in (r.get('novo') or []) if x],
@@ -100,7 +102,7 @@ def compatible(k1, k2):
     return k1 == k2 or (k1 in FLEX and k2 in FLEX)
 
 
-def merge_series(llm, entries, rules=()):
+def merge_series(llm, entries, rules=(), common=frozenset()):
     """Joins entries of different books. (1) the same core name; (2) a one-word name that is part of a single longer name of the same
     kind; (3) pairs that the text of the notes ties ("Rowan" shows in the notes of "Lucifer") go to the model, which only joins with proof
     that it is the same person or thing (adopted name, nickname, assumed identity). `rules` are the decisions of the staff (DEC-181):
@@ -169,18 +171,18 @@ def merge_series(llm, entries, rules=()):
                 union(ids[0], i, 'mesmo nome sem título')
     # (2) a name that is part of a single longer name (one word: "Souza"; several: "Ana Souza" in "Ana Maria Souza"), of the same kind, in
     # any book
-    long_names = [(core(n), e) for e in entries for n in e['nomes'] if core(n)]
-    for e in entries:
-        for n in list(e['nomes']):
-            c = core(n)
-            if not c or (len(c) == 1 and len(c[0]) < 4):
-                continue
-            owners = {}
-            for oc, o in long_names:
-                if len(oc) > len(c) and set(c) <= set(oc) and compatible(o['tipo'], e['tipo']) and o['id'] != e['id']:
-                    owners[find(o['id'])] = o['id']
-            if len(owners) == 1:
-                union(e['id'], next(iter(owners.values())), 'nome curto de um único nome longo')
+    long_names = [(core(n), e) for e in entries for n in e['nomes'] if core(n) and not describes_another(n, common)]
+    # longest first: "Henry Strauss" must be in "Henry Samuel Strauss" before "Henry" counts its owners, or it finds two
+    for n, e in sorted(((n, e) for e in entries for n in e['nomes']), key=lambda x: (-len(core(x[0])), x[1]['id'], x[0])):
+        c = core(n)
+        if not c or (len(c) == 1 and len(c[0]) < 4):
+            continue
+        owners = {}
+        for oc, o in long_names:
+            if len(oc) > len(c) and set(c) <= set(oc) and compatible(o['tipo'], e['tipo']) and find(o['id']) != find(e['id']):
+                owners[find(o['id'])] = o['id']
+        if len(owners) == 1:
+            union(e['id'], next(iter(owners.values())), 'nome curto de um único nome longo')
 
     # (3) the note itself says the entity adopted or chose to be known by another name ("chooses to be known as the baker Ana"): narrow
     # patterns, no model; "chooses Rowan as apprentice" does not match
@@ -346,9 +348,10 @@ def head_of(g):
     names = collections.Counter()
     for x in g:
         names.update(x['nomes'])
-    base = max(g, key=lambda x: (len(x['caps']), len(core(x['nome']))))['nome']
-    frequent = [n for n in names if names[n] >= 2 and core(n)]
+    base = max(g, key=lambda x: (not re.search(r'[()/]', x['nome']), len(x['caps']), len(core(x['nome']))))['nome']
+    # a name with a note of the model in it ("Escuridão (forma de Luc)", "a livraria / o sebo") is not what the entity is called
+    frequent = [n for n in names if names[n] >= 2 and core(n) and not re.search(r'[()/]', n)]
     if not frequent:
         return base, names
     best = max(frequent, key=lambda n: (len(core(n)), names[n]))
-    return (best if len(core(best)) > len(core(base)) else base), names
+    return (best if len(core(best)) > len(core(base)) or re.search(r'[()/]', base) else base), names
