@@ -33,7 +33,7 @@ Todas, menos o registro, mandam `x-auth-user` (o nome) e `x-auth-key`. O cliente
 
 **O que vai em `progress`:** número da página nos documentos paginados (PDF, CBZ) e um **xpointer** nos reflowable (EPUB), por exemplo `/body/DocFragment[7]/body/div/p[12]/text().0`; `percentage` é um número de 0 a 1.
 
-**Quando ele fala com o servidor** (só com `auto_sync` ligado, que vem desligado): puxa ao abrir o livro e ao acordar o aparelho, empurra 10 s depois de uma virada de página (a cada N páginas), ao fechar o livro e ao suspender. Há espera mínima de 25 s entre chamadas iguais e uma fila para quando está sem rede. **Conflito:** o cliente decide pela hora (`timestamp` do servidor contra a última virada de página local); "avançar" e "voltar" têm cada um a opção silenciosa, perguntar ou nunca (voltar vem desligado).
+**Quando ele fala com o servidor** (só com `auto_sync` ligado, que vem desligado): puxa ao abrir o livro e ao acordar o aparelho, empurra 10 s depois de uma virada de página (a cada N páginas), ao fechar o livro e ao suspender. Há espera mínima de 25 s entre chamadas iguais e uma fila para quando está sem rede. **Conflito:** o cliente decide **pela hora** (`timestamp` do servidor contra a última virada de página local), **não pela posição**: "avançar" quer dizer "o do servidor é mais novo" e "voltar" quer dizer "o do servidor é mais velho", e cada um tem a opção de pular em silêncio, perguntar ou nunca (padrões: perguntar e nunca). Medido na seção 5.
 
 ## 3 Desenho (do Códice)
 
@@ -67,9 +67,15 @@ Isto entra no que a especificação já chama de "KOReader e OPDS Progression: a
 - **Quando fala:** ao abrir o livro, o KOReader fez o `GET` do progresso; 33 segundos depois, ao virar páginas, fez o `PUT`. O servidor respondeu `{}` ao `GET` (sem progresso) e o KOReader aceitou.
 - **Padrões do KOReader (do código):** `auto_sync` **desligado**; "sincronizar para frente" em **perguntar**; "para trás" em **nunca**. A pessoa precisa ligar o `auto_sync` uma vez.
 
+**Segundo teste (o servidor devolveu um progresso de outro aparelho, "Codice-web"):**
+
+- **Servidor à frente do Kindle** (`DocFragment[9]`, com o Kindle no 6): o KOReader **perguntou se queria sincronizar com "Codice-web"**; ao aceitar, abriu **no começo do capítulo 5, "Travessa dos infratores"**, que é o item 9 da lista de leitura do EPUB. O salto para um capítulo de outro aparelho funciona.
+- **Servidor atrás do Kindle** (`DocFragment[3]`, 5%): o KOReader **também perguntou** ("Sincronizar para a localização mais recente (5%) do dispositivo Codice-web?"). Não era o esperado (a opção "para trás" vem em "nunca"), e a explicação é a regra da seção 2: o servidor devolveu o `timestamp` de agora, mais novo que a última virada de página local, e o KOReader o tratou como "mais novo" e aplicou a opção **de avançar**, que vem em "perguntar". **Quem decide é a hora, não a posição.**
+- **O que isso pede do Códice:** o `timestamp` do `GET` tem de ser **a hora real da última gravação de progresso** (`updated_at` de `reading_progress`), não a hora da consulta. Com isso, quem leu por último vale (decisão 1), e o KOReader ignora sozinho o progresso que ele mesmo gravou (mesmo `device` e `device_id`), sem perguntar.
+- **A pergunta aparece sempre que o outro aparelho é o mais recente.** O arquivo `kosync.lua` gerado pode mudar a opção de avançar para **pular em silêncio**, para quem quer "começou no web, continua no Kindle" sem tocar na tela; fica como escolha do mantenedor (seção 6).
+
 **Ainda falta:**
 
-- Como o KOReader reage a um `GET` com progresso de outro aparelho (a pergunta "ir para o ponto do outro aparelho?"), e o salto para o `DocFragment`: testar contra o servidor de mentira com um progresso pré-gravado.
 - PDF e CBZ: o formato de `progress` nesses (a página, pelo código).
 - Se o KOReader do Kindle acorda o Wi-Fi a tempo de puxar ao acordar o aparelho.
 
@@ -84,9 +90,10 @@ Confirmadas pelo mantenedor em 16/10/2026:
 
 Ainda em aberto:
 
-3. **Precisão de capítulo na v1** (recomendado) ou esperar até haver precisão de parágrafo?
-4. **Token separado com escopo `koreader`** (recomendado) ou aceitar qualquer token de aplicativo?
-5. Vale registrar como DEC e abrir a issue de acompanhamento antes de começar?
+3. **Pular em silêncio ou perguntar** quando o web é mais recente (o `kosync.lua` gerado define): perguntar é o padrão do KOReader; silêncio serve a quem lê nos dois.
+4. **Precisão de capítulo na v1** (recomendado) ou esperar até haver precisão de parágrafo?
+5. **Token separado com escopo `koreader`** (recomendado) ou aceitar qualquer token de aplicativo?
+6. Vale registrar como DEC e abrir a issue de acompanhamento antes de começar?
 
 ## 7 Levar o livro ao aparelho
 
