@@ -28,6 +28,7 @@ import { titleInUse } from '../titles';
 import { EquivalentPositionPrompt } from './EquivalentPositionPrompt';
 import { PlaceNotice } from './PlaceNotice';
 import { PeekNotice } from './PeekNotice';
+import { useArrivalNotice } from '../useArrivalNotice';
 import { useWiki } from '../../wiki/api/useWiki';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { authenticatedUrl } from '../../../lib/api';
@@ -93,6 +94,8 @@ export function Reader() {
   const openWiki = useGlobalStore((state) => state.openWiki);
   const seek = useGlobalStore((state) => state.seek);
   const clearSeek = useGlobalStore((state) => state.clearSeek);
+  // Where another device (a KOReader) left the book, told once and underlined on the page of an EPUB.
+  const arrival = useArrivalNotice(file?.id, progress.data, !seek && !fromStart);
 
   // Where the person is in this file, as a locator: what the viewers last reported, or the saved
   // position until they report one. A note or bookmark made now is tied to it.
@@ -265,7 +268,7 @@ export function Reader() {
       case 'pdf':
         return <PdfViewer fileUrl={fileUrl} onSelection={setSelection} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} onCancelPassword={closeBook} {...place} />;
       case 'epub':
-        return <EpubViewer fileUrl={fileUrl} title={book.title} onSelection={setSelection} marks={marks} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
+        return <EpubViewer fileUrl={fileUrl} title={book.title} onSelection={setSelection} marks={marks} arrival={arrival} onProgress={onProgress} initialProgress={initialProgress} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;
       case 'cbz':
       case 'cbr':
         return <MangaViewer fileUrl={fileUrl} onProgress={onProgress} workId={book.id} initialProgress={initialProgress} highlight={seek ? regionFromLocator(seek.locator) : null} declaredMode={file.declaredMode} seriesDirection={book.metadata?.seriesDirection} comicKind={book.metadata?.comicKind} immersive={immersive} onImmersiveChange={setImmersive} {...place} />;

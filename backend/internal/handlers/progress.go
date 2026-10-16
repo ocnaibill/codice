@@ -26,16 +26,18 @@ type ProgressHandler struct {
 // ProgressState is a position as the client sees it. Revision is 0 when nothing was saved.
 // Position is the plain text older readers wrote; Locator is null until a locator is saved.
 type ProgressState struct {
-	FileID          int64           `json:"fileId"`
-	Locator         json.RawMessage `json:"locator"`
-	LocatorVersion  *int            `json:"locatorVersion"`
-	Position        string          `json:"position"`
-	Percent         float64         `json:"percent"`
-	Completed       bool            `json:"completed"`
-	Revision        int64           `json:"revision"`
-	Device          string          `json:"device,omitempty"`
-	UpdatedAt       *time.Time      `json:"updatedAt"`       // when the server received it
-	ClientUpdatedAt *time.Time      `json:"clientUpdatedAt"` // when the device says it happened
+	FileID         int64           `json:"fileId"`
+	Locator        json.RawMessage `json:"locator"`
+	LocatorVersion *int            `json:"locatorVersion"`
+	Position       string          `json:"position"`
+	Percent        float64         `json:"percent"`
+	Completed      bool            `json:"completed"`
+	Revision       int64           `json:"revision"`
+	Device         string          `json:"device,omitempty"`
+	// Source says where the last save came from when it was not the reader of the web: "koreader" (a device that syncs with KOSync, named by Device).
+	Source          string     `json:"source,omitempty"`
+	UpdatedAt       *time.Time `json:"updatedAt"`       // when the server received it
+	ClientUpdatedAt *time.Time `json:"clientUpdatedAt"` // when the device says it happened
 }
 
 // PutProgressRequest saves a position. Percent and Completed are pointers so that "not sent"
@@ -101,14 +103,15 @@ func (h *ProgressHandler) fileFormat(r *http.Request, fileID int64) (string, err
 }
 
 const progressColumns = `COALESCE(rp.position, ''), rp.locator, rp.locator_version, COALESCE(rp.percent_complete, 0),
-	(rp.completed_at IS NOT NULL), COALESCE(rp.revision, 0), COALESCE(rp.device, ''), rp.updated_at, rp.client_updated_at`
+	(rp.completed_at IS NOT NULL), COALESCE(rp.revision, 0), COALESCE(rp.device, ''), rp.updated_at, rp.client_updated_at,
+	CASE WHEN rp.kosync_device_id IS NOT NULL THEN 'koreader' ELSE '' END`
 
 func scanProgress(row *sql.Row, fileID int64) (ProgressState, error) {
 	st := ProgressState{FileID: fileID}
 	var loc []byte
 	var ver sql.NullInt64
 	var updated, client sql.NullTime
-	err := row.Scan(&st.Position, &loc, &ver, &st.Percent, &st.Completed, &st.Revision, &st.Device, &updated, &client)
+	err := row.Scan(&st.Position, &loc, &ver, &st.Percent, &st.Completed, &st.Revision, &st.Device, &updated, &client, &st.Source)
 	if err != nil {
 		return st, err
 	}

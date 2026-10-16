@@ -15,6 +15,7 @@ import { QUIET_AFTER_TURN_MS, TOUCH_CSS, TOUCH_TAP_MAX_MS, acrossPage, liftMeani
 import { getEpubSettings, saveEpubSettings } from '../../preferences';
 import { pushReadingSettings } from '../../readingSync';
 import { epubPlaceProblem } from '../../placeCheck';
+import { paintArrival } from '../../arrival';
 import { highlightColor } from '../../highlightColors';
 import ReadingSettingsPanel from './ReadingSettingsPanel';
 
@@ -44,7 +45,7 @@ const control =
  * on the left or right of the page turns it, a tap in the middle hides or shows the controls, and a swipe turns it too;
  * on a keyboard the arrows, Page Up and Page Down do.
  */
-export default function EpubViewer({ fileUrl, title, onProgress, initialProgress, locator, onPlaceFailed, immersive = false, onImmersiveChange, onSelection, marks }) {
+export default function EpubViewer({ fileUrl, title, onProgress, initialProgress, locator, onPlaceFailed, immersive = false, onImmersiveChange, onSelection, marks, arrival }) {
   // The page of the book is a frame of its own, and a screen reader says only "frame" of a frame without a name.
   const titleRef = useRef(title);
   titleRef.current = title;
@@ -439,6 +440,13 @@ export default function EpubViewer({ fileUrl, title, onProgress, initialProgress
       observer.disconnect();
     };
   }, []);
+
+  // The place another device left the book at is underlined for a moment, once the page is there (arrival.js).
+  useEffect(() => {
+    if (!arrival?.cfi || loading) return undefined;
+    const contents = renditionRef.current?.getContents?.()?.[0];
+    return paintArrival(contents, arrival.cfi);
+  }, [arrival, loading]);
 
   // The passages the person highlighted are underlined on the page (those saved with the place of a range of the book).
   const marksKey = (marks ?? []).map((m) => `${m.cfi}|${m.color ?? ''}`).join('\n');

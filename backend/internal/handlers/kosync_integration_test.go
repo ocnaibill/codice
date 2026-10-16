@@ -194,8 +194,8 @@ func TestKosync_ADeviceSaysWhereItIsAndGetsItBackAsItSaidIt(t *testing.T) {
 	if !strings.Contains(loc, `"href": "Text/dois%20capitulo.xhtml"`) || !strings.Contains(loc, `"type": "epub"`) {
 		t.Errorf("locator = %s: the second item of the reading order, as the OPF writes it (the reader names a chapter so)", loc)
 	}
-	if device != "KOReader · KindleBasic3" || percent != 40 || position == "" {
-		t.Errorf("device %q, percent %v, position %q", device, percent, position)
+	if device != "Kindle" || percent != 40 || position == "" {
+		t.Errorf("device %q, percent %v, position %q: the device is named as the person named the access", device, percent, position)
 	}
 	if k.scalar(`SELECT count(*)::text FROM work_reading_state WHERE user_id = $1`, idAna) != "0" {
 		t.Error("reading on did not take the finished mark off")
@@ -329,5 +329,29 @@ func TestKosync_TheParagraphIsKeptNotOnlyTheChapterAndComesBackTheSame(t *testin
 	k.db.QueryRow(`SELECT locator::text, position FROM reading_progress WHERE user_id = $1 AND file_id = $2`, idAna, file).Scan(&loc, &position)
 	if position != "Text/dois%20capitulo.xhtml" || strings.Contains(loc, "cfi") {
 		t.Errorf("a path that leads nowhere: position %q, locator %s", position, loc)
+	}
+}
+
+func TestKosync_TheWebIsToldWhichDeviceStoppedThereByTheNameThePersonGaveIt(t *testing.T) {
+	k := newKosyncStack(t)
+	_, file, doc := k.book("Duna", "dune.epub", "epub")
+	k.put(doc, "/body/DocFragment[2]/body/div/p[7]", 0.4, "KindleBasic3", "DEVICE1")
+
+	var st ProgressState
+	rec := k.do(ana, "GET", fmt.Sprintf("/progress/files/%d", file), "")
+	json.Unmarshal(rec.Body.Bytes(), &st)
+	if st.Device != "Kindle" || st.Source != "koreader" || st.Revision != 1 {
+		t.Errorf("progress for the web = %+v: the device named by the person, and that it came from a device that syncs", st)
+	}
+	// what the device is told back stays its own model, and the person reading on the web takes the source away
+	if got := k.get(doc); got["device"] != "KindleBasic3" {
+		t.Errorf("GET = %v", got)
+	}
+	k.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", file), `{"locator":{"type":"epub","cfi":"epubcfi(/6/4!/4/2/6)","href":"Text/dois%20capitulo.xhtml"},"percent":41,"device":"Web (Linux)"}`)
+	rec = k.do(ana, "GET", fmt.Sprintf("/progress/files/%d", file), "")
+	st = ProgressState{}
+	json.Unmarshal(rec.Body.Bytes(), &st)
+	if st.Device != "Web (Linux)" || st.Source != "" {
+		t.Errorf("after the web = %+v", st)
 	}
 }
