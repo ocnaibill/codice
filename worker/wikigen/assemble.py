@@ -4,7 +4,7 @@ import collections
 import re
 
 from .registry import build_registry, head_of, merge_series
-from .text import CONNECTORS, core, fold, key, kind_of
+from .text import CONNECTORS, common_words, core, fold, key, kind_of
 
 MIN_CHAPTERS = 2   # an entity seen in a single chapter is not an entity of the series
 
@@ -49,14 +49,16 @@ def build_series(llm, books, rules=()):
     for b in books:
         b['partes'] = book_parts(b['chapters'])
         b['extras'] = editorial_chapters(b)
-    entries = build_registry(books)
+    # the common nouns of the books, to tell "Pai de Addie" (someone else) from "Addie LaRue" (a longer form of the name)
+    common = common_words(p for b in books for c in b['chapters'].values() for p in c.get('paragraphs', []))
+    entries = build_registry(books, common)
     for e in entries:
         e['caps'] = [c for c in e['caps'] if c not in books[e['book']]['extras']]
         e['notas'] = [n for n in e['notas'] if n['cap'] not in books[e['book']]['extras']]
     entries = [e for e in entries if e['caps']]
     for i, e in enumerate(entries):
         e['id'] = i
-    groups, log = merge_series(llm, entries, rules)
+    groups, log = merge_series(llm, entries, rules, common)
     groups = [g for g in groups if sum(len(x['caps']) for x in g) >= MIN_CHAPTERS]
     groups.sort(key=lambda g: (-sum(len(x['caps']) for x in g), head_of(g)[0]))
 

@@ -1,5 +1,6 @@
 """Small helpers for names and text that every stage shares."""
 import difflib
+import collections
 import re
 import unicodedata
 
@@ -45,9 +46,37 @@ def _is_title(t):
 
 
 def core(name):
-    """The words that identify, without titles and connectors: "Doutora Ana de Souza" → (ana, souza)."""
+    """The words that identify, without titles and connectors: "Doutora Ana de Souza" → (ana, souza). A title followed by a connector is
+    not a title but what the name says someone is to another ("Irmã de Henry" is his sister, not Henry): it stays."""
     toks = [t for t in re.split(r'[^a-z0-9]+', fold(name)) if t]
-    return tuple(t for t in toks if t not in CONNECTORS and not _is_title(t))
+    return tuple(t for i, t in enumerate(toks)
+                 if t not in CONNECTORS and not (_is_title(t) and not (i + 1 < len(toks) and toks[i + 1] in OF)))
+
+
+ARTICLES = {'a', 'o', 'as', 'os', 'um', 'uma', 'the', 'el', 'la', 'le', 'les', 'los', 'las', 'il', 'lo'}
+OF = {'de', 'da', 'do', 'das', 'dos', 'del', 'des', 'du', 'di', 'of'}   # "pai de", "father of": what ties a description to another
+
+
+def common_words(paragraphs, least=1, share=0.5):
+    """The words the book writes mostly in lower case ("pai", "casa", "irmã"): common nouns, not names. A name ("Henry") is almost never
+    written in lower case; a common noun starts with a capital only at the start of a sentence."""
+    lower, total = collections.Counter(), collections.Counter()
+    for p in paragraphs:
+        for w in re.findall(r'[^\W\d_]+', p):
+            f = fold(w)
+            total[f] += 1
+            if w[0].islower():
+                lower[f] += 1
+    return frozenset(w for w, n in total.items() if n >= least and lower[w] / n >= share)
+
+
+def describes_another(name, common):
+    """A name that says what someone or something is to another ("Pai de Addie", "Tio de Henry", "Casa de Henry"): a common noun and then
+    a connector. It holds the other's name but is not a longer form of it ("Ana de Souza" is: "ana" is not a common noun)."""
+    toks = [t for t in re.split(r'[^a-z0-9]+', fold(name)) if t]
+    while toks and toks[0] in ARTICLES:
+        toks = toks[1:]
+    return len(toks) >= 3 and toks[0] in common and toks[1] in OF
 
 
 KINDS = [('personagem', ['personagem', 'pessoa', 'ia', 'inteligencia', 'character', 'person']),

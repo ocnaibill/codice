@@ -94,3 +94,41 @@ def test_the_order_the_chapters_finished_in_does_not_change_what_the_model_is_as
     forward = asked([1, 2, 3, 4])
     assert forward[0], 'the test must make the model be asked something'
     assert asked([4, 2, 1, 3]) == forward
+
+
+def test_a_description_that_holds_a_name_is_not_a_longer_form_of_it():
+    """"Pai de Addie" holds "Addie" but is her father: it must not make "Addie" doubt between him and "Addie LaRue" (it did, and Addie
+    stayed apart from her full name)."""
+    from wikigen.text import common_words
+    common = common_words(['O pai dela chegou.', 'A mãe e o tio de Henry.', 'Addie viu Henry.'])
+    entries = [entry(0, 0, 'Addie', 'personagem', [1, 2, 3]), entry(1, 0, 'Addie LaRue', 'personagem', [4, 5]),
+               entry(2, 0, 'Pai de Addie', 'personagem', [1, 2])]
+    groups, _ = merge_series(Model(False), entries, (), common)
+    assert groups_of(groups) == [['Addie', 'Addie LaRue'], ['Pai de Addie']]
+    # without knowing that "pai" is a common noun, "Addie" has two owners and is joined to none (what happened before)
+    groups, _ = merge_series(Model(False), entries)
+    assert groups_of(groups) == [['Addie'], ['Addie LaRue'], ['Pai de Addie']]
+
+
+def test_a_short_name_waits_for_the_longer_ones_to_be_joined_first():
+    """"Henry Strauss" goes into "Henry Samuel Strauss" before "Henry" counts its owners, or it finds two and stays apart."""
+    entries = [entry(0, 0, 'Henry', 'personagem', [1, 2, 3]), entry(1, 0, 'Henry Strauss', 'personagem', [4]),
+               entry(2, 0, 'Henry Samuel Strauss', 'personagem', [5, 6])]
+    groups, _ = merge_series(Model(False), entries)
+    assert groups_of(groups) == [['Henry', 'Henry Samuel Strauss', 'Henry Strauss']]
+
+
+def test_a_title_before_of_says_what_someone_is_to_another():
+    from wikigen.text import core, describes_another
+    assert core('Irmã de Henry') == ('irma', 'henry')      # his sister, not Henry
+    assert core('Irmã Maria') == ('maria',)                  # a title still goes
+    common = frozenset({'pai', 'casa', 'irma'})
+    assert describes_another('Pai de Addie', common) and describes_another('A casa de Henry', common)
+    assert not describes_another('Ana de Souza', common)     # a full name with "de"
+    assert not describes_another('a livraria / o sebo', common)
+
+
+def test_a_name_with_a_note_of_the_model_in_it_is_not_what_the_entity_is_called():
+    from wikigen.registry import head_of
+    g = [{'nomes': collections.Counter({'Escuridão (forma de Luc)': 3, 'A escuridão': 2}), 'nome': 'Escuridão (forma de Luc)', 'caps': [1, 2]}]
+    assert head_of(g)[0] == 'A escuridão'
