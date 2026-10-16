@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import EpubCFI from 'epubjs/src/epubcfi';
 import { ARRIVAL_CLASS, arrivalOf, lastTold, markTold, paintArrival } from './arrival';
 
 const epub = { type: 'epub', cfi: 'epubcfi(/6/12!/4/2/336)', href: 'Text/c2.xhtml' };
@@ -91,5 +92,30 @@ describe('paintArrival', () => {
     expect(() => paintArrival({ range: () => { throw new Error('no such place'); } }, 'x')).not.toThrow();
     expect(() => paintArrival(undefined, 'x')).not.toThrow();
     expect(() => paintArrival({ range: () => null }, 'x')).not.toThrow();
+  });
+});
+
+describe('paintArrival with the CFI the server writes', () => {
+  // The server turns what KOReader says into a CFI of an element (body > div > the nth child): epub.js must read it as the reader does.
+  const page = '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head><body><div><h1>Titulo</h1><p>um texto</p><p>dois texto</p><p>tres <b>negrito</b> fim</p></div></body></html>';
+  const contents = () => {
+    const doc = new DOMParser().parseFromString(page, 'application/xhtml+xml');
+    return { doc, range: (cfi) => new EpubCFI(cfi).toRange(doc), addStylesheetRules: vi.fn() };
+  };
+
+  it('underlines the second paragraph for the path /4/2/6, and the paragraph around a text of it', () => {
+    const c = contents();
+    paintArrival(c, 'epubcfi(/6/4!/4/2/6)', { delay: 1e9 });
+    expect(c.doc.querySelector('p:nth-of-type(2)').classList.contains(ARRIVAL_CLASS)).toBe(true);
+    expect(c.doc.querySelectorAll(`.${ARRIVAL_CLASS}`)).toHaveLength(1);
+    const d = contents();
+    paintArrival(d, 'epubcfi(/6/4!/4/2/8/1:3)', { delay: 1e9 });
+    expect(d.doc.querySelector('p:nth-of-type(3)').classList.contains(ARRIVAL_CLASS)).toBe(true);
+  });
+
+  it('underlines nothing for a path that leads to the body', () => {
+    const c = contents();
+    paintArrival(c, 'epubcfi(/6/4!/4)', { delay: 1e9 });
+    expect(c.doc.querySelectorAll(`.${ARRIVAL_CLASS}`)).toHaveLength(0);
   });
 });
