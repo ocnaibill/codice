@@ -61,7 +61,12 @@ func epubWith(t *testing.T, path string, items ...string) {
 			linear = ` linear="no"`
 		}
 		fmt.Fprintf(&spine, `<itemref idref="i%d"%s/>`, i, linear)
-		add("OEBPS/"+strings.ReplaceAll(href, "%20", " "), "<html><body><p>"+strings.Repeat("texto ", 500)+"</p></body></html>")
+		var paragraphs strings.Builder
+		for p := 1; p <= 20; p++ {
+			fmt.Fprintf(&paragraphs, "<p>Parágrafo %d do item %d. %s</p>", p, i+1, strings.Repeat("texto ", 40))
+		}
+		add("OEBPS/"+strings.ReplaceAll(href, "%20", " "),
+			`<?xml version="1.0"?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head><body><div><h1>Título</h1>`+paragraphs.String()+`</div></body></html>`)
 	}
 	add("OEBPS/content.opf", `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><manifest>`+manifest.String()+`</manifest><spine>`+spine.String()+`</spine></package>`)
 	zw.Close()
@@ -186,8 +191,8 @@ func TestKosync_ADeviceSaysWhereItIsAndGetsItBackAsItSaidIt(t *testing.T) {
 	var revision int
 	k.db.QueryRow(`SELECT locator::text, device, position, percent_complete, revision FROM reading_progress WHERE user_id = $1 AND file_id = $2`, idAna, file).
 		Scan(&loc, &device, &position, &percent, &revision)
-	if !strings.Contains(loc, `"href": "Text/dois capitulo.xhtml"`) || !strings.Contains(loc, `"type": "epub"`) {
-		t.Errorf("locator = %s: the second item of the reading order, as the OPF names it (decoded)", loc)
+	if !strings.Contains(loc, `"href": "Text/dois%20capitulo.xhtml"`) || !strings.Contains(loc, `"type": "epub"`) {
+		t.Errorf("locator = %s: the second item of the reading order, as the OPF writes it (the reader names a chapter so)", loc)
 	}
 	if device != "KOReader · KindleBasic3" || percent != 40 || position == "" {
 		t.Errorf("device %q, percent %v, position %q", device, percent, position)
@@ -274,5 +279,55 @@ func TestKosync_APdfAndAComicAreKeptByTheirPage(t *testing.T) {
 	}
 	if got := k.get(cbz); got["progress"] != "7" || got["device"] != "KindleBasic3" {
 		t.Errorf("comic = %v", got)
+	}
+}
+
+func TestKosync_TheParagraphIsKeptNotOnlyTheChapterAndComesBackTheSame(t *testing.T) {
+	k := newKosyncStack(t)
+	_, file, doc := k.book("Duna", "dune.epub", "epub")
+
+	// the device is at the 7th paragraph of the second item: the reader opens at the same element
+	xpointer := "/body/DocFragment[2]/body/div/p[7]/text().12"
+	if rec := k.put(doc, xpointer, 0.4, "KindleBasic3", "DEVICE1"); rec.Code != 200 {
+		t.Fatalf("PUT: %d %s", rec.Code, rec.Body.String())
+	}
+	var loc, position string
+	k.db.QueryRow(`SELECT locator::text, position FROM reading_progress WHERE user_id = $1 AND file_id = $2`, idAna, file).Scan(&loc, &position)
+	// body is the 2nd child of html (after head: /4), the div its 1st child (/2), the 7th p is the 8th child of the div (the h1 comes first): /16
+	if want := "epubcfi(/6/4!/4/2/16)"; position != want || !strings.Contains(loc, want) {
+		t.Errorf("position %q, locator %s, want the CFI %s", position, loc, want)
+	}
+	if !strings.Contains(loc, `"href": "Text/dois%20capitulo.xhtml"`) || !strings.Contains(loc, `"progression": 0.`) {
+		t.Errorf("the chapter and how far into it: %s", loc)
+	}
+	if got := k.get(doc); got["progress"] != xpointer {
+		t.Errorf("GET = %v, the device is given what it said", got["progress"])
+	}
+
+	// the person reads on in the web, and the reader says where with a CFI: the device is told the same paragraph, by name
+	web := `{"locator":{"type":"epub","cfi":"epubcfi(/6/6[x]!/4/2/22/1:5)","href":"Text/tres.xhtml","progression":0.5},"percent":70,"device":"Web"}`
+	if rec := k.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", file), web); rec.Code != 200 {
+		t.Fatalf("web PUT: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := k.get(doc); got["progress"] != "/body/DocFragment[3]/body/div/p[10]" || got["device"] != "Códice" {
+		t.Errorf("GET after the web = %v, want the 10th paragraph of the third item", got)
+	}
+	// a CFI that points at the chapter and not into it, or beyond what the chapter has, is the start of the chapter
+	for cfi, want := range map[string]string{
+		"epubcfi(/6/6!/4/2/9998/1:0)": "/body/DocFragment[3]",
+		"epubcfi(/6/6!/4/2/2)":        "/body/DocFragment[3]/body/div/h1",
+		"epubcfi(/6/6)":               "/body/DocFragment[3]",
+	} {
+		body := fmt.Sprintf(`{"locator":{"type":"epub","cfi":%q,"href":"Text/tres.xhtml"},"percent":71,"device":"Web"}`, cfi)
+		k.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", file), body)
+		if got := k.get(doc); got["progress"] != want {
+			t.Errorf("%s: %v, want %s", cfi, got["progress"], want)
+		}
+	}
+	// a path of the device that leads nowhere is the start of the chapter, kept all the same
+	k.put(doc, "/body/DocFragment[2]/body/div/p[999]/text().0", 0.5, "KindleBasic3", "DEVICE1")
+	k.db.QueryRow(`SELECT locator::text, position FROM reading_progress WHERE user_id = $1 AND file_id = $2`, idAna, file).Scan(&loc, &position)
+	if position != "Text/dois%20capitulo.xhtml" || strings.Contains(loc, "cfi") {
+		t.Errorf("a path that leads nowhere: position %q, locator %s", position, loc)
 	}
 }

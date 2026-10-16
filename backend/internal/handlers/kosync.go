@@ -257,7 +257,17 @@ func (h *KosyncHandler) locatorOf(file kosyncFile, progress string) ([]byte, boo
 		if err != nil || n < 1 || n > len(spine) {
 			return nil, false
 		}
-		raw, _ := json.Marshal(map[string]any{"type": "epub", "href": spine[n-1], "progression": 0})
+		loc := map[string]any{"type": "epub", "href": spine[n-1].Href, "progression": 0}
+		// the paragraph, when the path leads to it: a CFI the reader opens at, and how far into the chapter it is. Otherwise the chapter's start.
+		if _, tail, ok := strings.Cut(progress, m[0]+"/"); ok {
+			if html, total, err := readChapter(file.FullPath, spine[n-1]); err == nil {
+				if cfi, progression, ok := cfiOfXPointer(html, total, n, tail); ok {
+					loc["cfi"] = cfi
+					loc["progression"] = math.Round(progression*1000) / 1000
+				}
+			}
+		}
+		raw, _ := json.Marshal(loc)
 		return raw, true
 	case "pdf":
 		page, err := strconv.Atoi(strings.TrimSpace(progress))
@@ -284,6 +294,7 @@ func xpointerOfItem(n int) string { return "/body/DocFragment[" + strconv.Itoa(n
 func (h *KosyncHandler) placeOf(file kosyncFile, raw []byte) (string, bool) {
 	var l struct {
 		Href  string `json:"href"`
+		CFI   string `json:"cfi"`
 		Page  *int   `json:"page"`
 		Index *int   `json:"index"`
 	}
@@ -292,16 +303,28 @@ func (h *KosyncHandler) placeOf(file kosyncFile, raw []byte) (string, bool) {
 	}
 	switch file.Format {
 	case "epub":
-		if l.Href == "" || file.FullPath == "" {
+		if file.FullPath == "" {
 			return "", false
 		}
 		spine, err := h.spines.of(file.FullPath)
 		if err != nil {
 			return "", false
 		}
+		// the paragraph, when the reader said it with a CFI that leads to an element of the chapter
+		if n, inside, ok := itemOfCFI(l.CFI); ok && n >= 1 && n <= len(spine) {
+			if html, _, err := readChapter(file.FullPath, spine[n-1]); err == nil {
+				if place, ok := xpointerOfCFI(html, n, inside); ok {
+					return place, true
+				}
+			}
+			return xpointerOfItem(n), true
+		}
+		if l.Href == "" {
+			return "", false
+		}
 		clean := strings.SplitN(l.Href, "#", 2)[0]
-		for i, href := range spine {
-			if href == clean || strings.HasSuffix(href, "/"+clean) || strings.HasSuffix(clean, "/"+href) {
+		for i, item := range spine {
+			if item.Href == clean || strings.HasSuffix(item.Href, "/"+clean) || strings.HasSuffix(clean, "/"+item.Href) {
 				return xpointerOfItem(i + 1), true
 			}
 		}
@@ -326,10 +349,10 @@ type spineCache struct {
 
 type cachedSpine struct {
 	modified time.Time
-	hrefs    []string
+	items    []spineItem
 }
 
-func (c *spineCache) of(full string) ([]string, error) {
+func (c *spineCache) of(full string) ([]spineItem, error) {
 	info, err := os.Stat(full)
 	if err != nil {
 		return nil, err
@@ -337,10 +360,10 @@ func (c *spineCache) of(full string) ([]string, error) {
 	c.mu.Lock()
 	if hit, ok := c.items[full]; ok && hit.modified.Equal(info.ModTime()) {
 		c.mu.Unlock()
-		return hit.hrefs, nil
+		return hit.items, nil
 	}
 	c.mu.Unlock()
-	hrefs, err := epubSpine(full)
+	items, err := epubSpine(full)
 	if err != nil {
 		return nil, err
 	}
@@ -348,14 +371,14 @@ func (c *spineCache) of(full string) ([]string, error) {
 	if c.items == nil || len(c.items) > 256 {
 		c.items = map[string]cachedSpine{}
 	}
-	c.items[full] = cachedSpine{modified: info.ModTime(), hrefs: hrefs}
+	c.items[full] = cachedSpine{modified: info.ModTime(), items: items}
 	c.mu.Unlock()
-	return hrefs, nil
+	return items, nil
 }
 
-// epubSpine is the reading order of an EPUB: the href of each item, as the OPF writes it (relative to the OPF, which is how the reader names
+// epubSpine is the reading order of an EPUB: each item with its href as the OPF writes it (relative to the OPF, which is how the reader names
 // the chapters), in order. Every item counts, the ones outside the reading flow too, as the device counts them.
-func epubSpine(full string) ([]string, error) {
+func epubSpine(full string) ([]spineItem, error) {
 	zr, err := zip.OpenReader(full)
 	if err != nil {
 		return nil, err
@@ -386,7 +409,8 @@ func epubSpine(full string) ([]string, error) {
 	if err := xml.Unmarshal(container, &c); err != nil || len(c.Rootfiles) == 0 {
 		return nil, errors.New("no package document")
 	}
-	opfData, err := read(path.Clean(c.Rootfiles[0].Path))
+	opfPath := path.Clean(c.Rootfiles[0].Path)
+	opfData, err := read(opfPath)
 	if err != nil {
 		return nil, err
 	}
@@ -404,16 +428,17 @@ func epubSpine(full string) ([]string, error) {
 	}
 	byID := map[string]string{}
 	for _, it := range opf.Items {
-		href, err := url.PathUnescape(it.Href)
-		if err != nil {
-			href = it.Href
-		}
-		byID[it.ID] = href
+		byID[it.ID] = it.Href
 	}
-	var out []string
+	var out []spineItem
 	for _, ref := range opf.Refs {
 		if href, ok := byID[ref.IDRef]; ok {
-			out = append(out, href)
+			// the href stays as the OPF writes it (the reader names a chapter so); the place in the archive is the decoded one
+			decoded, err := url.PathUnescape(href)
+			if err != nil {
+				decoded = href
+			}
+			out = append(out, spineItem{Href: href, Zip: path.Join(path.Dir(opfPath), decoded)})
 		}
 	}
 	if len(out) == 0 {
