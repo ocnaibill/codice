@@ -47,13 +47,16 @@ Todas, menos o registro, mandam `x-auth-user` (o nome) e `x-auth-key`. O cliente
 5. **A wiki.** O ponto que a wiki respeita (DEC-179) vem do progresso de leitura. Gravar o progresso do KOReader no **começo do item** erra sempre para trás: nunca adianta o corte, só pode mostrar menos. Isso é o comportamento seguro e fica como está.
 6. **Interface.** Em Conta > Dispositivos (UI-21): criar o token `koreader`, e as instruções de três passos (servidor, usuário, "senha"), com o endereço do servidor já preenchido; e uma linha por aparelho que já sincronizou (nome, última vez).
 
-## 4 Etapas propostas
+## 4 Etapas
 
+0. **OPDS primeiro** (confirmado em 16/10/2026): o catálogo atual tem defeitos (o feed de busca usa o prefixo `opensearch` sem declará-lo, não há paginação nem miniaturas, só um arquivo por obra) e quase nenhuma navegação (só "Recentes" e a busca). Dois PRs: (a) correção e base, (b) navegar por autor, série, categoria, coleção, favoritos e "continuar lendo". **Antes deles, o token curto e o `opds.lua` pronto**: o Kindle do mantenedor recusou o catálogo porque digitar o token de 47 caracteres numa tela de e-ink falhou (a aba Entradas mostrou a tentativa como "aplicativo com senha errada").
 1. **Servidor KOSync:** token com escopo, coluna e preenchimento do hash, os quatro endpoints, o mapeamento do EPUB, do PDF e do CBZ, testes de integração, e **um roteiro de teste no Kindle do mantenedor** (KOReader com `auto_sync` ligado, ler, fechar, conferir no leitor web e o caminho de volta).
 2. **Tela de Dispositivos:** o token, a lista de aparelhos e o **arquivo `kosync.lua` pronto para baixar** (ver seção 5), no lugar de ensinar a digitar o endereço e a senha no aparelho.
 3. **Anotações:** importar `My Clippings.txt` (serve também ao Kindle sem jailbreak) e os destaques do KOReader, como notas do Códice (DEC-109 e a regra de notas).
 4. **Envio por e-mail** para o Kindle sem jailbreak.
-5. **Plugin em Lua** (estantes, favoritos e notas dentro do KOReader): só depois de 1 a 3 mostrarem uso.
+5. **Plugin em Lua** (estantes, favoritos e notas dentro do KOReader; a aparência do KOReader parecida com a do Códice): só depois de 0 a 3 mostrarem uso.
+
+**O token curto e os arquivos prontos** (confirmados): o escopo `koreader` usa 16 caracteres (minúsculas e números sem os que se confundem), em grupos de 4, e o servidor ignora espaços e maiúsculas; serve de senha tanto do OPDS quanto do KOSync. O KOReader guarda os catálogos em `settings/opds.lua` (lista `servers`, cada um com `title`, `url`, `username`, `password`) e o KOSync em `settings/kosync.lua` (`custom_server`, `username`, `userkey`, `auto_sync`); a tela gera esses arquivos com o token na hora em que ele é criado (é a única vez que ele existe em claro). Cuidado a dizer na tela: o `opds.lua` gerado **substitui** o do aparelho; quem já tem catálogos seus deve copiar só a entrada.
 
 Isto entra no que a especificação já chama de "KOReader e OPDS Progression: adaptadores candidatos" (E3, QA-018); a matriz de clientes homologados passa a ter o KOReader no Kindle 10ª geração.
 
