@@ -1,6 +1,6 @@
 # Proposta: sincronização com o KOReader (e, por ele, com o Kindle com jailbreak)
 
-**Proposta, não decisão.** Nada aqui está implementado nem aprovado; as decisões que dependem do mantenedor estão na seção 6. Escrita em 16/10/2026 a partir de uma conversa sobre "ter o Códice dentro do Kindle". O que o protocolo exige foi lido no código do KOReader (seção 2); o que é desenho do Códice é marcado como tal.
+**Etapa 1 decidida (DEC-190, 16/10/2026); o resto continua proposta.** Nada aqui está implementado. As decisões estão na seção 6. Escrita em 16/10/2026 a partir de uma conversa sobre "ter o Códice dentro do Kindle". O que o protocolo exige foi lido no código do KOReader (seção 2); o que é desenho do Códice é marcado como tal.
 
 ## 1 O que se quer, e o que cada aparelho permite
 
@@ -89,11 +89,7 @@ Confirmadas pelo mantenedor em 16/10/2026:
 2. **O progresso do KOReader move o ponto da wiki**, sempre para o começo do capítulo (seção 3, item 5).
 3. **O KOReader pergunta** quando o outro aparelho é o mais recente, como já faz (o `kosync.lua` gerado não muda a opção). Razão do mantenedor: quem volta páginas de propósito precisa que o aparelho saiba disso, e a pergunta deixa a pessoa escolher.
 
-Ainda em aberto:
-
-3. **Precisão de capítulo na v1** (recomendado) ou esperar até haver precisão de parágrafo?
-4. **Token separado com escopo `koreader`** (recomendado) ou aceitar qualquer token de aplicativo?
-5. Vale registrar como DEC e abrir a issue de acompanhamento antes de começar?
+Também confirmadas em 16/10/2026 ("ok, concordo"): **precisão de capítulo na v1** e **token separado com escopo `koreader`**. Tudo isso é a **DEC-190**, que cobre só a etapa 1 (o servidor); as etapas seguintes ainda precisam de decisão.
 
 ## 7 Levar o livro ao aparelho
 
