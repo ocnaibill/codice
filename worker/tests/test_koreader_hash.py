@@ -49,3 +49,10 @@ def test_the_worker_hashes_the_files_that_have_none_and_skips_what_is_not_there(
     assert [u[1] for u in db.updated] == [1, 3]
     # 3000 bytes: the samples at 0 and at 1024, and the one at 4096 is past the end
     assert db.updated[0][0] == hashlib.md5(b'x' * 2048).hexdigest()
+
+
+def test_the_worker_loop_never_stops_for_a_failure_of_the_hash(capsys):
+    from tests.test_text_job import load_main
+    main = load_main()
+    main.hash_files_for_koreader('not a database')   # the loop calls it with whatever it has: a failure is said, not raised
+    assert 'KOReader hash failed' in capsys.readouterr().out
