@@ -6,6 +6,7 @@ word of naming, which the model decides, only with proof copied from the notes (
 must name the other side whole). A pair the model said is different is never joined again, not even through a third.
 """
 import collections
+import math
 import re
 
 from .text import CONNECTORS, TITLE_WORDS, core, describes_another, fold, key, kind_of  # noqa: F401
@@ -240,7 +241,43 @@ def merge_series(llm, entries, rules=(), common=frozenset()):
 
         for X in info:
             X['notes'] = note_texts(X)
-        cand = []
+        # The ties of each group, by the other group, and its chapters: two names of the same entity share the ones they are tied to (not
+        # the protagonists, that everyone is tied to) and are rarely in the same chapter, while two people who live together are in most
+        # chapters with each other and tied to each other again and again.
+        holders = collections.defaultdict(set)
+        for X in info:
+            for n in X['names']:
+                if core(n):
+                    holders[core(n)].add(X['root'])
+        root_of = {c: next(iter(rs)) for c, rs in holders.items() if len(rs) == 1}
+        for X in info:
+            X['ties'] = collections.Counter()
+            X['chapters'] = chapters_of(X['root'])
+        by_root = {X['root']: X for X in info}
+        for X in info:
+            for x in X['g']:
+                for n in x['notas']:
+                    for r in n.get('relacoes') or []:
+                        other = root_of.get(core(str(r.get('com', ''))))
+                        if other is not None and other != X['root'] and other in by_root:
+                            X['ties'][other] += 1
+                            by_root[other]['ties'][X['root']] += 1
+        degree = collections.Counter(k for X in info for k in X['ties'])
+
+        def weight(k):   # a tie to the protagonist says little; a tie to someone few are tied to says much
+            return 1 / math.log(2 + degree[k])
+
+        def apart(A, B):
+            """(how much A and B share the ones they are tied to, from 0 to 1, weighted; the share of the smaller one's chapters in which
+            both are; how many times they are tied to each other)."""
+            shared = (set(A['ties']) & set(B['ties'])) - {A['root'], B['root']}
+            every = (set(A['ties']) | set(B['ties'])) - {A['root'], B['root']}
+            ws = sum(weight(k) for k in shared)
+            alike = ws / sum(weight(k) for k in every) if every and ws >= 1.2 else 0.0
+            both = len(A['chapters'] & B['chapters'])
+            together = both / max(1, min(len(A['chapters']), len(B['chapters'])))
+            return alike, together, A['ties'][B['root']] + B['ties'][A['root']], both
+        cand, words_only = [], []
         for i, A in enumerate(info):
             for B in info[i + 1:]:
                 ta, tb = A['g'][0]['tipo'], B['g'][0]['tipo']
@@ -256,10 +293,19 @@ def merge_series(llm, entries, rules=(), common=frozenset()):
                         if CUE.search(t) and any(w in t for w in Y['toks']) and not any(w in t for w in X['toks']):
                             hits += 1
                 blocked = any((min(x['id'], y['id']), max(x['id'], y['id'])) in negativas for x in A['g'] for y in B['g'])
-                if hits >= 1 and not blocked:   # a pair the staff or the model already answered is not asked again
-                    cand.append((hits, A, B))
-        cand.sort(key=lambda x: -x[0])
-        cand = cand[:70]
+                alike, together, each_other, both = apart(A, B)
+                # in most of the same chapters: two who live together, not one entity with two names (in a book about names, the words of
+                # naming are everywhere, and "Addie" and "Henry" were the strongest pair)
+                if blocked or together >= 0.6 or (alike == 0 and hits < 1):   # a pair already answered is not asked again
+                    continue
+                if alike:
+                    cand.append((alike * (1 + 0.5 * min(hits, 3)) * (1 - together) / (1 + each_other / max(1, both) / 2), A, B))
+                else:
+                    # nothing in common but a word of naming: the notes of everyone in a book about names have one, so these come last
+                    # and few, though in a small world (or a book where the note says it) they are all there is
+                    words_only.append((min(hits, 3) * (1 - together), A, B))
+        order = lambda x: (-x[0], x[1]['root'], x[2]['root'])   # noqa: E731
+        cand = sorted(cand, key=order)[:60] + sorted(words_only, key=order)[:10]
         if not cand:
             break
         blocks = []
