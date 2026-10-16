@@ -118,6 +118,22 @@ def test_the_bundle_has_the_books_the_entities_and_the_graph_of_the_text():
     assert [s for s, _ in progress.stages] == ['map', 'identity', 'pages']
 
 
+def test_a_bundle_with_edges_and_a_suggestion_of_identity_is_written(monkeypatch):
+    """The edges and the suggestions are in the same pass: a name used for one must not hide what the other calls (it did, on a real run)."""
+    from wikigen import assemble
+    real = assemble.build_series
+
+    def with_a_suggestion(llm, bks, rules=()):
+        series, log = real(llm, bks, rules)
+        log['sugestoes'] = [{'a': 'Ana', 'b': 'Mestre Bruno', 'motivo': 'parecem a mesma', 'prova': ''}]
+        return series, log
+
+    monkeypatch.setattr(assemble, 'build_series', with_a_suggestion)
+    bundle, partial, llm, progress = run()
+    assert bundle['edges']
+    assert [(s['kind'], s['entity'], s['other']) for s in bundle['suggestions']] == [('merge', 'ana', 'mestre-bruno')]
+
+
 def test_every_sentence_rests_on_a_chapter_that_exists_and_every_chapter_it_cites_is_a_story_one():
     bundle, *_ = run()
     valid = {(b['position'], c['chapter']) for b in bundle['books'] for c in b['chapters'] if not c['editorial']}

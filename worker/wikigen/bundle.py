@@ -202,10 +202,10 @@ def build_bundle(books, series, pages, provider, model, remote, partial=False, n
                 other = resolve(str(rel['com']))
                 if not other or other == e['slug']:
                     continue
-                key = (e['slug'], other, fold(str(rel.get('relacao', '')))[:60], n['book'], n['cap'])
-                if key in seen:
+                tie = (e['slug'], other, fold(str(rel.get('relacao', '')))[:60], n['book'], n['cap'])
+                if tie in seen:
                     continue
-                seen.add(key)
+                seen.add(tie)
                 edges.append({'a': e['slug'], 'b': other, 'label': str(rel.get('relacao', ''))[:300], 'book': n['book'], 'chapter': n['cap']})
 
     # The pairs the model took for the same without proof go to the staff (DEC-181), unless they already decided about them.
