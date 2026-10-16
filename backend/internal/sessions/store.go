@@ -232,6 +232,7 @@ func RevokeAllForUserTx(ctx context.Context, tx *sql.Tx, userID string) error {
 type AppToken struct {
 	ID         string     `json:"id"`
 	Name       string     `json:"name"`
+	Scope      string     `json:"scope"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
 }
@@ -241,17 +242,99 @@ func hashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// CreateAppToken issues a token for an OPDS or sync client. The returned secret
-// is shown once; only its SHA-256 is kept.
-func (s *Store) CreateAppToken(ctx context.Context, userID, name string) (id, token string, err error) {
-	raw := make([]byte, 32)
-	if _, err = rand.Read(raw); err != nil {
-		return "", "", err
+// Scopes of an app token (DEC-190).
+const (
+	ScopeApp      = "app"      // the long token (cdc_...) of every OPDS client
+	ScopeKoreader = "koreader" // the short one, to be typed on a Kindle
+)
+
+// koreaderAlphabet leaves out what is mistaken for something else on a screen: 0 and o, 1, i and l. Thirty-one symbols, sixteen of
+// them: about 79 bits, which an account that can be tried only over the network does not lose to guessing.
+const (
+	koreaderAlphabet = "23456789abcdefghjkmnpqrstuvwxyz"
+	koreaderLength   = 16
+)
+
+// newKoreaderToken draws sixteen symbols with no bias (a byte above the largest multiple of 31 is thrown away).
+func newKoreaderToken() (string, error) {
+	out := make([]byte, 0, koreaderLength)
+	buf := make([]byte, 32)
+	limit := byte(256 - 256%len(koreaderAlphabet))
+	for len(out) < koreaderLength {
+		if _, err := rand.Read(buf); err != nil {
+			return "", err
+		}
+		for _, b := range buf {
+			if b < limit && len(out) < koreaderLength {
+				out = append(out, koreaderAlphabet[int(b)%len(koreaderAlphabet)])
+			}
+		}
 	}
-	token = AppTokenPrefix + base64.RawURLEncoding.EncodeToString(raw)
+	return string(out), nil
+}
+
+// DisplayKoreaderToken writes the token in groups of four, the way it is read and typed ("7k2m 9xqa r4bd h8tw").
+func DisplayKoreaderToken(token string) string {
+	var b strings.Builder
+	for i, r := range token {
+		if i > 0 && i%4 == 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// normalizeKoreaderToken is what a person typed, read as the token: no spaces or dashes, no capitals (a Kindle keyboard starts a field
+// with one). It reports false when what is left cannot be one.
+func normalizeKoreaderToken(typed string) (string, bool) {
+	var b strings.Builder
+	for _, r := range strings.ToLower(typed) {
+		if r == ' ' || r == '-' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	token := b.String()
+	if len(token) != koreaderLength {
+		return "", false
+	}
+	for _, r := range token {
+		if !strings.ContainsRune(koreaderAlphabet, r) {
+			return "", false
+		}
+	}
+	return token, true
+}
+
+// CreateAppToken issues a long token for an OPDS client. The returned secret is shown once; only its SHA-256 is kept.
+func (s *Store) CreateAppToken(ctx context.Context, userID, name string) (id, token string, err error) {
+	return s.CreateScopedAppToken(ctx, userID, name, ScopeApp)
+}
+
+// CreateScopedAppToken issues a token of the given scope. A koreader token is returned in groups of four, to be shown; what is kept is
+// the hash of the sixteen symbols alone.
+func (s *Store) CreateScopedAppToken(ctx context.Context, userID, name, scope string) (id, token string, err error) {
+	var secret string
+	switch scope {
+	case ScopeKoreader:
+		if secret, err = newKoreaderToken(); err != nil {
+			return "", "", err
+		}
+		token = DisplayKoreaderToken(secret)
+	case ScopeApp:
+		raw := make([]byte, 32)
+		if _, err = rand.Read(raw); err != nil {
+			return "", "", err
+		}
+		secret = AppTokenPrefix + base64.RawURLEncoding.EncodeToString(raw)
+		token = secret
+	default:
+		return "", "", errors.New("unknown token scope")
+	}
 	err = s.DB.QueryRowContext(ctx,
-		`INSERT INTO app_tokens (user_id, name, token_hash) VALUES ($1, $2, $3) RETURNING id`,
-		userID, name, hashToken(token)).Scan(&id)
+		`INSERT INTO app_tokens (user_id, name, token_hash, scope) VALUES ($1, $2, $3, $4) RETURNING id`,
+		userID, name, hashToken(secret), scope).Scan(&id)
 	return id, token, err
 }
 
@@ -260,7 +343,12 @@ func (s *Store) CreateAppToken(ctx context.Context, userID, name string) (id, to
 // (DEC-071). It matches middleware.BasicVerifier.
 func (s *Store) VerifyAppToken(ctx context.Context, username, token string) (id, role string, err error) {
 	if !strings.HasPrefix(token, AppTokenPrefix) {
-		return "", "", middleware.ErrInvalidCredentials
+		// the short token of KOReader, as it was typed: the hash of its sixteen symbols finds it
+		short, ok := normalizeKoreaderToken(token)
+		if !ok {
+			return "", "", middleware.ErrInvalidCredentials
+		}
+		token = short
 	}
 	err = s.DB.QueryRowContext(ctx, `
 		UPDATE app_tokens t SET last_used_at = now()
@@ -277,7 +365,7 @@ func (s *Store) VerifyAppToken(ctx context.Context, username, token string) (id,
 // ListAppTokens returns the user's active tokens.
 func (s *Store) ListAppTokens(ctx context.Context, userID string) ([]AppToken, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-		SELECT id, name, created_at, last_used_at FROM app_tokens
+		SELECT id, name, scope, created_at, last_used_at FROM app_tokens
 		WHERE user_id = $1 AND revoked_at IS NULL ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -286,7 +374,7 @@ func (s *Store) ListAppTokens(ctx context.Context, userID string) ([]AppToken, e
 	tokens := []AppToken{}
 	for rows.Next() {
 		var t AppToken
-		if err := rows.Scan(&t.ID, &t.Name, &t.CreatedAt, &t.LastUsedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Scope, &t.CreatedAt, &t.LastUsedAt); err != nil {
 			return nil, err
 		}
 		tokens = append(tokens, t)

@@ -238,3 +238,96 @@ func TestRevokeAllSessions_EndsEverySessionButNotTheAppTokens(t *testing.T) {
 		t.Errorf("the app token must stay: %v", err)
 	}
 }
+
+func TestKoreaderToken_ItIsShortToTypeAndAnyWayOfTypingItOpens(t *testing.T) {
+	s, ana, _ := newStore(t)
+	id, shown, err := s.CreateScopedAppToken(ctx, ana, "Kindle", ScopeKoreader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups := strings.Split(shown, " ")
+	if len(groups) != 4 {
+		t.Fatalf("shown as %q, want four groups of four", shown)
+	}
+	for _, g := range groups {
+		if len(g) != 4 || strings.Trim(g, koreaderAlphabet) != "" {
+			t.Fatalf("group %q has something a person confuses or types as a symbol", g)
+		}
+	}
+	plain := strings.Join(groups, "")
+	// what a Kindle keyboard makes of it: capitals, spaces, dashes, or nothing in between
+	for _, typed := range []string{shown, plain, strings.ToUpper(shown), strings.ReplaceAll(shown, " ", "-")} {
+		if _, _, err := s.VerifyAppToken(ctx, "ana", typed); err != nil {
+			t.Errorf("typed as %q: %v", typed, err)
+		}
+	}
+	// one wrong symbol, the wrong account, a token that is too short, and one revoked
+	wrong := []rune(plain)
+	if wrong[0] == '2' {
+		wrong[0] = '3'
+	} else {
+		wrong[0] = '2'
+	}
+	for _, typed := range []string{string(wrong), plain[:15], plain + "a", ""} {
+		if _, _, err := s.VerifyAppToken(ctx, "ana", typed); err == nil {
+			t.Errorf("typed as %q: opened", typed)
+		}
+	}
+	if _, _, err := s.VerifyAppToken(ctx, "bia", plain); err == nil {
+		t.Error("another account opened it")
+	}
+	tokens, err := s.ListAppTokens(ctx, ana)
+	if err != nil || len(tokens) != 1 || tokens[0].Scope != ScopeKoreader {
+		t.Fatalf("list = %+v, %v", tokens, err)
+	}
+	if ok, err := s.RevokeAppToken(ctx, ana, id); err != nil || !ok {
+		t.Fatalf("revoke: %v %v", ok, err)
+	}
+	if _, _, err := s.VerifyAppToken(ctx, "ana", plain); err == nil {
+		t.Error("a revoked token opened")
+	}
+}
+
+func TestKoreaderToken_TheLongOneIsAsItWasAndTwoNeverCollide(t *testing.T) {
+	s, ana, _ := newStore(t)
+	_, long, err := s.CreateAppToken(ctx, ana, "Moon+")
+	if err != nil || !strings.HasPrefix(long, AppTokenPrefix) {
+		t.Fatalf("long = %q, %v", long, err)
+	}
+	if _, _, err := s.VerifyAppToken(ctx, "ana", long); err != nil {
+		t.Errorf("the long token: %v", err)
+	}
+	seen := map[string]bool{}
+	for i := 0; i < 50; i++ {
+		_, shown, err := s.CreateScopedAppToken(ctx, ana, "k", ScopeKoreader)
+		if err != nil || seen[shown] {
+			t.Fatalf("token %d: %q, %v (repeated: %v)", i, shown, err, seen[shown])
+		}
+		seen[shown] = true
+	}
+	if _, _, err := s.CreateScopedAppToken(ctx, ana, "x", "other"); err == nil {
+		t.Error("an unknown scope was accepted")
+	}
+}
+
+func TestKoreaderToken_TheDrawIsEvenOverTheAlphabet(t *testing.T) {
+	counts := map[rune]int{}
+	for i := 0; i < 4000; i++ {
+		tok, err := newKoreaderToken()
+		if err != nil || len(tok) != koreaderLength {
+			t.Fatalf("%q %v", tok, err)
+		}
+		for _, r := range tok {
+			counts[r]++
+		}
+	}
+	if len(counts) != len(koreaderAlphabet) {
+		t.Fatalf("%d symbols drawn, want %d", len(counts), len(koreaderAlphabet))
+	}
+	expected := 4000 * koreaderLength / len(koreaderAlphabet)
+	for r, n := range counts {
+		if n < expected*85/100 || n > expected*115/100 {
+			t.Errorf("%q drawn %d times, expected about %d", r, n, expected)
+		}
+	}
+}

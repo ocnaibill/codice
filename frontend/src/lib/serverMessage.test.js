@@ -163,6 +163,7 @@ describe('what the server says', () => {
     'wikidataId is a Wikidata identifier, like Q6984190', // the page only sends the identifier of a candidate it was given
     'rootId is required',
     "scope must be 'assets' or 'ws'",
+    'scope must be app or koreader', // the page offers the two: only a program sends another
     'state is ok, missing or conflict',
     'targetId and formerRole are required',
     'workId is the other work',

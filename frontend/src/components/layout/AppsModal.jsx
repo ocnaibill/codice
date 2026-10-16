@@ -3,6 +3,7 @@ import { useMe } from '../../features/auth/api/useMe';
 import {
   catalogAddress,
   isLocalAddress,
+  koreaderOpdsFile,
   useAppTokens,
   useCreateAppToken,
   useRevokeAppToken,
@@ -50,8 +51,74 @@ function CopyRow({ label, value, secret }) {
   );
 }
 
+/** Hands the person a file made in the browser, with the token inside: it is the only time the token exists in the clear. */
+function downloadText(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** The short token of KOReader (DEC-190): said to be typed without the spaces, and offered as a file so nothing has to be typed. */
+function KoreaderConnect({ created, username, onDone }) {
+  const address = catalogAddress();
+  return (
+    <div role="status" className="rounded-lg border border-brand/30 bg-brand/5 p-4">
+      <p className="text-[14px] font-medium text-ink">Pronto: o acesso “{created.name}” foi criado.</p>
+      <p className="mt-1 text-[13px] text-ink-soft">
+        Esta senha é curta para digitar na tela do leitor: são 16 letras e números, sem 0, 1, i, l e o. Pode digitar sem os espaços, e
+        maiúscula ou minúscula tanto faz.
+      </p>
+      <p aria-label="Senha do KOReader" className="mt-3 select-all rounded bg-surface px-3 py-3 text-center font-mono text-[22px] tracking-widest text-ink">
+        {created.token}
+      </p>
+      <div className="mt-4 flex flex-col gap-3">
+        <CopyRow label="Endereço" value={address} />
+        <CopyRow label="Usuário" value={username} />
+      </div>
+      <div className="mt-4 rounded bg-surface p-3">
+        <p className="text-[13px] font-medium text-ink">Sem digitar nada</p>
+        <p className="mt-1 text-[13px] text-ink-soft">
+          Baixe o arquivo abaixo e copie para a pasta <strong>koreader/settings</strong> do aparelho, por USB. O catálogo do Códice
+          aparece no KOReader já preenchido.
+        </p>
+        <p className="mt-1 text-[12px] text-warning">
+          O arquivo substitui o <code>opds.lua</code> que já estiver lá. Se você tem outros catálogos, guarde uma cópia do seu ou
+          adicione este à mão.
+        </p>
+        <button
+          type="button"
+          onClick={() => downloadText('opds.lua', koreaderOpdsFile({ address, username, token: created.token }))}
+          className="mt-2 rounded bg-surface-alt px-3 py-2 text-[13px] font-medium text-ink hover:brightness-95"
+        >
+          Baixar opds.lua
+        </button>
+      </div>
+      {isLocalAddress() && (
+        <p className="mt-3 rounded bg-warning-soft/50 p-3 text-[13px] text-warning">
+          Você abriu o Códice por <strong>{window.location.hostname}</strong>, que só funciona neste computador. No leitor, troque esse
+          trecho do endereço pelo endereço do computador onde o Códice está, na sua rede.
+        </p>
+      )}
+      <p className="mt-3 text-[13px] font-medium text-warning">
+        Esta senha aparece só agora e não é a senha da sua conta. Se perder, crie outro acesso e remova este.
+      </p>
+      <div className="mt-4 flex justify-end">
+        <button onClick={onDone} className="rounded bg-brand px-4 py-2 text-[13px] text-white hover:brightness-110">
+          Já copiei
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Shown once, right after the access is created: the three things to type into the app, each with a copy button. */
 function Connect({ created, username, onDone }) {
+  if (created.scope === 'koreader') return <KoreaderConnect created={created} username={username} onDone={onDone} />;
   return (
     <div role="status" className="rounded-lg border border-brand/30 bg-brand/5 p-4">
       <p className="text-[14px] font-medium text-ink">Pronto: o acesso “{created.name}” foi criado.</p>
@@ -85,11 +152,17 @@ function Connect({ created, username, onDone }) {
 
 function CreateForm({ onCreate, busy, error }) {
   const [name, setName] = useState(SUGGESTIONS[0]);
+  // KOReader is read on e-readers, where a long password is hard to type (DEC-190): its chip asks for the short one.
+  const [short, setShort] = useState(true);
+  const choose = (suggestion) => {
+    setName(suggestion);
+    setShort(suggestion === 'KOReader');
+  };
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        if (name.trim()) onCreate(name.trim());
+        if (name.trim()) onCreate({ name: name.trim(), scope: short ? 'koreader' : 'app' });
       }}
       className="flex flex-col gap-3"
     >
@@ -109,13 +182,20 @@ function CreateForm({ onCreate, busy, error }) {
           <button
             key={suggestion}
             type="button"
-            onClick={() => setName(suggestion)}
+            onClick={() => choose(suggestion)}
             className="rounded-full bg-surface-alt px-3 py-1 text-[12px] text-ink hover:brightness-95"
           >
             {suggestion}
           </button>
         ))}
       </div>
+      <label className="flex items-start gap-2 text-[13px] text-ink">
+        <input type="checkbox" checked={short} onChange={(event) => setShort(event.target.checked)} disabled={busy} className="mt-1" />
+        <span>
+          Senha curta, para digitar na tela de um leitor (KOReader no Kindle)
+          <span className="block text-[12px] text-ink-faint">16 letras e números. Sem marcar, a senha é longa, boa para copiar e colar.</span>
+        </span>
+      </label>
       <p className="text-[12px] text-ink-faint">O nome serve só para você reconhecer o acesso depois, na lista.</p>
       {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
       <div>
@@ -143,7 +223,7 @@ export function AppsModal({ onClose }) {
 
   useDialog(dialogRef, { onEscape: onClose });
 
-  const submit = (name) => create.mutate(name, { onSuccess: (data) => setCreated(data) });
+  const submit = (request) => create.mutate(request, { onSuccess: (data) => setCreated(data) });
 
   return (
     <div
