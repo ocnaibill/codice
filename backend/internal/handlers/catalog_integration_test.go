@@ -303,6 +303,16 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/opds/catalog", opds.RootCatalog)
 	r.Get("/opds/recent", opds.RecentFeed)
 	r.Get("/opds/search", opds.SearchFeed)
+	r.Get("/opds/reading", opds.ReadingFeed)
+	r.Get("/opds/favorites", opds.FavoritesFeed)
+	r.Get("/opds/lists", opds.ListsFeed)
+	r.Get("/opds/lists/{id}", opds.ListWorksFeed)
+	r.Get("/opds/series", opds.SeriesFeed)
+	r.Get("/opds/series/{id}", opds.SeriesWorksFeed)
+	r.Get("/opds/authors", opds.AuthorsFeed)
+	r.Get("/opds/authors/{id}", opds.AuthorFeed)
+	r.Get("/opds/categories", opds.CategoriesFeed)
+	r.Get("/opds/categories/{id}", opds.CategoryFeed)
 
 	return &catalogStack{t: t, db: db, router: r, storage: storageDir, tuning: tuning, wikiAdmin: wikiA}
 }

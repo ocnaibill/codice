@@ -185,3 +185,224 @@ func TestOPDS_ACoverIsToldWhatItIsAndAWorkWithNoFileHasNoDownload(t *testing.T) 
 		t.Errorf("downloads = %v", acquisitions)
 	}
 }
+
+// titles are what a feed shows, in its order: its books, or its sections.
+func entryTitles(f atomFeed) []string {
+	var out []string
+	for _, e := range f.Entries {
+		out = append(out, e.Title)
+	}
+	return out
+}
+
+func (s *catalogStack) opdsFeedAs(a actor, path string) atomFeed {
+	s.t.Helper()
+	rec := s.do(a, "GET", path, "")
+	if rec.Code != 200 {
+		s.t.Fatalf("GET %s: %d %s", path, rec.Code, rec.Body.String())
+	}
+	var feed atomFeed
+	if err := xml.NewDecoder(strings.NewReader(rec.Body.String())).Decode(&feed); err != nil {
+		s.t.Fatalf("GET %s is not XML: %v", path, err)
+	}
+	return feed
+}
+
+func TestOPDS_TheRootLeadsToEverySectionOfTheCatalog(t *testing.T) {
+	s := newCatalogStack(t)
+	feed, _ := s.opdsFeed("/opds/catalog")
+	want := []string{"Continuar lendo", "Adicionados recentemente", "Favoritos", "Minhas listas", "Séries", "Autores", "Categorias"}
+	if got := entryTitles(feed); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("sections = %v, want %v", got, want)
+	}
+	if l, ok := feed.link("search"); !ok || !strings.Contains(l.Href, "{searchTerms}") {
+		t.Errorf("search link = %+v", l)
+	}
+	for _, e := range feed.Entries {
+		if len(e.Links) != 1 || e.Links[0].Rel != "subsection" || !strings.Contains(e.Links[0].Href, "/opds/v1.2/") {
+			t.Errorf("%s leads nowhere: %+v", e.Title, e.Links)
+		}
+	}
+	for path, kind := range map[string]string{"Minhas listas": "navigation", "Séries": "navigation", "Autores": "navigation", "Categorias": "navigation", "Favoritos": "acquisition"} {
+		for _, e := range feed.Entries {
+			if e.Title == path && !strings.Contains(e.Links[0].Type, "kind="+kind) {
+				t.Errorf("%s is %s, want %s", path, e.Links[0].Type, kind)
+			}
+		}
+	}
+}
+
+func TestOPDS_ReadingAndFavoritesAreTheCallersOwn(t *testing.T) {
+	s := newCatalogStack(t)
+	began := s.addWork("Começado", "A", "1.epub", "epub")
+	older := s.addWork("Começado antes", "A", "2.epub", "epub")
+	done := s.addWork("Terminado", "A", "3.epub", "epub")
+	marked := s.addWork("Marcado como lido", "A", "4.epub", "epub")
+	untouched := s.addWork("Intocado", "A", "5.epub", "epub")
+	_ = untouched
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete, updated_at) VALUES ($1, $2, 'p', 30, now() - interval '3 days')`, idAna, s.primaryFile(older))
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete, updated_at) VALUES ($1, $2, 'p', 10, now())`, idAna, s.primaryFile(began))
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete, completed_at) VALUES ($1, $2, 'fim', 100, now())`, idAna, s.primaryFile(done))
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete) VALUES ($1, $2, 'p', 50)`, idAna, s.primaryFile(marked))
+	s.exec(`INSERT INTO work_reading_state (user_id, work_id) VALUES ($1, $2)`, idAna, marked)
+	s.exec(`INSERT INTO reading_progress (user_id, file_id, position, percent_complete) VALUES ($1, $2, 'p', 70)`, idBob, s.primaryFile(untouched))
+
+	if got := entryTitles(s.opdsFeedAs(ana, "/opds/reading")); strings.Join(got, "|") != "Começado|Começado antes" {
+		t.Errorf("ana is reading %v: what she began, not what she finished or marked, the last one first, and not what bob reads", got)
+	}
+	if got := entryTitles(s.opdsFeedAs(bob, "/opds/reading")); strings.Join(got, "|") != "Intocado" {
+		t.Errorf("bob is reading %v", got)
+	}
+
+	s.exec(`INSERT INTO favorites (user_id, work_id, created_at) VALUES ($1, $2, now() - interval '1 day'), ($1, $3, now())`, idAna, began, done)
+	s.exec(`INSERT INTO favorites (user_id, work_id) VALUES ($1, $2)`, idBob, marked)
+	if got := entryTitles(s.opdsFeedAs(ana, "/opds/favorites")); strings.Join(got, "|") != "Terminado|Começado" {
+		t.Errorf("ana's favorites = %v, the last marked first", got)
+	}
+	if got := entryTitles(s.opdsFeedAs(bob, "/opds/favorites")); strings.Join(got, "|") != "Marcado como lido" {
+		t.Errorf("bob's favorites = %v", got)
+	}
+}
+
+func TestOPDS_AuthorsAreListedWithTheirWorksAndCounts(t *testing.T) {
+	s := newCatalogStack(t)
+	s.addWork("Duna", "Frank Herbert", "1.epub", "epub")
+	s.addWork("Filhos de Duna", "Frank Herbert", "2.epub", "epub")
+	s.addWork("Álgebra", "Álvaro Dias", "3.epub", "epub")
+	gone := s.addWork("Aposentado", "Bela Torres", "4.epub", "epub")
+	s.exec(`UPDATE works SET retired_at = now() WHERE id = $1`, gone)
+
+	feed, _ := s.opdsFeed("/opds/authors")
+	if got := entryTitles(feed); strings.Join(got, "|") != "Álvaro Dias|Frank Herbert" {
+		t.Fatalf("authors = %v (by name without accents; an author with only a retired work is not listed)", got)
+	}
+	var frank atomLink
+	for _, e := range feed.Entries {
+		if e.Title == "Frank Herbert" {
+			frank = e.Links[0]
+		}
+	}
+	if !strings.Contains(frank.Href, "/opds/v1.2/authors/") || !strings.Contains(frank.Type, "acquisition") {
+		t.Fatalf("link of the author = %+v", frank)
+	}
+	body := s.do(ana, "GET", "/opds/authors", "").Body.String()
+	if !strings.Contains(body, `thr:count="2"`) || !strings.Contains(body, "2 obras") {
+		t.Errorf("the count of Frank Herbert is missing:\n%s", body)
+	}
+	id := frank.Href[strings.LastIndex(frank.Href, "/")+1:]
+	if got := entryTitles(s.opdsFeedAs(ana, "/opds/authors/"+id)); strings.Join(got, "|") != "Duna|Filhos de Duna" {
+		t.Errorf("works of the author = %v", got)
+	}
+	for _, path := range []string{"/opds/authors/999999", "/opds/authors/abc", "/opds/authors/0"} {
+		if rec := s.do(ana, "GET", path, ""); rec.Code != 404 {
+			t.Errorf("%s: %d, want 404", path, rec.Code)
+		}
+	}
+	// the order of names the account prefers
+	s.exec(`UPDATE users SET name_order = 'family_first' WHERE id = $1`, idAna)
+	s.exec(`UPDATE person SET family_name = 'Herbert', given_name = 'Frank' WHERE name = 'Frank Herbert'`)
+	if got := entryTitles(s.opdsFeedAs(ana, "/opds/authors")); strings.Join(got, "|") != "Álvaro Dias|Herbert, Frank" {
+		t.Errorf("authors for who reads surnames first = %v", got)
+	}
+}
+
+func TestOPDS_ASeriesIsInTheOrderOfItsNumbers(t *testing.T) {
+	s := newCatalogStack(t)
+	third := s.addWork("Terceiro", "A", "3.epub", "epub")
+	first := s.addWork("Primeiro", "A", "1.epub", "epub")
+	extra := s.addWork("Sem número", "A", "x.epub", "epub")
+	other := s.addWork("De outra", "A", "o.epub", "epub")
+	var series, retired, personal int64
+	s.db.QueryRow(`INSERT INTO collections (kind, name) VALUES ('official', 'A Saga') RETURNING id`).Scan(&series)
+	s.db.QueryRow(`INSERT INTO collections (kind, name, retired_at) VALUES ('official', 'Apagada', now()) RETURNING id`).Scan(&retired)
+	s.db.QueryRow(`INSERT INTO collections (kind, owner_id, name, origin) VALUES ('personal', $1, 'Minha', 'manual') RETURNING id`, idAna).Scan(&personal)
+	s.exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, TRUE, 3), ($1, $3, TRUE, 1), ($1, $4, TRUE, NULL)`, series, third, first, extra)
+	s.exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, TRUE, 1)`, retired, other)
+	s.exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, FALSE, 1)`, personal, other)
+
+	list, _ := s.opdsFeed("/opds/series")
+	if got := entryTitles(list); strings.Join(got, "|") != "A Saga" {
+		t.Fatalf("series = %v (not a retired one, not a personal list)", got)
+	}
+	href := list.Entries[0].Links[0].Href
+	if got := entryTitles(s.opdsFeedAs(ana, "/opds/series/"+href[strings.LastIndex(href, "/")+1:])); strings.Join(got, "|") != "Primeiro|Terceiro|Sem número" {
+		t.Errorf("the series in order = %v", got)
+	}
+	for _, id := range []int64{retired, personal} {
+		if rec := s.do(ana, "GET", fmt.Sprintf("/opds/series/%d", id), ""); rec.Code != 404 {
+			t.Errorf("series/%d: %d, want 404", id, rec.Code)
+		}
+	}
+}
+
+func TestOPDS_AListIsOnlyItsOwnersAndReadLaterComesFirst(t *testing.T) {
+	s := newCatalogStack(t)
+	w1 := s.addWork("Um", "A", "1.epub", "epub")
+	w2 := s.addWork("Dois", "A", "2.epub", "epub")
+	var later, mine, bobs int64
+	s.db.QueryRow(`INSERT INTO collections (kind, owner_id, name, origin, system_key) VALUES ('personal', $1, 'Ler depois', 'manual', 'read_later') RETURNING id`, idAna).Scan(&later)
+	s.db.QueryRow(`INSERT INTO collections (kind, owner_id, name, origin) VALUES ('personal', $1, 'Aaa minha', 'manual') RETURNING id`, idAna).Scan(&mine)
+	s.db.QueryRow(`INSERT INTO collections (kind, owner_id, name, origin) VALUES ('personal', $1, 'Do Bob', 'manual') RETURNING id`, idBob).Scan(&bobs)
+	s.exec(`INSERT INTO collection_works (collection_id, work_id, official, position) VALUES ($1, $2, FALSE, 2), ($1, $3, FALSE, 1)`, later, w1, w2)
+	s.exec(`INSERT INTO collection_works (collection_id, work_id, official) VALUES ($1, $2, FALSE)`, bobs, w1)
+
+	if got := entryTitles(s.opdsFeedAs(ana, "/opds/lists")); strings.Join(got, "|") != "Ler depois|Aaa minha" {
+		t.Errorf("ana's lists = %v", got)
+	}
+	if got := entryTitles(s.opdsFeedAs(bob, "/opds/lists")); strings.Join(got, "|") != "Do Bob" {
+		t.Errorf("bob's lists = %v", got)
+	}
+	if got := entryTitles(s.opdsFeedAs(ana, fmt.Sprintf("/opds/lists/%d", later))); strings.Join(got, "|") != "Dois|Um" {
+		t.Errorf("Ler depois = %v, in the order of the list", got)
+	}
+	if rec := s.do(bob, "GET", fmt.Sprintf("/opds/lists/%d", later), ""); rec.Code != 404 {
+		t.Errorf("a list of someone else: %d, want 404", rec.Code)
+	}
+}
+
+func TestOPDS_ACategoryLeadsToItsSubcategoriesThenToTheWorksBeneathIt(t *testing.T) {
+	s := newCatalogStack(t)
+	ficcao := s.addWork("Neuromancer", "A", "1.epub", "epub")
+	ensaio := s.addWork("Um ensaio", "A", "2.epub", "epub")
+	var top, ciber, vazia, solta int64
+	s.db.QueryRow(`INSERT INTO categories (name) VALUES ('Ficção') RETURNING id`).Scan(&top)
+	s.db.QueryRow(`INSERT INTO categories (name, parent_id) VALUES ('Ciberpunk', $1) RETURNING id`, top).Scan(&ciber)
+	s.db.QueryRow(`INSERT INTO categories (name, parent_id) VALUES ('Vazia', $1) RETURNING id`, top).Scan(&vazia)
+	s.db.QueryRow(`INSERT INTO categories (name) VALUES ('Sem nada') RETURNING id`).Scan(&solta)
+	s.exec(`INSERT INTO work_categories (work_id, category_id) VALUES ($1, $2), ($3, $4)`, ficcao, ciber, ensaio, top)
+
+	if got := entryTitles(s.opdsFeedAs(ana, "/opds/categories")); strings.Join(got, "|") != "Ficção" {
+		t.Errorf("top categories = %v (one with nothing beneath it is not listed)", got)
+	}
+	feed := s.opdsFeedAs(ana, fmt.Sprintf("/opds/categories/%d", top))
+	if got := entryTitles(feed); strings.Join(got, "|") != "Ciberpunk|Neuromancer|Um ensaio" {
+		t.Errorf("Ficção = %v: the subcategory first, then the works of it and beneath it", got)
+	}
+	if got := entryTitles(s.opdsFeedAs(ana, fmt.Sprintf("/opds/categories/%d", ciber))); strings.Join(got, "|") != "Neuromancer" {
+		t.Errorf("Ciberpunk = %v", got)
+	}
+	if rec := s.do(ana, "GET", "/opds/categories/999999", ""); rec.Code != 404 {
+		t.Errorf("a category that is not there: %d", rec.Code)
+	}
+	_ = vazia
+	_ = solta
+}
+
+func TestOPDS_ACoverHasAThumbnailTheServerMakes(t *testing.T) {
+	s := newCatalogStack(t)
+	withCover := s.addWork("Com capa", "A", "a.epub", "epub")
+	s.addWork("Sem capa", "B", "b.epub", "epub")
+	s.exec(`UPDATE editions SET cover_url = '/covers/cover_1.jpg' WHERE work_id = $1 AND is_primary`, withCover)
+	feed, _ := s.opdsFeed("/opds/recent")
+	thumbs := map[string]string{}
+	for _, e := range feed.Entries {
+		for _, l := range e.Links {
+			if l.Rel == "http://opds-spec.org/image/thumbnail" {
+				thumbs[e.Title] = l.Href
+			}
+		}
+	}
+	if len(thumbs) != 1 || !strings.HasSuffix(thumbs["Com capa"], "/covers/cover_1.jpg?w=240") {
+		t.Errorf("thumbnails = %v (a work with no cover has the placeholder, which is already small)", thumbs)
+	}
+}

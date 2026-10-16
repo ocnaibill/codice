@@ -164,6 +164,10 @@ describe('what the server says', () => {
     'rootId is required',
     "scope must be 'assets' or 'ws'",
     'scope must be app or koreader', // the page offers the two: only a program sends another
+    'Author not found', // the OPDS catalog: a reading app follows the links it was given, no page asks for them
+    'Series not found',
+    'List not found',
+    'Not found',
     'state is ok, missing or conflict',
     'targetId and formerRole are required',
     'workId is the other work',

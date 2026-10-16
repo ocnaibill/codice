@@ -485,6 +485,16 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/catalog", opdsHandler.RootCatalog)
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/recent", opdsHandler.RecentFeed)
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/search", opdsHandler.SearchFeed)
+	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/reading", opdsHandler.ReadingFeed)
+	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/favorites", opdsHandler.FavoritesFeed)
+	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/lists", opdsHandler.ListsFeed)
+	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/lists/{id}", opdsHandler.ListWorksFeed)
+	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/series", opdsHandler.SeriesFeed)
+	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/series/{id}", opdsHandler.SeriesWorksFeed)
+	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/authors", opdsHandler.AuthorsFeed)
+	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/authors/{id}", opdsHandler.AuthorFeed)
+	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/categories", opdsHandler.CategoriesFeed)
+	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/categories/{id}", opdsHandler.CategoryFeed)
 
 	// Metadata search (proxies to worker HTTP server)
 	r.With(auth).Get("/metadata/search", libHandler.SearchMetadata)
@@ -513,8 +523,14 @@ func newRouter(d routerDeps) http.Handler {
 	// The stand-in for a work with no cover. It is part of the program, not of the library:
 	// a fresh installation has no such file on disk.
 	r.With(authWithBasic).Get("/covers/placeholder.svg", handlers.CoverPlaceholder)
-	r.With(authWithBasic).Method("GET", "/covers/*", &handlers.FilesHandler{
+	coversHandler := &handlers.FilesHandler{
 		Root: coversPath, Lookup: coverLookup,
+		CacheHeader: "public, max-age=604800, must-revalidate",
+	}
+	// A cover asked with ?w= comes reduced (OPDS clients on small screens ask for it); the reduced ones are kept outside the covers
+	// folder, which goes into the backup, and can be thrown away at any time.
+	r.With(authWithBasic).Method("GET", "/covers/*", &handlers.CoverThumbnailHandler{
+		Next: coversHandler, Root: coversPath, Cache: filepath.Join(d.StoragePath, "cache", "thumbs"), Lookup: coverLookup,
 		CacheHeader: "public, max-age=604800, must-revalidate",
 	})
 	r.With(authWithBasic).Method("GET", "/file/{id}", &handlers.FileByIDHandler{DB: db, StorageRoot: d.StoragePath})
