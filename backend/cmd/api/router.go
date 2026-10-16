@@ -496,6 +496,14 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/categories", opdsHandler.CategoriesFeed)
 	r.With(opdsHandler.OpdsAuth).Get("/opds/v1.2/categories/{id}", opdsHandler.CategoryFeed)
 
+	// KOSync, the protocol KOReader syncs reading progress with (DEC-190). The device is told the address of this server and logs in with the
+	// short password of a koreader access; the four calls are the ones of the server it ships with.
+	kosync := &handlers.KosyncHandler{DB: db, Sessions: d.Sessions, StorageRoot: d.StoragePath, OnFailure: d.Auth.OnBasicFailure}
+	r.Post("/kosync/users/create", kosync.Create)
+	r.With(kosync.Auth).Get("/kosync/users/auth", kosync.Authorize)
+	r.With(kosync.Auth).Put("/kosync/syncs/progress", kosync.PutProgress)
+	r.With(kosync.Auth).Get("/kosync/syncs/progress/{document}", kosync.GetProgress)
+
 	// Metadata search (proxies to worker HTTP server)
 	r.With(auth).Get("/metadata/search", libHandler.SearchMetadata)
 

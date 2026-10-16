@@ -31,6 +31,7 @@ from ocr import OcrIndexer
 from comic_ocr import ComicOcrIndexer
 from dictionary import DictionaryImporter, connect_from_env
 from wikigen.service import WikiService
+from koreader_hash import fill as fill_koreader_hashes
 import threading
 
 # 1. Loads variables from .env, trying multiple locations
@@ -333,6 +334,7 @@ def listen_for_tasks():
         if getattr(runner, 'comic_ocr', None) is not None:
             runner.comic_ocr.enqueue_missing()
         resolve_authors(db, allowed)
+        fill_koreader_hashes(db, storage_root())  # the hash KOReader knows each file by (DEC-190)
         last_id = wait_for_work(client, last_id)
 
 

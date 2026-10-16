@@ -5,6 +5,7 @@ package sessions
 
 import (
 	"context"
+	"crypto/md5" // #nosec G501: KOReader sends the MD5 of the password, so that is what the device can be told apart by
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -18,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 )
 
@@ -332,10 +334,61 @@ func (s *Store) CreateScopedAppToken(ctx context.Context, userID, name, scope st
 	default:
 		return "", "", errors.New("unknown token scope")
 	}
+	var kosync []string
+	if scope == ScopeKoreader {
+		kosync = KosyncHashes(secret)
+	}
 	err = s.DB.QueryRowContext(ctx,
-		`INSERT INTO app_tokens (user_id, name, token_hash, scope) VALUES ($1, $2, $3, $4) RETURNING id`,
-		userID, name, hashToken(secret), scope).Scan(&id)
+		`INSERT INTO app_tokens (user_id, name, token_hash, scope, kosync_hashes) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		userID, name, hashToken(secret), scope, pq.Array(kosync)).Scan(&id)
 	return id, token, err
+}
+
+// KosyncKey is what KOReader sends as the key of a person: the MD5 of what they typed as the password, in hex.
+func KosyncKey(typed string) string {
+	sum := md5.Sum([]byte(typed))
+	return hex.EncodeToString(sum[:])
+}
+
+// KosyncHashes are the SHA-256 of the key KOReader would send for each way a person may type the short token: as it is, in capitals or with
+// the first letter in one (a keyboard that starts a field with it), each with nothing between the groups, with spaces or with dashes. The
+// token itself and the keys are not kept, only these.
+func KosyncHashes(secret string) []string {
+	forms := []string{secret, strings.ToUpper(secret), strings.ToUpper(secret[:1]) + secret[1:]}
+	var out []string
+	for _, form := range forms {
+		for _, sep := range []string{"", " ", "-"} {
+			var parts []string
+			for i := 0; i < len(form); i += 4 {
+				end := i + 4
+				if end > len(form) {
+					end = len(form)
+				}
+				parts = append(parts, form[i:end])
+			}
+			out = append(out, hashToken(KosyncKey(strings.Join(parts, sep))))
+		}
+	}
+	return out
+}
+
+// VerifyKosync accepts the credentials KOReader sends (the name, and the MD5 of the password): the key of a koreader token of that person,
+// in any of the ways it may have been typed.
+func (s *Store) VerifyKosync(ctx context.Context, username, key string) (id, role string, err error) {
+	key = strings.ToLower(strings.TrimSpace(key))
+	if len(key) != 32 {
+		return "", "", middleware.ErrInvalidCredentials
+	}
+	err = s.DB.QueryRowContext(ctx, `
+		UPDATE app_tokens t SET last_used_at = now()
+		FROM users u
+		WHERE u.id = t.user_id AND u.username = $1 AND t.scope = 'koreader' AND t.revoked_at IS NULL AND u.blocked_at IS NULL
+		  AND $2 = ANY(t.kosync_hashes)
+		RETURNING u.id, u.role`, username, hashToken(key)).Scan(&id, &role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", middleware.ErrInvalidCredentials
+	}
+	return id, role, err
 }
 
 // VerifyAppToken accepts an app token presented as the Basic password together

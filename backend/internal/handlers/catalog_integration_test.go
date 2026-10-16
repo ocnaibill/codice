@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ocnaibill/codice/backend/internal/middleware"
 	"github.com/ocnaibill/codice/backend/internal/performance"
+	"github.com/ocnaibill/codice/backend/internal/sessions"
 	"github.com/ocnaibill/codice/backend/internal/storage"
 	"github.com/ocnaibill/codice/backend/internal/testdb"
 )
@@ -300,6 +301,11 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Delete("/relations/{id}", graphs.DeleteRelation)
 	r.Get("/stats", stats.GetStats)
 	r.Get("/works/{id}/text", media.ServeText)
+	kosync := &KosyncHandler{DB: db, Sessions: &sessions.Store{DB: db}, StorageRoot: storageDir}
+	r.Post("/kosync/users/create", kosync.Create)
+	r.With(kosync.Auth).Get("/kosync/users/auth", kosync.Authorize)
+	r.With(kosync.Auth).Put("/kosync/syncs/progress", kosync.PutProgress)
+	r.With(kosync.Auth).Get("/kosync/syncs/progress/{document}", kosync.GetProgress)
 	r.Get("/opds/catalog", opds.RootCatalog)
 	r.Get("/opds/recent", opds.RecentFeed)
 	r.Get("/opds/search", opds.SearchFeed)
