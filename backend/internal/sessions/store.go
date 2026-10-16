@@ -373,22 +373,22 @@ func KosyncHashes(secret string) []string {
 }
 
 // VerifyKosync accepts the credentials KOReader sends (the name, and the MD5 of the password): the key of a koreader token of that person,
-// in any of the ways it may have been typed.
-func (s *Store) VerifyKosync(ctx context.Context, username, key string) (id, role string, err error) {
+// in any of the ways it may have been typed. `name` is what the person called the access.
+func (s *Store) VerifyKosync(ctx context.Context, username, key string) (id, role, name string, err error) {
 	key = strings.ToLower(strings.TrimSpace(key))
 	if len(key) != 32 {
-		return "", "", middleware.ErrInvalidCredentials
+		return "", "", "", middleware.ErrInvalidCredentials
 	}
 	err = s.DB.QueryRowContext(ctx, `
 		UPDATE app_tokens t SET last_used_at = now()
 		FROM users u
 		WHERE u.id = t.user_id AND u.username = $1 AND t.scope = 'koreader' AND t.revoked_at IS NULL AND u.blocked_at IS NULL
 		  AND $2 = ANY(t.kosync_hashes)
-		RETURNING u.id, u.role`, username, hashToken(key)).Scan(&id, &role)
+		RETURNING u.id, u.role, t.name`, username, hashToken(key)).Scan(&id, &role, &name)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", middleware.ErrInvalidCredentials
+		return "", "", "", middleware.ErrInvalidCredentials
 	}
-	return id, role, err
+	return id, role, name, err
 }
 
 // VerifyAppToken accepts an app token presented as the Basic password together

@@ -55,6 +55,7 @@ Todas, menos o registro, mandam `x-auth-user` (o nome) e `x-auth-key`. O cliente
 3. **Anotações:** importar `My Clippings.txt` (serve também ao Kindle sem jailbreak) e os destaques do KOReader, como notas do Códice (DEC-109 e a regra de notas).
 4. **Envio por e-mail** para o Kindle sem jailbreak.
 5. **Plugin em Lua** (estantes, favoritos e notas dentro do KOReader; a aparência do KOReader parecida com a do Códice): só depois de 0 a 3 mostrarem uso.
+   - **"Parou bem aqui" no sentido contrário** (ideia do mantenedor, 16/10/2026): o leitor web já destaca o parágrafo e avisa quando o livro abre onde um aparelho parou (seção 8); no Kindle isso **não dá hoje**, porque o KOReader não recebe um destaque de fora, e o Moon+ Reader nem usa o KOSync. Um plugin poderia marcar, ao abrir o livro, o parágrafo onde a pessoa parou no web, com o nome do aparelho do outro lado ("Seu Códice parou bem aqui").
 
 **O token curto e os arquivos prontos** (confirmados): o escopo `koreader` usa 16 caracteres (minúsculas e números sem os que se confundem), em grupos de 4, e o servidor ignora espaços e maiúsculas; serve de senha tanto do OPDS quanto do KOSync. O KOReader guarda os catálogos em `settings/opds.lua` (lista `servers`, cada um com `title`, `url`, `username`, `password`) e o KOSync em `settings/kosync.lua` (`custom_server`, `username`, `userkey`, `auto_sync`); a tela gera esses arquivos com o token na hora em que ele é criado (é a única vez que ele existe em claro). Cuidado a dizer na tela: o `opds.lua` gerado **substitui** o do aparelho; quem já tem catálogos seus deve copiar só a entrada.
 
@@ -105,3 +106,12 @@ O KOSync só leva o **progresso**; o livro vai por outro caminho, e cada aparelh
 | qualquer um | USB | a pessoa |
 
 A v1 desta proposta usa o OPDS que já existe; a pasta WebDAV e o e-mail são extensões separadas (etapa 4).
+
+## 8 O leitor web diz onde o aparelho parou
+
+Depois que o KOSync passou a guardar o **parágrafo** (e não só o capítulo), o leitor web pode mostrar o que o aparelho sabia. Ao abrir um livro **no ponto em que outro aparelho o deixou**, o leitor avisa ("Seu Kindle parou bem aqui") e **sublinha o parágrafo por alguns segundos**. Regras (decididas pelo mantenedor em 16/10/2026):
+
+- O nome é o que a pessoa escreveu em **"Qual aplicativo vai usar?"** ao criar o acesso (por exemplo "Kindle da sala"), não o nome interno do KOReader ("KindleBasic3"). O servidor guarda os dois: o nome da pessoa para o web, e o modelo do KOReader para devolver a ele o que ele espera.
+- Só avisa quando a última gravação veio de **outro aparelho** (um KOReader), não de outro navegador do web; e **uma vez por gravação**: abrir o mesmo livro de novo, sem nada novo do aparelho, não repete. Não avisa quando a pessoa pediu um ponto (uma nota, uma referência da wiki) ou escolheu começar do início.
+- No EPUB, o aviso e o sublinhado; em PDF e quadrinho, só o aviso, com a página ("Seu Kindle parou na página 12").
+- Acessível: o aviso vai para a região de avisos (leitor de tela), o sublinhado tem contorno além de cor, e some sem movimento para quem pediu menos movimento.

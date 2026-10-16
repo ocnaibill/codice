@@ -41,10 +41,13 @@ type KosyncHandler struct {
 }
 
 const (
-	kosyncDevicePrefix = "KOReader · " // how a device is named in the progress, so that the page of the book can say where it was read
+	kosyncDevicePrefix = "KOReader · " // how a device was named in the progress before the person named it (still read, no longer written)
 	kosyncWebDevice    = "Códice"
 	kosyncWebDeviceID  = "codice-web"
 )
+
+// kosyncAccessKey carries the name the person gave the access a device logged in with ("Kindle"): it is how the web says where they stopped.
+type kosyncAccessKey struct{}
 
 var (
 	kosyncDocument = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
@@ -62,7 +65,7 @@ func kosyncJSON(w http.ResponseWriter, status int, v any) {
 func (h *KosyncHandler) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, key := r.Header.Get("x-auth-user"), r.Header.Get("x-auth-key")
-		id, role, err := h.Sessions.VerifyKosync(r.Context(), user, key)
+		id, role, name, err := h.Sessions.VerifyKosync(r.Context(), user, key)
 		if errors.Is(err, middleware.ErrInvalidCredentials) {
 			if h.OnFailure != nil && user != "" {
 				h.OnFailure(r, user)
@@ -77,6 +80,7 @@ func (h *KosyncHandler) Auth(next http.Handler) http.Handler {
 		}
 		ctx := context.WithValue(r.Context(), middleware.UserIDKey, id)
 		ctx = context.WithValue(ctx, middleware.UserRoleKey, role)
+		ctx = context.WithValue(ctx, kosyncAccessKey{}, name)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -161,23 +165,32 @@ func (h *KosyncHandler) PutProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	percent := math.Max(0, math.Min(100, req.Percentage*100))
-	device := kosyncDevicePrefix + strings.TrimSpace(req.Device)
+	// the device is named as the person named the access ("Kindle"), which is what the reader of the web says; what KOReader calls it (its
+	// model) is kept apart, because it is what it is told back
+	device, _ := r.Context().Value(kosyncAccessKey{}).(string)
+	if device = strings.TrimSpace(device); device == "" {
+		device = strings.TrimSpace(req.Device)
+	}
 	if len(device) > 100 {
 		device = device[:100]
+	}
+	model := strings.TrimSpace(req.Device)
+	if len(model) > 100 {
+		model = model[:100]
 	}
 	userID := currentUserID(r)
 	_, err = h.DB.ExecContext(r.Context(), `
 		INSERT INTO reading_progress AS rp (user_id, file_id, position, locator, locator_version, percent_complete, device, updated_at,
-		                                    kosync_progress, kosync_device_id)
-		VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, now(), $8, $9)
+		                                    kosync_progress, kosync_device_id, kosync_device)
+		VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, now(), $8, $9, $10)
 		ON CONFLICT (user_id, file_id) DO UPDATE SET
 			position = EXCLUDED.position, locator = EXCLUDED.locator, locator_version = EXCLUDED.locator_version,
 			-- the place in words (the chapter, the unit) was of the old locator: a device that does not say them leaves none
 			chapter = NULL, unit_index = NULL, unit_total = NULL,
 			percent_complete = EXCLUDED.percent_complete, device = EXCLUDED.device, client_updated_at = NULL,
-			kosync_progress = EXCLUDED.kosync_progress, kosync_device_id = EXCLUDED.kosync_device_id,
+			kosync_progress = EXCLUDED.kosync_progress, kosync_device_id = EXCLUDED.kosync_device_id, kosync_device = EXCLUDED.kosync_device,
 			revision = rp.revision + 1, updated_at = now()`,
-		userID, file.ID, locator.Position(canonical), string(canonical), locator.Version, percent, device, req.Progress, req.DeviceID)
+		userID, file.ID, locator.Position(canonical), string(canonical), locator.Version, percent, device, req.Progress, req.DeviceID, model)
 	if err != nil {
 		log.Println("Error saving a KOSync progress:", err)
 		kosyncJSON(w, http.StatusInternalServerError, map[string]string{"message": "Error"})
@@ -210,12 +223,12 @@ func (h *KosyncHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
 	}
 	var loc []byte
 	var percent float64
-	var device, kProgress, kDevice sql.NullString
+	var device, kProgress, kDevice, kModel sql.NullString
 	var updated time.Time
 	err = h.DB.QueryRowContext(r.Context(), `
-		SELECT locator, percent_complete, device, kosync_progress, kosync_device_id, updated_at
+		SELECT locator, percent_complete, device, kosync_progress, kosync_device_id, kosync_device, updated_at
 		FROM reading_progress WHERE user_id = $1 AND file_id = $2`, currentUserID(r), file.ID).
-		Scan(&loc, &percent, &device, &kProgress, &kDevice, &updated)
+		Scan(&loc, &percent, &device, &kProgress, &kDevice, &kModel, &updated)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && len(loc) == 0) {
 		kosyncJSON(w, http.StatusOK, map[string]any{})
 		return
@@ -226,9 +239,13 @@ func (h *KosyncHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := map[string]any{"document": strings.ToLower(document), "percentage": percent / 100, "timestamp": updated.Unix()}
-	if kProgress.Valid && kProgress.String != "" && kDevice.Valid && kDevice.String != "" && strings.HasPrefix(device.String, kosyncDevicePrefix) {
+	if kProgress.Valid && kProgress.String != "" && kDevice.Valid && kDevice.String != "" {
+		model := kModel.String
+		if model == "" { // written before the model was kept apart
+			model = strings.TrimPrefix(device.String, kosyncDevicePrefix)
+		}
 		out["progress"] = kProgress.String
-		out["device"] = strings.TrimPrefix(device.String, kosyncDevicePrefix)
+		out["device"] = model
 		out["device_id"] = kDevice.String
 	} else {
 		place, ok := h.placeOf(file, loc)
