@@ -523,8 +523,14 @@ func newRouter(d routerDeps) http.Handler {
 	// The stand-in for a work with no cover. It is part of the program, not of the library:
 	// a fresh installation has no such file on disk.
 	r.With(authWithBasic).Get("/covers/placeholder.svg", handlers.CoverPlaceholder)
-	r.With(authWithBasic).Method("GET", "/covers/*", &handlers.FilesHandler{
+	coversHandler := &handlers.FilesHandler{
 		Root: coversPath, Lookup: coverLookup,
+		CacheHeader: "public, max-age=604800, must-revalidate",
+	}
+	// A cover asked with ?w= comes reduced (OPDS clients on small screens ask for it); the reduced ones are kept outside the covers
+	// folder, which goes into the backup, and can be thrown away at any time.
+	r.With(authWithBasic).Method("GET", "/covers/*", &handlers.CoverThumbnailHandler{
+		Next: coversHandler, Root: coversPath, Cache: filepath.Join(d.StoragePath, "cache", "thumbs"), Lookup: coverLookup,
 		CacheHeader: "public, max-age=604800, must-revalidate",
 	})
 	r.With(authWithBasic).Method("GET", "/file/{id}", &handlers.FileByIDHandler{DB: db, StorageRoot: d.StoragePath})

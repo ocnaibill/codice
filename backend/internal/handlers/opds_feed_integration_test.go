@@ -387,3 +387,22 @@ func TestOPDS_ACategoryLeadsToItsSubcategoriesThenToTheWorksBeneathIt(t *testing
 	_ = vazia
 	_ = solta
 }
+
+func TestOPDS_ACoverHasAThumbnailTheServerMakes(t *testing.T) {
+	s := newCatalogStack(t)
+	withCover := s.addWork("Com capa", "A", "a.epub", "epub")
+	s.addWork("Sem capa", "B", "b.epub", "epub")
+	s.exec(`UPDATE editions SET cover_url = '/covers/cover_1.jpg' WHERE work_id = $1 AND is_primary`, withCover)
+	feed, _ := s.opdsFeed("/opds/recent")
+	thumbs := map[string]string{}
+	for _, e := range feed.Entries {
+		for _, l := range e.Links {
+			if l.Rel == "http://opds-spec.org/image/thumbnail" {
+				thumbs[e.Title] = l.Href
+			}
+		}
+	}
+	if len(thumbs) != 1 || !strings.HasSuffix(thumbs["Com capa"], "/covers/cover_1.jpg?w=240") {
+		t.Errorf("thumbnails = %v (a work with no cover has the placeholder, which is already small)", thumbs)
+	}
+}
