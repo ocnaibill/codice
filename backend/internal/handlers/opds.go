@@ -296,6 +296,14 @@ func opdsEntry(base string, wk opdsWork) string {
 		cover = base + cover
 	}
 	b.WriteString("  " + opdsLink("http://opds-spec.org/image", cover, opdsCoverMime(cover)))
+	// the same cover reduced, for a small screen on a home network (a cover that is not a picture the server reduces comes whole)
+	if opdsCoverMime(cover) != "image/svg+xml" && strings.HasPrefix(cover, base+"/covers/") {
+		sep := "?"
+		if strings.Contains(cover, "?") {
+			sep = "&"
+		}
+		b.WriteString("  " + opdsLink("http://opds-spec.org/image/thumbnail", cover+sep+"w=240", "image/jpeg"))
+	}
 	b.WriteString("  </entry>\n")
 	return b.String()
 }
