@@ -177,6 +177,19 @@ def test_what_was_asked_before_is_not_asked_again_not_even_for_a_lower_cut():
     assert lower.asked and not any(a.startswith('Você é editor') or a.startswith('Você resolve') for a in lower.asked)
 
 
+def test_the_order_the_chapters_finish_in_does_not_change_what_is_asked(monkeypatch):
+    """Chapters are mapped in parallel and finish in any order; the identity and the pages must ask the same things anyway, or a new run
+    pays again for what the cache already has (it did, on a real run)."""
+    import concurrent.futures
+    cache = MemoryCache()
+    _, _, first, _ = run(cut=2, cache=cache)
+    assert first.asked
+    real = concurrent.futures.as_completed
+    monkeypatch.setattr(concurrent.futures, 'as_completed', lambda fs, *a, **k: iter(reversed(list(real(fs, *a, **k)))))
+    _, _, again, _ = run(cut=2, cache=cache)
+    assert again.asked == []
+
+
 def test_a_pause_stops_the_run_and_what_was_done_is_kept():
     cache = MemoryCache()
     seen = []

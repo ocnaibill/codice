@@ -60,3 +60,37 @@ def test_a_pair_the_model_takes_for_the_same_without_proof_is_a_suggestion_not_a
     assert groups_of(groups) == [['A Escuridão'], ['Lucifer']]
     assert [(s['a'], s['b']) for s in log['sugestoes']] == [('A Escuridão', 'Lucifer')]
     assert 'parecem a mesma' in log['sugestoes'][0]['motivo']
+
+
+def mapped_book(book, order):
+    """A book whose chapters were mapped in `order` (the one they finished in), each with the same two entities."""
+    def rec(name, kind, note):
+        return {'nome': name, 'tipo': kind, 'papel': '', 'novo': [note], 'estado': '', 'relacoes': [], 'verificada': True}
+    mapa = {}
+    for cap in order:
+        ents = [rec('Addie', 'personagem', f'ela adotou o nome Adeline no capítulo {cap}'), rec('A Escuridão', 'conceito', f'a escuridão do capítulo {cap} ganha o nome Lucifer')]
+        mapa[cap] = {'chapter': cap, 'resumo': '', 'entidades': ents}
+    return {'id': 1, 'titulo': 'L', 'kind': 'main', 'chapters': {c: {'title': f'{c}. x', 'part': ''} for c in order}, 'mapa': mapa}
+
+
+def test_the_order_the_chapters_finished_in_does_not_change_what_the_model_is_asked():
+    """The chapters are mapped in parallel: their order is luck, and the requests are the key of the cache."""
+    from wikigen.assemble import build_series
+
+    class Spy(Model):
+        def ask_json(self, system, user, *a, **k):
+            self.users = getattr(self, 'users', []) + [user]
+            return super().ask_json(system, user, *a, **k)
+
+    def asked(order):
+        book = mapped_book(1, order)
+        other = mapped_book(2, order)
+        other['mapa'] = {c: {**m, 'entidades': [{**e, 'nome': 'Adeline' if e['nome'] == 'Addie' else 'Lucifer', 'tipo': 'personagem'} for e in m['entidades']]}
+                         for c, m in other['mapa'].items()}
+        spy = Spy(False)
+        series, _ = build_series(spy, [book, other])
+        return getattr(spy, 'users', []), [e['notas'] for e in series['entidades']]
+
+    forward = asked([1, 2, 3, 4])
+    assert forward[0], 'the test must make the model be asked something'
+    assert asked([4, 2, 1, 3]) == forward
