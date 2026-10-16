@@ -246,6 +246,8 @@ func (h *ProgressHandler) Put(w http.ResponseWriter, r *http.Request) {
 			completed_at = CASE WHEN $7::boolean IS NULL THEN rp.completed_at WHEN $7::boolean THEN COALESCE(rp.completed_at, now()) END,
 			device = EXCLUDED.device,
 			client_updated_at = EXCLUDED.client_updated_at,
+			-- the place a KOReader device last said is not this one any more
+			kosync_progress = NULL, kosync_device_id = NULL,
 			revision = rp.revision + 1,
 			updated_at = now()
 		WHERE $10::bigint IS NULL OR rp.revision = $10
@@ -338,6 +340,7 @@ func (h *ProgressHandler) SetCompletion(w http.ResponseWriter, r *http.Request) 
 			chapter = CASE WHEN $4::boolean THEN NULL ELSE rp.chapter END,
 			unit_index = CASE WHEN $4::boolean THEN NULL ELSE rp.unit_index END,
 			unit_total = CASE WHEN $4::boolean THEN NULL ELSE rp.unit_total END,
+			kosync_progress = NULL, kosync_device_id = NULL,
 			revision = rp.revision + 1,
 			updated_at = now()`, userID, fileID, *req.Completed, req.Restart)
 	if err != nil {

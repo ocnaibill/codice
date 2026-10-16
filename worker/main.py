@@ -31,6 +31,7 @@ from ocr import OcrIndexer
 from comic_ocr import ComicOcrIndexer
 from dictionary import DictionaryImporter, connect_from_env
 from wikigen.service import WikiService
+from koreader_hash import fill as fill_koreader_hashes
 import threading
 
 # 1. Loads variables from .env, trying multiple locations
@@ -281,6 +282,14 @@ def storage_root():
     return storage_path
 
 
+def hash_files_for_koreader(db):
+    """With nothing else to do, give the files that have none the hash KOReader knows them by (DEC-190). A failure never stops the worker."""
+    try:
+        fill_koreader_hashes(db, storage_root())
+    except Exception as err:
+        print(f"   ⚠️ KOReader hash failed ({type(err).__name__}: {err})")
+
+
 def resolve_authors(db, allowed):
     """With nothing else to do, look up a few authors whose keys nobody has looked up (only if the owner turned
     Open Library on, and only by the worker that asks the providers), and then the profile of the ones that have a Wikidata identifier
@@ -333,6 +342,7 @@ def listen_for_tasks():
         if getattr(runner, 'comic_ocr', None) is not None:
             runner.comic_ocr.enqueue_missing()
         resolve_authors(db, allowed)
+        hash_files_for_koreader(db)
         last_id = wait_for_work(client, last_id)
 
 

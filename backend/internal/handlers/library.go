@@ -1029,6 +1029,8 @@ func (h *LibraryHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) 
 			chapter = NULL,
 			unit_index = NULL,
 			unit_total = NULL,
+			kosync_progress = NULL,
+			kosync_device_id = NULL,
 			percent_complete = CASE WHEN $6 THEN EXCLUDED.percent_complete ELSE reading_progress.percent_complete END,
 			completed_at = CASE
 				WHEN $5 THEN COALESCE(reading_progress.completed_at, now())
