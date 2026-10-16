@@ -63,7 +63,8 @@ func opdsFeedOpen(id, title string, now time.Time) string {
 	b.WriteString(`<feed xmlns="http://www.w3.org/2005/Atom"` + "\n")
 	b.WriteString(`      xmlns:dc="http://purl.org/dc/terms/"` + "\n")
 	b.WriteString(`      xmlns:opds="http://opds-spec.org/2010/catalog"` + "\n")
-	b.WriteString(`      xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">` + "\n")
+	b.WriteString(`      xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"` + "\n")
+	b.WriteString(`      xmlns:thr="http://purl.org/syndication/thread/1.0">` + "\n")
 	fmt.Fprintf(&b, "  <id>%s</id>\n  <title>%s</title>\n  <updated>%s</updated>\n", html.EscapeString(id), html.EscapeString(title), now.Format(time.RFC3339))
 	return b.String()
 }
@@ -85,14 +86,22 @@ func (h *OPDSHandler) RootCatalog(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 
 	var b strings.Builder
-	b.WriteString(opdsFeedOpen("urn:uuid:codice-catalog", "Codice Catalog", now))
+	b.WriteString(opdsFeedOpen("urn:uuid:codice-catalog", "Códice", now))
 	b.WriteString(opdsLink("self", base+"/opds/v1.2/catalog", opdsNavigation))
 	b.WriteString(opdsLink("start", base+"/opds/v1.2/catalog", opdsNavigation))
 	b.WriteString(opdsLink("search", base+"/opds/v1.2/search?q={searchTerms}", opdsAcquisition))
-	b.WriteString("  <entry>\n    <title>Recently Added</title>\n    <id>urn:uuid:codice-recent</id>\n")
-	fmt.Fprintf(&b, "    <updated>%s</updated>\n", now.Format(time.RFC3339))
-	b.WriteString("  " + opdsLink("subsection", base+"/opds/v1.2/recent", opdsAcquisition))
-	b.WriteString("  </entry>\n</feed>\n")
+	for _, n := range []opdsNav{
+		{Title: "Continuar lendo", ID: "reading", Href: "/opds/v1.2/reading", Summary: "O que você começou e ainda não terminou."},
+		{Title: "Adicionados recentemente", ID: "recent", Href: "/opds/v1.2/recent"},
+		{Title: "Favoritos", ID: "favorites", Href: "/opds/v1.2/favorites", Summary: "As obras que você marcou."},
+		{Title: "Minhas listas", ID: "lists", Href: "/opds/v1.2/lists", Navigation: true, Summary: "Ler depois e as listas que você fez."},
+		{Title: "Séries", ID: "series", Href: "/opds/v1.2/series", Navigation: true},
+		{Title: "Autores", ID: "authors", Href: "/opds/v1.2/authors", Navigation: true},
+		{Title: "Categorias", ID: "categories", Href: "/opds/v1.2/categories", Navigation: true},
+	} {
+		b.WriteString(opdsNavEntry(base, n))
+	}
+	b.WriteString("</feed>\n")
 	h.writeFeed(w, b.String())
 }
 
@@ -173,7 +182,10 @@ func opdsCoverMime(cover string) string {
 
 // opdsPage reads one page of the works that `condition` keeps (a piece of SQL over `w`, with the placeholders $1.. of `args`), newest
 // first, with all the files of each, and how many works there are in all.
-func (h *OPDSHandler) opdsPage(ctx context.Context, userID, condition string, args []any, page int) ([]opdsWork, int, error) {
+func (h *OPDSHandler) opdsPage(ctx context.Context, userID, condition, order string, args []any, page int) ([]opdsWork, int, error) {
+	if order == "" {
+		order = "w.id DESC"
+	}
 	var total int
 	if err := h.DB.QueryRowContext(ctx, `SELECT count(*) FROM works w WHERE w.retired_at IS NULL AND `+condition, args...).Scan(&total); err != nil {
 		return nil, 0, err
@@ -185,7 +197,7 @@ func (h *OPDSHandler) opdsPage(ctx context.Context, userID, condition string, ar
 		       COALESCE((SELECT e.language FROM editions e WHERE e.id = wp.edition_id), '')
 		`+catalogFrom+`
 		WHERE w.retired_at IS NULL AND `+condition+`
-		ORDER BY w.id DESC LIMIT $`+strconv.Itoa(limit)+` OFFSET $`+strconv.Itoa(offset), append(append([]any{}, args...), opdsPageSize, (page-1)*opdsPageSize)...)
+		ORDER BY `+order+`, w.id DESC LIMIT $`+strconv.Itoa(limit)+` OFFSET $`+strconv.Itoa(offset), append(append([]any{}, args...), opdsPageSize, (page-1)*opdsPageSize)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -299,7 +311,7 @@ func opdsPageNumber(r *http.Request) int {
 
 // opdsAcquisitionFeed writes a page of works with the links to walk the others (first, previous, next, last) and the totals a client
 // shows ("1 to 30 of 412").
-func (h *OPDSHandler) opdsAcquisitionFeed(w http.ResponseWriter, r *http.Request, id, title, self string, query url.Values, works []opdsWork, total, page int) {
+func (h *OPDSHandler) opdsAcquisitionFeed(w http.ResponseWriter, r *http.Request, id, title, self string, query url.Values, works []opdsWork, total, page int, sections ...opdsNav) {
 	base := h.baseURL(r)
 	at := func(p int) string {
 		q := url.Values{}
@@ -333,6 +345,11 @@ func (h *OPDSHandler) opdsAcquisitionFeed(w http.ResponseWriter, r *http.Request
 	fmt.Fprintf(&b, "  <opensearch:totalResults>%d</opensearch:totalResults>\n", total)
 	fmt.Fprintf(&b, "  <opensearch:itemsPerPage>%d</opensearch:itemsPerPage>\n", opdsPageSize)
 	fmt.Fprintf(&b, "  <opensearch:startIndex>%d</opensearch:startIndex>\n", (page-1)*opdsPageSize+1)
+	if page == 1 { // the sub-sections (the categories inside a category) come before the works, on the first page only
+		for _, n := range sections {
+			b.WriteString(opdsNavEntry(base, n))
+		}
+	}
 	for _, wk := range works {
 		b.WriteString(opdsEntry(base, wk))
 	}
@@ -342,12 +359,12 @@ func (h *OPDSHandler) opdsAcquisitionFeed(w http.ResponseWriter, r *http.Request
 
 func (h *OPDSHandler) RecentFeed(w http.ResponseWriter, r *http.Request) {
 	page := opdsPageNumber(r)
-	works, total, err := h.opdsPage(r.Context(), currentUserID(r), "TRUE", nil, page)
+	works, total, err := h.opdsPage(r.Context(), currentUserID(r), "TRUE", "", nil, page)
 	if err != nil {
 		http.Error(w, "Error fetching works", http.StatusInternalServerError)
 		return
 	}
-	h.opdsAcquisitionFeed(w, r, "urn:uuid:codice-recent", "Recently Added", "/opds/v1.2/recent", nil, works, total, page)
+	h.opdsAcquisitionFeed(w, r, "urn:uuid:codice-recent", "Adicionados recentemente", "/opds/v1.2/recent", nil, works, total, page)
 }
 
 func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
@@ -357,10 +374,10 @@ func (h *OPDSHandler) SearchFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := opdsPageNumber(r)
-	works, total, err := h.opdsPage(r.Context(), currentUserID(r), "("+titleMatches("$1")+" OR "+authorMatches("$1")+")", []any{catalogSearchPattern(query)}, page)
+	works, total, err := h.opdsPage(r.Context(), currentUserID(r), "("+titleMatches("$1")+" OR "+authorMatches("$1")+")", "", []any{catalogSearchPattern(query)}, page)
 	if err != nil {
 		http.Error(w, "Error searching", http.StatusInternalServerError)
 		return
 	}
-	h.opdsAcquisitionFeed(w, r, "urn:uuid:codice-search", "Search Results", "/opds/v1.2/search", url.Values{"q": {query}}, works, total, page)
+	h.opdsAcquisitionFeed(w, r, "urn:uuid:codice-search", "Resultados da busca", "/opds/v1.2/search", url.Values{"q": {query}}, works, total, page)
 }
