@@ -40,7 +40,7 @@ def build_registry(books):
     entries = []
     for bi, b in enumerate(books):
         records = []
-        for cap, m in b['mapa'].items():
+        for cap, m in sorted(b['mapa'].items()):   # by chapter, not by the order they finished in: the requests are the key of the cache
             for e in m['entidades']:
                 if e.get('verificada'):
                     e = dict(e)

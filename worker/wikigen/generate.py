@@ -55,6 +55,8 @@ def generate(llm, books, cut, progress, control, parallel, provider_kind, model,
     partial = bool(failed)
     for bi, idx in failed:   # what never answered is kept as empty: the wiki goes out partial
         books[bi]['mapa'][idx] = {'chapter': idx, 'resumo': '', 'entidades': [], 'falhou': True}
+    for b in books:   # the chapters finished in any order; from here on they are read by chapter
+        b['mapa'] = dict(sorted(b['mapa'].items()))
 
     # ---- identity
     progress.begin('identity', 1)
