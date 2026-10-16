@@ -132,3 +132,31 @@ def test_a_name_with_a_note_of_the_model_in_it_is_not_what_the_entity_is_called(
     from wikigen.registry import head_of
     g = [{'nomes': collections.Counter({'Escuridão (forma de Luc)': 3, 'A escuridão': 2}), 'nome': 'Escuridão (forma de Luc)', 'caps': [1, 2]}]
     assert head_of(g)[0] == 'A escuridão'
+
+
+def test_the_pairs_asked_are_the_ones_that_share_rare_ties_and_are_rarely_together():
+    """In a book about names the words of naming are in every note: "Addie" and "Henry", who are together in every chapter, were the
+    strongest pair, while "Addie" and "Adeline" (the same woman, by the name of another time) waited behind. A pair is asked when the two
+    share the ones they are tied to, weighted by how few are tied to them, and are not in most of the same chapters."""
+    def tied(i, name, caps, ties, note=''):
+        return {'id': i, 'book': 0, 'nomes': collections.Counter({name: len(caps)}), 'nome': name, 'tipo': 'personagem', 'caps': list(caps),
+                'notas': [{'book': 0, 'cap': caps[0], 'papel': '', 'novo': [note] if note else [], 'estado': '',
+                           'relacoes': [{'com': t, 'relacao': 'conhece'} for t in ties]}]}
+    entries = [
+        tied(0, 'Addie', range(1, 11), ['Henry'] * 9 + ['Estele', 'Remy', 'Isabelle'], 'ela tem o nome que Henry lembra'),
+        tied(1, 'Henry', range(1, 11), ['Addie'] * 9 + ['Bea'], 'Henry diz o nome de Addie'),
+        tied(2, 'Adeline', range(20, 24), ['Estele', 'Remy', 'Isabelle']),
+        tied(3, 'Estele', [20, 21], []), tied(4, 'Remy', [21, 22], []), tied(5, 'Isabelle', [22, 23], []), tied(6, 'Bea', [5, 6], []),
+    ]
+
+    class Spy(Model):
+        def ask_json(self, system, user, *a, **k):
+            self.users = getattr(self, 'users', []) + [user]
+            return super().ask_json(system, user, *a, **k)
+
+    spy = Spy(False)
+    merge_series(spy, entries)
+    import re as _re
+    pairs = [frozenset(_re.findall(r'^  [AB]: (\w+)', block, _re.M)) for u in spy.users for block in u.split('Par ')[1:]]
+    assert frozenset({'Addie', 'Adeline'}) in pairs
+    assert frozenset({'Addie', 'Henry'}) not in pairs
