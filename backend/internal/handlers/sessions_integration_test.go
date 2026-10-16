@@ -458,3 +458,33 @@ func TestSessions_MeReportsTheCurrentRole(t *testing.T) {
 		t.Errorf("role after promotion = %q", got["role"])
 	}
 }
+
+func TestAppTokens_TheShortTokenOfKoreaderOpensTheCatalogHowEverItIsTyped(t *testing.T) {
+	s := newAuthStack(t)
+	s.addUserWithPassword(t, "ana", "reader", "s3cret")
+	anaSession := s.login(t, "ana", "s3cret")
+
+	rec := s.req("POST", "/auth/app-tokens", anaSession, `{"name":"Kindle","scope":"koreader"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var b createAppTokenResponse
+	json.Unmarshal(rec.Body.Bytes(), &b)
+	if b.Scope != "koreader" || len(strings.Fields(b.Token)) != 4 {
+		t.Fatalf("answer = %+v, want a koreader token in four groups", b)
+	}
+	for _, typed := range []string{b.Token, strings.ReplaceAll(b.Token, " ", ""), strings.ToUpper(b.Token)} {
+		if rec := basicReq(s, "ana", typed); rec.Code != 200 {
+			t.Errorf("typed as %q: %d", typed, rec.Code)
+		}
+	}
+	if rec := basicReq(s, "ana", "aaaa bbbb cccc dddd"); rec.Code != http.StatusUnauthorized {
+		t.Errorf("a token nobody has: %d", rec.Code)
+	}
+	if rec := s.req("POST", "/auth/app-tokens", anaSession, `{"name":"x","scope":"admin"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("an unknown scope: %d, want 400", rec.Code)
+	}
+	if list := s.req("GET", "/auth/app-tokens", anaSession, ""); !strings.Contains(list.Body.String(), `"scope":"koreader"`) || strings.Contains(list.Body.String(), strings.Fields(b.Token)[0]) {
+		t.Errorf("list: %s", list.Body.String())
+	}
+}

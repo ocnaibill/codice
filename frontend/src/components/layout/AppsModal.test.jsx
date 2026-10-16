@@ -26,7 +26,7 @@ async function open(tokens = [], onClose = vi.fn()) {
   });
   api.post.mockImplementation(async (url, body) => {
     list = [{ id: 't9', name: body.name, createdAt: '2026-10-01T10:00:00Z' }, ...list];
-    return { data: { id: 't9', name: body.name, token: SECRET } };
+    return { data: { id: 't9', name: body.name, scope: 'app', token: SECRET } };
   });
   api.delete.mockResolvedValue({});
   view = await mount(<AppsModal onClose={onClose} />);
@@ -62,7 +62,7 @@ describe('AppsModal', () => {
     await open();
     expect(nameInput().value).toBe('KOReader');
     await view.click(view.button('Criar acesso'));
-    expect(api.post).toHaveBeenCalledWith('/auth/app-tokens', { name: 'KOReader' });
+    expect(api.post).toHaveBeenCalledWith('/auth/app-tokens', { name: 'KOReader', scope: 'koreader' });
   });
 
   it('takes a suggestion or any other name, and does not create one without a name', async () => {
@@ -73,7 +73,7 @@ describe('AppsModal', () => {
     expect(view.button('Criar acesso').disabled).toBe(true);
     await view.type(nameInput(), '  Leitor da sala ');
     await view.click(view.button('Criar acesso'));
-    expect(api.post).toHaveBeenCalledWith('/auth/app-tokens', { name: 'Leitor da sala' });
+    expect(api.post).toHaveBeenCalledWith('/auth/app-tokens', { name: 'Leitor da sala', scope: 'app' });
   });
 
   it('shows address, username and the password to type into the app, once', async () => {
@@ -182,5 +182,42 @@ describe('AppsModal, how it appears', () => {
     expect(view.dialog().className).toContain('animate-pop-in');
     expect(view.dialog().parentElement.className).toContain('animate-fade-in');
   });
-});
 
+  it('asks for the long password by the name of another app, and for the short one by the name of KOReader', async () => {
+    await open();
+    expect(document.body.querySelector('input[type="checkbox"]').checked).toBe(true); // KOReader is the first suggestion
+    await view.click(view.button('Librera'));
+    expect(document.body.querySelector('input[type="checkbox"]').checked).toBe(false);
+    await view.click(view.button('KOReader'));
+    expect(document.body.querySelector('input[type="checkbox"]').checked).toBe(true);
+    await view.click(document.body.querySelector('input[type="checkbox"]'));
+    await view.click(view.button('Criar acesso'));
+    expect(api.post).toHaveBeenLastCalledWith('/auth/app-tokens', { name: 'KOReader', scope: 'app' });
+  });
+
+  it('shows the short password in groups, says it can be typed without the spaces, and gives the file of the catalog', async () => {
+    await open();
+    api.post.mockResolvedValueOnce({ data: { id: 't9', name: 'KOReader', scope: 'koreader', token: '7k2m 9xqa r4bd h8tw' } });
+    const click = vi.fn();
+    const created = [];
+    URL.createObjectURL = vi.fn((blob) => { created.push(blob); return 'blob:x'; });
+    URL.revokeObjectURL = vi.fn();
+    const original = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () { click(this.download); };
+    try {
+      await view.click(view.button('Criar acesso'));
+      expect(document.body.querySelector('[aria-label="Senha do KOReader"]').textContent).toBe('7k2m 9xqa r4bd h8tw');
+      expect(view.dialog().textContent).toContain('sem os espaços');
+      expect(input('Usuário').value).toBe('maria');
+      expect(view.dialog().textContent).toContain('substitui o opds.lua');
+      await view.click(view.button('Baixar opds.lua'));
+      expect(click).toHaveBeenCalledWith('opds.lua');
+      const text = await created[0].text();
+      expect(text).toContain('["password"] = "7k2m9xqar4bdh8tw"');
+      expect(text).toContain('["username"] = "maria"');
+      expect(text).toContain(`["url"] = "${window.location.origin}/opds/v1.2/catalog"`);
+    } finally {
+      HTMLAnchorElement.prototype.click = original;
+    }
+  });
+});

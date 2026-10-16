@@ -17,12 +17,14 @@ type AppTokensHandler struct {
 }
 
 type createAppTokenRequest struct {
-	Name string `json:"name"`
+	Name  string `json:"name"`
+	Scope string `json:"scope"` // "app" (the default) or "koreader" (DEC-190)
 }
 
 type createAppTokenResponse struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
+	Scope string `json:"scope"`
 	Token string `json:"token"` // shown once; only its hash is stored
 }
 
@@ -38,8 +40,17 @@ func (h *AppTokensHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	scope := req.Scope
+	if scope == "" {
+		scope = sessions.ScopeApp
+	}
+	if scope != sessions.ScopeApp && scope != sessions.ScopeKoreader {
+		http.Error(w, "scope must be app or koreader", http.StatusBadRequest)
+		return
+	}
+
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
-	id, token, err := h.Sessions.CreateAppToken(r.Context(), userID, name)
+	id, token, err := h.Sessions.CreateScopedAppToken(r.Context(), userID, name, scope)
 	if err != nil {
 		http.Error(w, "Error creating token", http.StatusInternalServerError)
 		return
@@ -48,7 +59,7 @@ func (h *AppTokensHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(createAppTokenResponse{ID: id, Name: name, Token: token})
+	json.NewEncoder(w).Encode(createAppTokenResponse{ID: id, Name: name, Scope: scope, Token: token})
 }
 
 func (h *AppTokensHandler) List(w http.ResponseWriter, r *http.Request) {
