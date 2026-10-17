@@ -115,3 +115,29 @@ Depois que o KOSync passou a guardar o **parágrafo** (e não só o capítulo), 
 - Só avisa quando a última gravação veio de **outro aparelho** (um KOReader), não de outro navegador do web; e **uma vez por gravação**: abrir o mesmo livro de novo, sem nada novo do aparelho, não repete. Não avisa quando a pessoa pediu um ponto (uma nota, uma referência da wiki) ou escolheu começar do início.
 - No EPUB, o aviso e o sublinhado; em PDF e quadrinho, só o aviso, com a página ("Seu Kindle parou na página 12").
 - Acessível: o aviso vai para a região de avisos (leitor de tela), o sublinhado tem contorno além de cor, e some sem movimento para quem pediu menos movimento.
+
+## 9 Sem rede, dois aparelhos e outros casos (DEC-191)
+
+**O que o KOReader faz (lido em `kosync.koplugin/main.lua`):** um envio que falha por rede entra numa fila (a posição e a porcentagem do momento, **sem hora**); ao reconectar, ele **esvazia a fila e só depois puxa** o progresso; um acesso revogado falha em silêncio (o 401 não é visto no esvaziamento). Se a fila guarda um envio por livro ou todos, e quantas tentativas faz, o arquivo não mostra.
+
+**Casos e o que o Códice faz:**
+
+| Caso | Hoje | Com a DEC-191 |
+| --- | --- | --- |
+| Lê no Kindle sem rede, lê no web, o Kindle reconecta | o envio atrasado do Kindle **sobrescreve** o ponto mais novo do web | o web guarda o ponto do Kindle à parte e **pergunta** ao abrir |
+| Web aberto antes de o Kindle sincronizar | abre no último ponto recebido, o antigo; o aviso "parou bem aqui" vem quando chegar | o aviso diz **há quanto tempo** |
+| Web mais novo que o Kindle | o KOReader pergunta sozinho se quer ir ao ponto do web (medido) | igual |
+| Relógio do Kindle muito adiantado | o KOReader acha o ponto do web "mais velho" e não oferece o salto (a opção de voltar vem em "nunca") | igual (raro) |
+| Dois aparelhos com KOReader | vale a última gravação, cada um pergunta ao abrir | igual |
+| EPUB diferente (convertido, outra edição, **outro idioma**) | o hash muda e não sincroniza | ver a lista abaixo |
+| Terminar o livro no Kindle | 100%, sem marcar "terminado" | a decidir (99% ou mais) |
+
+## 10 Para depois
+
+**Outro idioma no Kindle.** O leitor web já pergunta, ao abrir uma obra em outro idioma, se a pessoa quer continuar do ponto equivalente da outra edição (DEC-030). No KOSync isso ainda não existe: o Kindle abre a edição em inglês, o hash é outro, e o servidor responde "sem progresso". Caminho possível, **sem plugin**: no `GET`, se o arquivo não tem progresso mas a pessoa tem em uma edição **equivalente** da mesma obra, o servidor devolve o ponto equivalente como se fosse um aparelho ("Códice"), e o KOReader faz a pergunta dele de sempre. A precisão é a da equivalência entre as edições (capítulo, no pior caso). **A ver num Kindle.**
+
+**Lista do plugin em Lua** (etapa 5), o que o KOSync sozinho não dá:
+- o **"parou bem aqui" no Kindle**: marcar, ao abrir o livro, o parágrafo onde a pessoa parou no web, com o nome do outro lado (a ideia do mantenedor, seção 8, no sentido contrário);
+- uma **pergunta com as duas posições** quando web e Kindle divergem ("Web: capítulo 5, há 2 dias · Kindle: capítulo 4"), em vez da pergunta única do KOReader;
+- a **continuação em outro idioma** com a mesma pergunta de duas posições;
+- estantes, favoritos, "continuar lendo" e a aparência do Códice (a lista do plugin que já existia).

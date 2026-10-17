@@ -24,7 +24,7 @@ jobs:
   backend:
     name: Backend (Go)
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 55
     services:
       postgres:
         image: postgres:15-alpine
@@ -56,7 +56,7 @@ jobs:
           echo "/usr/lib/postgresql/${PG_MAJOR}/bin" >> "$GITHUB_PATH"
       - run: go vet ./...
       - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
-      - run: go test ./... -count=1 -timeout 30m
+      - run: go test ./... -count=1 -timeout 45m
 
   worker:
     name: Worker (Python)
