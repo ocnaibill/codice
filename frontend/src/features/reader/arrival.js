@@ -3,6 +3,57 @@
 // new from the device, is not told again.
 
 const KEY = (fileId) => `codice:arrival:${fileId}`;
+const PENDING_KEY = (fileId) => `codice:pending:${fileId}`;
+
+/**
+ * How long ago, in words, for a time of the server: "há 2 horas", "ontem", "há 5 dias", "há 3 semanas", "há 2 meses". Empty for the last
+ * few minutes (nothing to say) and for a time that is not one.
+ */
+export function ago(iso, now = Date.now()) {
+  const time = Date.parse(iso);
+  if (!Number.isFinite(time)) return '';
+  const minutes = Math.floor((now - time) / 60000);
+  if (minutes < 10) return '';
+  const unit = (n, one, many) => `há ${n} ${n === 1 ? one : many}`;
+  if (minutes < 60) return unit(minutes, 'minuto', 'minutos');
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return unit(hours, 'hora', 'horas');
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'ontem';
+  if (days < 14) return unit(days, 'dia', 'dias');
+  if (days < 60) return unit(Math.floor(days / 7), 'semana', 'semanas');
+  return unit(Math.floor(days / 30), 'mês', 'meses');
+}
+
+/** When the place kept apart was last told of (its time, as the server wrote it); '' when never. */
+export function pendingTold(fileId) {
+  try {
+    return localStorage.getItem(PENDING_KEY(fileId)) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function markPendingTold(fileId, at) {
+  try {
+    localStorage.setItem(PENDING_KEY(fileId), String(at));
+  } catch {
+    // Without storage it is said again the next time: a small thing.
+  }
+}
+
+/**
+ * The place a device sent that was kept apart because the web had a newer one (DEC-191): where it is, how long ago, and the locator to go to.
+ * Null when there is none, or when this one was already told of.
+ */
+export function pendingOf(progress, told = '', now = Date.now()) {
+  const p = progress?.pending;
+  if (!p || !p.locator || String(p.at) === told) return null;
+  const device = String(p.device || '').trim() || 'aparelho';
+  const percent = Number.isFinite(p.percent) ? ` (${Math.round(p.percent)}%)` : '';
+  const when = ago(p.at, now);
+  return { device, at: String(p.at), locator: p.locator, message: `Seu ${device} parou em outro ponto${percent}${when ? `, ${when}` : ''}` };
+}
 
 /** The revision of the save already told of for a file; 0 when none, or when the browser keeps nothing. */
 export function lastTold(fileId) {
@@ -25,7 +76,7 @@ export function markTold(fileId, revision) {
  * What to say about a place, or null when there is nothing to say: the last save was a device's (not this reader's), it is one that was not
  * told of yet, and it says where it is. `progress` is what the server answers (`source`, `device`, `revision`, `locator`).
  */
-export function arrivalOf(progress, told = 0) {
+export function arrivalOf(progress, told = 0, now = Date.now()) {
   if (!progress || progress.source !== 'koreader' || !(progress.revision > told) || !progress.locator) return null;
   const device = String(progress.device || '').trim() || 'aparelho';
   const locator = progress.locator;
@@ -39,7 +90,8 @@ export function arrivalOf(progress, told = 0) {
   } else if (locator.type === 'image' && Number.isInteger(locator.index)) {
     message = `Seu ${device} parou na página ${locator.index + 1}`;
   }
-  return { device, message, cfi, revision: progress.revision };
+  const when = ago(progress.updatedAt, now);
+  return { device, message: when ? `${message}, ${when}` : message, cfi, revision: progress.revision };
 }
 
 export const ARRIVAL_CLASS = 'codice-arrival';

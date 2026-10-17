@@ -95,7 +95,8 @@ export function Reader() {
   const seek = useGlobalStore((state) => state.seek);
   const clearSeek = useGlobalStore((state) => state.clearSeek);
   // Where another device (a KOReader) left the book, told once and underlined on the page of an EPUB.
-  const arrival = useArrivalNotice(file?.id, progress.data, !seek && !fromStart);
+  const goToPending = useCallback((locator) => openBook(activeBookId, file?.id, { locator }), [openBook, activeBookId, file?.id]);
+  const arrival = useArrivalNotice(file?.id, progress.data, !seek && !fromStart, goToPending);
 
   // Where the person is in this file, as a locator: what the viewers last reported, or the saved
   // position until they report one. A note or bookmark made now is tied to it.

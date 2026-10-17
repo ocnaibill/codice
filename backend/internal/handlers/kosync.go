@@ -46,7 +46,8 @@ const (
 	kosyncWebDeviceID  = "codice-web"
 )
 
-// kosyncAccessKey carries the name the person gave the access a device logged in with ("Kindle"): it is how the web says where they stopped.
+// kosyncAccessKey carries the access a device logged in with: its name ("Kindle") is how the web says where they stopped, and the access stands
+// for the device when it is asked what it has seen.
 type kosyncAccessKey struct{}
 
 var (
@@ -65,7 +66,7 @@ func kosyncJSON(w http.ResponseWriter, status int, v any) {
 func (h *KosyncHandler) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, key := r.Header.Get("x-auth-user"), r.Header.Get("x-auth-key")
-		id, role, name, err := h.Sessions.VerifyKosync(r.Context(), user, key)
+		access, err := h.Sessions.VerifyKosync(r.Context(), user, key)
 		if errors.Is(err, middleware.ErrInvalidCredentials) {
 			if h.OnFailure != nil && user != "" {
 				h.OnFailure(r, user)
@@ -78,9 +79,9 @@ func (h *KosyncHandler) Auth(next http.Handler) http.Handler {
 			kosyncJSON(w, http.StatusInternalServerError, map[string]string{"message": "Error"})
 			return
 		}
-		ctx := context.WithValue(r.Context(), middleware.UserIDKey, id)
-		ctx = context.WithValue(ctx, middleware.UserRoleKey, role)
-		ctx = context.WithValue(ctx, kosyncAccessKey{}, name)
+		ctx := context.WithValue(r.Context(), middleware.UserIDKey, access.UserID)
+		ctx = context.WithValue(ctx, middleware.UserRoleKey, access.Role)
+		ctx = context.WithValue(ctx, kosyncAccessKey{}, access)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -167,8 +168,9 @@ func (h *KosyncHandler) PutProgress(w http.ResponseWriter, r *http.Request) {
 	percent := math.Max(0, math.Min(100, req.Percentage*100))
 	// the device is named as the person named the access ("Kindle"), which is what the reader of the web says; what KOReader calls it (its
 	// model) is kept apart, because it is what it is told back
-	device, _ := r.Context().Value(kosyncAccessKey{}).(string)
-	if device = strings.TrimSpace(device); device == "" {
+	access, _ := r.Context().Value(kosyncAccessKey{}).(sessions.KosyncAccess)
+	device := strings.TrimSpace(access.Name)
+	if device == "" {
 		device = strings.TrimSpace(req.Device)
 	}
 	if len(device) > 100 {
@@ -179,28 +181,126 @@ func (h *KosyncHandler) PutProgress(w http.ResponseWriter, r *http.Request) {
 		model = model[:100]
 	}
 	userID := currentUserID(r)
-	_, err = h.DB.ExecContext(r.Context(), `
-		INSERT INTO reading_progress AS rp (user_id, file_id, position, locator, locator_version, percent_complete, device, updated_at,
-		                                    kosync_progress, kosync_device_id, kosync_device)
-		VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, now(), $8, $9, $10)
-		ON CONFLICT (user_id, file_id) DO UPDATE SET
-			position = EXCLUDED.position, locator = EXCLUDED.locator, locator_version = EXCLUDED.locator_version,
-			-- the place in words (the chapter, the unit) was of the old locator: a device that does not say them leaves none
-			chapter = NULL, unit_index = NULL, unit_total = NULL,
-			percent_complete = EXCLUDED.percent_complete, device = EXCLUDED.device, client_updated_at = NULL,
-			kosync_progress = EXCLUDED.kosync_progress, kosync_device_id = EXCLUDED.kosync_device_id, kosync_device = EXCLUDED.kosync_device,
-			revision = rp.revision + 1, updated_at = now()`,
-		userID, file.ID, locator.Position(canonical), string(canonical), locator.Version, percent, device, req.Progress, req.DeviceID, model)
+	position := locator.Position(canonical)
+
+	tx, err := h.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Println("Error saving a KOSync progress:", err)
 		kosyncJSON(w, http.StatusInternalServerError, map[string]string{"message": "Error"})
 		return
 	}
-	// reading on takes the mark "the whole work is finished" off, as it does on the web
-	h.DB.ExecContext(r.Context(), `
-		DELETE FROM work_reading_state
-		WHERE user_id = $1 AND work_id = (SELECT e.work_id FROM files f JOIN editions e ON e.id = f.edition_id WHERE f.id = $2)`, userID, file.ID)
+	defer tx.Rollback()
+	fail := func(err error) {
+		log.Println("Error saving a KOSync progress:", err)
+		kosyncJSON(w, http.StatusInternalServerError, map[string]string{"message": "Error"})
+	}
+
+	// A send from a device that did not see the newest save of someone else (the web, another device) is not written over it (DEC-191): the
+	// device may have read without a network and says it only now, and what it sends carries no time. It is kept apart, for the person to
+	// choose. A device that wrote the newest save itself, or has seen it, is the latest.
+	var revision int64
+	var lastDevice sql.NullString
+	var hasPlace bool
+	err = tx.QueryRowContext(r.Context(), `
+		SELECT revision, kosync_device_id, locator IS NOT NULL FROM reading_progress WHERE user_id = $1 AND file_id = $2 FOR UPDATE`,
+		userID, file.ID).Scan(&revision, &lastDevice, &hasPlace)
+	exists := !errors.Is(err, sql.ErrNoRows)
+	if err != nil && exists {
+		fail(err)
+		return
+	}
+	if exists && hasPlace && !(lastDevice.Valid && lastDevice.String == req.DeviceID) {
+		var seen int64
+		if err := tx.QueryRowContext(r.Context(), `SELECT revision FROM kosync_seen WHERE user_id = $1 AND file_id = $2 AND token_id = $3`,
+			userID, file.ID, access.TokenID).Scan(&seen); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			fail(err)
+			return
+		}
+		if revision > seen {
+			if _, err := tx.ExecContext(r.Context(), `
+				INSERT INTO kosync_pending (user_id, file_id, device, position, locator, locator_version, percent_complete,
+				                            kosync_progress, kosync_device_id, kosync_device, created_at)
+				VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, now())
+				ON CONFLICT (user_id, file_id) DO UPDATE SET device = EXCLUDED.device, position = EXCLUDED.position, locator = EXCLUDED.locator,
+					locator_version = EXCLUDED.locator_version, percent_complete = EXCLUDED.percent_complete,
+					kosync_progress = EXCLUDED.kosync_progress, kosync_device_id = EXCLUDED.kosync_device_id,
+					kosync_device = EXCLUDED.kosync_device, created_at = now()`,
+				userID, file.ID, device, position, string(canonical), locator.Version, percent, req.Progress, req.DeviceID, model); err != nil {
+				fail(err)
+				return
+			}
+			if err := tx.Commit(); err != nil {
+				fail(err)
+				return
+			}
+			kosyncJSON(w, http.StatusOK, map[string]any{"document": req.Document, "timestamp": now})
+			return
+		}
+	}
+
+	// A file counts as finished at the same point as on the web (DEC-077), and that is a fact the statistics use.
+	finished := percent >= kosyncFinishedAt
+	err = tx.QueryRowContext(r.Context(), `
+		INSERT INTO reading_progress AS rp (user_id, file_id, position, locator, locator_version, percent_complete, completed_at, device, updated_at,
+		                                    kosync_progress, kosync_device_id, kosync_device)
+		VALUES ($1, $2, $3, $4::jsonb, $5, $6, CASE WHEN $11::boolean THEN now() END, $7, now(), $8, $9, $10)
+		ON CONFLICT (user_id, file_id) DO UPDATE SET
+			position = EXCLUDED.position, locator = EXCLUDED.locator, locator_version = EXCLUDED.locator_version,
+			-- the place in words (the chapter, the unit) was of the old locator: a device that does not say them leaves none
+			chapter = NULL, unit_index = NULL, unit_total = NULL,
+			percent_complete = EXCLUDED.percent_complete, device = EXCLUDED.device, client_updated_at = NULL,
+			-- finished stays finished: the first date is kept
+			completed_at = CASE WHEN $11::boolean THEN COALESCE(rp.completed_at, now()) ELSE rp.completed_at END,
+			kosync_progress = EXCLUDED.kosync_progress, kosync_device_id = EXCLUDED.kosync_device_id, kosync_device = EXCLUDED.kosync_device,
+			revision = rp.revision + 1, updated_at = now()
+		RETURNING revision`,
+		userID, file.ID, position, string(canonical), locator.Version, percent, device, req.Progress, req.DeviceID, model, finished).Scan(&revision)
+	if err != nil {
+		fail(err)
+		return
+	}
+	// what was kept apart is older than this, and the device has seen what it wrote
+	if _, err := tx.ExecContext(r.Context(), `DELETE FROM kosync_pending WHERE user_id = $1 AND file_id = $2`, userID, file.ID); err != nil {
+		fail(err)
+		return
+	}
+	if err := h.markSeen(r, tx, userID, file.ID, access.TokenID, revision); err != nil {
+		fail(err)
+		return
+	}
+	if !finished {
+		// reading on takes the mark "the whole work is finished" off, as it does on the web
+		if _, err := tx.ExecContext(r.Context(), `
+			DELETE FROM work_reading_state
+			WHERE user_id = $1 AND work_id = (SELECT e.work_id FROM files f JOIN editions e ON e.id = f.edition_id WHERE f.id = $2)`, userID, file.ID); err != nil {
+			fail(err)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		fail(err)
+		return
+	}
 	kosyncJSON(w, http.StatusOK, map[string]any{"document": req.Document, "timestamp": now})
+}
+
+// kosyncFinishedAt is the percentage at which a file counts as finished: the same as on the web (DEC-077).
+const kosyncFinishedAt = 95.0
+
+// execer is what a statement can be run on: a transaction or the database.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// markSeen records the revision of a book that an access (a device) has seen: what it wrote, or what it was told.
+func (h *KosyncHandler) markSeen(r *http.Request, db execer, userID string, fileID int64, tokenID string, revision int64) error {
+	if tokenID == "" {
+		return nil
+	}
+	_, err := db.ExecContext(r.Context(), `
+		INSERT INTO kosync_seen (user_id, file_id, token_id, revision) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (user_id, file_id, token_id) DO UPDATE SET revision = EXCLUDED.revision, seen_at = now()`, userID, fileID, tokenID, revision)
+	return err
 }
 
 // GetProgress says where the person is in a book. What a device said last is given back as it said it (the device then knows it is its own
@@ -225,10 +325,11 @@ func (h *KosyncHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
 	var percent float64
 	var device, kProgress, kDevice, kModel sql.NullString
 	var updated time.Time
+	var revision int64
 	err = h.DB.QueryRowContext(r.Context(), `
-		SELECT locator, percent_complete, device, kosync_progress, kosync_device_id, kosync_device, updated_at
+		SELECT locator, percent_complete, device, kosync_progress, kosync_device_id, kosync_device, updated_at, revision
 		FROM reading_progress WHERE user_id = $1 AND file_id = $2`, currentUserID(r), file.ID).
-		Scan(&loc, &percent, &device, &kProgress, &kDevice, &kModel, &updated)
+		Scan(&loc, &percent, &device, &kProgress, &kDevice, &kModel, &updated, &revision)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && len(loc) == 0) {
 		kosyncJSON(w, http.StatusOK, map[string]any{})
 		return
@@ -237,6 +338,11 @@ func (h *KosyncHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
 		log.Println("Error reading a KOSync progress:", err)
 		kosyncJSON(w, http.StatusInternalServerError, map[string]string{"message": "Error"})
 		return
+	}
+	// the device is now told what the save is: it has seen it, and a send of its own after this one is the latest
+	access, _ := r.Context().Value(kosyncAccessKey{}).(sessions.KosyncAccess)
+	if err := h.markSeen(r, h.DB, currentUserID(r), file.ID, access.TokenID, revision); err != nil {
+		log.Println("Error recording what a KOSync device has seen:", err)
 	}
 	out := map[string]any{"document": strings.ToLower(document), "percentage": percent / 100, "timestamp": updated.Unix()}
 	if kProgress.Valid && kProgress.String != "" && kDevice.Valid && kDevice.String != "" {
