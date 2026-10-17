@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -259,5 +260,90 @@ func TestDevice_TheConfigIsVersionedAndAnUnchangedOneIsNotSentAgain(t *testing.T
 	rec = s.do(ana, "GET", "/device/config", "")
 	if rec.Header().Get("ETag") == etag || !strings.Contains(rec.Body.String(), `"sendToKindle":true`) {
 		t.Errorf("after turning e-mail on: %s %s", rec.Header().Get("ETag"), rec.Body.String())
+	}
+}
+
+type homeAnswer struct {
+	Version   int
+	User      struct{ Name string }
+	Stats     struct{ WorksTotal int }
+	Continue  []DeviceCard
+	Favorites []DeviceCard
+	Notes     []deviceQuote
+	Shelves   []struct {
+		ID    int64
+		Title string
+		Total int
+		Works []DeviceCard
+	}
+}
+
+func (s *catalogStack) home(a actor) homeAnswer {
+	s.t.Helper()
+	rec := s.do(a, "GET", "/device/home", "")
+	if rec.Code != 200 {
+		s.t.Fatalf("GET /device/home: %d %s", rec.Code, rec.Body.String())
+	}
+	var h homeAnswer
+	if err := json.Unmarshal(rec.Body.Bytes(), &h); err != nil {
+		s.t.Fatal(err)
+	}
+	return h
+}
+
+func TestDevice_TheHomeIsOneAnswerInTheOrderOfTheWebHome(t *testing.T) {
+	s := newCatalogStack(t)
+	dune := s.addWork("Duna", "Frank Herbert", "duna.epub", "epub")
+	rosa := s.addWork("O Nome da Rosa", "Umberto Eco", "rosa.epub", "epub")
+	s.addWork("Outro", "Alguém", "outro.epub", "epub")
+	fiction := s.makeCategory("Ficção", nil)
+	other := s.makeCategory("Vazia", nil)
+	s.exec(`INSERT INTO work_categories (work_id, category_id, source) VALUES ($1, $2, 'manual'), ($3, $2, 'manual')`, dune, fiction, rosa)
+
+	// ana is reading Duna; and keeps Rosa as a favorite
+	file := s.primaryFile(dune)
+	if rec := s.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", file), `{"locator":{"type":"epub","cfi":"epubcfi(/6/4)","href":"a.xhtml","progression":0.3},"percent":40,"device":"Web"}`); rec.Code != 200 {
+		t.Fatalf("progress: %d %s", rec.Code, rec.Body.String())
+	}
+	s.exec(`INSERT INTO favorites (user_id, work_id) VALUES ($1, $2)`, idAna, rosa)
+
+	h := s.home(ana)
+	if h.Version != 1 || h.User.Name != "ana" || h.Stats.WorksTotal != 3 {
+		t.Errorf("greeting and numbers = %+v", h)
+	}
+	if len(h.Continue) != 1 || h.Continue[0].Title != "Duna" || h.Continue[0].Percent != 40 || h.Continue[0].FileID != file || !h.Continue[0].InProgress {
+		t.Errorf("continue = %+v", h.Continue)
+	}
+	if len(h.Favorites) != 1 || h.Favorites[0].Title != "O Nome da Rosa" || h.Favorites[0].ID != rosa {
+		t.Errorf("favorites = %+v", h.Favorites)
+	}
+	// the library as shelves: a category with works, with the works; a category with none is not a shelf
+	if len(h.Shelves) != 1 || h.Shelves[0].ID != fiction || h.Shelves[0].Title != "Ficção" || len(h.Shelves[0].Works) != 2 || h.Shelves[0].Total != 2 {
+		t.Errorf("shelves = %+v (empty one: %d)", h.Shelves, other)
+	}
+	for _, c := range h.Shelves[0].Works {
+		if c.Cover == "" || c.FileID == 0 || c.Format != "epub" {
+			t.Errorf("a card must be able to be drawn and opened: %+v", c)
+		}
+	}
+}
+
+func TestDevice_TheHomeIsOfWhoAsksAndShowsAShortQuote(t *testing.T) {
+	s := newCatalogStack(t)
+	dune := s.addWork("Duna", "Frank Herbert", "duna.epub", "epub")
+	file := s.primaryFile(dune)
+	s.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", file), `{"locator":{"type":"epub","cfi":"epubcfi(/6/4)","href":"a.xhtml","progression":0.3},"percent":40,"device":"Web"}`)
+	long := strings.Repeat("palavra ", 100)
+	s.exec(`INSERT INTO notes (user_id, work_id, file_id, kind, quote, body, tags, locator, locator_version, color)
+		VALUES ($1, $2, $3, 'highlight', $4, '', '{}', '{"type":"epub","cfi":"epubcfi(/6/4!/4/2)","href":"a.xhtml","progression":0.3}'::jsonb, 1, 'sepia')`,
+		idAna, dune, file, long)
+	h := s.home(ana)
+	if len(h.Notes) != 1 || h.Notes[0].Title != "Duna" || len([]rune(h.Notes[0].Text)) > 281 || !strings.HasSuffix(h.Notes[0].Text, "…") {
+		t.Errorf("notes = %+v", h.Notes)
+	}
+	// bob has read nothing and has no notes: none of ana's reading or notes is his
+	other := s.home(bob)
+	if len(other.Continue) != 0 || len(other.Notes) != 0 || len(other.Favorites) != 0 {
+		t.Errorf("bob's home = %+v", other)
 	}
 }
