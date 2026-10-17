@@ -347,3 +347,45 @@ func TestDevice_TheHomeIsOfWhoAsksAndShowsAShortQuote(t *testing.T) {
 		t.Errorf("bob's home = %+v", other)
 	}
 }
+
+func TestDevice_AWorkListsItsFilesWithTheMainOneAndTheLastRead(t *testing.T) {
+	s := newCatalogStack(t)
+	dune := s.addWork("Duna", "Frank Herbert", "duna.epub", "epub")
+	enEdition := s.addEdition(dune, "en")
+	pdf := s.addFile(enEdition, "pdf", "duna-en.pdf", "managed")
+	main := s.primaryFile(dune)
+	// ana read the PDF last
+	if rec := s.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", pdf), `{"locator":{"type":"pdf","page":10},"percent":20,"device":"Web"}`); rec.Code != 200 {
+		t.Fatalf("progress: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := s.do(ana, "GET", fmt.Sprintf("/device/works/%d/files", dune), "")
+	if rec.Code != 200 {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Title string
+		Files []deviceFile
+	}
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	if got.Title != "Duna" || len(got.Files) != 2 {
+		t.Fatalf("files = %+v", got)
+	}
+	by := map[int64]deviceFile{}
+	for _, f := range got.Files {
+		by[f.ID] = f
+	}
+	if !by[main].Primary || by[main].Last || by[main].Format != "epub" {
+		t.Errorf("the main file = %+v", by[main])
+	}
+	if by[pdf].Primary || !by[pdf].Last || by[pdf].Language != "en" || by[pdf].Percent != 20 {
+		t.Errorf("the pdf = %+v", by[pdf])
+	}
+	if rec := s.do(ana, "GET", "/device/works/99999/files", ""); rec.Code != 404 {
+		t.Errorf("no such work: %d", rec.Code)
+	}
+	// the card of the home says there is a choice
+	h := s.home(ana)
+	if len(h.Continue) != 1 || h.Continue[0].FileCount != 2 {
+		t.Errorf("continue = %+v", h.Continue)
+	}
+}
