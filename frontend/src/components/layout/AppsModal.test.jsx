@@ -10,6 +10,7 @@ vi.mock('../../lib/api', () => ({
 import { api } from '../../lib/api';
 import { mount, flush } from '../../features/admin/testUtils';
 import { AppsModal } from './AppsModal';
+import { md5 } from '../../lib/md5';
 
 let view;
 const SECRET = 'cdc_s3cr3t-token-value';
@@ -209,9 +210,17 @@ describe('AppsModal, how it appears', () => {
       expect(document.body.querySelector('[aria-label="Senha do KOReader"]').textContent).toBe('7k2m 9xqa r4bd h8tw');
       expect(view.dialog().textContent).toContain('sem os espaços');
       expect(input('Usuário').value).toBe('maria');
-      expect(view.dialog().textContent).toContain('substitui o opds.lua');
+      expect(view.dialog().textContent).toContain('substitui o que já estiver lá');
       await view.click(view.button('Baixar opds.lua'));
       expect(click).toHaveBeenCalledWith('opds.lua');
+      await view.click(view.button('Baixar kosync.lua'));
+      expect(click).toHaveBeenLastCalledWith('kosync.lua');
+      const sync = await created[1].text();
+      expect(sync).toContain('["custom_server"] = "' + window.location.origin + '/kosync"');
+      expect(sync).toContain('["username"] = "maria"');
+      expect(sync).toContain('["userkey"] = "' + md5('7k2m9xqar4bdh8tw') + '"');
+      expect(sync).toContain('["auto_sync"] = true');
+      expect(sync).not.toContain('7k2m');
       const text = await created[0].text();
       expect(text).toContain('["password"] = "7k2m9xqar4bdh8tw"');
       expect(text).toContain('["username"] = "maria"');
@@ -219,5 +228,14 @@ describe('AppsModal, how it appears', () => {
     } finally {
       HTMLAnchorElement.prototype.click = original;
     }
+  });
+
+  it('says that a short password is one, and how long ago the device synced', async () => {
+    const recent = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+    await open([{ id: 't3', name: 'Kindle da sala', scope: 'koreader', createdAt: '2026-09-25T10:00:00Z', lastUsedAt: recent }]);
+    const text = view.dialog().textContent;
+    expect(text).toContain('Kindle da sala');
+    expect(text).toContain('senha curta');
+    expect(text).toContain('(há 3 dias)');
   });
 });
