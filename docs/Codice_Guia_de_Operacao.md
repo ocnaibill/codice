@@ -78,6 +78,32 @@ O essencial (o detalhe, as opções e as medidas de tempo estão no README, seç
 - **A página sai com política de conteúdo (CSP)** e cabeçalhos de segurança do próprio nginx do site; **um proxy na frente não deve removê-los nem sobrescrevê-los**.
 - **Endereço público:** `CODICE_PUBLIC_URL` vale para **todos** os links do OPDS. Se o domínio atende também em `http://`, ative o redirecionamento para HTTPS no proxy.
 
+## 6b. Conectar um leitor externo (KOReader, Moon+ Reader)
+
+Dois endereços, os dois pelo mesmo site e atrás do mesmo HTTPS:
+
+- **`https://seu.endereco/opds/v1.2/catalog`**: o catálogo OPDS (navegar e baixar livros), com sete seções: Continuar lendo, Adicionados recentemente, Favoritos, Minhas listas, Séries, Autores e Categorias.
+- **`https://seu.endereco/kosync`**: a **sincronização do ponto onde a pessoa parou**, com o protocolo de progresso do KOReader (KOSync). Livros, anotações e a conta continuam sendo do Códice.
+
+**O que a pessoa faz** (*Minha conta → Aplicativos*):
+1. Cria um acesso e escolhe **KOReader**: ela recebe uma **senha curta** (16 letras e números, para digitar na tela de um leitor). Para outros aplicativos, o acesso é a senha longa.
+2. Baixa o **`opds.lua`** e o **`kosync.lua`** que a tela oferece e os copia, por USB, para a pasta `koreader/settings` do aparelho (com o KOReader fechado). Cada um **substitui** o arquivo de mesmo nome que já estiver lá. Sem os arquivos, dá para digitar: o usuário é o do Códice e a senha é a curta.
+3. No leitor, abre o livro e vira umas páginas. A sincronização é automática; o KOReader **pergunta** antes de pular para um ponto mais novo vindo do Códice.
+
+**O que o servidor faz:** o worker calcula, para cada arquivo, o hash pelo qual o KOReader o conhece (no tempo ocioso, 100 por rodada: num acervo grande, alguns livros ainda não sincronizam nas primeiras horas). O livro é o **mesmo arquivo**: um EPUB convertido ou outra edição não sincroniza. O ponto é o **parágrafo** (EPUB) ou a página (PDF e quadrinho). Um envio de um aparelho que leu sem rede **não apaga** o ponto que a pessoa gravou no web nesse meio-tempo: fica à parte, e o web pergunta. Terminar o livro no aparelho (95%) o marca como terminado.
+
+**Quando não sincroniza:**
+
+| Sintoma | Causa provável | O que fazer |
+|---|---|---|
+| O KOReader diz "usuário ou senha inválidos" | digitou a senha da conta, ou um acesso criado antes de 16/10/2026, ou o acesso foi removido | criar um acesso novo como KOReader; a senha da conta nunca vale aqui |
+| Entra, mas um livro não sincroniza | o hash do arquivo ainda não foi calculado, ou o arquivo no aparelho não é o do Códice | esperar o worker (`dc logs worker`: "koreader hash"); baixar o livro de novo pelo catálogo |
+| Aparece na aba *Entradas* como "aplicativo com senha errada" | senha digitada errada | conferir; a senha curta não distingue maiúscula nem separadores |
+| A aba *Aplicativos* mostra "usado pela última vez há semanas" | o aparelho está sem Wi-Fi ou o `auto_sync` está desligado | ligar a rede ao fechar o livro; o menu do KOReader tem "Enviar progresso agora" e "Puxar progresso agora" |
+| O Kindle não alcança o servidor | `http://` com redirecionamento, ou endereço só do computador | usar `https://`; conferir `CODICE_PUBLIC_URL` (seção 6) |
+
+**Testado em:** Kindle de 10ª geração (firmware 5.17.1.0.3, com jailbreak e KOReader) e Moon+ Reader (catálogo). Ver a matriz na especificação (QA-018).
+
 ## 7. Disco e crescimento
 
 | O que | Onde | Como cresce | O que fazer |

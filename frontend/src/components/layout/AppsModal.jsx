@@ -4,12 +4,15 @@ import {
   catalogAddress,
   isLocalAddress,
   koreaderOpdsFile,
+  koreaderSyncFile,
+  kosyncAddress,
   useAppTokens,
   useCreateAppToken,
   useRevokeAppToken,
 } from '../../features/auth/api/useAppTokens';
 import { ConfirmDialog } from '../../features/admin/components/ConfirmDialog';
 import { formatDate } from '../../features/admin/format';
+import { ago } from '../../lib/ago';
 import { useDialog } from '../../lib/useDialog';
 
 // Names to start from, so the usual case is one click; the person can write any other.
@@ -83,20 +86,33 @@ function KoreaderConnect({ created, username, onDone }) {
       <div className="mt-4 rounded bg-surface p-3">
         <p className="text-[13px] font-medium text-ink">Sem digitar nada</p>
         <p className="mt-1 text-[13px] text-ink-soft">
-          Baixe o arquivo abaixo e copie para a pasta <strong>koreader/settings</strong> do aparelho, por USB. O catálogo do Códice
-          aparece no KOReader já preenchido.
+          Baixe os dois arquivos abaixo e copie para a pasta <strong>koreader/settings</strong> do aparelho, por USB, com o KOReader fechado.
+          O catálogo do Códice e a sincronização do progresso de leitura aparecem já configurados.
         </p>
+        <ul className="mt-1 list-disc pl-5 text-[12px] text-ink-soft">
+          <li><code>opds.lua</code>: o catálogo, para baixar livros.</li>
+          <li><code>kosync.lua</code>: a sincronização do ponto onde você parou, ligada. O KOReader pergunta antes de pular para um ponto mais novo.</li>
+        </ul>
         <p className="mt-1 text-[12px] text-warning">
-          O arquivo substitui o <code>opds.lua</code> que já estiver lá. Se você tem outros catálogos, guarde uma cópia do seu ou
-          adicione este à mão.
+          Cada arquivo substitui o que já estiver lá com o mesmo nome. Se você tem outros catálogos, guarde uma cópia do <code>opds.lua</code>{' '}
+          do aparelho ou adicione este à mão.
         </p>
-        <button
-          type="button"
-          onClick={() => downloadText('opds.lua', koreaderOpdsFile({ address, username, token: created.token }))}
-          className="mt-2 rounded bg-surface-alt px-3 py-2 text-[13px] font-medium text-ink hover:brightness-95"
-        >
-          Baixar opds.lua
-        </button>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => downloadText('opds.lua', koreaderOpdsFile({ address, username, token: created.token }))}
+            className="rounded bg-surface-alt px-3 py-2 text-[13px] font-medium text-ink hover:brightness-95"
+          >
+            Baixar opds.lua
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadText('kosync.lua', koreaderSyncFile({ address: kosyncAddress(), username, token: created.token }))}
+            className="rounded bg-surface-alt px-3 py-2 text-[13px] font-medium text-ink hover:brightness-95"
+          >
+            Baixar kosync.lua
+          </button>
+        </div>
       </div>
       {isLocalAddress() && (
         <p className="mt-3 rounded bg-warning-soft/50 p-3 text-[13px] text-warning">
@@ -259,10 +275,15 @@ export function AppsModal({ onClose }) {
           {(tokens || []).map((token) => (
             <li key={token.id} className="flex items-center justify-between gap-3 py-3">
               <div className="min-w-0">
-                <p className="truncate text-[14px] font-medium text-ink">{token.name}</p>
+                <p className="truncate text-[14px] font-medium text-ink">
+                  {token.name}
+                  {token.scope === 'koreader' && <span className="ml-2 rounded bg-surface-alt px-1.5 py-0.5 font-mono text-[10px] font-normal text-ink-soft">senha curta</span>}
+                </p>
                 <p className="text-[12px] text-ink-faint">
                   Criado em {formatDate(token.createdAt)} ·{' '}
-                  {token.lastUsedAt ? `usado pela última vez em ${formatDate(token.lastUsedAt)}` : 'ainda não usado'}
+                  {token.lastUsedAt
+                    ? `usado pela última vez em ${formatDate(token.lastUsedAt)}${token.scope === 'koreader' && ago(token.lastUsedAt) ? ` (${ago(token.lastUsedAt)})` : ''}`
+                    : 'ainda não usado'}
                 </p>
               </div>
               <button

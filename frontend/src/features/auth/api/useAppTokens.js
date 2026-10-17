@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
+import { md5 } from '../../../lib/md5';
 
 const KEY = ['app-tokens'];
 
@@ -67,6 +68,37 @@ export function koreaderOpdsFile({ address, username, token, title = 'Códice' }
     `            ["username"] = ${luaString(username)},`,
     `            ["password"] = ${luaString(password)},`,
     '        },',
+    '    },',
+    '}',
+    '',
+  ].join('\n');
+}
+
+/** The address KOReader is told as its server of sync (KOSync): the same site, under /kosync. */
+export function kosyncAddress(location = window.location) {
+  return `${location.origin}/kosync`;
+}
+
+/**
+ * The file KOReader keeps its sync of progress in (`settings/kosync.lua`), with the Códice already in it: copied to the device, nothing is typed on
+ * its keyboard. It carries all the settings of the plugin (a settings table that lacks one leaves it unset: the plugin reads the table whole),
+ * with the sync automatic and a question when the Códice has a place that is more recent (what the plugin itself starts with). The key is the
+ * MD5 of the password, which is what KOReader keeps and sends.
+ */
+export function koreaderSyncFile({ address, username, token }) {
+  const password = String(token).replace(/[\s-]+/g, '').toLowerCase();
+  return [
+    '-- Sincronização de progresso do KOReader com o Códice. Copie este arquivo para a pasta koreader/settings do aparelho.',
+    'return {',
+    '    ["settings"] = {',
+    `        ["custom_server"] = ${luaString(address)},`,
+    `        ["username"] = ${luaString(username)},`,
+    `        ["userkey"] = ${luaString(md5(password))},`,
+    '        ["auto_sync"] = true,',
+    '        ["sync_forward"] = 1,',
+    '        ["sync_backward"] = 3,',
+    '        ["checksum_method"] = 0,',
+    '        ["send_metadata"] = false,',
     '    },',
     '}',
     '',
