@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import EpubCFI from 'epubjs/src/epubcfi';
-import { ARRIVAL_CLASS, arrivalOf, lastTold, markTold, paintArrival } from './arrival';
+import { ARRIVAL_CLASS, ago, arrivalOf, lastTold, markPendingTold, markTold, paintArrival, pendingOf, pendingTold } from './arrival';
 
 const epub = { type: 'epub', cfi: 'epubcfi(/6/12!/4/2/336)', href: 'Text/c2.xhtml' };
 const fromDevice = (extra = {}) => ({ source: 'koreader', device: 'Kindle', revision: 4, locator: epub, ...extra });
@@ -26,6 +26,65 @@ describe('arrivalOf', () => {
 
   it('says "aparelho" when the device has no name', () => {
     expect(arrivalOf(fromDevice({ device: '  ' })).message).toBe('Seu aparelho parou bem aqui');
+  });
+});
+
+describe('ago', () => {
+  const now = Date.parse('2026-10-16T12:00:00Z');
+  const before = (ms) => new Date(now - ms).toISOString();
+  const MIN = 60000;
+  const H = 60 * MIN;
+  const D = 24 * H;
+
+  it('says how long ago in words, and nothing for the last few minutes', () => {
+    expect(ago(before(3 * MIN), now)).toBe('');
+    expect(ago(before(25 * MIN), now)).toBe('há 25 minutos');
+    expect(ago(before(1 * H + 5 * MIN), now)).toBe('há 1 hora');
+    expect(ago(before(5 * H), now)).toBe('há 5 horas');
+    expect(ago(before(30 * H), now)).toBe('ontem');
+    expect(ago(before(5 * D), now)).toBe('há 5 dias');
+    expect(ago(before(21 * D), now)).toBe('há 3 semanas');
+    expect(ago(before(35 * D), now)).toBe('há 5 semanas');
+    expect(ago(before(70 * D), now)).toBe('há 2 meses');
+    expect(ago(before(400 * D), now)).toBe('há 13 meses');
+  });
+
+  it('says nothing for what is not a time', () => {
+    expect(ago(undefined, now)).toBe('');
+    expect(ago('ontem à noite', now)).toBe('');
+  });
+
+  it('goes into what a device left, so that the person knows it may have read more without a network', () => {
+    const progress = fromDevice({ updatedAt: before(5 * D) });
+    expect(arrivalOf(progress, 0, now).message).toBe('Seu Kindle parou bem aqui, há 5 dias');
+    expect(arrivalOf(fromDevice({ updatedAt: before(2 * MIN) }), 0, now).message).toBe('Seu Kindle parou bem aqui');
+  });
+});
+
+describe('pendingOf', () => {
+  const now = Date.parse('2026-10-16T12:00:00Z');
+  const pending = (extra = {}) => ({ pending: { device: 'Kindle da sala', percent: 42.4, locator: epub, at: '2026-10-11T12:00:00Z', ...extra } });
+
+  it('says the device stopped at another place, with how far and how long ago, and gives the place to go to', () => {
+    expect(pendingOf(pending(), '', now)).toEqual({
+      device: 'Kindle da sala', at: '2026-10-11T12:00:00Z', locator: epub, message: 'Seu Kindle da sala parou em outro ponto (42%), há 5 dias',
+    });
+  });
+
+  it('is silent when there is none, when this one was told of, and when it has no place', () => {
+    expect(pendingOf({}, '', now)).toBeNull();
+    expect(pendingOf(null, '', now)).toBeNull();
+    expect(pendingOf(pending(), '2026-10-11T12:00:00Z', now)).toBeNull();
+    expect(pendingOf(pending({ locator: null }), '', now)).toBeNull();
+    expect(pendingOf(pending({ at: '2026-10-12T00:00:00Z' }), '2026-10-11T12:00:00Z', now)).not.toBeNull(); // a newer one
+  });
+
+  it('remembers what was told of for each file', () => {
+    localStorage.clear();
+    expect(pendingTold(7)).toBe('');
+    markPendingTold(7, '2026-10-11T12:00:00Z');
+    expect(pendingTold(7)).toBe('2026-10-11T12:00:00Z');
+    expect(pendingTold(8)).toBe('');
   });
 });
 

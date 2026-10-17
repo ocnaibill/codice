@@ -12,8 +12,8 @@ const progress = (extra = {}) => ({ source: 'koreader', device: 'Kindle', revisi
 let root;
 let container;
 let seen;
-function Probe({ fileId, data, enabled = true }) {
-  seen.current = useArrivalNotice(fileId, data, enabled);
+function Probe({ fileId, data, enabled = true, onGoTo }) {
+  seen.current = useArrivalNotice(fileId, data, enabled, onGoTo);
   return null;
 }
 const render = (props) => act(async () => { root.render(<Probe {...props} />); });
@@ -74,5 +74,30 @@ describe('the message of the toast', () => {
     await render({ fileId: 5, data: progress() });
     expect(spy.mock.calls[0][0]).toMatchObject({ key: 'arrival', duration: 6000, tone: 'info' });
     spy.mockRestore();
+  });
+});
+
+describe('the place a device sent that was kept apart (DEC-191)', () => {
+  const kept = (extra = {}) => ({ revision: 6, source: '', locator: { type: 'epub', cfi: 'epubcfi(/6/2!/4/2/4)' }, pending: { device: 'Kindle', percent: 42, locator: { type: 'epub', cfi: 'epubcfi(/6/8!/4/2/10)' }, at: '2026-10-11T12:00:00Z', ...extra } });
+
+  it('asks once, with a way to go there, and going opens the book at the place of the device', async () => {
+    const goTo = vi.fn();
+    await render({ fileId: 5, data: kept(), onGoTo: goTo });
+    const item = useToasts.getState().items.find((t) => t.key === 'pending');
+    expect(item.title).toMatch(/^Seu Kindle parou em outro ponto \(42%\)/);
+    expect(item.action.label).toBe('Ir para lá');
+    item.action.onClick();
+    expect(goTo).toHaveBeenCalledWith({ type: 'epub', cfi: 'epubcfi(/6/8!/4/2/10)' });
+    // told, it is not told again for the same place
+    useToasts.getState().clear();
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await render({ fileId: 5, data: kept(), onGoTo: goTo });
+    expect(useToasts.getState().items.find((t) => t.key === 'pending')).toBeUndefined();
+  });
+
+  it('is silent while a place was asked for', async () => {
+    await render({ fileId: 5, data: kept(), enabled: false, onGoTo: vi.fn() });
+    expect(useToasts.getState().items).toEqual([]);
   });
 });

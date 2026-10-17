@@ -355,3 +355,139 @@ func TestKosync_TheWebIsToldWhichDeviceStoppedThereByTheNameThePersonGaveIt(t *t
 		t.Errorf("after the web = %+v", st)
 	}
 }
+
+// second puts the same book from another access (another device)
+func (k *kosyncStack) second(t *testing.T, name string) *kosyncStack {
+	t.Helper()
+	store := &sessions.Store{DB: k.db}
+	_, shown, err := store.CreateScopedAppToken(t.Context(), idAna, name, sessions.ScopeKoreader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &kosyncStack{catalogStack: k.catalogStack, typed: strings.ReplaceAll(shown, " ", "")}
+}
+
+func (k *kosyncStack) progressOfWeb(file int64) ProgressState {
+	k.t.Helper()
+	var st ProgressState
+	rec := k.do(ana, "GET", fmt.Sprintf("/progress/files/%d", file), "")
+	json.Unmarshal(rec.Body.Bytes(), &st)
+	return st
+}
+
+func TestKosync_ASendFromADeviceThatDidNotSeeTheWebIsKeptApartNotWrittenOver(t *testing.T) {
+	k := newKosyncStack(t)
+	_, file, doc := k.book("Duna", "dune.epub", "epub")
+
+	// the Kindle reads and syncs; then it reads on without a network (nothing reaches the server)
+	k.put(doc, "/body/DocFragment[1]/body/div/p[3]", 0.1, "KindleBasic3", "DEVICE1")
+	// meanwhile the person reads on in the web, further on
+	k.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", file), `{"locator":{"type":"epub","cfi":"epubcfi(/6/6!/4/2/10)","href":"Text/tres.xhtml"},"percent":60,"device":"Web (Linux)"}`)
+	webRevision := k.progressOfWeb(file).Revision
+	// the Kindle comes back: it sends what it kept (it did not ask what the server has first)
+	if rec := k.put(doc, "/body/DocFragment[2]/body/div/p[9]", 0.3, "KindleBasic3", "DEVICE1"); rec.Code != 200 {
+		t.Fatalf("PUT: %d", rec.Code)
+	}
+	st := k.progressOfWeb(file)
+	if st.Revision != webRevision || st.Device != "Web (Linux)" || st.Percent != 60 || st.Source != "" {
+		t.Errorf("the place of the web was written over: %+v", st)
+	}
+	if st.Pending == nil || st.Pending.Device != "Kindle" || st.Pending.Percent != 30 || !strings.Contains(string(st.Pending.Locator), "Text/dois%20capitulo.xhtml") {
+		t.Fatalf("the place of the device is kept apart: %+v", st.Pending)
+	}
+	// a second send keeps the newest of what the device said
+	k.put(doc, "/body/DocFragment[2]/body/div/p[12]", 0.32, "KindleBasic3", "DEVICE1")
+	if p := k.progressOfWeb(file).Pending; p == nil || p.Percent != 32 {
+		t.Errorf("the newest of what the device said: %+v", p)
+	}
+	// the device then asks and is told the place of the web (so KOReader asks the person), and from there what it sends is the latest
+	if got := k.get(doc); got["progress"] != "/body/DocFragment[3]/body/div/p[4]" || got["device"] != "Códice" {
+		t.Errorf("GET = %v", got)
+	}
+	k.put(doc, "/body/DocFragment[2]/body/div/p[14]", 0.34, "KindleBasic3", "DEVICE1")
+	st = k.progressOfWeb(file)
+	if st.Source != "koreader" || st.Percent != 34 || st.Pending != nil {
+		t.Errorf("after the device asked, its send is the latest and nothing is kept apart: %+v", st)
+	}
+}
+
+func TestKosync_APlaceKeptApartStaysUntilTheDeviceWritesAgainAndADeviceThatWroteLastIsNeverKeptApart(t *testing.T) {
+	k := newKosyncStack(t)
+	_, file, doc := k.book("Duna", "dune.epub", "epub")
+	// the device writes again and again without asking: it wrote the newest save itself, so each is the latest
+	for i, p := range []string{"p[1]", "p[2]", "p[3]"} {
+		k.put(doc, "/body/DocFragment[1]/body/div/"+p, 0.1*float64(i+1), "KindleBasic3", "DEVICE1")
+	}
+	if st := k.progressOfWeb(file); st.Pending != nil || st.Percent != 30 || st.Source != "koreader" {
+		t.Errorf("%+v", st)
+	}
+	// the web moves; the device (that did not see it) is kept apart
+	k.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", file), `{"locator":{"type":"epub","cfi":"epubcfi(/6/6!/4/2/10)","href":"Text/tres.xhtml"},"percent":60,"device":"Web"}`)
+	k.put(doc, "/body/DocFragment[1]/body/div/p[8]", 0.2, "KindleBasic3", "DEVICE1")
+	pending := k.progressOfWeb(file).Pending
+	if pending == nil {
+		t.Fatal("the send was not kept apart")
+	}
+	// opening the book in the web saves a place at once, and that must not take it away before the person has been asked
+	k.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", file), `{"locator":{"type":"epub","cfi":"epubcfi(/6/6!/4/2/12)","href":"Text/tres.xhtml"},"percent":61,"device":"Web"}`)
+	if st := k.progressOfWeb(file); st.Pending == nil || !st.Pending.At.Equal(pending.At) || st.Percent != 61 {
+		t.Errorf("the place kept apart went with the web's own save: %+v", st)
+	}
+	// it is replaced by a newer one from the device, and goes when the device has seen what the server has and writes
+	k.put(doc, "/body/DocFragment[1]/body/div/p[9]", 0.25, "KindleBasic3", "DEVICE1")
+	if st := k.progressOfWeb(file); st.Pending == nil || st.Pending.Percent != 25 || !st.Pending.At.After(pending.At) {
+		t.Errorf("a newer place from the device: %+v", st.Pending)
+	}
+	k.get(doc)
+	k.put(doc, "/body/DocFragment[1]/body/div/p[10]", 0.26, "KindleBasic3", "DEVICE1")
+	if st := k.progressOfWeb(file); st.Pending != nil || st.Percent != 26 {
+		t.Errorf("after the device asked and wrote: %+v", st)
+	}
+}
+
+func TestKosync_ADeviceThatAskedFirstOrAnotherDeviceIsHandledByWhatItSaw(t *testing.T) {
+	k := newKosyncStack(t)
+	_, file, doc := k.book("Duna", "dune.epub", "epub")
+	other := k.second(t, "Celular")
+	k.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", file), `{"locator":{"type":"epub","cfi":"epubcfi(/6/4!/4/2/6)","href":"Text/dois%20capitulo.xhtml"},"percent":20,"device":"Web"}`)
+
+	// a device that asks before it sends has seen the web: what it sends is the latest
+	k.get(doc)
+	k.put(doc, "/body/DocFragment[2]/body/div/p[9]", 0.3, "KindleBasic3", "DEVICE1")
+	if st := k.progressOfWeb(file); st.Source != "koreader" || st.Pending != nil || st.Percent != 30 {
+		t.Errorf("a device that asked first: %+v", st)
+	}
+	// another device, that has not seen what the first wrote, is kept apart in its turn
+	other.put(doc, "/body/DocFragment[3]/body/div/p[2]", 0.5, "Pixel", "DEVICE2")
+	if st := k.progressOfWeb(file); st.Percent != 30 || st.Pending == nil || st.Pending.Device != "Celular" {
+		t.Errorf("the other device: %+v", st)
+	}
+}
+
+func TestKosync_AFileCountsAsFinishedAtTheSamePointAsOnTheWeb(t *testing.T) {
+	k := newKosyncStack(t)
+	work, file, doc := k.book("Duna", "dune.epub", "epub")
+	k.put(doc, "/body/DocFragment[3]/body/div/p[1]", 0.5, "KindleBasic3", "D")
+	if k.progressOfWeb(file).Completed || k.scalar(`SELECT count(*)::text FROM reading_completions WHERE work_id = $1`, work) != "0" {
+		t.Error("finished at 50%")
+	}
+	k.put(doc, "/body/DocFragment[3]/body/div/p[20]", 0.97, "KindleBasic3", "D")
+	if !k.progressOfWeb(file).Completed || k.scalar(`SELECT count(*)::text FROM reading_completions WHERE work_id = $1`, work) != "1" {
+		t.Error("at 97% it is finished and counts once for the statistics")
+	}
+	// it stays finished, and a send past it again does not count twice
+	k.put(doc, "/body/DocFragment[3]/body/div/p[20]", 0.99, "KindleBasic3", "D")
+	if k.scalar(`SELECT count(*)::text FROM reading_completions WHERE work_id = $1`, work) != "1" {
+		t.Error("counted twice")
+	}
+	// a work the person had marked as finished stays marked while they are at the end, and reading from earlier opens it again
+	k.exec(`INSERT INTO work_reading_state (user_id, work_id) VALUES ($1, $2)`, idAna, work)
+	k.put(doc, "/body/DocFragment[3]/body/div/p[20]", 0.98, "KindleBasic3", "D")
+	if k.scalar(`SELECT count(*)::text FROM work_reading_state WHERE work_id = $1`, work) != "1" {
+		t.Error("the finished mark was taken off at the end of the book")
+	}
+	k.put(doc, "/body/DocFragment[1]/body/div/p[2]", 0.1, "KindleBasic3", "D")
+	if k.scalar(`SELECT count(*)::text FROM work_reading_state WHERE work_id = $1`, work) != "0" {
+		t.Error("reading from the start did not open the work again")
+	}
+}

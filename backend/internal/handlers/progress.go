@@ -35,9 +35,19 @@ type ProgressState struct {
 	Revision       int64           `json:"revision"`
 	Device         string          `json:"device,omitempty"`
 	// Source says where the last save came from when it was not the reader of the web: "koreader" (a device that syncs with KOSync, named by Device).
-	Source          string     `json:"source,omitempty"`
-	UpdatedAt       *time.Time `json:"updatedAt"`       // when the server received it
-	ClientUpdatedAt *time.Time `json:"clientUpdatedAt"` // when the device says it happened
+	Source string `json:"source,omitempty"`
+	// Pending is a place a device (a KOReader) sent that was not written over a newer save of the web, for the person to choose (DEC-191).
+	Pending         *PendingPlace `json:"pending,omitempty"`
+	UpdatedAt       *time.Time    `json:"updatedAt"`       // when the server received it
+	ClientUpdatedAt *time.Time    `json:"clientUpdatedAt"` // when the device says it happened
+}
+
+// PendingPlace is where a device said it was, kept apart from the place the web has.
+type PendingPlace struct {
+	Device  string          `json:"device"`
+	Locator json.RawMessage `json:"locator"`
+	Percent float64         `json:"percent"`
+	At      time.Time       `json:"at"`
 }
 
 // PutProgressRequest saves a position. Percent and Completed are pointers so that "not sent"
@@ -132,9 +142,26 @@ func scanProgress(row *sql.Row, fileID int64) (ProgressState, error) {
 }
 
 func (h *ProgressHandler) load(r *http.Request, userID string, fileID int64) (ProgressState, error) {
-	return scanProgress(h.DB.QueryRowContext(r.Context(),
+	st, err := scanProgress(h.DB.QueryRowContext(r.Context(),
 		`SELECT `+progressColumns+` FROM (SELECT 1) one
 		 LEFT JOIN reading_progress rp ON rp.user_id = $1 AND rp.file_id = $2`, userID, fileID), fileID)
+	if err != nil {
+		return st, err
+	}
+	var p PendingPlace
+	var loc []byte
+	err = h.DB.QueryRowContext(r.Context(),
+		`SELECT device, locator, percent_complete, created_at FROM kosync_pending WHERE user_id = $1 AND file_id = $2`, userID, fileID).
+		Scan(&p.Device, &loc, &p.Percent, &p.At)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+	case err != nil:
+		return st, err
+	default:
+		p.Locator = json.RawMessage(loc)
+		st.Pending = &p
+	}
+	return st, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

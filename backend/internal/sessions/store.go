@@ -372,23 +372,32 @@ func KosyncHashes(secret string) []string {
 	return out
 }
 
+// KosyncAccess is who KOReader logged in as: the person, and the access (the token) it used, which stands for one device.
+type KosyncAccess struct {
+	UserID  string
+	Role    string
+	Name    string // what the person called the access ("Kindle da sala")
+	TokenID string
+}
+
 // VerifyKosync accepts the credentials KOReader sends (the name, and the MD5 of the password): the key of a koreader token of that person,
-// in any of the ways it may have been typed. `name` is what the person called the access.
-func (s *Store) VerifyKosync(ctx context.Context, username, key string) (id, role, name string, err error) {
+// in any of the ways it may have been typed.
+func (s *Store) VerifyKosync(ctx context.Context, username, key string) (KosyncAccess, error) {
+	var a KosyncAccess
 	key = strings.ToLower(strings.TrimSpace(key))
 	if len(key) != 32 {
-		return "", "", "", middleware.ErrInvalidCredentials
+		return a, middleware.ErrInvalidCredentials
 	}
-	err = s.DB.QueryRowContext(ctx, `
+	err := s.DB.QueryRowContext(ctx, `
 		UPDATE app_tokens t SET last_used_at = now()
 		FROM users u
 		WHERE u.id = t.user_id AND u.username = $1 AND t.scope = 'koreader' AND t.revoked_at IS NULL AND u.blocked_at IS NULL
 		  AND $2 = ANY(t.kosync_hashes)
-		RETURNING u.id, u.role, t.name`, username, hashToken(key)).Scan(&id, &role, &name)
+		RETURNING u.id, u.role, t.name, t.id`, username, hashToken(key)).Scan(&a.UserID, &a.Role, &a.Name, &a.TokenID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", "", middleware.ErrInvalidCredentials
+		return KosyncAccess{}, middleware.ErrInvalidCredentials
 	}
-	return id, role, name, err
+	return a, err
 }
 
 // VerifyAppToken accepts an app token presented as the Basic password together
