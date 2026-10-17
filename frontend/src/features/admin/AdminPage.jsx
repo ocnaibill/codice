@@ -9,6 +9,7 @@ import { DuplicatesTab } from './components/DuplicatesTab';
 import { AccountsTab } from './components/AccountsTab';
 import { LoginsTab } from './components/LoginsTab';
 import { LdapTab } from './components/LdapTab';
+import { MailTab } from './components/MailTab';
 import { EmbeddingsTab } from './components/EmbeddingsTab';
 import { SuggestionsTab } from './components/SuggestionsTab';
 import { ProvidersTab } from './components/ProvidersTab';
@@ -67,6 +68,7 @@ export function AdminPage({ isOwner, onClose }) {
         {tab === 'accounts' && <AccountsTab isOwner={isOwner} />}
         {tab === 'ldap' && isOwner && <LdapTab />}
         {tab === 'embeddings' && isOwner && <EmbeddingsTab />}
+        {tab === 'mail' && isOwner && <MailTab />}
       </div>
     </div>
   );

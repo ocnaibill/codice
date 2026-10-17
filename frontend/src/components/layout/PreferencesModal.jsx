@@ -4,6 +4,7 @@ import { LoadError } from '../ui/LoadError';
 import { MAX_DISPLAY_NAME, NAME_ORDERS, usePreferences, useSetDisplayName, useSetNameOrder, useSetReadingShared } from '../../features/auth/api/usePreferences';
 import { useMe } from '../../features/auth/api/useMe';
 import { getKeepScreenOn, saveKeepScreenOn } from '../../features/reader/preferences';
+import { sendFailure, useKindle, useSetKindleEmail } from '../../features/auth/api/useKindle';
 import { MyData } from '../../features/auth/components/MyData';
 
 /**
@@ -42,6 +43,45 @@ function CalledBy({ prefs }) {
       <div className="mt-2 flex items-center gap-3">
         <button type="submit" disabled={!changed || save.isPending} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-40">Salvar</button>
         {save.isError && <span role="alert" className="text-[13px] text-danger">Não foi possível salvar.</span>}
+      </div>
+    </form>
+  );
+}
+
+/** The address of this account's e-reader, where "Enviar para o Kindle" sends the books (only when the server has e-mail on). */
+function KindleAddress() {
+  const { data } = useKindle();
+  const save = useSetKindleEmail();
+  const [draft, setDraft] = useState(null);
+  if (!data?.available) return null;
+  const shown = draft ?? data.email;
+  const changed = draft !== null && draft.trim() !== data.email;
+  return (
+    <form
+      className="mt-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save.mutate(draft ?? data.email, { onSuccess: () => setDraft(null) });
+      }}
+    >
+      <label className="flex flex-col gap-1 text-[13px] font-medium text-ink">
+        E-mail do seu leitor (Kindle)
+        <input
+          type="email"
+          value={shown}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="seunome_abc123@kindle.com"
+          autoComplete="off"
+          className="rounded-lg border border-border-hairline bg-surface px-3 py-2 text-[14px] font-normal text-ink outline-none focus:border-brand"
+        />
+      </label>
+      <p className="mt-1 text-[12px] text-ink-soft">
+        É o endereço que a Amazon dá ao seu Kindle (em Conteúdo e dispositivos → Dispositivos). Com ele, a página de cada livro ganha “Enviar para o Kindle”. Vazio, o botão não aparece.
+      </p>
+      <div className="mt-2 flex items-center gap-3">
+        <button type="submit" disabled={!changed || save.isPending} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-40">Salvar</button>
+        {save.isSuccess && !changed && <span role="status" className="text-[13px] text-ink-soft">Salvo.</span>}
+        {save.isError && <span role="alert" className="text-[13px] text-danger">{sendFailure(save.error, 'Não foi possível salvar.')}</span>}
       </div>
     </form>
   );
@@ -146,6 +186,7 @@ export function PreferencesModal({ onClose }) {
         </fieldset>
         {save.isError && <p role="alert" className="mt-3 text-[13px] text-danger">Não foi possível salvar.</p>}
         {prefs && <ReadingShared prefs={prefs} />}
+        <KindleAddress />
         <KeepScreenOn />
         <MyData />
         <div className="mt-5 flex justify-end">

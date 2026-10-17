@@ -19,6 +19,7 @@ export const ADMIN_TABS = [
 export const OWNER_TABS = [
   ['embeddings', 'IA local'],
   ['ldap', 'Login externo'],
+  ['mail', 'E-mail'],
 ];
 
 /** The tab the administration opens on. */

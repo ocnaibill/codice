@@ -174,7 +174,7 @@ func Send(ctx context.Context, c Config, m Message) error {
 	dialer := &net.Dialer{}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("could not reach %s: %w", addr, err)
+		return fmt.Errorf("não foi possível conectar a %s: %w", addr, err)
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		conn.SetDeadline(deadline)
@@ -185,20 +185,20 @@ func Send(ctx context.Context, c Config, m Message) error {
 	client, err := smtp.NewClient(conn, c.Host)
 	if err != nil {
 		conn.Close()
-		return fmt.Errorf("the server did not answer as a mail server: %w", err)
+		return fmt.Errorf("o servidor não respondeu como um servidor de e-mail: %w", err)
 	}
 	defer client.Close()
 	if c.Security == SecurityStartTLS {
 		if ok, _ := client.Extension("STARTTLS"); !ok {
-			return errors.New("the server does not offer STARTTLS")
+			return errors.New("o servidor não oferece STARTTLS: escolha outra proteção da conexão")
 		}
 		if err := client.StartTLS(tlsConfig); err != nil {
-			return fmt.Errorf("could not protect the connection: %w", err)
+			return fmt.Errorf("não foi possível proteger a conexão: %w", err)
 		}
 	}
 	if c.Username != "" {
 		if ok, advertised := client.Extension("AUTH"); !ok {
-			return errors.New("the server does not offer to log in")
+			return errors.New("o servidor não oferece login: deixe o usuário vazio")
 		} else {
 			var auth smtp.Auth
 			if strings.Contains(strings.ToUpper(advertised), "PLAIN") {
@@ -206,28 +206,28 @@ func Send(ctx context.Context, c Config, m Message) error {
 			} else if strings.Contains(strings.ToUpper(advertised), "LOGIN") {
 				auth = loginAuth{c.Username, c.Password}
 			} else {
-				return errors.New("the server logs in in a way this program does not know: " + advertised)
+				return errors.New("o servidor pede um tipo de login que o Códice não conhece: " + advertised)
 			}
 			if err := client.Auth(auth); err != nil {
-				return fmt.Errorf("the server refused the user or the password: %w", err)
+				return fmt.Errorf("o servidor recusou o usuário ou a senha: %w", err)
 			}
 		}
 	}
 	if err := client.Mail(c.From); err != nil {
-		return fmt.Errorf("the server refused the sender: %w", err)
+		return fmt.Errorf("o servidor recusou o remetente: %w", err)
 	}
 	if err := client.Rcpt(to); err != nil {
-		return fmt.Errorf("the server refused the recipient: %w", err)
+		return fmt.Errorf("o servidor recusou o destinatário: %w", err)
 	}
 	w, err := client.Data()
 	if err != nil {
-		return err
+		return fmt.Errorf("o servidor não aceitou a mensagem: %w", err)
 	}
 	if _, err := w.Write(Compose(c.From, Message{To: to, Subject: m.Subject, Body: m.Body, Attach: m.Attach}, time.Now(), fmt.Sprintf("codice-%d", time.Now().UnixNano()))); err != nil {
-		return err
+		return fmt.Errorf("o servidor não aceitou a mensagem: %w", err)
 	}
 	if err := w.Close(); err != nil {
-		return fmt.Errorf("the server did not accept the message: %w", err)
+		return fmt.Errorf("o servidor não aceitou a mensagem: %w", err)
 	}
 	return client.Quit()
 }

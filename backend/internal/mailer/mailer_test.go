@@ -288,7 +288,7 @@ func readAll(r interface{ Read([]byte) (int, error) }, w *strings.Builder, encod
 }
 
 func TestSend_WhatTheServerRefusesIsSaidWithoutThePassword(t *testing.T) {
-	for _, c := range []struct{ refuse, want string }{{"auth", "user or the password"}, {"mail", "sender"}, {"rcpt", "recipient"}} {
+	for _, c := range []struct{ refuse, want string }{{"auth", "usuário ou a senha"}, {"mail", "remetente"}, {"rcpt", "destinatário"}} {
 		s := startServer(t, &server{auth: "PLAIN", refuse: c.refuse})
 		conf := cfg(s, SecurityNone)
 		conf.Username, conf.Password = "codice", "s3cret!"
@@ -303,7 +303,7 @@ func TestSend_WhatTheServerRefusesIsSaidWithoutThePassword(t *testing.T) {
 		t.Errorf("starttls: %v", err)
 	}
 	gone := Config{Host: "127.0.0.1", Port: 1, Security: SecurityNone, From: "a@b.example", Timeout: 2 * time.Second}
-	if err := Send(context.Background(), gone, book()); err == nil || !strings.Contains(err.Error(), "could not reach") {
+	if err := Send(context.Background(), gone, book()); err == nil || !strings.Contains(err.Error(), "não foi possível conectar") {
 		t.Errorf("unreachable: %v", err)
 	}
 }
