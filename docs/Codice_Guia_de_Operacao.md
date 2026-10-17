@@ -90,6 +90,21 @@ Dois endereços, os dois pelo mesmo site e atrás do mesmo HTTPS:
 2. Baixa o **`opds.lua`** e o **`kosync.lua`** que a tela oferece e os copia, por USB, para a pasta `koreader/settings` do aparelho (com o KOReader fechado). Cada um **substitui** o arquivo de mesmo nome que já estiver lá. Sem os arquivos, dá para digitar: o usuário é o do Códice e a senha é a curta.
 3. No leitor, abre o livro e vira umas páginas. A sincronização é automática; o KOReader **pergunta** antes de pular para um ponto mais novo vindo do Códice.
 
+**Conectar o leitor por código (DEC-194).** Com o plugin do Códice no Kindle (repositório `ocnaibill/codice-ereader-plugin`), os arquivos acima não são necessários:
+1. No Kindle, abra o plugin do Códice e escolha **Conectar**. Digite o endereço da instância e o leitor mostra um código de oito letras e números (e, se o QR estiver ligado, um QR).
+2. No site, entre em **Minha conta → Aplicativos → Conectar um leitor** (ou abra o endereço do QR) e digite o código. A página mostra qual aparelho pediu, de onde e quando.
+3. Confira que o código é o que está agora na tela do leitor e escolha **Aprovar**; se quiser, dê um nome ao aparelho antes. O leitor recebe sozinho o acesso e a configuração (catálogo e sincronização) e aparece em Aplicativos, onde se remove.
+
+O pedido vale 10 minutos; cada endereço pode ter 5 esperando. O dono liga e desliga isso em **Administração → Sistema → Conectar leitores por código** (ligado por padrão); desligado, nenhum leitor novo se conecta assim, os acessos que já existem seguem funcionando e os arquivos continuam como plano B. A auditoria registra o pedido, a aprovação, a negação e a entrega, nunca os códigos nem o acesso.
+
+| Sintoma | Causa provável | O que fazer |
+|---|---|---|
+| "Pedido não encontrado ou vencido" ao digitar o código | passaram 10 minutos, o código foi digitado errado, ou o leitor pediu outro | conferir o código na tela do leitor; pedir um novo no plugin |
+| O leitor diz que o pareamento está desligado | o dono desligou em *Sistema* | ligar de novo, ou usar os arquivos `opds.lua` e `kosync.lua` |
+| "Há pedidos demais esperando deste endereço" | cinco pedidos abertos da mesma rede | esperar alguns minutos, ou aprovar/negar os pendentes |
+| Aprovou, mas o leitor continua esperando | o Wi-Fi do Kindle caiu ou o aparelho suspendeu | acordar o Kindle e ligar o Wi-Fi; se o pedido venceu, pedir outro |
+| O link ou o QR abre o login | a pessoa não estava logada | entrar: depois do login a aprovação abre sozinha |
+
 **O que o servidor faz:** o worker calcula, para cada arquivo, o hash pelo qual o KOReader o conhece (no tempo ocioso, 100 por rodada: num acervo grande, alguns livros ainda não sincronizam nas primeiras horas). O livro é o **mesmo arquivo**: um EPUB convertido ou outra edição não sincroniza. O ponto é o **parágrafo** (EPUB) ou a página (PDF e quadrinho). Um envio de um aparelho que leu sem rede **não apaga** o ponto que a pessoa gravou no web nesse meio-tempo: fica à parte, e o web pergunta. Terminar o livro no aparelho (95%) o marca como terminado.
 
 **Quando não sincroniza:**

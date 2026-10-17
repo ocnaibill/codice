@@ -62,7 +62,7 @@ func TestDevice_ARequestIsAnsweredWithTheCodeToShowAndTheOneToAskWith(t *testing
 		t.Errorf("the code to show comes in two groups: %q", a.UserCode)
 	}
 	plain := strings.ReplaceAll(a.UserCode, "-", "")
-	if a.VerificationURI != "https://codice.example/pair" || a.VerificationURIComplete != "https://codice.example/pair?code="+plain {
+	if a.VerificationURI != "https://codice.example/?pair" || a.VerificationURIComplete != "https://codice.example/?pair="+plain {
 		t.Errorf("addresses = %q %q", a.VerificationURI, a.VerificationURIComplete)
 	}
 	// the code to ask with is kept only as a hash
