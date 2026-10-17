@@ -520,7 +520,11 @@ func newRouter(d routerDeps) http.Handler {
 
 	// Connecting a reading device by a code, like a TV app (DEC-194). The first half is not signed in, so it is limited by address: a device
 	// asks for a code now and then, and for the answer every few seconds while a person approves it.
-	device := &handlers.DeviceHandler{DB: db, Sessions: d.Sessions, PublicURL: d.PublicURL, TrustedProxies: d.TrustedProxies, SecretKey: d.SecretKey}
+	device := &handlers.DeviceHandler{DB: db, Sessions: d.Sessions, PublicURL: d.PublicURL, TrustedProxies: d.TrustedProxies, SecretKey: d.SecretKey,
+		Sources: handlers.HomeSources{
+			Works: http.HandlerFunc(libHandler.GetWorks),
+			Stats: http.HandlerFunc(statsHandler.GetStats), Notes: http.HandlerFunc(notesHandler.ListNotes), Categories: http.HandlerFunc(categories.List),
+		}}
 	deviceLimit := func(n int) func(http.Handler) http.Handler {
 		return httprate.LimitBy(n, 1*time.Minute, appMiddleware.RateLimitKey(d.TrustedProxies))
 	}
@@ -528,6 +532,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(deviceLimit(10)).Post("/device/code", device.RequestCode)
 	r.With(deviceLimit(60)).Post("/device/token", device.PollToken)
 	r.With(d.Auth.WithBasic).Get("/device/config", device.Config)
+	r.With(catalog, d.Auth.WithBasic).Get("/device/home", device.Home)
 	r.With(auth, deviceLimit(20)).Get("/auth/device/{code}", device.Show)
 	r.With(auth, deviceLimit(20)).Post("/auth/device/{code}/approve", device.Approve)
 	r.With(auth, deviceLimit(20)).Post("/auth/device/{code}/deny", device.Deny)

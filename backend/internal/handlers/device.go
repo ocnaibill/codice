@@ -35,6 +35,8 @@ type DeviceHandler struct {
 	TrustedProxies []netip.Prefix
 	// SecretKey is the master key of the deployment: the configuration says whether e-mail is on, which needs it.
 	SecretKey string
+	// Sources are the handlers the home of a device is made of (see Home).
+	Sources HomeSources
 }
 
 const (
@@ -414,7 +416,7 @@ func (h *DeviceHandler) config(r *http.Request) (deviceConfig, error) {
 		Instance: map[string]string{"name": "Códice", "url": base},
 		OPDS:     map[string]string{"title": "Códice", "url": base + "/opds/v1.2/catalog"},
 		KOSync:   map[string]string{"url": base + "/kosync"},
-		Features: map[string]bool{"sendToKindle": mailErr == nil, "notesImport": true},
+		Features: map[string]bool{"sendToKindle": mailErr == nil, "notesImport": true, "home": true},
 		MinPlug:  deviceMinPlugin,
 	}, nil
 }
