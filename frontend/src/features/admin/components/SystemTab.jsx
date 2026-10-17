@@ -6,6 +6,7 @@ import { LOW_SPACE, STALE_AFTER, STUCK_AFTER } from '../systemLimits';
 import { LoadError } from '../../../components/ui/LoadError';
 import { Notice } from '../../../components/ui/Notice';
 import { AskPassword } from './AskPassword';
+import { PairingSwitch } from './PairingSwitch';
 import { PerformanceSection } from './PerformanceSection';
 import { Btn, Loading, Section } from './ui';
 
@@ -352,6 +353,7 @@ export function SystemTab({ isOwner = false }) {
         )}
       </Section>
       <PerformanceSection isOwner={isOwner} />
+      {isOwner && <PairingSwitch />}
       {data && <Backup last={data.lastBackup} panel={data.panel} isOwner={isOwner} />}
     </div>
   );

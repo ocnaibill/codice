@@ -225,7 +225,7 @@ func (h *DeviceHandler) RequestCode(w http.ResponseWriter, r *http.Request) {
 	base := h.baseURL(r)
 	deviceJSON(w, http.StatusOK, map[string]any{
 		"deviceCode": deviceCode, "userCode": displayUserCode(userCode),
-		"verificationUri": base + "/pair", "verificationUriComplete": base + "/pair?code=" + userCode,
+		"verificationUri": base + "/?pair", "verificationUriComplete": base + "/?pair=" + userCode,
 		"expiresIn": int(pairingTTL.Seconds()), "interval": pairingInterval,
 	})
 }

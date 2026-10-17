@@ -17,7 +17,7 @@ Hoje a pessoa baixa `opds.lua` e `kosync.lua` em *Minha conta → Aplicativos*, 
  POST /device/code  ───────────────▶ cria o pedido
    ◀─ deviceCode, userCode, URL, QR, validade, intervalo
  mostra o código e o QR
-                                                                   abre /pair?code=…  (ou lê o QR)
+                                                                   abre /?pair=…  (ou lê o QR)
                                                                    vê aparelho, hora, IP; Aprova
  POST /device/token (a cada N s) ──▶ pendente… … aprovado:
    ◀─ cria o acesso (escopo koreader) e o entrega UMA vez
@@ -37,7 +37,7 @@ Hoje a pessoa baixa `opds.lua` e `kosync.lua` em *Minha conta → Aplicativos*, 
 
 | Endpoint | Efeito |
 |---|---|
-| `GET /auth/device/{userCode}` | o que a página `/pair` mostra: nome e plataforma informados pelo aparelho, hora do pedido, IP de quem pediu |
+| `GET /auth/device/{userCode}` | o que a página `/?pair=` mostra: nome e plataforma informados pelo aparelho, hora do pedido, IP de quem pediu |
 | `POST /auth/device/{userCode}/approve` | marca o pedido como aprovado por esta conta |
 | `POST /auth/device/{userCode}/deny` | nega |
 
@@ -64,7 +64,7 @@ O plugin guarda a última `version`, pergunta ao abrir e quando a rede volta, e 
 - **Código do aparelho** (`deviceCode`): 128 bits aleatórios, guardado só como hash (sha256). Nunca aparece na tela.
 - **Validade** de 10 minutos; no máximo 5 pedidos pendentes por IP; o servidor impõe o intervalo de consulta (`slow_down`).
 - **O acesso nasce na primeira consulta depois da aprovação**, e não na aprovação: o texto do acesso nunca é guardado em lugar nenhum, só entregue. Consulta repetida depois disso devolve `expired_token`.
-- **Phishing por código** (alguém inicia o fluxo e convence a vítima a aprovar): a página `/pair` mostra aparelho, hora e IP de quem pediu e diz "aprove só se o código está agora na tela do seu leitor"; o QR leva ao mesmo endereço, com o código já preenchido, para comparar. O acesso criado aparece em *Aplicativos* com o nome e o último uso, e se revoga ali.
+- **Phishing por código** (alguém inicia o fluxo e convence a vítima a aprovar): a página `/?pair=` mostra aparelho, hora e IP de quem pediu e diz "aprove só se o código está agora na tela do seu leitor"; o QR leva ao mesmo endereço, com o código já preenchido, para comparar. O acesso criado aparece em *Aplicativos* com o nome e o último uso, e se revoga ali.
 - **Auditoria** (`device.pair.request`, `device.pair.approve`, `device.pair.deny`, `device.pair.token`): quem, aparelho, IP; **nunca** o código do aparelho nem o acesso.
 - O pareamento pode ser desligado pelo dono (configuração da instância); desligado, `GET /device/info` diz `pairing: false`.
 
@@ -90,13 +90,13 @@ Pedidos vencidos ou consumidos são apagados por uma limpeza periódica (a mesma
 ## 6. O que muda em cada lugar
 
 - **Backend:** handlers `device.go` (os seis endpoints), a configuração (`device_config.go`, com a `version` como constante de código somada a uma mudança de endereço público), migração, auditoria, limite de taxa. O acesso criado usa `CreateScopedAppToken` com escopo `koreader` (a senha curta), como hoje.
-- **Frontend:** a página `/pair` (código, dados do pedido, Aprovar e Negar) e, em *Aplicativos*, o botão **Conectar um leitor** que leva a ela. Os arquivos `opds.lua` e `kosync.lua` continuam disponíveis como plano B.
+- **Frontend:** a página `/?pair=` (código, dados do pedido, Aprovar e Negar) e, em *Aplicativos*, o botão **Conectar um leitor** que leva a ela. Os arquivos `opds.lua` e `kosync.lua` continuam disponíveis como plano B.
 - **Plugin (`codice-ereader-plugin`):** tela "Conectar ao Códice" (endereço, código, QR com contagem regressiva, consulta a cada `interval` segundos com `UIManager:scheduleIn`, mantendo a rede ligada), `settings/codice.lua` com o endereço, o usuário e a versão da configuração, e o aplicador da configuração.
 
 ## 7. Plano de implementação
 
 1. Backend + testes de integração (fluxo feliz, vencimento, negação, tentativas erradas, `slow_down`, entrega única do acesso, aprovação por outra conta, auditoria sem o acesso).
-2. Página `/pair` + botão em *Aplicativos* + testes.
+2. Página `/?pair=` + botão em *Aplicativos* + testes.
 3. Plugin: pareamento (QR e código) e aplicação da configuração; teste no Kindle.
 4. Guia de operação (seção 6b) e matriz QA-018.
 

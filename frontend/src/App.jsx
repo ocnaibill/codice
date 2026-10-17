@@ -23,6 +23,7 @@ import { ChangePasswordModal } from './components/layout/ChangePasswordModal';
 import { PreferencesModal } from './components/layout/PreferencesModal';
 import { AskDisplayName } from './components/layout/DisplayNamePrompt';
 import { AppsModal } from './components/layout/AppsModal';
+import { PairReaderModal } from './components/layout/PairReaderModal';
 import { AboutModal } from './components/layout/AboutModal';
 import { SessionsModal } from './components/layout/SessionsModal';
 import { ResetPassword } from './features/auth/components/ResetPassword';
@@ -41,6 +42,12 @@ function App() {
   const [assetsReady, setAssetsReady] = useState(false);
   // A link like /?invite=<secret> opens the sign-up page for that invitation.
   const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
+  // A link like /?pair=BCDF2345 (the address of the QR a reader shows) opens the approval of that reader once the person is signed in.
+  const [pairCode, setPairCode] = useState(() => { const q = new URLSearchParams(window.location.search); return q.has('pair') ? q.get('pair') || '' : null; });
+  const leavePair = () => {
+    window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+    setPairCode(null);
+  };
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset'));
   const leaveLink = () => {
     localStorage.removeItem('codice_token');
@@ -293,6 +300,7 @@ function App() {
       <OwnershipBanner me={me} />
       <AskDisplayName me={me} />
       <ReadingPreferencesSync key={me?.id ?? "none"} userId={me?.id} />
+      {pairCode !== null && <PairReaderModal initialCode={pairCode} onClose={leavePair} />}
       {dialogOpen('senha') && <ChangePasswordModal onClose={() => closeAccountDialog('senha')} />}
       {dialogOpen('preferencias') && <PreferencesModal onClose={() => closeAccountDialog('preferencias')} />}
       {dialogOpen('aplicativos') && <AppsModal onClose={() => closeAccountDialog('aplicativos')} />}

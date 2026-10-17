@@ -10,6 +10,8 @@ import {
   useCreateAppToken,
   useRevokeAppToken,
 } from '../../features/auth/api/useAppTokens';
+import { PairReaderModal } from './PairReaderModal';
+import { useDevicePairingInfo as useInstancePairing } from '../../features/auth/api/useDevicePairing';
 import { ConfirmDialog } from '../../features/admin/components/ConfirmDialog';
 import { formatDate } from '../../features/admin/format';
 import { ago } from '../../lib/ago';
@@ -236,6 +238,8 @@ export function AppsModal({ onClose }) {
   const revoke = useRevokeAppToken();
   const [created, setCreated] = useState(null);
   const [removing, setRemoving] = useState(null);
+  const [pairing, setPairing] = useState(false);
+  const { data: instance } = useInstancePairing();
 
   useDialog(dialogRef, { onEscape: onClose });
 
@@ -252,6 +256,14 @@ export function AppsModal({ onClose }) {
           Para ler seu acervo em outro aplicativo (KOReader, Moon+ Reader, Librera…), crie um acesso para ele. É uma senha só
           dele, que serve apenas para ler. Assim você não entrega a senha da sua conta ao aplicativo e pode cortar o acesso quando quiser.
         </p>
+
+        {instance?.pairing && (
+          <div className="mt-4 rounded-lg border border-border-hairline p-3">
+            <p className="text-[13px] font-medium text-ink">Tem um leitor com o plugin do Códice?</p>
+            <p className="mt-1 text-[12px] text-ink-soft">Ele mostra um código na tela: digite-o aqui e o leitor se conecta sozinho, sem copiar senha nem arquivos.</p>
+            <button onClick={() => setPairing(true)} className="mt-2 rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110">Conectar um leitor</button>
+          </div>
+        )}
 
         <div className="mt-5">
           {created ? (
@@ -306,6 +318,7 @@ export function AppsModal({ onClose }) {
         </div>
       </div>
 
+      {pairing && <PairReaderModal onClose={() => setPairing(false)} />}
       {removing && (
         <ConfirmDialog
           title={`Remover o acesso “${removing.name}”?`}
