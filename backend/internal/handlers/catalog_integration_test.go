@@ -304,6 +304,14 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	notesImport := &NotesImportHandler{DB: db, StorageRoot: storageDir}
 	r.Post("/notes/import/preview", notesImport.Preview)
 	r.Post("/notes/import", notesImport.Import)
+	mailAdmin := &MailAdminHandler{DB: db, SecretKey: "0123456789abcdef0123456789abcdef"}
+	kindle := &KindleHandler{DB: db, StorageRoot: storageDir, SecretKey: "0123456789abcdef0123456789abcdef"}
+	r.Get("/admin/mail", mailAdmin.Get)
+	r.Put("/admin/mail", mailAdmin.Put)
+	r.Post("/admin/mail/test", mailAdmin.Test)
+	r.Get("/auth/kindle", kindle.Get)
+	r.Put("/auth/kindle", kindle.Put)
+	r.Post("/works/{id}/send-to-kindle", kindle.Send)
 	kosync := &KosyncHandler{DB: db, Sessions: &sessions.Store{DB: db}, StorageRoot: storageDir}
 	r.Post("/kosync/users/create", kosync.Create)
 	r.With(kosync.Auth).Get("/kosync/users/auth", kosync.Authorize)
