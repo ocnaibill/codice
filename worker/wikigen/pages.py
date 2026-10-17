@@ -359,7 +359,9 @@ def identity_facts(ent, notes, upto=None):
 def build_page(llm, ent, series, books, notes, parallel, registro, tick=lambda: None):
     who = ent['nome']
     shown = [a for a in ent['aliases'] if a != who][:6]
-    who_full = who + (f" (também: {', '.join(shown)})" if shown else '')
+    epithets = [e['nome'] for e in ent.get('epitetos', [])][:4]   # how the text refers to it ("o sebo"): said to the writer, never a name
+    extras = ([f"também: {', '.join(shown)}"] if shown else []) + ([f"o texto também diz: {', '.join(epithets)}"] if epithets else [])
+    who_full = who + (f" ({'; '.join(extras)})" if extras else '')
     jobs = []
     for bi, b in enumerate(series['series']):
         for p in b['partes']:

@@ -79,6 +79,17 @@ def describes_another(name, common):
     return len(toks) >= 3 and toks[0] in common and toks[1] in OF
 
 
+def is_proper(name, common=frozenset()):
+    """Whether a name is a name and not a way of referring: "Addie LaRue", "Beatrice" are; "o sebo", "a garota", "o velho gato do sebo" are
+    epithets, which several things can answer to and never identify one entity by themselves. A name has a word that starts with a capital
+    and that the book does not write mostly in lower case (an article or a connector does not count, "A sombra" is not a name)."""
+    for w in re.findall(r'[^\W\d_]+(?:[-\'][^\W\d_]+)*', str(name)):
+        f = fold(w)
+        if w[:1].isupper() and f not in ARTICLES and f not in CONNECTORS and f not in common:
+            return True
+    return False
+
+
 KINDS = [('personagem', ['personagem', 'pessoa', 'ia', 'inteligencia', 'character', 'person']),
          ('lugar', ['lugar', 'local', 'cidade', 'regiao', 'territorio', 'place', 'location']),
          ('organização', ['organiza', 'grupo', 'instituicao', 'ordem', 'faccao', 'group']),

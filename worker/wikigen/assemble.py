@@ -68,6 +68,14 @@ def build_series(llm, books, rules=()):
         # a mention that the staff took away from this entity (DEC-181) is not one of its names
         gone = {r['b'] for r in rules if r.get('kind') == 'mention' and r['a'] in {key(n) for n in names}}
         aliases = [n for n, _ in names.most_common(14) if core(n) and n != name and key(n) not in gone]
+        # the names the chapters said it also has, with a copy that was found (DEC-189), after the ones it was written with
+        said = [a for x in g for a in x.get('aliases', {}) if a != name and a not in names and key(a) not in gone]
+        aliases += [a for a in dict.fromkeys(said) if a not in aliases][:max(0, 14 - len(aliases))]
+        epithets = []
+        for x in g:
+            for ep in x.get('epitetos', []):
+                if ep['nome'] not in aliases and all(fold(e_['nome']) != fold(ep['nome']) for e_ in epithets):
+                    epithets.append({**ep, 'book': x['book']})
         kind = collections.Counter(x['tipo'] for x in g for _ in x['caps']).most_common(1)[0][0]
         # a one-word name that is a title ("Timbre") with a person's name among the aliases: the person's name becomes the main one
         if kind == 'personagem' and len(core(name)) == 1:
@@ -76,7 +84,8 @@ def build_series(llm, books, rules=()):
                 name, aliases = cand[0], [name] + [a for a in aliases if a != cand[0]]
         ents.append({'nome': name, 'tipo': kind, 'aliases': aliases, 'livros': sorted({x['book'] for x in g}),
                      'caps': {str(bi): sorted({c for x in g if x['book'] == bi for c in x['caps']}) for bi in range(len(books))},
-                     'notas': [n for x in g for n in x['notas']], 'linha': [], 'relacoes': [], 'relacoes_inversas': []})
+                     'notas': [n for x in g for n in x['notas']], 'linha': [], 'relacoes': [], 'relacoes_inversas': [],
+                     'epitetos': epithets})
 
     # owner of each core name; one that two entities have is ambiguous and counts for none
     owner = collections.defaultdict(set)
