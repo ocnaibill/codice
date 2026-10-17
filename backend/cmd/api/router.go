@@ -522,7 +522,7 @@ func newRouter(d routerDeps) http.Handler {
 	// asks for a code now and then, and for the answer every few seconds while a person approves it.
 	device := &handlers.DeviceHandler{DB: db, Sessions: d.Sessions, PublicURL: d.PublicURL, TrustedProxies: d.TrustedProxies, SecretKey: d.SecretKey,
 		Sources: handlers.HomeSources{
-			Works: http.HandlerFunc(libHandler.GetWorks),
+			Works: http.HandlerFunc(libHandler.GetWorks), Work: http.HandlerFunc(libHandler.GetWorkByID),
 			Stats: http.HandlerFunc(statsHandler.GetStats), Notes: http.HandlerFunc(notesHandler.ListNotes), Categories: http.HandlerFunc(categories.List),
 		}}
 	deviceLimit := func(n int) func(http.Handler) http.Handler {
@@ -533,6 +533,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(deviceLimit(60)).Post("/device/token", device.PollToken)
 	r.With(d.Auth.WithBasic).Get("/device/config", device.Config)
 	r.With(catalog, d.Auth.WithBasic).Get("/device/home", device.Home)
+	r.With(catalog, d.Auth.WithBasic).Get("/device/works/{id}/files", device.WorkFiles)
 	r.With(auth, deviceLimit(20)).Get("/auth/device/{code}", device.Show)
 	r.With(auth, deviceLimit(20)).Post("/auth/device/{code}/approve", device.Approve)
 	r.With(auth, deviceLimit(20)).Post("/auth/device/{code}/deny", device.Deny)

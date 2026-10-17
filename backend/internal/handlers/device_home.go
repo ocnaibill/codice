@@ -13,7 +13,7 @@ import (
 // HomeSources are the handlers of the web whose answers the home of a reading device is made of. The home asks them as the person (the
 // same rules about what is shown), and keeps from each answer only what a small screen draws.
 type HomeSources struct {
-	Works, Stats, Notes, Categories http.Handler
+	Works, Work, Stats, Notes, Categories http.Handler
 }
 
 const (
@@ -31,7 +31,8 @@ type DeviceCard struct {
 	Cover       string  `json:"cover"` // a path of this server, asked with the access of the device and ?w= for the size
 	Percent     float64 `json:"percent"`
 	Format      string  `json:"format,omitempty"`
-	FileID      int64   `json:"fileId,omitempty"` // the file to read next, or the first; 0 when there is none to open
+	FileID      int64   `json:"fileId,omitempty"`    // the file to read next, or the first; 0 when there is none to open
+	FileCount   int     `json:"fileCount,omitempty"` // how many files the work has to open: with more than one the person chooses
 	InProgress  bool    `json:"inProgress"`
 	Completed   bool    `json:"completed"`
 	Series      string  `json:"series,omitempty"`
@@ -69,7 +70,7 @@ func pull(src http.Handler, r *http.Request, query url.Values, into any) bool {
 
 func cardOf(w Work) DeviceCard {
 	c := DeviceCard{ID: w.ID, Title: w.Title, Author: w.Author, Cover: w.CoverURL, Percent: w.PercentComplete, Format: w.Format,
-		InProgress: w.InProgress, Completed: w.Completed, Series: w.Series, SeriesIndex: w.SeriesIndex}
+		InProgress: w.InProgress, Completed: w.Completed, Series: w.Series, SeriesIndex: w.SeriesIndex, FileCount: w.FileCount}
 	if w.FileID != nil {
 		c.FileID = *w.FileID
 	}
@@ -206,4 +207,46 @@ func (h *DeviceHandler) Home(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, out)
+}
+
+// deviceFile is one file of a work as the picker of a reader lists it.
+type deviceFile struct {
+	ID        int64   `json:"id"`
+	Format    string  `json:"format"`
+	Language  string  `json:"language,omitempty"`
+	SizeBytes int64   `json:"sizeBytes,omitempty"`
+	Primary   bool    `json:"primary"` // the main file of the work: the first of its main edition
+	Last      bool    `json:"last"`    // the one the person read most recently
+	Percent   float64 `json:"percent"`
+	Completed bool    `json:"completed"`
+	Started   bool    `json:"started"`
+}
+
+// WorkFiles lists the files of a work that can be opened, for the reader to ask which one: the main one, the others, and the one the
+// person read last, each with its language and format.
+func (h *DeviceHandler) WorkFiles(w http.ResponseWriter, r *http.Request) {
+	var work Work
+	if !pull(h.Sources.Work, r, nil, &work) || work.ID == 0 {
+		http.Error(w, "Book not found", http.StatusNotFound)
+		return
+	}
+	var last int64
+	if work.Continue != nil {
+		last = work.Continue.FileID
+	}
+	files := []deviceFile{}
+	for _, e := range work.Editions {
+		for i, f := range e.Files {
+			if f.Availability != "available" {
+				continue
+			}
+			df := deviceFile{ID: f.ID, Format: f.Format, Language: e.Language, Primary: e.IsPrimary && i == 0, Last: f.ID == last,
+				Percent: f.PercentComplete, Completed: f.Completed, Started: f.Started}
+			if f.SizeBytes != nil {
+				df.SizeBytes = *f.SizeBytes
+			}
+			files = append(files, df)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": work.ID, "title": work.Title, "files": files})
 }
