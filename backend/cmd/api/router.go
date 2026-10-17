@@ -522,7 +522,7 @@ func newRouter(d routerDeps) http.Handler {
 	// asks for a code now and then, and for the answer every few seconds while a person approves it.
 	device := &handlers.DeviceHandler{DB: db, Sessions: d.Sessions, PublicURL: d.PublicURL, TrustedProxies: d.TrustedProxies, SecretKey: d.SecretKey,
 		Sources: handlers.HomeSources{
-			Works: http.HandlerFunc(libHandler.GetWorks), Favorites: http.HandlerFunc(favoritesHandler.GetFavorites),
+			Works: http.HandlerFunc(libHandler.GetWorks),
 			Stats: http.HandlerFunc(statsHandler.GetStats), Notes: http.HandlerFunc(notesHandler.ListNotes), Categories: http.HandlerFunc(categories.List),
 		}}
 	deviceLimit := func(n int) func(http.Handler) http.Handler {

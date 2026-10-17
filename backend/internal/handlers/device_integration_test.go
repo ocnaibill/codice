@@ -314,7 +314,7 @@ func TestDevice_TheHomeIsOneAnswerInTheOrderOfTheWebHome(t *testing.T) {
 	if len(h.Continue) != 1 || h.Continue[0].Title != "Duna" || h.Continue[0].Percent != 40 || h.Continue[0].FileID != file || !h.Continue[0].InProgress {
 		t.Errorf("continue = %+v", h.Continue)
 	}
-	if len(h.Favorites) != 1 || h.Favorites[0].Title != "O Nome da Rosa" || h.Favorites[0].ID != rosa {
+	if len(h.Favorites) != 1 || h.Favorites[0].Title != "O Nome da Rosa" || h.Favorites[0].ID != rosa || h.Favorites[0].FileID != s.primaryFile(rosa) {
 		t.Errorf("favorites = %+v", h.Favorites)
 	}
 	// the library as shelves: a category with works, with the works; a category with none is not a shelf

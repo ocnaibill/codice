@@ -313,7 +313,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Put("/auth/kindle", kindle.Put)
 	r.Post("/works/{id}/send-to-kindle", kindle.Send)
 	device := &DeviceHandler{DB: db, Sessions: &sessions.Store{DB: db}, PublicURL: "https://codice.example", SecretKey: "0123456789abcdef0123456789abcdef",
-		Sources: HomeSources{Works: http.HandlerFunc(lib.GetWorks), Favorites: http.HandlerFunc(fav.GetFavorites), Stats: http.HandlerFunc(stats.GetStats),
+		Sources: HomeSources{Works: http.HandlerFunc(lib.GetWorks), Stats: http.HandlerFunc(stats.GetStats),
 			Notes: http.HandlerFunc(notes.ListNotes), Categories: http.HandlerFunc((&CategoriesHandler{DB: db}).List)}}
 	r.Get("/device/info", device.Info)
 	r.Post("/device/code", device.RequestCode)

@@ -13,7 +13,7 @@ import (
 // HomeSources are the handlers of the web whose answers the home of a reading device is made of. The home asks them as the person (the
 // same rules about what is shown), and keeps from each answer only what a small screen draws.
 type HomeSources struct {
-	Works, Favorites, Stats, Notes, Categories http.Handler
+	Works, Stats, Notes, Categories http.Handler
 }
 
 const (
@@ -125,23 +125,12 @@ func (h *DeviceHandler) Home(w http.ResponseWriter, r *http.Request) {
 		out["continue"] = cardsOf(works.Data)
 	}
 
+	// the favorites are the works the person marked (not the series of the web rail), each with the file to open
 	var favorites struct {
-		Data []struct {
-			Kind     string `json:"kind"`
-			WorkID   int    `json:"workId"`
-			Title    string `json:"title"`
-			Author   string `json:"author"`
-			CoverURL string `json:"coverUrl"`
-		} `json:"data"`
+		Data []Work `json:"data"`
 	}
-	if pull(h.Sources.Favorites, r, nil, &favorites) {
-		cards := make([]DeviceCard, 0, len(favorites.Data))
-		for _, f := range favorites.Data {
-			if f.WorkID != 0 {
-				cards = append(cards, DeviceCard{ID: f.WorkID, Title: f.Title, Author: f.Author, Cover: f.CoverURL})
-			}
-		}
-		out["favorites"] = cards
+	if pull(h.Sources.Works, r, url.Values{"favorite": {"true"}, "limit": {strconv.Itoa(homeContinueWorks)}}, &favorites) {
+		out["favorites"] = cardsOf(favorites.Data)
 	}
 
 	var notes struct {
