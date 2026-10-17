@@ -1,6 +1,6 @@
 # Proposta: pareamento do leitor por código (quick connect) e configuração versionada
 
-**Proposta, não decisão.** Parte da issue [#327](https://github.com/ocnaibill/codice/issues/327) (leitor do Códice para e-readers, plugin sobre o KOReader). O mantenedor decidiu em 16/10/2026 que o pareamento vem antes de qualquer tela nova e que ele deve também fazer o leitor **puxar da instância a configuração** (OPDS, KOSync e o que vier), com número de versão. Esta proposta desenha o endpoint do Códice e o fluxo do plugin; as decisões que cabem ao mantenedor estão na seção 8. Nada aqui está implementado.
+**Decidida em 17/10/2026 (DEC-194); backend implementado.** Parte da issue [#327](https://github.com/ocnaibill/codice/issues/327) (leitor do Códice para e-readers, plugin sobre o KOReader). O mantenedor decidiu em 16/10/2026 que o pareamento vem antes de qualquer tela nova e que ele deve também fazer o leitor **puxar da instância a configuração** (OPDS, KOSync e o que vier), com número de versão. Esta proposta desenha o endpoint do Códice e o fluxo do plugin; as decisões que cabem ao mantenedor estão na seção 8. Nada aqui está implementado.
 
 ## 1. O que o protótipo já mostrou (17/10/2026, Kindle 10ª geração, KOReader v2026.07.2)
 
@@ -60,7 +60,7 @@ O plugin guarda a última `version`, pergunta ao abrir e quando a rede volta, e 
 
 ## 4. Segurança
 
-- **Código do usuário** (`userCode`): 8 símbolos de um alfabeto sem ambiguidade (o mesmo da senha curta, 31 símbolos, ~39 bits), maiúsculas e minúsculas valem igual, o hífen é só para ler. **Uma tentativa errada de aprovação conta para o pedido**; com 5 erros o pedido é invalidado. Limite por conta e por IP em `/pair` e em `/device/*`.
+- **Código do usuário** (`userCode`): 8 símbolos de um alfabeto sem ambiguidade (o mesmo da senha curta, 31 símbolos, ~39 bits), maiúsculas e minúsculas valem igual, o hífen é só para ler. Um código errado não pertence a pedido nenhum, então o que freia o chute é o **limite de taxa** por endereço em `/auth/device/*` e em `/device/*`, somado à validade curta e ao limite de pedidos esperando.
 - **Código do aparelho** (`deviceCode`): 128 bits aleatórios, guardado só como hash (sha256). Nunca aparece na tela.
 - **Validade** de 10 minutos; no máximo 5 pedidos pendentes por IP; o servidor impõe o intervalo de consulta (`slow_down`).
 - **O acesso nasce na primeira consulta depois da aprovação**, e não na aprovação: o texto do acesso nunca é guardado em lugar nenhum, só entregue. Consulta repetida depois disso devolve `expired_token`.
@@ -81,7 +81,6 @@ request_ip INET,
 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 expires_at TIMESTAMPTZ NOT NULL,
 last_poll_at TIMESTAMPTZ,
-attempts SMALLINT NOT NULL DEFAULT 0,
 approved_by UUID REFERENCES users(id) ON DELETE CASCADE,
 approved_at TIMESTAMPTZ, denied_at TIMESTAMPTZ, consumed_at TIMESTAMPTZ
 ```
