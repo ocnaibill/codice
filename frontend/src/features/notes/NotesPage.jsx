@@ -3,6 +3,7 @@ import { LoadError } from '../../components/ui/LoadError';
 import { useGlobalStore } from '../../store/useGlobalStore';
 import { NoteItem } from '../reader/components/NoteItem';
 import { ExportNotes } from './components/ExportNotes';
+import { ImportNotes } from './components/ImportNotes';
 import { NotesFacets } from './components/NotesFacets';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useNotesFacets } from './api/useNotesFacets';
@@ -23,6 +24,7 @@ export function NotesPage() {
   const [work, setWork] = useState(null); // { id, title }
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
   // What is searched follows what is typed after a pause, but is cleared at once.
   const [q, setQ] = useState('');
   useEffect(() => {
@@ -67,13 +69,21 @@ export function NotesPage() {
             {filtered && !isLoading ? ' com estes filtros' : ''}
           </p>
         </div>
-        <button
-          onClick={() => setExporting(true)}
-          disabled={isLoading || total === 0}
-          className="min-h-10 rounded-lg border border-border-hairline bg-white px-4 py-2 text-xs font-medium text-ink hover:bg-surface-alt disabled:opacity-40"
-        >
-          Exportar…
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setImporting(true)}
+            className="min-h-10 rounded-lg border border-border-hairline bg-white px-4 py-2 text-xs font-medium text-ink hover:bg-surface-alt"
+          >
+            Importar…
+          </button>
+          <button
+            onClick={() => setExporting(true)}
+            disabled={isLoading || total === 0}
+            className="min-h-10 rounded-lg border border-border-hairline bg-white px-4 py-2 text-xs font-medium text-ink hover:bg-surface-alt disabled:opacity-40"
+          >
+            Exportar…
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-col gap-3">
@@ -154,6 +164,7 @@ export function NotesPage() {
         </div>
       </div>
 
+      {importing && <ImportNotes onClose={() => setImporting(false)} />}
       {exporting && <ExportNotes filters={{ q, kind, tag, work }} total={total} onClose={() => setExporting(false)} />}
     </div>
   );

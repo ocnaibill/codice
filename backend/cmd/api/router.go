@@ -419,6 +419,10 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(auth).Get("/notes", notesHandler.ListNotes)
 	r.With(auth).Get("/notes/facets", notesHandler.NoteFacets)
 	r.With(auth).Get("/notes/export", notesHandler.ExportNotes)
+	// What a person marked on a reading device (a Kindle's My Clippings.txt, KOReader's export of highlights) comes in as notes.
+	notesImport := &handlers.NotesImportHandler{DB: db, StorageRoot: d.StoragePath}
+	r.With(auth).Post("/notes/import/preview", notesImport.Preview)
+	r.With(auth).Post("/notes/import", notesImport.Import)
 	r.With(auth).Patch("/notes/{id}", notesHandler.UpdateNote)
 	r.With(auth).Delete("/notes/{id}", notesHandler.DeleteNote)
 
