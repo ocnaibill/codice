@@ -8,6 +8,7 @@ import { useSetCompletion, useSetWorkFinished } from '../../reader/api/useComple
 import { useFavoriteToggle } from '../../reader/api/useFavoriteToggle';
 import { useFileOutline } from '../../reader/api/useFileOutline';
 import { useReadLaterToggle } from '../../reader/api/useReadLaterToggle';
+import { SendToKindle } from './SendToKindle';
 import { WorkOutline } from './WorkOutline';
 import { WorkPreview } from './WorkPreview';
 import { WorkRating } from './WorkRating';
@@ -57,7 +58,7 @@ function OtherTitles({ titles }) {
 
 const NOTE_TONE = { ok: 'text-success', warn: 'text-warning', plain: 'text-ink-soft' };
 
-function FileRow({ file, onRead, onComplete, onReread, busy }) {
+function FileRow({ workId, file, onRead, onComplete, onReread, busy }) {
   const percent = Math.round(file.percentComplete || 0);
   const started = file.started || percent > 0 || file.completed;
   const usable = file.availability === 'available' && !!file.url;
@@ -128,6 +129,7 @@ function FileRow({ file, onRead, onComplete, onReread, busy }) {
             >
               Baixar
             </a>
+            <SendToKindle workId={workId} file={file} />
           </>
         ) : (
           <span className="text-xs text-danger">
@@ -652,6 +654,7 @@ export function WorkPage() {
                   {edition.files.map((file) => (
                     <FileRow
                       key={file.id}
+                      workId={work.id}
                       file={file}
                       busy={setCompletion.isPending}
                       onRead={(f, fromStart) => openBook(work.id, f.id, { fromStart })}

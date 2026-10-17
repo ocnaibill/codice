@@ -131,6 +131,7 @@ export function useDictionaries() {
 }
 export const useAccounts = list('accounts', '/users');
 export const useLdap = list('ldap', '/admin/ldap');
+export const useMailSettings = list('mail', '/admin/mail');
 export const useEmbeddings = list('embeddings', '/admin/embeddings');
 
 /** The local models, each with its state, the percentage of its download and how much it was used (DEC-176). It asks again while a
@@ -359,6 +360,10 @@ export const useSetEmbeddings = () => useAdminAction(async (settings) => (await 
 export const useSetComicOcr = () => useAdminAction(async (model) => (await api.put('/admin/models/comic-ocr', { model })).data);
 /** Reads again, with the chosen model, the pages that another one read (owner, DEC-176); answers with the state of the models. */
 export const useRereadComicOcr = () => useAdminAction(async () => (await api.post('/admin/models/comic-ocr/reread')).data);
+/** The owner saves the mail server that sends books to the e-readers; `password` absent keeps the one kept, '' takes it away. */
+export const useSetMail = () => useAdminAction(async (settings) => (await api.put('/admin/mail', settings)).data);
+/** Sends a short message through the saved server to the address given, so the owner knows it works. */
+export const useTestMail = () => useMutation({ mutationFn: async (to) => (await api.post('/admin/mail/test', { to })).data });
 export const useCheckLdap = () => useMutation({ mutationFn: async () => (await api.post('/admin/ldap/check')).data });
 
 /** The record of sign-ins (DEC-121), a page at a time, newest first. `filters` is { result, username, from }; each page

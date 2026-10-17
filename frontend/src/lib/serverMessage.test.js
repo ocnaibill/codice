@@ -177,6 +177,9 @@ describe('what the server says', () => {
     'the sealed key does not open with this master key', // the handler says to type the key again, in Portuguese
     'invalid provider', // the tab of the wiki only sends the fields of its form
     'invalid scope', // the tab only sends a work or a series it listed
+    'mail server is not configured', // sentinels of the mailer and the sealed secrets: the handlers answer in Portuguese instead
+    'not an e-mail address',
+    'the sealed secret does not open with this master key',
   ];
 
   it('is read from the source of the server', () => {

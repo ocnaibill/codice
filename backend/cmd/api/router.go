@@ -423,6 +423,16 @@ func newRouter(d routerDeps) http.Handler {
 	notesImport := &handlers.NotesImportHandler{DB: db, StorageRoot: d.StoragePath}
 	r.With(auth).Post("/notes/import/preview", notesImport.Preview)
 	r.With(auth).Post("/notes/import", notesImport.Import)
+
+	// Sending a book to the e-reader by e-mail (DEC-059: the server of the house is the owner's to give, and off until then).
+	mailAdmin := &handlers.MailAdminHandler{DB: db, SecretKey: d.SecretKey}
+	kindle := &handlers.KindleHandler{DB: db, StorageRoot: d.StoragePath, SecretKey: d.SecretKey}
+	r.With(owner).Get("/admin/mail", mailAdmin.Get)
+	r.With(owner).Put("/admin/mail", mailAdmin.Put)
+	r.With(owner).Post("/admin/mail/test", mailAdmin.Test)
+	r.With(auth).Get("/auth/kindle", kindle.Get)
+	r.With(auth).Put("/auth/kindle", kindle.Put)
+	r.With(auth).Post("/works/{id}/send-to-kindle", kindle.Send)
 	r.With(auth).Patch("/notes/{id}", notesHandler.UpdateNote)
 	r.With(auth).Delete("/notes/{id}", notesHandler.DeleteNote)
 

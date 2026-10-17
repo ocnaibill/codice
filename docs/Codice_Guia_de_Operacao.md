@@ -102,6 +102,20 @@ Dois endereços, os dois pelo mesmo site e atrás do mesmo HTTPS:
 | A aba *Aplicativos* mostra "usado pela última vez há semanas" | o aparelho está sem Wi-Fi ou o `auto_sync` está desligado | ligar a rede ao fechar o livro; o menu do KOReader tem "Enviar progresso agora" e "Puxar progresso agora" |
 | O Kindle não alcança o servidor | `http://` com redirecionamento, ou endereço só do computador | usar `https://`; conferir `CODICE_PUBLIC_URL` (seção 6) |
 
+**Enviar um livro por e-mail (opcional).** O Kindle também recebe livros por um endereço de e-mail da Amazon. Para ligar:
+1. Defina `CODICE_SECRET_KEY` (32 caracteres ou mais, por exemplo `openssl rand -hex 16`) se o servidor de e-mail pede senha: ela é guardada selada com essa chave. Trocar a chave obriga a digitar a senha de novo.
+2. Na administração, aba **E-mail** (só o dono): servidor, porta, proteção da conexão, usuário, senha, remetente e o tamanho máximo. **Enviar teste** manda uma mensagem curta pelo servidor salvo.
+3. Na conta Amazon, em *Conteúdo e dispositivos → Preferências → Documentos pessoais*, inclua o remetente na lista de e-mails aprovados e anote o endereço `@kindle.com` do aparelho.
+4. Cada pessoa põe esse endereço em *Preferências*; a ficha da obra passa a mostrar **Enviar para o Kindle** nos arquivos EPUB, PDF e TXT.
+
+| Sintoma | Causa provável | O que fazer |
+|---|---|---|
+| O botão não aparece | o envio está desligado, ou o arquivo é CBZ ou outro formato | ligar na aba *E-mail*; só EPUB, PDF e TXT vão |
+| "o servidor recusou o usuário ou a senha" | senha errada, ou o provedor exige uma senha de aplicativo | gerar uma senha de aplicativo no provedor e digitar de novo |
+| "não abre com a chave mestra" | a `CODICE_SECRET_KEY` mudou | digitar a senha de novo na aba *E-mail* |
+| Enviou, mas o livro não chega | o remetente não está na lista aprovada da Amazon, ou o arquivo passa de 50 MB | aprovar o remetente; a Amazon não entrega |
+| "limite de envio" | o livro passa do tamanho máximo da aba *E-mail* | subir o limite (até 50 MB) ou baixar o livro e passar por cabo |
+
 **Testado em:** Kindle de 10ª geração (firmware 5.17.1.0.3, com jailbreak e KOReader) e Moon+ Reader (catálogo). Ver a matriz na especificação (QA-018).
 
 ## 7. Disco e crescimento

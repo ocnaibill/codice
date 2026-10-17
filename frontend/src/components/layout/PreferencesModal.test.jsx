@@ -12,10 +12,13 @@ import { getKeepScreenOn, saveKeepScreenOn, setPreferenceOwner } from '../../fea
 let view;
 const radio = (label) => [...document.body.querySelectorAll('label')].find((l) => l.textContent.includes(label))?.querySelector('input');
 
+let kindle = { email: '', available: false };
+
 async function open(prefs = { choice: '', library: 'given_first', effective: 'given_first' }, onClose = vi.fn()) {
   api.get.mockImplementation(async (url) => {
     if (url === '/auth/preferences') return { data: prefs };
     if (url === '/auth/export') return { data: { export: null } };
+    if (url === '/auth/kindle') return { data: kindle };
     if (url === '/auth/me') return { data: { id: 'u1', username: 'ana', displayNameAsked: true } };
     throw new Error(`unexpected GET ${url}`);
   });
@@ -24,7 +27,10 @@ async function open(prefs = { choice: '', library: 'given_first', effective: 'gi
   return onClose;
 }
 afterEach(() => view.unmount());
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  kindle = { email: '', available: false };
+});
 
 describe('PreferencesModal', () => {
   it('has the section of the person\'s own data, below the preferences', async () => {
@@ -204,5 +210,18 @@ describe('PreferencesModal, how it appears', () => {
       await view.click(box());
       expect(view.dialog().textContent).toContain('Não foi possível salvar.');
     });
+  });
+
+  it('asks for the address of the e-reader only when the server sends books by e-mail', async () => {
+    await open();
+    expect(view.dialog().textContent).not.toContain('E-mail do seu leitor');
+    view.unmount();
+    kindle = { email: 'ana_k@kindle.com', available: true };
+    await open();
+    const input = view.dialog().querySelector('input[type="email"]');
+    expect(input.value).toBe('ana_k@kindle.com');
+    await view.type(input, 'outro@kindle.com');
+    await view.click([...view.dialog().querySelectorAll('button')].filter((b) => b.textContent === 'Salvar').pop());
+    expect(api.put).toHaveBeenCalledWith('/auth/kindle', { email: 'outro@kindle.com' });
   });
 });
