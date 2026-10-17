@@ -518,6 +518,22 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(kosync.Auth).Put("/kosync/syncs/progress", kosync.PutProgress)
 	r.With(kosync.Auth).Get("/kosync/syncs/progress/{document}", kosync.GetProgress)
 
+	// Connecting a reading device by a code, like a TV app (DEC-194). The first half is not signed in, so it is limited by address: a device
+	// asks for a code now and then, and for the answer every few seconds while a person approves it.
+	device := &handlers.DeviceHandler{DB: db, Sessions: d.Sessions, PublicURL: d.PublicURL, TrustedProxies: d.TrustedProxies, SecretKey: d.SecretKey}
+	deviceLimit := func(n int) func(http.Handler) http.Handler {
+		return httprate.LimitBy(n, 1*time.Minute, appMiddleware.RateLimitKey(d.TrustedProxies))
+	}
+	r.With(deviceLimit(30)).Get("/device/info", device.Info)
+	r.With(deviceLimit(10)).Post("/device/code", device.RequestCode)
+	r.With(deviceLimit(60)).Post("/device/token", device.PollToken)
+	r.With(d.Auth.WithBasic).Get("/device/config", device.Config)
+	r.With(auth, deviceLimit(20)).Get("/auth/device/{code}", device.Show)
+	r.With(auth, deviceLimit(20)).Post("/auth/device/{code}/approve", device.Approve)
+	r.With(auth, deviceLimit(20)).Post("/auth/device/{code}/deny", device.Deny)
+	r.With(owner).Get("/admin/device-pairing", device.PairingSettings)
+	r.With(owner).Put("/admin/device-pairing", device.SetPairingSettings)
+
 	// Metadata search (proxies to worker HTTP server)
 	r.With(auth).Get("/metadata/search", libHandler.SearchMetadata)
 
