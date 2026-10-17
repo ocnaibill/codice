@@ -301,6 +301,9 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Delete("/relations/{id}", graphs.DeleteRelation)
 	r.Get("/stats", stats.GetStats)
 	r.Get("/works/{id}/text", media.ServeText)
+	notesImport := &NotesImportHandler{DB: db, StorageRoot: storageDir}
+	r.Post("/notes/import/preview", notesImport.Preview)
+	r.Post("/notes/import", notesImport.Import)
 	kosync := &KosyncHandler{DB: db, Sessions: &sessions.Store{DB: db}, StorageRoot: storageDir}
 	r.Post("/kosync/users/create", kosync.Create)
 	r.With(kosync.Auth).Get("/kosync/users/auth", kosync.Authorize)
