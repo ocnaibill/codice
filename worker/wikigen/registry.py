@@ -9,7 +9,7 @@ import collections
 import math
 import re
 
-from .text import CONNECTORS, TITLE_WORDS, core, describes_another, fold, key, kind_of  # noqa: F401
+from .text import CONNECTORS, TITLE_WORDS, core, describes_another, fold, is_proper, key, kind_of  # noqa: F401
 
 
 def prefold2(records, common=frozenset()):
@@ -43,7 +43,9 @@ def build_registry(books, common=frozenset()):
     entries = []
     for bi, b in enumerate(books):
         records = []
+        own_names = {}   # the names the entities of each chapter have: an epithet that is one of them is another entity, not a way to refer
         for cap, m in sorted(b['mapa'].items()):   # by chapter, not by the order they finished in: the requests are the key of the cache
+            own_names[cap] = {fold(e.get('nome', '')) for e in m['entidades']}
             for e in m['entidades']:
                 if e.get('verificada'):
                     e = dict(e)
@@ -54,7 +56,21 @@ def build_registry(books, common=frozenset()):
             # "apprentice of the baker", "knife": a generic description in lower case, not an entity with a name
             if not any(re.search(r'[A-ZÀ-Ý]', n) for n in names):
                 continue
+            # DEC-189: the other names the chapters gave, with a copy that was found. A name (Addie LaRue, Beatrice) tells who the entity is
+            # and ties it to the others that carry it; an epithet ("o sebo", "a garota") is only a way the text refers to it, and several
+            # things can answer to one: it is kept to be said, never to join.
+            aliases, epithets, mine = {}, [], {fold(n) for n in names}
+            for r in rs:
+                for o in r.get('outros_nomes') or []:
+                    f = fold(o['nome'])
+                    if not o.get('conferido') or f in mine or f in aliases:
+                        continue
+                    if is_proper(o['nome'], common):
+                        aliases[o['nome']] = {'citacao': o.get('citacao', ''), 'cap': r['_cap']}
+                    elif f not in own_names.get(r['_cap'], ()) and all(fold(x['nome']) != f for x in epithets):
+                        epithets.append({'nome': o['nome'], 'citacao': o.get('citacao', ''), 'cap': r['_cap']})
             entries.append({
+                'aliases': aliases, 'epitetos': epithets,
                 'id': len(entries), 'book': bi, 'nomes': names, 'nome': max(names, key=lambda n: (not re.search(r'[()/]', n), len(core(n)), names[n])),
                 'tipo': collections.Counter(kind_of(r.get('tipo')) for r in rs).most_common(1)[0][0],
                 'caps': sorted({r['_cap'] for r in rs}),
@@ -140,9 +156,13 @@ def merge_series(llm, entries, rules=(), common=frozenset()):
             fusoes.append({'a': entries[a]['nome'], 'b': entries[b]['nome'], 'por': why})
 
     # (0) what people decided: kept apart first, so that no join below undoes it, then joined
+    def names_of(e):
+        """The names an entry answers to: the ones the chapters wrote for it, and the ones they said it also has (with a copy)."""
+        return list(e['nomes']) + [a for a in e.get('aliases', {}) if a not in e['nomes']]
+
     holders = collections.defaultdict(list)
     for e in entries:
-        for n in e['nomes']:
+        for n in names_of(e):
             holders[key(n)].append(e['id'])
     for r in rules:
         if r.get('kind') == 'distinct':
@@ -160,16 +180,23 @@ def merge_series(llm, entries, rules=(), common=frozenset()):
     # (1) the same core name, in compatible kinds
     by_core = collections.defaultdict(list)
     for e in entries:
-        for n in e['nomes']:
+        for n in names_of(e):
             c = core(n)
-            if c:
+            if c and e['id'] not in by_core[c]:
                 by_core[c].append(e['id'])
+
+    def said(i, c):
+        """The reason of a join through a name the entry was said to have: the copy of the chapter. '' when the name is its own."""
+        for a, info in entries[i].get('aliases', {}).items():
+            if core(a) == c and a not in entries[i]['nomes']:
+                return f'o capítulo {info["cap"]} diz que também é "{a}": “{info["citacao"][:140]}”'
+        return ''
     for c, ids in by_core.items():
         for i in ids[1:]:
             ka, kb = entries[ids[0]]['tipo'], entries[i]['tipo']
             # the same name in different kinds ("The Order" as a concept and as an organization) is the same entity; only a place is not a person
             if compatible(ka, kb) or ({ka, kb} != {'lugar', 'personagem'} and len(' '.join(c)) >= 6):
-                union(ids[0], i, 'mesmo nome sem título')
+                union(ids[0], i, said(ids[0], c) or said(i, c) or 'mesmo nome sem título')
     # (2) a name that is part of a single longer name (one word: "Souza"; several: "Ana Souza" in "Ana Maria Souza"), of the same kind, in
     # any book
     long_names = [(core(n), e) for e in entries for n in e['nomes'] if core(n) and not describes_another(n, common)]

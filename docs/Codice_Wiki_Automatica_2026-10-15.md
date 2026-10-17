@@ -59,6 +59,18 @@ Modelos locais de 4B a 8B (qwen, gemma, llama) num Mac de 16 GB travaram ou erra
 - **Grafo denso** num livro com núcleo pequeno de personagens: os lugares do dia a dia viram os maiores nós. Pede filtro e rótulos só nos nós importantes (DEC-182).
 - **Escrita** às vezes telegráfica em partes com poucos fatos; melhorias de texto ficaram para depois, por decisão do mantenedor.
 
+## 6b Ensaio dos outros nomes (16/10/2026, DEC-189 e DEC-193)
+
+10 capítulos da Addie LaRue (5, 10, 15, 19, 28, 33, 38, 42, 50, 64) com o Nemotron 3.5 Super: 21 pedidos (capítulos longos se dividem), sem falhas, 11 respostas 429 absorvidas pelas novas tentativas; 97.707 tokens de entrada e 342.706 de saída. 23 outros nomes: 13 conferidos, 10 recusados.
+
+| Conferidos | Leitura |
+| --- | --- |
+| Nomes certos (5) | Addie LaRue, Henry Samuel, Beatrice (2×), Adeline |
+| Epítetos certos (3) | "a velha senhora", "o velho gato do sebo", "o sebo" |
+| Perigosos (5) | "o diabo", "um monstro", "um deus" (predicados de uma pergunta do texto), "a garota" (o capítulo 19 tem outra "a garota"), "o anel" (o capítulo 38 tem o "anel de madeira") |
+
+Recusados por acerto: "o novo Deus", "os flocos doces e escuros" (o conteúdo, não a lata), "rei dos duendes", "Emily", "Estele" (já junta por regra). Recusados por rigidez: "Beatrice Helen" (a cópia não traz "Bea") e "a sombra" (a cópia não traz "Luc"; é o Luc, confirmado pelo mantenedor). A conferência antiga só exigia que *algum* token de cada nome estivesse na cópia: provava que os dois nomes estão escritos juntos, não que são o mesmo. A regra nova está na DEC-193.
+
 ## 7 Integração no Códice (ordem combinada em 15/10/2026)
 
 | PR | Conteúdo |
