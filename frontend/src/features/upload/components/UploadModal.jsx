@@ -6,6 +6,7 @@ import { formatBytes } from '../../admin/format';
 import { ACCEPT_ATTRIBUTE, extensionOf } from '../accepted';
 import { useUploadBook, describeUploadError } from '../api/useUploadBook';
 import { MAX_FILES, STATUS, placesTaken, useUploadQueue } from '../uploadQueue';
+import { SeriesBulk } from './SeriesBulk';
 
 const FORMATS_TEXT = 'PDF, EPUB, CBZ, CBR, TXT, MD, MOBI e áudio (MP3, M4A, M4B, FLAC, OGG, WAV)';
 
@@ -43,17 +44,21 @@ export function UploadModal() {
   const closeModal = useGlobalStore((state) => state.closeUploadModal);
   const [notice, setNotice] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [tab, setTab] = useState('single'); // 'single': files one by one; 'series': the chapters of a series in bulk (DEC-200)
+  const [seriesBusy, setSeriesBusy] = useState(false);
   const panel = useRef(null);
   const { mutateAsync } = useUploadBook();
   const send = React.useCallback((file, onProgress) => mutateAsync({ file, onProgress }), [mutateAsync]);
   const queue = useUploadQueue(send, describeUploadError);
-  const { items, running, position } = queue;
+  const { items, running: sending, position } = queue;
+  const running = sending || seriesBusy;
 
   const close = () => {
     if (running) return;
     queue.reset();
     setNotice('');
     setDragging(false);
+    setTab('single');
     closeModal();
   };
 
@@ -64,7 +69,7 @@ export function UploadModal() {
   if (!isOpen) return null;
 
   const choose = (files) => {
-    if (files.length === 0 || running) return;
+    if (files.length === 0 || sending) return;
     setNotice(leftOut(queue.add(files)));
   };
 
@@ -101,7 +106,7 @@ export function UploadModal() {
   const queued = items.filter((item) => item.status === STATUS.QUEUED).length;
   const full = placesTaken(items) >= MAX_FILES;
   const touched = items.some((item) => [STATUS.DONE, STATUS.DUPLICATE, STATUS.ERROR, STATUS.CANCELLED].includes(item.status));
-  const locked = running || full;
+  const locked = sending || full;
 
   return (
     <div
@@ -114,7 +119,7 @@ export function UploadModal() {
         role="dialog"
         aria-modal="true"
         aria-label="Adicionar à biblioteca"
-        className="flex max-h-[92dvh] w-full max-w-lg animate-pop-in flex-col gap-5 overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl outline-none sm:rounded-xl"
+        className={`flex max-h-[92dvh] w-full ${tab === 'series' ? 'max-w-3xl' : 'max-w-lg'} animate-pop-in flex-col gap-5 overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl outline-none sm:rounded-xl`}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -133,6 +138,31 @@ export function UploadModal() {
           </button>
         </div>
 
+        <div role="tablist" aria-label="Como adicionar" className="flex gap-1 rounded-lg bg-surface-alt p-1">
+          {[['single', 'Arquivos'], ['series', 'Série em massa']].map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              id={`upload-tab-${id}`}
+              aria-selected={tab === id}
+              aria-controls="upload-tabpanel"
+              disabled={running}
+              onClick={() => setTab(id)}
+              className={`min-h-9 flex-1 rounded-md px-3 text-[13px] font-medium transition-colors disabled:cursor-not-allowed ${
+                tab === id ? 'bg-white text-ink shadow-sm' : 'text-ink-soft hover:text-ink disabled:opacity-60'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'series' ? (
+          <div role="tabpanel" id="upload-tabpanel" aria-labelledby="upload-tab-series" className="flex flex-col gap-4">
+            <SeriesBulk onBusy={setSeriesBusy} onClose={close} />
+          </div>
+        ) : (
+          <div role="tabpanel" id="upload-tabpanel" aria-labelledby="upload-tab-single" className="flex flex-col gap-5">
         <label
           onDragEnter={(event) => { event.preventDefault(); if (!locked) setDragging(true); }}
           onDragOver={(event) => { event.preventDefault(); if (!locked) setDragging(true); }}
@@ -153,7 +183,7 @@ export function UploadModal() {
             </svg>
           </span>
           <p className="text-sm text-ink">
-            {full && !running ? (
+            {full && !sending ? (
               <span className="font-semibold text-ink-soft">A lista está cheia: {MAX_FILES} arquivos</span>
             ) : (
               <>
@@ -230,7 +260,7 @@ export function UploadModal() {
           </ul>
         )}
 
-        {running && (
+        {sending && (
           <p role="status" className="font-mono text-xs text-ink-soft">
             Enviando {position.index} de {position.total}
             {items.find((item) => item.status === STATUS.UPLOADING)?.progress >= 100 ? ' · entregue; preparando a leitura…' : '…'}
@@ -251,7 +281,7 @@ export function UploadModal() {
           >
             {touched ? 'Fechar' : 'Cancelar'}
           </button>
-          {running && (
+          {sending && (
             <button
               onClick={queue.stop}
               className="min-h-10 rounded-lg border border-border-hairline px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-alt"
@@ -261,12 +291,14 @@ export function UploadModal() {
           )}
           <button
             onClick={begin}
-            disabled={queued === 0 || running}
+            disabled={queued === 0 || sending}
             className="min-h-10 rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
           >
-            {running ? 'Enviando…' : queued > 1 ? `Enviar ${queued} arquivos` : 'Enviar'}
+            {sending ? 'Enviando…' : queued > 1 ? `Enviar ${queued} arquivos` : 'Enviar'}
           </button>
         </div>
+          </div>
+        )}
       </div>
     </div>
   );

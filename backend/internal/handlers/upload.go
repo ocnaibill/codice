@@ -156,7 +156,12 @@ func maxUploadBytes() int64 {
 func ingestStatus(w http.ResponseWriter, err error) {
 	var dup *errDuplicate
 	var bad *errBadContent
+	var held *errInSeries
 	switch {
+	case errors.As(err, &held):
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]any{"error": "in_series", "message": held.Error(), "work_id": held.WorkID, "title": held.Title})
 	case errors.As(err, &dup):
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
@@ -181,6 +186,8 @@ func ingestStatus(w http.ResponseWriter, err error) {
 	}
 }
 
+var placeFields = map[string]bool{"series": true, "series_index": true, "unit": true, "comic_kind": true, "title": true}
+
 // HandleUpload receives one file (form field "document"), streams it to a
 // staging file with a hash, validates it, and hands it to the ingestion path.
 func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +200,9 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Expected a multipart form", http.StatusBadRequest)
 		return
 	}
+	// The fields that say where the work belongs (DEC-200) come before the file, so that a number already taken in the series is answered
+	// without reading the file at all.
+	fields := map[string]string{}
 	for {
 		part, err := mr.NextPart()
 		if err == io.EOF {
@@ -209,12 +219,33 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 			ingestStatus(w, err)
 			return
 		}
+		if part.FileName() == "" && placeFields[part.FormName()] {
+			value, ok := readPlaceField(part)
+			if !ok {
+				http.Error(w, "The place fields (series, series_index, unit, comic_kind, title) are not valid", http.StatusBadRequest)
+				return
+			}
+			fields[part.FormName()] = value
+			continue
+		}
 		if part.FormName() != "document" || part.FileName() == "" {
 			continue
 		}
+		place, ok := parsePlace(fields)
+		if !ok {
+			http.Error(w, "The place fields (series, series_index, unit, comic_kind, title) are not valid", http.StatusBadRequest)
+			return
+		}
+		if held, err := holderOf(r.Context(), h.DB, place, 0); err != nil {
+			ingestStatus(w, err)
+			return
+		} else if held != nil {
+			ingestStatus(w, held)
+			return
+		}
 
 		res, err := h.ingest(r.Context(), part, part.FileName(), ingestOptions{
-			Actor: currentUserID(r), Priority: jobs.PriorityManual, MaxBytes: limit,
+			Actor: currentUserID(r), Priority: jobs.PriorityManual, MaxBytes: limit, Place: place,
 		})
 		if err != nil {
 			ingestStatus(w, err)
@@ -224,6 +255,9 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 			"message": "Upload completed and enqueued",
 			"work_id": res.WorkID,
 			"job_id":  res.JobID,
+		}
+		if res.CollectionID != 0 {
+			answer["collection_id"] = res.CollectionID // the series the work was placed in, for the page to open it
 		}
 		if res.ConvertedFrom != "" {
 			answer["converted_from"] = res.ConvertedFrom // the owner is told the stored text is not the bytes sent

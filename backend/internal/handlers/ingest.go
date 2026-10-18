@@ -48,6 +48,8 @@ type ingestResult struct {
 	// ConvertedFrom names the encoding a text file came in ("Windows-1252", "UTF-16 LE") when it was brought to UTF-8
 	// on the way in; "" otherwise. The stored file then has other bytes than the original (and its own hash).
 	ConvertedFrom string
+	// CollectionID is the official collection the work was placed in when the upload named a series; 0 otherwise.
+	CollectionID int64
 }
 
 // ingestOptions tunes one ingestion.
@@ -55,6 +57,8 @@ type ingestOptions struct {
 	Actor    string
 	Priority int
 	MaxBytes int64
+	// Place, when given, is written on the work in the transaction that makes it, and locked (DEC-200).
+	Place *seriesPlace
 }
 
 // ingest is the single path by which a file enters the library, for uploads and
@@ -151,6 +155,7 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 	defer tx.Rollback()
 
 	var workID, editionID int
+	var collectionID int64
 	var fileID int64
 	format := strings.TrimPrefix(ext, ".")
 	if err := tx.QueryRowContext(ctx, `INSERT INTO works (original_title) VALUES ($1) RETURNING id`, titleOf(clean)).Scan(&workID); err != nil {
@@ -178,6 +183,14 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 		cleanup()
 		return nil, err
 	}
+	if opts.Place != nil {
+		cid, err := placeInSeries(ctx, tx, workID, opts.Actor, opts.Place)
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		collectionID = cid
+	}
 	jobID, err := jobs.Enqueue(ctx, tx, jobs.TypeIngest, workID, map[string]any{"file_path": mustAbs(finalPath)}, opts.Priority, opts.Actor)
 	if err != nil {
 		cleanup()
@@ -193,7 +206,7 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 		// picks it up when it polls.
 		log.Printf("job %d saved; workers were not woken (%v)", jobID, err)
 	}
-	return &ingestResult{WorkID: workID, JobID: jobID, SHA: origSum, ConvertedFrom: convertedFrom}, nil
+	return &ingestResult{WorkID: workID, JobID: jobID, SHA: origSum, ConvertedFrom: convertedFrom, CollectionID: collectionID}, nil
 }
 
 // hashFile is the SHA-256 and the size of a file.
