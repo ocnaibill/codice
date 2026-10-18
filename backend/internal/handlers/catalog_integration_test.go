@@ -275,6 +275,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Delete("/collections/{id}/banner", colImages.ResetBanner)
 	r.Put("/collections/{id}/classification", colsAdmin.Classify)
 	r.Put("/collections/{id}/grouping", colsAdmin.Group)
+	r.Post("/collections/{id}/share", colsAdmin.Share)
 	mine := &PersonalCollectionsHandler{DB: db}
 	r.Post("/my/collections", mine.Create)
 	r.Patch("/my/collections/{id}", mine.Rename)

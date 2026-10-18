@@ -664,6 +664,7 @@ export function CollectionPage() {
                     {collection.name}
                     {collection.originalTitle && <span className="ml-3 align-baseline text-2xl text-ink-soft sm:text-3xl">{collection.originalTitle}</span>}
                   </h1>
+                  {collection.publisher && <p className="mt-1 text-sm text-ink-soft">Editora: {collection.publisher}</p>}
                   {(summary?.authors?.length > 0 || summary?.translators?.length > 0) && (
                     <p className="mt-1 text-sm text-ink-soft">
                       {summary.authors.map((p, i) => (

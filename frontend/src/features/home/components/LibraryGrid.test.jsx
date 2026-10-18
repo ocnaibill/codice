@@ -196,6 +196,13 @@ describe('a series in the grid (#187)', () => {
     expect(article().querySelector('img').getAttribute('alt')).toBe('One Piece');
   });
 
+  it('names the publisher of the series when its works say one (DEC-203), and nothing when they do not', async () => {
+    await render([seriesCard({ publisher: 'Panini, JBC' })]);
+    expect(article().querySelector('[title="Editora"]').textContent).toBe('Panini, JBC');
+    await render([seriesCard()]);
+    expect(article().querySelector('[title="Editora"]')).toBeNull();
+  });
+
   it('says how many are new, in the singular too, and says nothing when none is', async () => {
     await render([seriesCard({ newCount: 3 })]);
     const badge = () => [...article().querySelectorAll('span')].find((e) => /novo/.test(e.textContent));

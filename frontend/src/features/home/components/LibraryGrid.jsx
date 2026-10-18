@@ -145,6 +145,7 @@ export function SeriesBookCard({ item, onCollection, onOpen }) {
             </button>
           </h3>
           <p className="library-author"><AuthorLinks authors={item.authors} fallback={item.author} /></p>
+          {series.publisher && <p className="library-book-tags" title="Editora">{series.publisher}</p>}
           <p className="library-book-tags">{seriesCounts(series)}</p>
         </div>
       </div>

@@ -202,6 +202,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Delete("/collections/{id}/banner", collectionImages.ResetBanner)
 	r.With(staff).Put("/collections/{id}/classification", collectionsAdmin.Classify)
 	r.With(staff).Put("/collections/{id}/grouping", collectionsAdmin.Group)
+	r.With(staff).Post("/collections/{id}/share", collectionsAdmin.Share)
 	// The lists of a person: anyone signed in keeps their own (RN-006), and nobody reaches another person's.
 	r.With(auth).Post("/my/collections", personalCollections.Create)
 	r.With(auth).Patch("/my/collections/{id}", personalCollections.Rename)
