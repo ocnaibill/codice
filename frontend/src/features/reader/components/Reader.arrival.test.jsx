@@ -41,7 +41,14 @@ async function open(progress, { seek = null, fromStart = false } = {}) {
   useGlobalStore.setState({ activeBookId: 7, activeFileId: 10, fromStart, seek });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => { root.render(<QueryClientProvider client={client}><Reader /></QueryClientProvider>); });
-  for (let i = 0; i < 6; i += 1) await flush(); // the viewers are loaded when they are needed
+  // the viewers are loaded when they are needed: as many turns as it takes (a slow machine takes more than a few), and one more once it is there
+  for (let i = 0; i < 60; i += 1) {
+    await flush();
+    if (container.querySelector('[data-testid="epub"]')) {
+      await flush();
+      break;
+    }
+  }
 }
 
 const said = () => useToasts.getState().items.map((t) => t.title);
