@@ -92,3 +92,24 @@ func TestCompare_WithNoPendingPlaceThereIsOnlyTheWeb(t *testing.T) {
 		t.Errorf("compare = %+v", c)
 	}
 }
+
+func TestCompare_AReadingDeviceAsksThroughItsOwnRoute(t *testing.T) {
+	s := newCatalogStack(t)
+	dune := s.addWork("Duna", "Frank Herbert", "duna.epub", "epub")
+	file := s.primaryFile(dune)
+	if rec := s.do(ana, "PUT", fmt.Sprintf("/progress/files/%d", file), `{"locator":{"type":"epub","cfi":"epubcfi(/6/4)","href":"a.xhtml","progression":0.2},"percent":50,"device":"Web"}`); rec.Code != 200 {
+		t.Fatalf("progress: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := s.do(ana, "GET", fmt.Sprintf("/device/progress/files/%d/compare", file), "")
+	var c PlaceComparison
+	json.Unmarshal(rec.Body.Bytes(), &c)
+	if rec.Code != 200 || c.Web == nil || c.Web.Percent != 50 || c.Web.Device != "Web" || c.Device != nil {
+		t.Errorf("the reader asks where the web is: %d %+v", rec.Code, c)
+	}
+	// another person's place is not said to this one
+	rec = s.do(bob, "GET", fmt.Sprintf("/device/progress/files/%d/compare", file), "")
+	json.Unmarshal(rec.Body.Bytes(), &c)
+	if c.Web != nil {
+		t.Errorf("bob has no place in this file: %+v", c)
+	}
+}
