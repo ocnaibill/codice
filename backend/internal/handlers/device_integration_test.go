@@ -264,9 +264,15 @@ func TestDevice_TheConfigIsVersionedAndAnUnchangedOneIsNotSentAgain(t *testing.T
 }
 
 type homeAnswer struct {
-	Version   int
-	User      struct{ Name string }
-	Stats     struct{ WorksTotal int }
+	Version int
+	User    struct{ Name string }
+	Stats   struct {
+		WorksTotal          int
+		InProgressCount     int
+		InProgressBreakdown FormatBreakdown
+		CompletedBreakdown  FormatBreakdown
+		TotalReadingSeconds int
+	}
 	Continue  []DeviceCard
 	Favorites []DeviceCard
 	Notes     []deviceQuote
@@ -310,6 +316,9 @@ func TestDevice_TheHomeIsOneAnswerInTheOrderOfTheWebHome(t *testing.T) {
 	h := s.home(ana)
 	if h.Version != 1 || h.User.Name != "ana" || h.Stats.WorksTotal != 3 {
 		t.Errorf("greeting and numbers = %+v", h)
+	}
+	if h.Stats.InProgressCount != 1 || h.Stats.InProgressBreakdown.Livros != 1 {
+		t.Errorf("what is being read comes with its breakdown by format: %+v", h.Stats)
 	}
 	if len(h.Continue) != 1 || h.Continue[0].Title != "Duna" || h.Continue[0].Percent != 40 || h.Continue[0].FileID != file || !h.Continue[0].InProgress {
 		t.Errorf("continue = %+v", h.Continue)

@@ -259,7 +259,8 @@ var lastReadJoin = `
 	LEFT JOIN work_reading_state wrs ON wrs.work_id = w.id AND wrs.user_id = $1
 	LEFT JOIN LATERAL (
 		SELECT r.file_id, r.position, r.percent_complete, r.completed_at, r.chapter, r.unit_index, r.unit_total, f2.format, e2.language, l.path, l.mode,
-		       CASE WHEN e2.title_manual THEN e2.title END AS title
+		       CASE WHEN e2.title_manual THEN e2.title END AS title,
+		       GREATEST(COALESCE(r.last_opened_at, '-infinity'::timestamptz), r.updated_at) AS last_at
 		FROM reading_progress r
 		JOIN files f2 ON f2.id = r.file_id
 		JOIN editions e2 ON e2.id = f2.edition_id
@@ -429,6 +430,9 @@ func (h *LibraryHandler) GetWorks(w http.ResponseWriter, r *http.Request) {
 	// the card first made every request pay for all the works before the offset: with 10 000 works the last page
 	// took half a second (docs/Codice_Teste_de_Escala_2026-10-04.md).
 	sortKey := r.URL.Query().Get("sort")
+	if inProgressOnly && sortKey == "" {
+		sortKey = "recent" // what is being read comes the one opened last first, in every screen that lists it
+	}
 	pageFrom := " FROM works w"
 	if catalogNeedsJoins(sortKey, inProgressOnly, favoriteOnly, formatGroup) {
 		pageFrom = catalogFrom + cardJoins
