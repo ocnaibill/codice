@@ -535,6 +535,18 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(d.Auth.WithBasic).Get("/device/config", device.Config)
 	r.With(catalog, d.Auth.WithBasic).Get("/device/home", device.Home)
 	r.With(catalog, d.Auth.WithBasic).Get("/device/works/{id}/files", device.WorkFiles)
+	// What a reading device reads to draw its screens (DEC-197): the same handlers the web asks, mounted here so that the access of the device
+	// (Basic, the short password of the pairing) opens them. Only reads; what the device writes is the progress, by KOSync.
+	deviceRead := r.With(catalog, d.Auth.WithBasic)
+	deviceRead.Get("/device/works", libHandler.GetWorks)
+	deviceRead.Get("/device/categories", categories.List)
+	deviceRead.Get("/device/collections", collectionsHandler.List)
+	deviceRead.Get("/device/collections/{id}", collectionsHandler.Get)
+	deviceRead.Get("/device/favorites", favoritesHandler.GetFavorites)
+	deviceRead.Get("/device/notes", notesHandler.ListNotes)
+	deviceRead.Get("/device/stats", statsHandler.GetStats)
+	deviceRead.Get("/device/search", searchHandler.Search)
+	deviceRead.Get("/device/people/{id}", peopleHandler.Page)
 	r.With(auth, deviceLimit(20)).Get("/auth/device/{code}", device.Show)
 	r.With(auth, deviceLimit(20)).Post("/auth/device/{code}/approve", device.Approve)
 	r.With(auth, deviceLimit(20)).Post("/auth/device/{code}/deny", device.Deny)
