@@ -12,6 +12,7 @@ export function describeUploadError(error) {
   if (!res) {
     return error?.code === 'ECONNABORTED' ? 'O envio demorou demais e foi interrompido.' : 'Não foi possível falar com o servidor.';
   }
+  if (res.status === 409 && res.data?.error === 'in_series') return `Já existe na série como “${res.data.title}”: foi pulado.`;
   if (res.status === 409 && res.data && typeof res.data === 'object') {
     const state = res.data.retired ? ' (na lixeira)' : '';
     return `Esse arquivo já está no acervo como “${res.data.title}”${state}.`;
@@ -23,9 +24,16 @@ export function describeUploadError(error) {
   return 'Não foi possível enviar o arquivo.';
 }
 
-const uploadBook = async ({ file, onProgress }) => {
+/** Whether the server said a file's number is already taken in its series (it is skipped, not an error). */
+export const isInSeries = (error) => error?.response?.status === 409 && error.response.data?.error === 'in_series';
+
+// `place` is where the work belongs (the bulk upload of a series, DEC-200): the server reads these fields only before the file.
+export const uploadBook = async ({ file, onProgress, place }) => {
   // Use FormData for file uploads instead of JSON
   const formData = new FormData();
+  for (const [field, value] of Object.entries(place ?? {})) {
+    if (value !== undefined && value !== null && value !== '') formData.append(field, String(value));
+  }
   formData.append('document', file);
 
   const { data } = await api.post('/upload', formData, {

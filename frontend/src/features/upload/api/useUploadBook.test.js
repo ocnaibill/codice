@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeUploadError } from './useUploadBook';
+import { describeUploadError, isInSeries } from './useUploadBook';
 
 const failure = (status, data) => ({ response: { status, data } });
 
@@ -9,6 +9,14 @@ describe('describeUploadError', () => {
       .toBe('Esse arquivo já está no acervo como “Duna.epub”.');
     expect(describeUploadError(failure(409, { title: 'Duna.epub', retired: true })))
       .toContain('(na lixeira)');
+  });
+
+  it('says a number already taken in the series is skipped, and not an error of the file', () => {
+    const taken = failure(409, { error: 'in_series', title: 'Jujutsu - Cap. 2', work_id: 9 });
+    expect(describeUploadError(taken)).toBe('Já existe na série como “Jujutsu - Cap. 2”: foi pulado.');
+    expect(isInSeries(taken)).toBe(true);
+    expect(isInSeries(failure(409, { error: 'duplicate' }))).toBe(false);
+    expect(isInSeries(new Error('x'))).toBe(false);
   });
 
   it('relays what the server says about content, size and permission', () => {
