@@ -8,7 +8,10 @@ import (
 	"github.com/ocnaibill/codice/backend/internal/people"
 )
 
-const devicePeoplePage = 30 // authors in a page of the list of a reader: what a screen draws at once
+const (
+	devicePeoplePage = 30  // authors in a page of the list of a reader when it does not say how many fit its screen
+	devicePeopleMax  = 100 // the most it may ask for in a page
+)
 
 // devicePerson is an author in the list of a reader: the name as the person reads it (surname first when they chose that) and how many works.
 type devicePerson struct {
@@ -60,6 +63,14 @@ func (h *DeviceHandler) People(w http.ResponseWriter, r *http.Request) {
 	if n, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && n > 1 {
 		page = n
 	}
+	// how many fit the screen of the reader: it asks (a page that does not fit cannot be read, there is no scrolling)
+	per := devicePeoplePage
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+		per = n
+		if per > devicePeopleMax {
+			per = devicePeopleMax
+		}
+	}
 
 	// how many there are (with the letter, if one was asked), then the page
 	var total int
@@ -67,14 +78,14 @@ func (h *DeviceHandler) People(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error fetching authors", http.StatusInternalServerError)
 		return
 	}
-	pages := (total + devicePeoplePage - 1) / devicePeoplePage
+	pages := (total + per - 1) / per
 	if pages < 1 {
 		pages = 1
 	}
 	if page > pages {
 		page = pages
 	}
-	pageArgs := append(append([]any{}, args...), devicePeoplePage, (page-1)*devicePeoplePage)
+	pageArgs := append(append([]any{}, args...), per, (page-1)*per)
 	n := len(args)
 	rows, err = h.DB.QueryContext(r.Context(), `SELECT p.id, `+label+`, count(DISTINCT w.id)`+from+` GROUP BY p.id`+where+
 		` ORDER BY unaccent(lower(`+label+`)), p.id LIMIT $`+strconv.Itoa(n+1)+` OFFSET $`+strconv.Itoa(n+2), pageArgs...)
@@ -91,5 +102,5 @@ func (h *DeviceHandler) People(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]any{"data": out, "total": total, "page": page, "pages": pages, "letters": letters})
+	writeJSON(w, http.StatusOK, map[string]any{"data": out, "total": total, "page": page, "pages": pages, "limit": per, "letters": letters})
 }
