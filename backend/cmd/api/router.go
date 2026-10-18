@@ -214,6 +214,7 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(catalog, auth).Get("/search", searchHandler.Search)
 	r.With(auth).Patch("/works/{id}/progress", libHandler.UpdateProgress)
 	r.With(auth).Get("/progress/files/{id}", progressHandler.Get)
+	r.With(auth).Get("/progress/files/{id}/compare", progressHandler.Compare)
 	r.With(auth).Put("/progress/files/{id}", progressHandler.Put)
 	r.With(auth).Put("/progress/files/{id}/completion", progressHandler.SetCompletion)
 	r.With(auth).Post("/progress/files/{id}/opened", progressHandler.Opened)

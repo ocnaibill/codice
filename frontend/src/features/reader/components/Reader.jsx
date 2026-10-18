@@ -28,6 +28,7 @@ import { titleInUse } from '../titles';
 import { EquivalentPositionPrompt } from './EquivalentPositionPrompt';
 import { PlaceNotice } from './PlaceNotice';
 import { PeekNotice } from './PeekNotice';
+import { PlaceConflictDialog } from './PlaceConflictDialog';
 import { useArrivalNotice } from '../useArrivalNotice';
 import { useWiki } from '../../wiki/api/useWiki';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
@@ -96,7 +97,11 @@ export function Reader() {
   const clearSeek = useGlobalStore((state) => state.clearSeek);
   // Where another device (a KOReader) left the book, told once and underlined on the page of an EPUB.
   const goToPending = useCallback((locator) => openBook(activeBookId, file?.id, { locator }), [openBook, activeBookId, file?.id]);
-  const arrival = useArrivalNotice(file?.id, progress.data, !seek && !fromStart, goToPending);
+  // A place a device sent while the web had a newer one is asked about in a window with both places side by side (DEC-191).
+  const [conflict, setConflict] = useState(null);
+  const askConflict = useCallback((found) => setConflict(found), []);
+  const arrival = useArrivalNotice(file?.id, progress.data, !seek && !fromStart, goToPending, askConflict);
+  useEffect(() => setConflict(null), [file?.id]);
 
   // Where the person is in this file, as a locator: what the viewers last reported, or the saved
   // position until they report one. A note or bookmark made now is tied to it.
@@ -432,6 +437,19 @@ export function Reader() {
         />
       )}
 
+      {conflict && file && (
+        <PlaceConflictDialog
+          fileId={file.id}
+          title={book?.title}
+          pending={conflict}
+          web={progress.data}
+          onGoTo={(locator) => {
+            setConflict(null);
+            goToPending(locator);
+          }}
+          onStay={() => setConflict(null)}
+        />
+      )}
       {placeNotice && (
         <PlaceNotice
           notice={placeNotice}

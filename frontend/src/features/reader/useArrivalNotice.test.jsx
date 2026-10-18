@@ -12,8 +12,8 @@ const progress = (extra = {}) => ({ source: 'koreader', device: 'Kindle', revisi
 let root;
 let container;
 let seen;
-function Probe({ fileId, data, enabled = true, onGoTo }) {
-  seen.current = useArrivalNotice(fileId, data, enabled, onGoTo);
+function Probe({ fileId, data, enabled = true, onGoTo, onAsk }) {
+  seen.current = useArrivalNotice(fileId, data, enabled, onGoTo, onAsk);
   return null;
 }
 const render = (props) => act(async () => { root.render(<Probe {...props} />); });
@@ -99,5 +99,17 @@ describe('the place a device sent that was kept apart (DEC-191)', () => {
   it('is silent while a place was asked for', async () => {
     await render({ fileId: 5, data: kept(), enabled: false, onGoTo: vi.fn() });
     expect(useToasts.getState().items).toEqual([]);
+  });
+
+  it('hands the question to the window when there is one, and does not make a notice of it', async () => {
+    const onAsk = vi.fn();
+    const data = { revision: 2, locator: { type: 'epub' }, pending: { device: 'Kindle', percent: 64, at: '2026-10-17T10:00:00Z', locator: { type: 'epub', cfi: 'epubcfi(/6/36)' } } };
+    await render({ fileId: 9, data, onAsk });
+    expect(onAsk).toHaveBeenCalledTimes(1);
+    expect(onAsk.mock.calls[0][0]).toMatchObject({ device: 'Kindle', locator: { cfi: 'epubcfi(/6/36)' } });
+    expect(useToasts.getState().items).toEqual([]);
+    // asked once for each place kept apart
+    await render({ fileId: 9, data, onAsk });
+    expect(onAsk).toHaveBeenCalledTimes(1);
   });
 });

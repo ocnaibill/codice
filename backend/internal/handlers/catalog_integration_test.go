@@ -239,6 +239,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Patch("/works/{id}/progress", lib.UpdateProgress)
 	prog := &ProgressHandler{DB: db}
 	r.Get("/progress/files/{id}", prog.Get)
+	r.Get("/progress/files/{id}/compare", prog.Compare)
 	r.Put("/progress/files/{id}", prog.Put)
 	r.Put("/progress/files/{id}/completion", prog.SetCompletion)
 	r.Post("/progress/files/{id}/opened", prog.Opened)
