@@ -20,6 +20,10 @@ type seriesPlace struct {
 	Unit      string
 	ComicKind string
 	Title     string
+	// VolumeNumber is the bound volume a chapter was collected in, and CoversFrom/CoversTo the part of the story the file contains (DEC-202);
+	// all empty when the names did not say.
+	VolumeNumber         string
+	CoversFrom, CoversTo string
 }
 
 // errInSeries says the number is already taken in the series (DEC-200): the file is not stored, and the answer names the work that holds it.
@@ -65,6 +69,14 @@ func parsePlace(fields map[string]string) (*seriesPlace, bool) {
 			return nil, false
 		}
 		p.Number = n
+	}
+	vol, ok := cleanVolumeNumber(fields["volume_number"])
+	if !ok {
+		return nil, false
+	}
+	p.VolumeNumber = vol
+	if p.CoversFrom, p.CoversTo, ok = cleanCovers(fields["covers_from"], fields["covers_to"]); !ok {
+		return nil, false
 	}
 	if *p == (seriesPlace{}) {
 		return nil, true
@@ -156,6 +168,7 @@ func placeInSeries(ctx context.Context, tx *sql.Tx, workID int, actor string, p 
 		locks["title"] = &yes
 	}
 	next.Unit, next.ComicKind = p.Unit, p.ComicKind
+	next.VolumeNumber, next.CoversFrom, next.CoversTo = p.VolumeNumber, p.CoversFrom, p.CoversTo
 	if _, err := applyWorkFields(ctx, tx, workID, actor, sourceManual, cur, retired, next, locks); err != nil {
 		return 0, err
 	}

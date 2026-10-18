@@ -183,4 +183,20 @@ describe('the Série em massa tab', () => {
     await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
     expect(useGlobalStore.getState().isUploadModalOpen).toBe(false);
   });
+
+  it('says in the review, and sends, the volume of a chapter and the chapters a volume holds (DEC-202)', async () => {
+    await open();
+    await choose('Escolher arquivos', file('Serie v03 c012.cbz'), file('Serie Vol 4 Caps 18-26.cbz'));
+    const auto = [...body.querySelectorAll('input[name="series-unit"]')].find((i) => i.parentElement.textContent.startsWith('Cada um'));
+    await act(async () => { auto.click(); });
+    // the rows are in the order of the numbers: the volume 4, then the chapter 12
+    expect(tableRows()[0].textContent).toContain('novo · caps. 18 a 26');
+    expect(tableRows()[1].textContent).toContain('novo · no Vol. 3');
+    await click(/^Enviar 2/);
+    const chapterForm = posts.map((p, i) => ({ i, title: p.body.get('title') })).find((p) => p.title === 'Serie - Cap. 12');
+    expect(sent(chapterForm.i).get('volume_number')).toBe('3');
+    expect(sent(chapterForm.i).get('covers_from')).toBeNull();
+    const volumeForm = posts.map((p, i) => ({ i, title: p.body.get('title') })).find((p) => p.title === 'Serie - Vol. 4');
+    expect([sent(volumeForm.i).get('unit'), sent(volumeForm.i).get('covers_from'), sent(volumeForm.i).get('covers_to')]).toEqual(['volume', '18', '26']);
+  });
 });

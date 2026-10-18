@@ -124,7 +124,7 @@ describe('what the server says', () => {
     'Format does not support page serving',
     'Invalid JSON payload',
     'Invalid multipart form',
-    'The place fields (series, series_index, unit, comic_kind, title) are not valid', // the bulk upload of a series checks them before it sends
+    'The place fields (series, series_index, unit, comic_kind, title, volume_number, covers_from, covers_to) are not valid', // the bulk upload of a series checks them before it sends
     'not UTF-8, and not Windows-1252 or UTF-16 with a byte order mark', // never reaches a client: the upload answers with the filecheck message
     'Invalid page number',
     'Pages not yet extracted. Call GetPages first.',

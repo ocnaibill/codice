@@ -6,7 +6,7 @@ import { useGlobalStore } from '../../../store/useGlobalStore';
 import { describeUploadError, isInSeries, uploadBook } from '../api/useUploadBook';
 import { filesFromDrop } from '../dropped';
 import {
-  MAX_SERIES_FILES, SERIES_CONCURRENCY, deriveRows, folderOf, guessSeries, listNumbers, pickSeriesFiles, readNumber, runPool, sortRows, summarize,
+  MAX_SERIES_FILES, SERIES_CONCURRENCY, deriveRows, folderOf, formatNumber, guessSeries, listNumbers, pickSeriesFiles, readNumber, runPool, sortRows, summarize,
 } from '../seriesFiles';
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -31,7 +31,12 @@ function situationOf(row) {
     case SENT.duplicate: return { text: row.message, tone: 'text-warning' };
     case SENT.error: return { text: row.message, tone: 'text-danger' };
     case SENT.cancelled: return { text: 'Cancelado', tone: 'text-ink-soft' };
-    default: return SITUATION[row.situation];
+    default: {
+      // what the name says besides the number: the volume a chapter is in, the chapters a file holds (DEC-202)
+      const extra = [row.volumeNumber != null && `no Vol. ${formatNumber(row.volumeNumber)}`, row.covers && `caps. ${formatNumber(row.covers.from)} a ${formatNumber(row.covers.to)}`].filter(Boolean);
+      const base = SITUATION[row.situation];
+      return row.situation === 'new' && extra.length ? { ...base, text: `${base.text} · ${extra.join(' · ')}` } : base;
+    }
   }
 }
 
@@ -133,7 +138,10 @@ export function SeriesBulk({ onBusy, onClose }) {
         const data = await uploadBook({
           file: row.file,
           onProgress: (progress) => patch(row.id, { progress }),
-          place: { series: series.trim(), series_index: row.number, unit: row.unit, comic_kind: kind, title: row.title },
+          place: {
+            series: series.trim(), series_index: row.number, unit: row.unit, comic_kind: kind, title: row.title,
+            volume_number: row.volumeNumber, covers_from: row.covers?.from, covers_to: row.covers?.to,
+          },
         });
         collectionId = data?.collection_id ?? collectionId;
         patch(row.id, { status: SENT.done, progress: 100 });
