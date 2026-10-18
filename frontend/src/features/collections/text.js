@@ -192,11 +192,61 @@ export function extraGroup(works) {
   return extras.length > 0 ? [{ key: 'extra', heading: unit.heading, works: extras }] : [];
 }
 
-/** The views the page of a series offers (DEC-169): the ones the works have data for. "Capítulos" is the way it was and is always there. */
-export function viewsOf(works) {
+/**
+ * The works of a series in the order of its story (DEC-202). `story` is what the server says: the works in order, the loose chapters nested under the
+ * volume that contains them, the works that have no place in it and the chapters no file contains. A nested chapter stays in the list, folded under
+ * its volume (`after` has it, with a line for the numbers that are missing right after the work that precedes them); with `flat` (a filter is
+ * on) every placed work is a row of its own, so that the search finds it. Works with no place end the view, and the complementary ones after them.
+ */
+export function groupByStory(works, story, { flat = false } = {}) {
+  const byId = new Map(works.map((w) => [w.id, w]));
+  const pick = (ids) => (ids ?? []).map((id) => byId.get(id)).filter(Boolean);
+  const endOf = (w) => w.coversTo ?? w.position ?? 0;
+  const top = pick(story.order);
+  const after = {};
+  const ordered = [];
+  const aside = (id) => (after[id] ??= { nested: [], gaps: [] });
+  for (const w of top) {
+    ordered.push(w);
+    const nested = pick(story.nested?.[w.id]);
+    if (flat) ordered.push(...nested);
+    else if (nested.length > 0) aside(w.id).nested = nested;
+  }
+  // A stretch no file contains is said right after the last work that ends before it.
+  if (!flat) {
+    for (const gap of story.gaps ?? []) {
+      const before = [...top].reverse().find((w) => endOf(w) < gap.from);
+      if (before) aside(before.id).gaps.push(gap);
+    }
+  }
+  const groups = [{ key: 'story', heading: '', works: flat ? ordered : top, after }];
+  const unplaced = pick(story.unplaced);
+  if (unplaced.length > 0) {
+    groups.push({
+      key: 'unplaced',
+      heading: 'Sem lugar na história',
+      note: 'Não dizem quais capítulos reúnem: diga a faixa na edição da obra e elas entram na ordem.',
+      works: unplaced,
+    });
+  }
+  return groups;
+}
+
+/** "faltam os caps 10 a 11" for the stretch of a gap. */
+export function gapText({ from, to }) {
+  return from === to ? `falta o cap. ${numberText(from)}` : `faltam os caps. ${numberText(from)} a ${numberText(to)}`;
+}
+
+/**
+ * The views the page of a series offers (DEC-169, DEC-202): the ones the works have data for. When some work says what it contains the series
+ * reads "Na ordem da história" first, and the groups by unit are "Por unidade"; otherwise "Todas" is the way it was and is always there.
+ */
+export function viewsOf(works, story = null) {
   const sequence = works.filter((w) => w.unit !== 'extra');
+  const ranged = story?.ranged === true;
   return [
-    { key: 'units', label: 'Todas' },
+    ...(ranged ? [{ key: 'story', label: 'Na ordem da história' }] : []),
+    { key: 'units', label: ranged ? 'Por unidade' : 'Todas' },
     ...(sequence.some((w) => w.volumeNumber != null) ? [{ key: 'volumes', label: 'Por volumes' }] : []),
     ...(sequence.some((w) => w.storyArc) ? [{ key: 'arcs', label: 'Por arcos' }] : []),
   ];

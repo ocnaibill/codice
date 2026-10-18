@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, newText, numberText, seriesCounts, sequenceWord, stepText, UNITS, unitLabel, viewsOf, wordsOf, worksText, groupByVolume, groupByArc, extraGroup } from './text';
+import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, newText, numberText, seriesCounts, sequenceWord, stepText, UNITS, unitLabel, viewsOf, wordsOf, worksText, groupByVolume, groupByArc, extraGroup, groupByStory, gapText } from './text';
 
 describe('the text of a collection', () => {
   it('counts the works, in the singular too', () => {
@@ -218,5 +218,38 @@ describe('the views of a series by volume and by arc (DEC-169)', () => {
     expect(groupByArc(works).flatMap((g) => g.works).some((x) => x.unit === 'extra')).toBe(false);
     expect(extraGroup(works)).toEqual([{ key: 'extra', heading: 'Complementares', works: [works[5]] }]);
     expect(extraGroup([w(1, 'chapter', 1)])).toEqual([]);
+  });
+});
+
+describe('the story of a series (DEC-202)', () => {
+  const w = (id, unit, position, extra = {}) => ({ id, entryId: id * 10, unit, position, title: `W${id}`, ...extra });
+  const works = [w(1, 'chapter', 1), w(2, 'chapter', 2), w(30, 'volume', 1, { coversFrom: 3, coversTo: 7 }), w(4, 'chapter', 4), w(8, 'chapter', 8), w(50, 'volume', 3), w(60, 'extra', 1)];
+  const story = { ranged: true, order: [1, 2, 30, 8], nested: { 30: [4] }, unplaced: [50], gaps: [{ from: 10, to: 11 }] };
+
+  it('puts the story first when some work says what it contains, and keeps "Todas" as it was otherwise', () => {
+    expect(viewsOf(works, story).map((v) => v.label)).toEqual(['Na ordem da história', 'Por unidade']);
+    expect(viewsOf(works, { ranged: false }).map((v) => v.label)).toEqual(['Todas']);
+    expect(viewsOf(works).map((v) => v.label)).toEqual(['Todas']);
+  });
+
+  it('lists the works in the order of the story, folds the loose chapters under their volume and ends with the works that have no place', () => {
+    const groups = groupByStory(works, story);
+    expect(groups[0].works.map((x) => x.id)).toEqual([1, 2, 30, 8]);
+    expect(groups[0].after[30].nested.map((x) => x.id)).toEqual([4]);
+    expect(groups[1]).toMatchObject({ key: 'unplaced', heading: 'Sem lugar na história' });
+    expect(groups[1].works.map((x) => x.id)).toEqual([50]);
+  });
+
+  it('says a stretch no file contains right after the last work that ends before it', () => {
+    const groups = groupByStory(works, story);
+    expect(groups[0].after[8].gaps).toEqual([{ from: 10, to: 11 }]);
+    expect(gapText({ from: 10, to: 11 })).toBe('faltam os caps. 10 a 11');
+    expect(gapText({ from: 10, to: 10 })).toBe('falta o cap. 10');
+  });
+
+  it('shows every placed work as a row of its own while a filter is on, so the search finds it', () => {
+    const [flat] = groupByStory(works, story, { flat: true });
+    expect(flat.works.map((x) => x.id)).toEqual([1, 2, 30, 4, 8]);
+    expect(flat.after).toEqual({});
   });
 });

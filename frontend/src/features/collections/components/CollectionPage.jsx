@@ -17,7 +17,7 @@ import {
   useRestoreCollection,
   useRetireCollection,
 } from '../api/useCollections';
-import { collectionLine, COMIC_KINDS, extraGroup, groupByArc, groupByUnit, groupByVolume, numberText, goOnText, sequenceWord, UNITS, unitLabel, viewsOf, wordsOf, worksText } from '../text';
+import { collectionLine, COMIC_KINDS, extraGroup, gapText, groupByArc, groupByStory, groupByUnit, groupByVolume, numberText, goOnText, sequenceWord, UNITS, unitLabel, viewsOf, wordsOf, worksText } from '../text';
 import { CollectionFavoriteButton } from './CollectionFavoriteButton';
 import { SeriesImages } from './SeriesImages';
 import { ProgressBar } from '../../../components/ui/ProgressBar';
@@ -325,6 +325,38 @@ function WorkRow({ work, label, index, count, staff, movable, confirming, busy, 
 const SHOWN = 50;
 
 /** One group of the works of a collection (the volumes, the chapters…), of which the first are shown and the rest come when asked. */
+/**
+ * What the story says right after a work (DEC-202): the loose chapters its range already contains, folded ("também neste volume"), and the
+ * chapters that no file contains from there on.
+ */
+function StoryAside({ aside, official, rowProps }) {
+  const [open, setOpen] = React.useState(false);
+  const { nested = [], gaps = [] } = aside;
+  return (
+    <>
+      {nested.length > 0 && (
+        <li className="flex flex-col gap-2 pl-6">
+          <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="self-start text-left text-xs text-ink-soft underline decoration-dotted underline-offset-4 hover:text-brand">
+            {open ? '▾' : '▸'} {nested.length} {nested.length === 1 ? 'capítulo avulso também está' : 'capítulos avulsos também estão'} neste volume · {open ? 'esconder' : 'mostrar'}
+          </button>
+          {open && (
+            <ol className="flex flex-col gap-2" aria-label="Capítulos avulsos deste volume">
+              {nested.map((work, index) => (
+                <WorkRow key={work.entryId} work={work} label={official ? unitLabel(work.unit, work.position) : numberText(work.position)} index={index} count={nested.length} onMove={() => {}} {...rowProps(work)} movable={false} />
+              ))}
+            </ol>
+          )}
+        </li>
+      )}
+      {gaps.map((gap) => (
+        <li key={`${gap.from}-${gap.to}`} className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
+          {gapText(gap)} (não há arquivo, nem em volume)
+        </li>
+      ))}
+    </>
+  );
+}
+
 function WorkGroup({ group, heading, note, groupKey, words, official, rowProps, onMove }) {
   const [shown, setShown] = React.useState(SHOWN);
   const visible = group.works.slice(0, shown);
@@ -338,15 +370,17 @@ function WorkGroup({ group, heading, note, groupKey, words, official, rowProps, 
       {note && <p className="text-xs text-ink-faint">{note}</p>}
       <ol aria-label={heading ? `${heading} da ${words.thing}` : `Obras da ${words.thing}`} className="flex flex-col gap-2">
         {visible.map((work, index) => (
-          <WorkRow
-            key={work.entryId}
-            work={work}
-            label={official ? unitLabel(work.unit, work.position) : numberText(work.position)}
-            index={index}
-            count={group.works.length}
-            onMove={(i, delta) => onMove(group, i, delta)}
-            {...rowProps(work)}
-          />
+          <React.Fragment key={work.entryId}>
+            <WorkRow
+              work={work}
+              label={official ? unitLabel(work.unit, work.position) : numberText(work.position)}
+              index={index}
+              count={group.works.length}
+              onMove={(i, delta) => onMove(group, i, delta)}
+              {...rowProps(work)}
+            />
+            {group.after?.[work.id] && <StoryAside aside={group.after[work.id]} official={official} rowProps={rowProps} />}
+          </React.Fragment>
         ))}
       </ol>
       {group.works.length > shown && (
@@ -536,7 +570,7 @@ export function CollectionPage() {
   const [query, setQuery] = React.useState('');
   const [status, setStatus] = React.useState('all'); // 'all' | 'unread' | 'read' | 'saved'
   const [descending, setDescending] = React.useState(false);
-  const [groupView, setGroupView] = React.useState('units'); // 'units' | 'volumes' | 'arcs' (DEC-169)
+  const [groupView, setGroupView] = React.useState(null); // null: the one the series reads best; 'story' | 'units' | 'volumes' | 'arcs' (DEC-169, DEC-202)
 
   React.useEffect(() => {
     setMode(null);
@@ -545,7 +579,7 @@ export function CollectionPage() {
     setQuery('');
     setStatus('all');
     setDescending(false);
-    setGroupView('units');
+    setGroupView(null);
   }, [id]);
 
   // A page that opens starts at its top, with the focus on what it is about.
@@ -568,13 +602,15 @@ export function CollectionPage() {
   const fail = (fallback) => (err) => setMessage(collectionReason(err, fallback));
   // An official collection shows its works in groups by unit (#187); a list of the person is one row of places.
   const official = kind === 'official';
-  const views = official ? viewsOf(works) : [{ key: 'units', label: 'Todas' }];
-  const shownView = views.some((v) => v.key === groupView) ? groupView : 'units';
+  const story = official ? data?.story ?? null : null;
+  const views = official ? viewsOf(works, story) : [{ key: 'units', label: 'Todas' }];
+  const shownView = views.some((v) => v.key === groupView) ? groupView : story?.ranged ? 'story' : 'units';
   const byUnit = official ? groupByUnit(works) : { groups: [{ key: '', heading: '', works }], headings: false };
   // The views by volume and by arc (DEC-169) put the works in other groups; the complementary ones end every view.
   const regrouped = shownView === 'volumes' ? groupByVolume(works) : shownView === 'arcs' ? groupByArc(works) : null;
-  const allGroups = regrouped ? [...regrouped, ...extraGroup(works)] : byUnit.groups;
-  const headings = regrouped ? true : byUnit.headings;
+  const storyGroups = shownView === 'story' ? groupByStory(works, story, { flat: query.trim() !== '' || status !== 'all' }) : null;
+  const allGroups = storyGroups ? [...storyGroups, ...extraGroup(works)] : regrouped ? [...regrouped, ...extraGroup(works)] : byUnit.groups;
+  const headings = storyGroups || regrouped ? true : byUnit.headings;
   // The filters and the order of the list (DEC-165): a view over the groups, which never changes the order of the collection.
   const isSaved = (w) => (w.notes ?? 0) > 0 || (w.bookmarks ?? 0) > 0;
   const counts = {

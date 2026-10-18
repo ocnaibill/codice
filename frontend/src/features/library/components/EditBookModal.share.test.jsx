@@ -119,3 +119,69 @@ describe('EditBookModal, taking data to the series (DEC-203)', () => {
     expect(button('Fechar')).toBeTruthy();
   });
 });
+
+describe('EditBookModal, what the file contains (DEC-202)', () => {
+  const field = (label) => document.querySelector(`input[aria-label="${label}"]`);
+  const range = (label) => [...document.querySelectorAll('[aria-label="O que este arquivo contém"] label')].find((l) => l.textContent.trim().startsWith(label))?.querySelector('input');
+  const typeInto = async (input, value) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+
+  async function openVolume(extra = {}) {
+    const metadata = { firstAuthor: 'Kentaro Miura', locks: {}, sources: {}, alternativeTitles: [], seriesCollectionId: 5, unit: 'volume', seriesIndex: 3, ...extra };
+    api.get.mockImplementation(async (url) => {
+      if (url === '/works/7') return { data: { id: 7, title: 'Berserk Vol. 3', author: 'Kentaro Miura', tags: [], format: 'cbz', coverUrl: '/c.jpg', editions: [], metadata } };
+      if (url === '/works/7/candidates') return { data: { data: [] } };
+      if (url === '/collections/5') {
+        return { data: { collection: { id: 5 }, works: [
+          { id: 1, unit: 'chapter', position: 18, volumeNumber: 3 }, { id: 2, unit: 'chapter', position: 26, volumeNumber: 3 }, { id: 3, unit: 'chapter', position: 27, volumeNumber: 4 },
+        ] } };
+      }
+      throw new Error(`unexpected GET ${url}`);
+    });
+    api.put.mockResolvedValue({ data: {} });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    await act(async () => { root.render(<QueryClientProvider client={client}><EditBookModal workId={7} tab="edit" onClose={vi.fn()} /></QueryClientProvider>); });
+    await flush();
+    await flush();
+  }
+
+  it('asks for it only of a work that has a unit', async () => {
+    await open();
+    expect(document.querySelector('[aria-label="O que este arquivo contém"]')).toBeNull();
+  });
+
+  it('suggests the range of a volume from the chapters that say they are in it, and takes it with one click', async () => {
+    await openVolume();
+    expect(document.body.textContent).toContain('2 obras da série já dizem “volume 3”: capítulos 18 a 26.');
+    await click(button('Usar 18 a 26'));
+    expect(range('Do capítulo').value).toBe('18');
+    expect(range('Ao capítulo').value).toBe('26');
+    expect(document.body.textContent).toContain('= 9 capítulos');
+    expect(button('Usar 18 a 26')).toBeUndefined(); // it is what is written now
+    await click(button('Salvar'));
+    expect(api.put.mock.calls[0][1]).toMatchObject({ covers_from: '18', covers_to: '26' });
+  });
+
+  it('gives the last chapter from the first and the quantity', async () => {
+    await openVolume();
+    await typeInto(range('Do capítulo'), '10');
+    await typeInto(field('Quantidade de capítulos'), '5');
+    expect(range('Ao capítulo').value).toBe('14');
+  });
+
+  it('keeps what the work already says', async () => {
+    await openVolume({ coversFrom: 4, coversTo: 6 });
+    expect(range('Do capítulo').value).toBe('4');
+    expect(range('Ao capítulo').value).toBe('6');
+  });
+
+  it('sends both ends empty when there is none, which takes the range away', async () => {
+    await openVolume();
+    await click(button('Salvar'));
+    expect(api.put.mock.calls.at(-1)[1]).toMatchObject({ covers_from: '', covers_to: '' });
+  });
+});

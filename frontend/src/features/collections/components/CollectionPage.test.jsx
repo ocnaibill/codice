@@ -1518,3 +1518,45 @@ describe('CollectionPage, the publisher of the series (DEC-203)', () => {
     expect(labelled('Sobre a coleção').textContent).not.toContain('Editora:');
   });
 });
+
+describe('CollectionPage, the story of the series (DEC-202)', () => {
+  const sw = (id, unit, position, extra = {}) => ({ ...work(id, `Obra ${id}`, position), unit, ...extra });
+  const storyData = (story, works) => ({ ...detail(works), story });
+  const ranged = [sw(1, 'chapter', 1), sw(2, 'chapter', 2), sw(30, 'volume', 1, { coversFrom: 3, coversTo: 7 }), sw(4, 'chapter', 4), sw(8, 'chapter', 8), sw(50, 'volume', 3)];
+  const story = { ranged: true, order: [1, 2, 30, 8], nested: { 30: [4] }, unplaced: [50], gaps: [{ from: 10, to: 11 }], chapters: 8, read: 0 };
+  const titles = () => [...container.querySelectorAll('[data-group="story"] > ol > li')].map((li) => li.textContent);
+
+  it('opens on the story when a work says what it contains, with the volume where its range begins', async () => {
+    await open({ role: 'reader', data: storyData(story, ranged) });
+    expect(container.querySelector('[role="tab"][aria-selected="true"]').textContent).toBe('Na ordem da história');
+    const rows = titles();
+    expect(rows[0]).toContain('Obra 1');
+    expect(rows[2]).toContain('Obra 30');
+    expect(container.textContent).toContain('Sem lugar na história');
+  });
+
+  it('folds the loose chapters under the volume, and opens them on request', async () => {
+    await open({ role: 'reader', data: storyData(story, ranged) });
+    expect(container.textContent).toContain('1 capítulo avulso também está neste volume');
+    expect(container.textContent).not.toContain('Obra 4');
+    await click(button('▸ 1 capítulo avulso também está neste volume · mostrar'));
+    expect(container.textContent).toContain('Obra 4');
+  });
+
+  it('says what no file contains', async () => {
+    await open({ role: 'reader', data: storyData(story, ranged) });
+    expect(container.textContent).toContain('faltam os caps. 10 a 11 (não há arquivo, nem em volume)');
+  });
+
+  it('keeps the groups by unit one tab away', async () => {
+    await open({ role: 'reader', data: storyData(story, ranged) });
+    await click(button('Por unidade'));
+    expect(container.querySelector('[data-group="story"]')).toBeNull();
+    expect(container.querySelector('[data-group="chapter"]')).not.toBeNull();
+  });
+
+  it('is the page it always was when no work says what it contains', async () => {
+    await open({ role: 'reader', data: storyData({ ranged: false, order: [], nested: {}, unplaced: [], gaps: [] }, trio) });
+    expect(button('Na ordem da história')).toBeUndefined();
+  });
+});
