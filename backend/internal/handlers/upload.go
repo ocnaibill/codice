@@ -186,7 +186,7 @@ func ingestStatus(w http.ResponseWriter, err error) {
 	}
 }
 
-var placeFields = map[string]bool{"series": true, "series_index": true, "unit": true, "comic_kind": true, "title": true}
+var placeFields = map[string]bool{"series": true, "series_index": true, "unit": true, "comic_kind": true, "title": true, "volume_number": true, "covers_from": true, "covers_to": true}
 
 // HandleUpload receives one file (form field "document"), streams it to a
 // staging file with a hash, validates it, and hands it to the ingestion path.
@@ -222,7 +222,7 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		if part.FileName() == "" && placeFields[part.FormName()] {
 			value, ok := readPlaceField(part)
 			if !ok {
-				http.Error(w, "The place fields (series, series_index, unit, comic_kind, title) are not valid", http.StatusBadRequest)
+				http.Error(w, "The place fields (series, series_index, unit, comic_kind, title, volume_number, covers_from, covers_to) are not valid", http.StatusBadRequest)
 				return
 			}
 			fields[part.FormName()] = value
@@ -233,7 +233,7 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		place, ok := parsePlace(fields)
 		if !ok {
-			http.Error(w, "The place fields (series, series_index, unit, comic_kind, title) are not valid", http.StatusBadRequest)
+			http.Error(w, "The place fields (series, series_index, unit, comic_kind, title, volume_number, covers_from, covers_to) are not valid", http.StatusBadRequest)
 			return
 		}
 		if held, err := holderOf(r.Context(), h.DB, place, 0); err != nil {

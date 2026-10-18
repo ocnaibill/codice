@@ -13,6 +13,9 @@ const NUM = String.raw`(\d{1,4}(?:[.,]\d{1,2})?)`;
 // "Cap 1", "Cap. 1", "Capítulo 01", "Chapter 12", "Ch 3", "c012", "#7". A letter before "c"/"v" would make it part of a word ("Voice 3").
 const CHAPTER = new RegExp(String.raw`(?<![\p{L}\d])(?:cap[ií]tulo|cap\.?|chapter|ch\.?|c(?=\d))\s*[#.]?\s*${NUM}`, 'iu');
 const VOLUME = new RegExp(String.raw`(?<![\p{L}\d])(?:volume|vol\.?|v(?=\d))\s*[#.]?\s*${NUM}`, 'iu');
+// "Caps 18-26", "Cap 12-13", "Chapters 1 a 9": the chapters a file holds. "(18-26)" after a volume says the same.
+const RANGE = new RegExp(String.raw`(?<![\p{L}\d])(?:cap[ií]tulos?|caps?\.?|chapters?|ch\.?)\s*[#.]?\s*${NUM}\s*(?:-|–|—|a|to|até)\s*${NUM}(?!\d)`, 'iu');
+const PAREN_RANGE = new RegExp(String.raw`\(\s*${NUM}\s*(?:-|–|—)\s*${NUM}\s*\)`, 'u');
 const HASH = new RegExp(String.raw`#\s*${NUM}`, 'u');
 const TRAILING = new RegExp(String.raw`(?<![\d.,])${NUM}(?!.*\d)`, 'u');
 
@@ -26,7 +29,7 @@ const baseName = (name) => String(name ?? '').replace(/\.[^./\\]+$/, '').replace
  */
 export function readNumber(filename) {
   const text = baseName(filename);
-  const found = { chapter: null, volume: null, bare: null, at: -1 };
+  const found = { chapter: null, volume: null, bare: null, range: null, at: -1 };
   const cut = (match) => {
     if (found.at < 0 || match.index < found.at) found.at = match.index;
   };
@@ -36,6 +39,8 @@ export function readNumber(filename) {
   if (m) { found.volume = toNumber(m[1]); cut(m); }
   m = HASH.exec(text);
   if (m) { found.bare = toNumber(m[1]); cut(m); }
+  m = RANGE.exec(text) ?? PAREN_RANGE.exec(text);
+  if (m && toNumber(m[2]) > toNumber(m[1])) found.range = { from: toNumber(m[1]), to: toNumber(m[2]) };
   if (found.chapter == null && found.volume == null && found.bare == null) {
     m = TRAILING.exec(text);
     if (m) { found.bare = toNumber(m[1]); cut(m); }
@@ -45,20 +50,23 @@ export function readNumber(filename) {
 
 /**
  * The number and the unit a file has, given what the person chose for the series: "chapter", "volume" or "auto" (each file by what its name
- * says; a name with only a bare number is taken as a chapter). { number, unit }, the number null when the name has none for that unit.
+ * says; a name with only a bare number is taken as a chapter). { number, unit, volumeNumber, covers }: the number is null when the name has none
+ * for that unit; `volumeNumber` is the volume a chapter says it is in ("v03 c012") and `covers` the chapters the file holds ("Vol 3 Caps 18-26",
+ * "Cap 12-13"), both null when the name says nothing (DEC-202).
  */
 export function numberFor(read, unit) {
+  const covers = read.range;
   if (unit === 'chapter') {
-    const number = read.chapter ?? read.bare;
-    return { number, unit: 'chapter' };
+    return { number: read.chapter ?? read.bare, unit: 'chapter', volumeNumber: read.volume, covers };
   }
   if (unit === 'volume') {
-    const number = read.volume ?? read.bare;
-    return { number, unit: 'volume' };
+    return { number: read.volume ?? read.bare, unit: 'volume', volumeNumber: null, covers };
   }
-  if (read.chapter != null) return { number: read.chapter, unit: 'chapter' };
-  if (read.volume != null) return { number: read.volume, unit: 'volume' };
-  return { number: read.bare, unit: 'chapter' };
+  // "Vol 3 Caps 18-26" is a volume that holds a range of chapters; the first of them is not the number of the file
+  if (read.volume != null && read.range && read.chapter === read.range.from) return { number: read.volume, unit: 'volume', volumeNumber: null, covers };
+  if (read.chapter != null) return { number: read.chapter, unit: 'chapter', volumeNumber: read.volume, covers };
+  if (read.volume != null) return { number: read.volume, unit: 'volume', volumeNumber: null, covers };
+  return { number: read.bare, unit: 'chapter', volumeNumber: null, covers };
 }
 
 const SEPARATORS = /^[\s\-–—_.,:;|]+|[\s\-–—_.,:;|]+$/g;
@@ -95,10 +103,12 @@ export function parseTyped(text) {
 }
 
 /** The title of a work, by default: "Série - Cap. 12", "Série - Vol. 3". With no number, the name of the file. */
-export function titleFor(series, unit, number, filename) {
+export function titleFor(series, unit, number, filename, covers = null) {
   if (number == null) return baseName(filename);
   const label = unit === 'volume' ? 'Vol.' : 'Cap.';
-  return series ? `${series} - ${label} ${formatNumber(number)}` : `${label} ${formatNumber(number)}`;
+  // a chapter that holds more than one ("Cap 12-13") is said so; a volume is its number, whatever it holds
+  const said = unit === 'chapter' && covers && covers.to > covers.from ? `${formatNumber(covers.from)}-${formatNumber(covers.to)}` : formatNumber(number);
+  return series ? `${series} - ${label} ${said}` : `${label} ${said}`;
 }
 
 /** The files in the order the series reads: by number, the ones with no number last, and by name where it is a tie. */
@@ -121,13 +131,13 @@ export function deriveRows(rows, { series, unit }) {
     const auto = numberFor(row.read, unit);
     const typed = row.typedNumber == null ? undefined : parseTyped(row.typedNumber);
     const number = typed === undefined ? auto.number : typed;
-    return { ...row, number, unit: auto.unit, key: number == null ? null : `${auto.unit}:${number}` };
+    return { ...row, number, unit: auto.unit, volumeNumber: auto.volumeNumber, covers: auto.covers, key: number == null ? null : `${auto.unit}:${number}` };
   });
   const seen = new Map();
   for (const row of derived) if (row.key) seen.set(row.key, (seen.get(row.key) ?? 0) + 1);
   return derived.map((row) => ({
     ...row,
-    title: row.typedTitle != null ? row.typedTitle : titleFor(series, row.unit, row.number, row.name),
+    title: row.typedTitle != null ? row.typedTitle : titleFor(series, row.unit, row.number, row.name, row.covers),
     situation: row.key == null ? 'missing' : seen.get(row.key) > 1 ? 'repeated' : 'new',
   }));
 }

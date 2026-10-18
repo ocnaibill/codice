@@ -158,3 +158,31 @@ func TestUpload_WithoutPlaceFieldsNothingIsLockedOrPlaced(t *testing.T) {
 		t.Errorf("work = %q, want nothing locked or placed", got)
 	}
 }
+
+func TestUpload_AChapterSaysItsVolumeAndAVolumeWhatItContains(t *testing.T) {
+	s := newCatalogStack(t)
+	ch := chapter("12", "Cap. 12")
+	ch = append(ch, [2]string{"volume_number", "3"})
+	id := workOf(t, s.uploadIn(admin, "c12.cbz", corpusFile(t, "cbz_ltr.cbz"), ch))
+	if got := s.scalar(`SELECT volume_number::text || '|' || COALESCE(covers_from::text, '-') FROM works WHERE id = $1`, id); got != "3|-" {
+		t.Errorf("chapter = %q, want volume 3 and no range", got)
+	}
+	vol := [][2]string{{"series", "Jujutsu Kaisen Modelo"}, {"series_index", "3"}, {"unit", "volume"}, {"comic_kind", "manga"}, {"covers_from", "18"}, {"covers_to", "26"}}
+	v := workOf(t, s.uploadIn(admin, "v3.cbz", corpusFile(t, "cbz_rtl.cbz"), vol))
+	if got := s.scalar(`SELECT covers_from::text || '-' || covers_to::text FROM works WHERE id = $1`, v); got != "18-26" {
+		t.Errorf("volume range = %q", got)
+	}
+	if got := s.scalar(`SELECT count(*) FROM work_field_sources WHERE work_id = $1 AND field IN ('covers_from', 'covers_to') AND source = 'manual'`, v); got != "2" {
+		t.Errorf("provenance rows = %s, want 2", got)
+	}
+	for name, extra := range map[string][][2]string{
+		"one end only":     {{"covers_from", "5"}},
+		"backwards":        {{"covers_from", "9"}, {"covers_to", "3"}},
+		"a volume of zero": {{"volume_number", "0"}},
+	} {
+		fields := append([][2]string{{"series", "X"}}, extra...)
+		if rec := s.uploadIn(admin, "x.cbz", corpusFile(t, "cbz_webtoon_imagem_longa.cbz"), fields); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d, want 400", name, rec.Code)
+		}
+	}
+}

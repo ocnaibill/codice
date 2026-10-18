@@ -48,11 +48,30 @@ describe('readNumber', () => {
 describe('numberFor', () => {
   it('follows the unit the person chose, and reads each file by its name when they did not', () => {
     const both = readNumber('Berserk v03 c012.cbz');
-    expect(numberFor(both, 'chapter')).toEqual({ number: 12, unit: 'chapter' });
-    expect(numberFor(both, 'volume')).toEqual({ number: 3, unit: 'volume' });
-    expect(numberFor(readNumber('Akira Vol 3.cbz'), 'auto')).toEqual({ number: 3, unit: 'volume' });
-    expect(numberFor(readNumber('Akira 7.cbz'), 'auto')).toEqual({ number: 7, unit: 'chapter' });
-    expect(numberFor(readNumber('Akira 7.cbz'), 'volume')).toEqual({ number: 7, unit: 'volume' });
+    expect(numberFor(both, 'chapter')).toEqual({ number: 12, unit: 'chapter', volumeNumber: 3, covers: null });
+    expect(numberFor(both, 'volume')).toEqual({ number: 3, unit: 'volume', volumeNumber: null, covers: null });
+    expect(numberFor(readNumber('Akira Vol 3.cbz'), 'auto')).toEqual({ number: 3, unit: 'volume', volumeNumber: null, covers: null });
+    expect(numberFor(readNumber('Akira 7.cbz'), 'auto')).toEqual({ number: 7, unit: 'chapter', volumeNumber: null, covers: null });
+    expect(numberFor(readNumber('Akira 7.cbz'), 'volume')).toMatchObject({ number: 7, unit: 'volume' });
+  });
+
+  it('says the volume a chapter is in, when the name says it (DEC-202)', () => {
+    expect(numberFor(readNumber('Berserk v03 c012.cbz'), 'auto')).toMatchObject({ number: 12, unit: 'chapter', volumeNumber: 3 });
+    expect(numberFor(readNumber('Berserk - Cap 12.cbz'), 'auto').volumeNumber).toBeNull();
+  });
+
+  it('says the chapters a file holds: a volume with its range, a chapter that joins two', () => {
+    const volume = numberFor(readNumber('Berserk Vol 3 Caps 18-26.cbz'), 'auto');
+    expect(volume).toEqual({ number: 3, unit: 'volume', volumeNumber: null, covers: { from: 18, to: 26 } });
+    expect(numberFor(readNumber('Berserk Vol 3 (18-26).cbz'), 'auto').covers).toEqual({ from: 18, to: 26 });
+    expect(numberFor(readNumber('Berserk Cap 12-13.cbz'), 'auto')).toMatchObject({ number: 12, unit: 'chapter', covers: { from: 12, to: 13 } });
+    expect(numberFor(readNumber('Berserk Chapters 1 a 9.cbz'), 'volume').covers).toEqual({ from: 1, to: 9 });
+  });
+
+  it('takes no range from a name that has none, or from one that goes backwards', () => {
+    expect(readNumber('Berserk Cap 12.cbz').range).toBeNull();
+    expect(readNumber('Berserk Cap 13-12.cbz').range).toBeNull();
+    expect(readNumber('Berserk 2020-2021 Cap 5.cbz').range).toBeNull();
   });
 });
 
@@ -81,6 +100,20 @@ describe('titles and typed numbers', () => {
     expect(parseTyped('12')).toBe(12);
     expect(parseTyped(' 10,5 ')).toBe(10.5);
     for (const bad of ['', '0', 'a', '-1', '1e3', '1.234']) expect(parseTyped(bad), bad).toBeNull();
+  });
+});
+
+describe('titles of what holds many chapters', () => {
+  it('writes "Cap. 12-13" for a chapter that joins two and keeps a volume as its number', () => {
+    expect(titleFor('S', 'chapter', 12, 'x.cbz', { from: 12, to: 13 })).toBe('S - Cap. 12-13');
+    expect(titleFor('S', 'volume', 3, 'x.cbz', { from: 18, to: 26 })).toBe('S - Vol. 3');
+    expect(titleFor('S', 'chapter', 12, 'x.cbz')).toBe('S - Cap. 12');
+  });
+
+  it('gives each row its volume and its range, and the same number in two units is still two works', () => {
+    const rows = deriveRows(rowsOf(['S v03 c012.cbz', 'S Vol 3 Caps 18-26.cbz']), { series: 'S', unit: 'auto' });
+    expect(rows[0]).toMatchObject({ unit: 'chapter', number: 12, volumeNumber: 3, situation: 'new' });
+    expect(rows[1]).toMatchObject({ unit: 'volume', number: 3, covers: { from: 18, to: 26 }, situation: 'new', title: 'S - Vol. 3' });
   });
 });
 
