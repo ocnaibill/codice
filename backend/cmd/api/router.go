@@ -539,6 +539,7 @@ func newRouter(d routerDeps) http.Handler {
 	// (Basic, the short password of the pairing) opens them. Only reads; what the device writes is the progress, by KOSync.
 	deviceRead := r.With(catalog, d.Auth.WithBasic)
 	deviceRead.Get("/device/shelf", device.ShelfState)
+	deviceRead.Get("/device/progress/files/{id}/compare", progressHandler.Compare)
 	deviceRead.Get("/device/people", device.People)
 	deviceRead.Get("/device/works", libHandler.GetWorks)
 	deviceRead.Get("/device/categories", categories.List)
