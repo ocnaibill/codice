@@ -17,6 +17,8 @@ type SeriesCard struct {
 	Chapters     int    `json:"chapters"`
 	OneShots     int    `json:"oneShots"`
 	CoverURL     string `json:"coverUrl"`
+	// Publisher is the publisher of the series as its card says it (DEC-203); empty when none of its works says one.
+	Publisher string `json:"publisher,omitempty"`
 	// NewCount: the works of the series that came in the last days and that the caller has not finished; the same for everybody who has
 	// not read them, whether or not they have read the series.
 	NewCount int `json:"newCount"`
@@ -72,7 +74,7 @@ func loadSeriesCards(db *sql.DB, collectionIDs []int64, userID string) (map[int6
 		return cards, nil
 	}
 	rows, err := db.Query(`
-		SELECT cw.collection_id, c.name,
+		SELECT cw.collection_id, c.name, `+collectionPublisher+`,
 		       COUNT(*) FILTER (WHERE w.unit = 'volume'), COUNT(*) FILTER (WHERE w.unit = 'chapter'), COUNT(*) FILTER (WHERE w.unit = 'oneshot'),
 		       COALESCE(NULLIF(c.cover_url, ''), (array_agg(wp.cover_url ORDER BY cw.position NULLS LAST, w.original_title, w.id)
 		                 FILTER (WHERE wp.cover_url IS NOT NULL AND wp.cover_url <> ''))[1], '')
@@ -81,14 +83,14 @@ func loadSeriesCards(db *sql.DB, collectionIDs []int64, userID string) (map[int6
 		JOIN works w ON w.id = cw.work_id AND w.retired_at IS NULL AND w.unit IS NOT NULL
 		LEFT JOIN work_primary wp ON wp.work_id = w.id
 		WHERE cw.collection_id = ANY($1) AND cw.official
-		GROUP BY cw.collection_id, c.name, c.cover_url`, pq.Array(collectionIDs))
+		GROUP BY cw.collection_id, c.id, c.name, c.cover_url`, pq.Array(collectionIDs))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var c SeriesCard
-		if err := rows.Scan(&c.CollectionID, &c.Name, &c.Volumes, &c.Chapters, &c.OneShots, &c.CoverURL); err != nil {
+		if err := rows.Scan(&c.CollectionID, &c.Name, &c.Publisher, &c.Volumes, &c.Chapters, &c.OneShots, &c.CoverURL); err != nil {
 			return nil, err
 		}
 		cards[c.CollectionID] = &c
