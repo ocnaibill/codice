@@ -34,6 +34,8 @@ type Collection struct {
 	CompletedCount    int    `json:"completedCount"`
 	CoverURL          string `json:"coverUrl"`
 	// CoverIsManual says the cover was chosen by the staff (DEC-201), and BannerURL is the banner they chose, if any; only the page of one asks.
+	// Publisher is the publisher of its works, as the card says it (DEC-203): the most common first, at most three; empty when none says one.
+	Publisher     string `json:"publisher,omitempty"`
 	CoverIsManual bool   `json:"coverManual,omitempty"`
 	BannerURL     string `json:"bannerUrl,omitempty"`
 	Retired       bool   `json:"retired,omitempty"`
@@ -78,6 +80,9 @@ type CollectionWork struct {
 	StoryArc     string   `json:"storyArc,omitempty"`
 	// SpinOff says the work is outside the main line of its series (DEC-188).
 	SpinOff bool `json:"spinOff,omitempty"`
+	// CoversFrom and CoversTo are the part of the story the work contains (DEC-202); absent when nobody said.
+	CoversFrom *float64 `json:"coversFrom,omitempty"`
+	CoversTo   *float64 `json:"coversTo,omitempty"`
 	// seconds is the time the caller spent in the work, for the pace of the whole.
 	seconds int
 }
@@ -143,6 +148,16 @@ const collectionStats = `
 		WHERE cw.collection_id = c.id
 	) s ON TRUE`
 
+// collectionPublisher is the publisher of a collection (alias c) as its card says it (DEC-203): the publishers of its works, the most common
+// first, at most three, in one text ("Panini, JBC"); empty when no work says one.
+const collectionPublisher = `COALESCE((SELECT string_agg(t.p, ', ' ORDER BY t.n DESC, t.p) FROM (
+	SELECT e.publisher AS p, count(*) AS n
+	FROM collection_works cwp
+	JOIN works wp2 ON wp2.id = cwp.work_id AND wp2.retired_at IS NULL
+	JOIN editions e ON e.work_id = wp2.id AND e.is_primary
+	WHERE cwp.collection_id = c.id AND COALESCE(e.publisher, '') <> ''
+	GROUP BY e.publisher ORDER BY count(*) DESC, e.publisher LIMIT 3) t), '')`
+
 // isFavoriteCollection is the condition for a collection (alias c) to be a favorite of the caller ($1).
 const isFavoriteCollection = `EXISTS (SELECT 1 FROM favorite_collections fc WHERE fc.collection_id = c.id AND fc.user_id = $1::uuid)`
 
@@ -178,7 +193,7 @@ func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := h.DB.Query(`
 		SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL,
-		       COALESCE(s.works, 0), COALESCE(s.completed, 0), COALESCE(s.cover, ''), `+isFavoriteCollection+`, COALESCE(c.system_key, '')
+		       COALESCE(s.works, 0), COALESCE(s.completed, 0), COALESCE(s.cover, ''), `+isFavoriteCollection+`, COALESCE(c.system_key, ''), `+collectionPublisher+`
 		FROM collections c`+collectionStats+`
 		WHERE `+where+`
 		ORDER BY lower(c.name), c.id
@@ -192,7 +207,7 @@ func (h *CollectionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	items := []Collection{}
 	for rows.Next() {
 		var c Collection
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.WorkCount, &c.CompletedCount, &c.CoverURL, &c.IsFavorite, &c.System); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.WorkCount, &c.CompletedCount, &c.CoverURL, &c.IsFavorite, &c.System, &c.Publisher); err != nil {
 			log.Println("Error scanning collection:", err)
 			continue
 		}
@@ -225,9 +240,9 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	var c Collection
 	var manualCover string
 	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL, `+isFavoriteCollection+`, COALESCE(c.system_key, ''), COALESCE(c.description, ''), COALESCE(c.reading_direction, ''),
-		       COALESCE(c.publication_status, ''), COALESCE(c.original_title, ''), COALESCE(c.cover_url, ''), COALESCE(c.banner_url, '')
+		       COALESCE(c.publication_status, ''), COALESCE(c.original_title, ''), COALESCE(c.cover_url, ''), COALESCE(c.banner_url, ''), `+collectionPublisher+`
 		FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
-		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite, &c.System, &c.Description, &c.ReadingDirection, &c.PublicationStatus, &c.OriginalTitle, &manualCover, &c.BannerURL)
+		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite, &c.System, &c.Description, &c.ReadingDirection, &c.PublicationStatus, &c.OriginalTitle, &manualCover, &c.BannerURL, &c.Publisher)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Collection not found", http.StatusNotFound)
 		return
@@ -250,7 +265,7 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(`+authorNames+`, cw.author_label, 'Unknown Author'),
 		       COALESCE(wp.cover_url, ''), cw.position, (rp.completed_at IS NOT NULL),
 		       (w.id IS NOT NULL AND w.retired_at IS NULL), COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''),
-		       w.volume_number, COALESCE(w.story_arc, ''), COALESCE(w.spin_off, FALSE)
+		       w.volume_number, COALESCE(w.story_arc, ''), COALESCE(w.spin_off, FALSE), w.covers_from, w.covers_to
 		FROM collection_works cw
 		LEFT JOIN works w ON w.id = cw.work_id
 		LEFT JOIN work_primary wp ON wp.work_id = w.id
@@ -273,7 +288,7 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	works := []CollectionWork{}
 	for rows.Next() {
 		var cw CollectionWork
-		if err := rows.Scan(&cw.EntryID, &cw.ID, &cw.Title, &cw.Author, &cw.CoverURL, &cw.Position, &cw.Completed, &cw.Available, &cw.Unit, &cw.ComicKind, &cw.VolumeNumber, &cw.StoryArc, &cw.SpinOff); err != nil {
+		if err := rows.Scan(&cw.EntryID, &cw.ID, &cw.Title, &cw.Author, &cw.CoverURL, &cw.Position, &cw.Completed, &cw.Available, &cw.Unit, &cw.ComicKind, &cw.VolumeNumber, &cw.StoryArc, &cw.SpinOff, &cw.CoversFrom, &cw.CoversTo); err != nil {
 			log.Println("Error scanning a work of a collection:", err)
 			continue
 		}

@@ -1506,3 +1506,15 @@ describe('CollectionPage, the cover and the banner of the series (DEC-201)', () 
     expect(api.put).not.toHaveBeenCalled();
   });
 });
+
+describe('CollectionPage, the publisher of the series (DEC-203)', () => {
+  it('says who publishes it, when its works say', async () => {
+    await open({ role: 'reader', data: detail(trio, { publisher: 'Panini, JBC' }) });
+    expect(labelled('Sobre a coleção').textContent).toContain('Editora: Panini, JBC');
+  });
+
+  it('says nothing when none does', async () => {
+    await open({ role: 'reader', data: detail(trio) });
+    expect(labelled('Sobre a coleção').textContent).not.toContain('Editora:');
+  });
+});
