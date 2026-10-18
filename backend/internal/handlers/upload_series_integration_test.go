@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -46,7 +47,15 @@ func workOf(t *testing.T, rec *httptest.ResponseRecorder) int {
 
 func TestUpload_AChapterOfASeriesIsPlacedAndLockedAtOnce(t *testing.T) {
 	s := newCatalogStack(t)
-	id := workOf(t, s.uploadIn(admin, "Jujutsu Kaisen Modelo - Cap 1.cbz", corpusFile(t, "cbz_ltr.cbz"), chapter("1", "Jujutsu Kaisen Modelo - Cap. 1")))
+	rec := s.uploadIn(admin, "Jujutsu Kaisen Modelo - Cap 1.cbz", corpusFile(t, "cbz_ltr.cbz"), chapter("1", "Jujutsu Kaisen Modelo - Cap. 1"))
+	id := workOf(t, rec)
+	var answered struct {
+		CollectionID int64 `json:"collection_id"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &answered)
+	if got := s.scalar(`SELECT collection_id FROM collection_works WHERE work_id = $1 AND official`, id); got != fmt.Sprint(answered.CollectionID) || answered.CollectionID == 0 {
+		t.Errorf("collection_id = %d, want the collection %s", answered.CollectionID, got)
+	}
 
 	got := s.scalar(`SELECT original_title || '|' || series || '|' || series_index || '|' || unit || '|' || comic_kind || '|' || title_lock || '|' || series_lock FROM works WHERE id = $1`, id)
 	if want := "Jujutsu Kaisen Modelo - Cap. 1|Jujutsu Kaisen Modelo|1|chapter|manga|true|true"; got != want {

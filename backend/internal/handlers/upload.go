@@ -256,6 +256,9 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 			"work_id": res.WorkID,
 			"job_id":  res.JobID,
 		}
+		if res.CollectionID != 0 {
+			answer["collection_id"] = res.CollectionID // the series the work was placed in, for the page to open it
+		}
 		if res.ConvertedFrom != "" {
 			answer["converted_from"] = res.ConvertedFrom // the owner is told the stored text is not the bytes sent
 		}

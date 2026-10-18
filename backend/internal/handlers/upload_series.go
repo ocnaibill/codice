@@ -128,21 +128,21 @@ func holderOf(ctx context.Context, q interface {
 
 // placeInSeries writes the place on a work that was just made, in the transaction that makes it. A second chapter with the same number that
 // arrives at the same moment waits for the first (a lock on the series), so two uploads cannot both take the number.
-func placeInSeries(ctx context.Context, tx *sql.Tx, workID int, actor string, p *seriesPlace) error {
+func placeInSeries(ctx context.Context, tx *sql.Tx, workID int, actor string, p *seriesPlace) (collectionID int64, err error) {
 	if p.Series != "" {
 		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('series-upload:' || series_key($1), 0))`, p.Series); err != nil {
-			return err
+			return 0, err
 		}
 		if held, err := holderOf(ctx, tx, p, workID); err != nil || held != nil {
 			if err != nil {
-				return err
+				return 0, err
 			}
-			return held
+			return 0, held
 		}
 	}
 	cur, retired, err := readWorkFields(tx, workID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	next := cur
 	locks := map[string]*bool{}
@@ -157,7 +157,7 @@ func placeInSeries(ctx context.Context, tx *sql.Tx, workID int, actor string, p 
 	}
 	next.Unit, next.ComicKind = p.Unit, p.ComicKind
 	if _, err := applyWorkFields(ctx, tx, workID, actor, sourceManual, cur, retired, next, locks); err != nil {
-		return err
+		return 0, err
 	}
 	// A manga is read from right to left: the first chapter of a new series says so, and a direction a person already chose is left as it is.
 	if p.Series != "" && p.ComicKind == "manga" {
@@ -165,8 +165,15 @@ func placeInSeries(ctx context.Context, tx *sql.Tx, workID int, actor string, p 
 			UPDATE collections SET reading_direction = 'rtl'
 			WHERE id IN (SELECT collection_id FROM collection_keys WHERE key = series_key($1))
 			  AND kind = 'official' AND reading_direction IS NULL AND retired_at IS NULL`, p.Series); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return nil
+	if p.Series == "" {
+		return 0, nil
+	}
+	err = tx.QueryRowContext(ctx, `SELECT collection_id FROM collection_works WHERE work_id = $1 AND official`, workID).Scan(&collectionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil // the collection of this series is retired: the work waits outside it
+	}
+	return collectionID, err
 }
