@@ -154,3 +154,61 @@ func TestDeviceNotes_WhatIsNotAnEpubOrNotAValidRequestIsRefused(t *testing.T) {
 		t.Errorf("no place was made up: %s", *loc)
 	}
 }
+
+func TestDeviceNotes_ANoteOfTheWebTheDeviceChangesBecomesItsOwnAndKeepsItsColor(t *testing.T) {
+	k := newKosyncStack(t)
+	work, file, _ := k.book("Duna", "dune.epub", "epub")
+	k.exec(`INSERT INTO notes (user_id, work_id, file_id, kind, quote, body, tags, locator, locator_version, color)
+	        VALUES ($1, $2, $3, 'highlight', 'Parágrafo 10 do item 3.', '', '{vital}', '{"type":"epub","cfi":"epubcfi(/6/6!/4/2/22/1:5)","href":"Text/tres.xhtml","progression":0.5}'::jsonb, 1, 'indigo')`, idAna, work, file)
+	var webID int
+	k.db.QueryRow(`SELECT id FROM notes WHERE quote = 'Parágrafo 10 do item 3.'`).Scan(&webID)
+
+	body := fmt.Sprintf(`{"id":%d,"pos0":"/body/DocFragment[3]/body/div/p[10]/text().0","pos1":"/body/DocFragment[3]/body/div/p[10]/text().23","text":"Parágrafo 10 do item 3.","note":"escrita no Kindle","device":"Kindle"}`, webID)
+	code, out := k.putDeviceNote(ana, file, "ref00009", body)
+	if code != 200 || int(out["id"].(float64)) != webID || out["created"] != false {
+		t.Fatalf("PUT with the number: %d %v", code, out)
+	}
+	var n int
+	var ref, color, note string
+	var tags string
+	k.db.QueryRow(`SELECT count(*) FROM notes WHERE user_id = $1 AND file_id = $2`, idAna, file).Scan(&n)
+	k.db.QueryRow(`SELECT device_ref, color, body, tags::text FROM notes WHERE id = $1`, webID).Scan(&ref, &color, &note, &tags)
+	if n != 1 || ref != "ref00009" || color != "indigo" || note != "escrita no Kindle" || tags != "{vital}" {
+		t.Errorf("the same note: %d notes, ref %q, color %s, body %q, tags %s", n, ref, color, note, tags)
+	}
+	// a number that is nobody's (deleted meanwhile): it is made as new
+	if code, out = k.putDeviceNote(ana, file, "ref00010", strings.Replace(body, fmt.Sprintf(`"id":%d`, webID), `"id":99999`, 1)); code != 201 {
+		t.Errorf("a number that does not exist: %d %v", code, out)
+	}
+	// deleting by the number: the note the device received and is deleting (made in the web), but not a bookmark, not another file's, not another person's
+	k.exec(`INSERT INTO notes (user_id, work_id, file_id, kind, quote, body, tags, locator, locator_version, color)
+	        VALUES ($1, $2, $3, 'bookmark', NULL, '', '{}', '{"type":"epub","cfi":"epubcfi(/6/6)","href":"Text/tres.xhtml"}'::jsonb, 1, 'sepia')`, idAna, work, file)
+	var mark int
+	k.db.QueryRow(`SELECT id FROM notes WHERE kind = 'bookmark'`).Scan(&mark)
+	k.exec(`INSERT INTO notes (user_id, work_id, file_id, kind, quote, body, tags, color) VALUES ($1, $2, $3, 'highlight', 'do bob', '', '{}', 'sepia')`, idBob, work, file)
+	var bobs int
+	k.db.QueryRow(`SELECT id FROM notes WHERE user_id = $1`, idBob).Scan(&bobs)
+	for _, id := range []int{mark, bobs} {
+		if rec := k.do(ana, "DELETE", fmt.Sprintf("/device/files/%d/notes/nada0000?id=%d", file, id), ""); rec.Code != 404 {
+			t.Errorf("deleting note %d by number: %d", id, rec.Code)
+		}
+	}
+	if rec := k.do(ana, "DELETE", fmt.Sprintf("/device/files/%d/notes/nada0000?id=%d", file, webID), ""); rec.Code != 204 {
+		t.Errorf("deleting the one that is hers by number: %d", rec.Code)
+	}
+}
+
+func TestDeviceNotes_APlaceAsKOReaderWritesItInAHighlightIsTheSameParagraph(t *testing.T) {
+	k := newKosyncStack(t)
+	_, file, _ := k.book("Duna", "dune.epub", "epub")
+	// a highlight of KOReader writes every step with its index, even the first: body[1]/div[1]/p[7]/text()[1].12
+	body := `{"pos0":"/body[1]/DocFragment[2]/body[1]/div[1]/p[7]/text()[1].12","pos1":"/body[1]/DocFragment[2]/body[1]/div[1]/p[7]/text()[1].30","text":"Parágrafo 7 do item 2.","note":""}`
+	if code, _ := k.putDeviceNote(ana, file, "ref00007", body); code != 201 {
+		t.Fatalf("PUT: %d", code)
+	}
+	var loc string
+	k.db.QueryRow(`SELECT COALESCE(locator::text, '') FROM notes WHERE device_ref = 'ref00007'`).Scan(&loc)
+	if !strings.Contains(loc, "epubcfi(/6/4!/4/2/16)") {
+		t.Errorf("the paragraph is the 7th of the second item: %s", loc)
+	}
+}

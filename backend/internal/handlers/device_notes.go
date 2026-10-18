@@ -76,6 +76,9 @@ type deviceNoteBody struct {
 	Chapter  string `json:"chapter"`
 	Datetime string `json:"datetime"`
 	Device   string `json:"device"`
+	// ID is the number the note already has in the Códice, when the device received it from there (it was made in the web): the first time the
+	// device changes it, it takes that note as its own (it gets the reference) instead of making another.
+	ID int `json:"id"`
 }
 
 // Put creates the highlight or note a device made, or changes it when the device sends it again (the reference is its identity). The
@@ -151,6 +154,38 @@ func (h *DeviceNotesHandler) Put(w http.ResponseWriter, r *http.Request) {
 	user := currentUserID(r)
 	var id int
 	var created bool
+	// a note of the Códice that the device is now changing: it becomes the device's (it gets the reference), whoever made it, and keeps its color
+	// and tags; nothing is created
+	if req.ID > 0 {
+		err = tx.QueryRowContext(r.Context(), `
+			UPDATE notes SET device_ref = $4, kind = $5, quote = NULLIF($6, ''), body = $7,
+				locator = COALESCE($8::jsonb, locator), locator_version = COALESCE($9, locator_version),
+				device_pos0 = NULLIF($10, ''), device_pos1 = NULLIF($11, ''), device_name = NULLIF($12, ''), device_at = COALESCE($13, device_at), updated_at = now()
+			WHERE id = $1 AND user_id = $2 AND file_id = $3 AND (device_ref IS NULL OR device_ref = $4)
+			RETURNING id`, req.ID, user, file.ID, ref, kind, quote, body, loc, ver, req.Pos0, req.Pos1, device, at).Scan(&id)
+		if err == nil {
+			err = syncNoteLinks(r.Context(), tx, user, int64(id), body)
+		}
+		if err == nil {
+			err = tx.Commit()
+		}
+		if err == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"id": id, "created": false})
+			return
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Println("Error taking the note of the Códice as the device's:", err)
+			http.Error(w, "Error saving the note", http.StatusInternalServerError)
+			return
+		}
+		// there is no such note (it was deleted in the web meanwhile, or it is not this person's): it is made as new, below
+		tx.Rollback()
+		if tx, err = h.DB.BeginTx(r.Context(), nil); err != nil {
+			http.Error(w, "Error saving the note", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+	}
 	err = tx.QueryRowContext(r.Context(), `
 		INSERT INTO notes (user_id, work_id, file_id, kind, quote, body, locator, locator_version, color, device_ref, device_pos0, device_pos1, device_name, device_at)
 		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7::jsonb, $8, $9, $10, NULLIF($11, ''), NULLIF($12, ''), NULLIF($13, ''), $14)
@@ -192,7 +227,15 @@ func (h *DeviceNotesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, code)
 		return
 	}
-	res, err := h.DB.ExecContext(r.Context(), `DELETE FROM notes WHERE user_id = $1 AND file_id = $2 AND device_ref = $3`, currentUserID(r), file.ID, ref)
+	// `?id=` is the number of the note in the Códice, for one the device received from there (made in the web) and is now deleting: the person
+	// owns it, and it is what they asked on the device. Without it, only the one that has this device's reference.
+	var res sql.Result
+	var err error
+	if id, perr := strconv.Atoi(r.URL.Query().Get("id")); perr == nil && id > 0 {
+		res, err = h.DB.ExecContext(r.Context(), `DELETE FROM notes WHERE user_id = $1 AND file_id = $2 AND id = $3 AND kind <> 'bookmark'`, currentUserID(r), file.ID, id)
+	} else {
+		res, err = h.DB.ExecContext(r.Context(), `DELETE FROM notes WHERE user_id = $1 AND file_id = $2 AND device_ref = $3`, currentUserID(r), file.ID, ref)
+	}
 	if err != nil {
 		log.Println("Error deleting the note of a device:", err)
 		http.Error(w, "Error deleting the note", http.StatusInternalServerError)
