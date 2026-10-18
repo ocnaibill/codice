@@ -42,6 +42,9 @@ type WorkMetadata struct {
 	// VolumeNumber is the bound volume that collected a chapter and StoryArc the arc it is in (DEC-169); empty when nobody said.
 	VolumeNumber *float64 `json:"volumeNumber"`
 	StoryArc     string   `json:"storyArc"`
+	// CoversFrom and CoversTo are the part of the story the work contains, from the first chapter to the last (DEC-202); both null when nobody said.
+	CoversFrom *float64 `json:"coversFrom"`
+	CoversTo   *float64 `json:"coversTo"`
 	// SpinOff says the work is not of the main line of its series (DEC-188): a spin-off, a book of short stories beside it, something
 	// that is not canon. The wiki gives it a line of its own.
 	SpinOff bool `json:"spinOff"`
@@ -70,7 +73,7 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int, order string) (*W
 	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(w.series, ''), COALESCE(w.series_index, 0), COALESCE(e.isbn, ''), COALESCE(e.publisher, ''),
 		       COALESCE(e.language, ''), COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(a.name, ''),
-		       COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.original_year, w.volume_number, COALESCE(w.story_arc, ''), w.spin_off,
+		       COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.original_year, w.volume_number, COALESCE(w.story_arc, ''), w.spin_off, w.covers_from, w.covers_to,
 		       COALESCE((SELECT c.reading_direction FROM collection_works cw JOIN collections c ON c.id = cw.collection_id
 		                 WHERE cw.work_id = w.id AND cw.official AND c.retired_at IS NULL LIMIT 1), ''),
 		       w.title_lock, w.author_lock, w.series_lock, w.cover_lock,
@@ -79,7 +82,7 @@ func loadMetadata(ctx context.Context, db *sql.DB, workID int, order string) (*W
 		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1`, workID).Scan(
 		&m.Series, &m.SeriesIndex, &m.ISBN, &m.Publisher, &m.Language, &m.PublicationDate, &m.Description, &m.FirstAuthor,
-		&m.Unit, &m.ComicKind, &year, &m.VolumeNumber, &m.StoryArc, &m.SpinOff, &m.SeriesDirection,
+		&m.Unit, &m.ComicKind, &year, &m.VolumeNumber, &m.StoryArc, &m.SpinOff, &m.CoversFrom, &m.CoversTo, &m.SeriesDirection,
 		&titleL, &authorL, &seriesL, &coverL, &isbnL, &pubL, &langL, &dateL, &descL, &yearL)
 	if err != nil {
 		return nil, err
@@ -138,6 +141,9 @@ type workFields struct {
 	// VolumeNumber and StoryArc say where a chapter sits in its series (DEC-169): "" when nobody said. The number is kept as text, as it is written.
 	VolumeNumber string
 	StoryArc     string
+	// CoversFrom and CoversTo are the part of the story the work contains (DEC-202), as text: both "" when nobody said.
+	CoversFrom string
+	CoversTo   string
 	// SpinOff is a choice of the person (DEC-188), with no lock: nothing but a person writes it.
 	SpinOff bool
 }
@@ -175,13 +181,14 @@ func readWorkFields(tx *sql.Tx, workID int) (workFields, bool, error) {
 		SELECT w.original_title, COALESCE(a.name, 'Unknown Author'), COALESCE(w.series, ''), COALESCE(w.series_index, 0),
 		       COALESCE(e.isbn, ''), COALESCE(e.publisher, ''), COALESCE(e.language, ''),
 		       COALESCE(e.publication_date, ''), COALESCE(w.description, ''), COALESCE(w.unit, ''), COALESCE(w.comic_kind, ''), w.retired_at IS NOT NULL,
-		       COALESCE(w.original_year::text, ''), COALESCE(w.volume_number::text, ''), COALESCE(w.story_arc, ''), w.spin_off
+		       COALESCE(w.original_year::text, ''), COALESCE(w.volume_number::text, ''), COALESCE(w.story_arc, ''), w.spin_off,
+		       COALESCE(w.covers_from::text, ''), COALESCE(w.covers_to::text, '')
 		FROM works w
 		LEFT JOIN editions e ON e.work_id = w.id AND e.is_primary
 		LEFT JOIN LATERAL (`+firstAuthorSQL+`) a ON TRUE
 		WHERE w.id = $1 FOR UPDATE OF w`, workID).Scan(
 		&f.Title, &f.Author, &f.Series, &f.SeriesIndex, &f.ISBN, &f.Publisher, &f.Language,
-		&f.PublicationDate, &f.Description, &f.Unit, &f.ComicKind, &retired, &f.OriginalYear, &f.VolumeNumber, &f.StoryArc, &f.SpinOff)
+		&f.PublicationDate, &f.Description, &f.Unit, &f.ComicKind, &retired, &f.OriginalYear, &f.VolumeNumber, &f.StoryArc, &f.SpinOff, &f.CoversFrom, &f.CoversTo)
 	return f, retired, err
 }
 
@@ -245,6 +252,8 @@ func applyWorkFields(ctx context.Context, tx *sql.Tx, workID int, actor, source 
 		{"unit", cur.Unit, next.Unit},
 		{"comic_kind", cur.ComicKind, next.ComicKind},
 		{"volume_number", cur.VolumeNumber, next.VolumeNumber},
+		{"covers_from", cur.CoversFrom, next.CoversFrom},
+		{"covers_to", cur.CoversTo, next.CoversTo},
 		{"story_arc", cur.StoryArc, next.StoryArc},
 	} {
 		if f.to != f.from {

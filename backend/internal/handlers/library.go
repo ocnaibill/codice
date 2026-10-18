@@ -735,6 +735,9 @@ type UpdateWorkRequest struct {
 	// VolumeNumber and StoryArc (DEC-169): the bound volume that collected a chapter, and its arc; an empty one clears, an absent one leaves.
 	VolumeNumber *string `json:"volume_number"`
 	StoryArc     *string `json:"story_arc"`
+	// CoversFrom and CoversTo (DEC-202): the first and the last chapter the work contains; both empty clear them, an absent one leaves it.
+	CoversFrom *string `json:"covers_from"`
+	CoversTo   *string `json:"covers_to"`
 	// SpinOff (DEC-188): the work is outside the main line of its series; an absent one leaves.
 	SpinOff *bool `json:"spin_off"`
 
@@ -768,6 +771,24 @@ func cleanVolumeNumber(s string) (string, bool) {
 		return "", false
 	}
 	return strconv.FormatFloat(n, 'f', -1, 64), true
+}
+
+// cleanCovers is the range of chapters a work contains as it is kept (DEC-202): both numbers above zero, the last not before the first, or both
+// empty. A range with only one end is not one.
+func cleanCovers(from, to string) (string, string, bool) {
+	a, okA := cleanVolumeNumber(from)
+	b, okB := cleanVolumeNumber(to)
+	if !okA || !okB || (a == "") != (b == "") {
+		return "", "", false
+	}
+	if a != "" {
+		x, _ := strconv.ParseFloat(a, 64)
+		y, _ := strconv.ParseFloat(b, 64)
+		if y < x {
+			return "", "", false
+		}
+	}
+	return a, b, true
 }
 
 // cleanStoryArc is the name of an arc: the stray spaces go, as they do in a name; empty clears.
@@ -869,6 +890,21 @@ func (h *LibraryHandler) UpdateWork(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		next.VolumeNumber = n
+	}
+	if req.CoversFrom != nil || req.CoversTo != nil {
+		from, to := next.CoversFrom, next.CoversTo
+		if req.CoversFrom != nil {
+			from = *req.CoversFrom
+		}
+		if req.CoversTo != nil {
+			to = *req.CoversTo
+		}
+		a, b, ok := cleanCovers(from, to)
+		if !ok {
+			http.Error(w, "A faixa vai do primeiro ao último capítulo, e o último não vem antes do primeiro.", http.StatusBadRequest)
+			return
+		}
+		next.CoversFrom, next.CoversTo = a, b
 	}
 	if req.StoryArc != nil {
 		arc, ok := cleanStoryArc(*req.StoryArc)
