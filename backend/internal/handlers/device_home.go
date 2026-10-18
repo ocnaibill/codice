@@ -110,10 +110,12 @@ func (h *DeviceHandler) Home(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var stats struct {
-		WorksTotal          int `json:"worksTotal"`
-		InProgressCount     int `json:"inProgressCount"`
-		CompletedThisMonth  int `json:"completedThisMonth"`
-		TotalReadingSeconds int `json:"totalReadingSeconds"`
+		WorksTotal          int             `json:"worksTotal"`
+		InProgressCount     int             `json:"inProgressCount"`
+		InProgressBreakdown FormatBreakdown `json:"inProgressBreakdown"`
+		CompletedThisMonth  int             `json:"completedThisMonth"`
+		CompletedBreakdown  FormatBreakdown `json:"completedBreakdown"`
+		TotalReadingSeconds int             `json:"totalReadingSeconds"`
 	}
 	if pull(h.Sources.Stats, r, nil, &stats) {
 		out["stats"] = stats

@@ -154,7 +154,7 @@ func fileHref(fileID sql.NullInt64, mode, rel string) string {
 // any of them (the library's default view, the search by title, the ordering by title) the page is chosen on `works` alone.
 // Every join of the card yields one row per work, so leaving them out changes neither the count nor the order.
 func catalogNeedsJoins(sort string, inProgress, favorite bool, formatGroup string) bool {
-	return inProgress || favorite || formatGroup != "" || sort == "author"
+	return inProgress || favorite || formatGroup != "" || sort == "author" || sort == "recent"
 }
 
 // catalogOrderBy is how the catalog is sorted: the newest first (what it always was), by title, or by author in
@@ -172,6 +172,8 @@ func catalogOrderByTitled(sort, order, title string) string {
 	switch sort {
 	case "title":
 		return key(title) + ", w.id DESC"
+	case "recent": // the version that counts was opened (or moved) last; the works with none, last
+		return "lastrp.last_at DESC NULLS LAST, w.id DESC"
 	case "author":
 		return "(au.names IS NULL), " + key(authorLabelFor(order)) + ", " + key(title) + ", w.id DESC"
 	}

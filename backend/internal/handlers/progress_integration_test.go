@@ -898,3 +898,32 @@ func TestDetail_SaysHowLongIsLeftOnlyOfTheCallersOwnReadingAndOnlyWhenItIsWorthS
 		t.Errorf("finished: %d", got)
 	}
 }
+
+func TestContinueReading_TheOneOpenedLastComesFirst(t *testing.T) {
+	s := newCatalogStack(t)
+	a := s.addWork("Alfa", "X", "alfa.epub", "epub")
+	b := s.addWork("Beta", "X", "beta.epub", "epub")
+	c := s.addWork("Gama", "X", "gama.epub", "epub")
+	read := func(work int) {
+		s.progress(ana, "PUT", s.primaryFile(work), `{"locator":{"type":"epub","href":"a"},"percent":20}`)
+	}
+	read(a)
+	read(b)
+	read(c)
+	order := func() []int { return ids(s.list(ana, "?inProgress=true").Data) }
+	if got := order(); len(got) != 3 || got[0] != c || got[1] != b || got[2] != a {
+		t.Fatalf("the last one moved comes first, not the newest work: %v (want %d %d %d)", got, c, b, a)
+	}
+
+	// Opening the oldest one, without moving, brings it to the front.
+	if code := s.do(ana, "POST", fmt.Sprintf("/progress/files/%d/opened", s.primaryFile(a)), "").Code; code != http.StatusNoContent {
+		t.Fatalf("opened: %d", code)
+	}
+	if got := order(); got[0] != a || got[1] != c || got[2] != b {
+		t.Errorf("the one opened last comes first: %v (want %d %d %d)", got, a, c, b)
+	}
+	// Asking for an order by hand is still honored.
+	if got := ids(s.list(ana, "?inProgress=true&sort=title").Data); got[0] != a || got[1] != b || got[2] != c {
+		t.Errorf("by title: %v", got)
+	}
+}
