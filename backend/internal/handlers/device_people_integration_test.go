@@ -93,3 +93,26 @@ func TestDevicePeople_AreInPagesAndRetiredWorksDoNotCount(t *testing.T) {
 		}
 	}
 }
+
+func TestDevicePeople_TheReaderSaysHowManyFitItsScreen(t *testing.T) {
+	s := newCatalogStack(t)
+	for i := 0; i < 12; i++ {
+		s.addWork(fmt.Sprintf("Obra %d", i), fmt.Sprintf("Autor %02d", i), fmt.Sprintf("o%d.epub", i), "epub")
+	}
+	_, got := s.people(ana, "?limit=5")
+	if got.Total != 12 || got.Pages != 3 || len(got.Data) != 5 {
+		t.Errorf("limit 5: total %d pages %d len %d", got.Total, got.Pages, len(got.Data))
+	}
+	_, last := s.people(ana, "?limit=5&page=3")
+	if last.Page != 3 || len(last.Data) != 2 || last.Data[1].Name != "Autor 11" {
+		t.Errorf("last page of 5: %+v", last)
+	}
+	// nonsense or too much is the default or the most
+	_, big := s.people(ana, "?limit=100000")
+	if len(big.Data) != 12 {
+		t.Errorf("a big limit still answers: %d", len(big.Data))
+	}
+	if _, bad := s.people(ana, "?limit=abc"); len(bad.Data) != 12 {
+		t.Errorf("a limit that is not a number is the default: %d", len(bad.Data))
+	}
+}
