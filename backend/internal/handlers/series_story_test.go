@@ -134,3 +134,35 @@ func TestStory_TheCompleteEditionHoldsTheLooseChaptersAndStaysBesideTheVolumes(t
 		t.Errorf("nested = %v, want the loose chapters under the complete edition", st.Nested[100])
 	}
 }
+
+func entryOf(it storyItem) seriesEntry {
+	return seriesEntry{SeriesStep: SeriesStep{ID: it.ID, Unit: it.Unit, Position: it.Position, Started: it.Started}, From: it.From, To: it.To, Done: it.Done, LastAt: it.LastAt}
+}
+
+func TestStory_GoingOnAndTheNextWorkFollowTheStoryOnlyWhenTheSeriesHasARange(t *testing.T) {
+	v := vol(10, 3, 18, 26)
+	v.Done = true
+	entries := []seriesEntry{entryOf(chap(18, 18)), entryOf(chap(19, 19)), entryOf(v), entryOf(chap(31, 31))}
+	if step := continueFor(entries); step == nil || step.ID != 31 || !step.Begun {
+		t.Errorf("go on = %+v, want the chapter 31 and that the series was begun", step)
+	}
+	// finishing the chapter 18 of a series whose volume covers 18 to 26 goes on after the volume, not to the chapter 19
+	if step := nextFor(entries, 18); step == nil || step.ID != 31 {
+		t.Errorf("next after the chapter 18 = %+v, want 31", step)
+	}
+	// finishing the volume: what follows its last chapter
+	if step := nextFor(entries, 10); step == nil || step.ID != 31 {
+		t.Errorf("next after the volume = %+v, want 31", step)
+	}
+	if step := nextFor(entries, 31); step != nil {
+		t.Errorf("next after the last = %+v, want none", step)
+	}
+	// With no range anywhere the series goes on as it always did: by group.
+	plain := []seriesEntry{entryOf(chap(1, 1)), entryOf(chap(2, 2)), entryOf(storyItem{ID: 9, Unit: "volume", Position: f(1)})}
+	if step := nextFor(plain, 1); step == nil || step.ID != 2 {
+		t.Errorf("next in a series with no range = %+v, want the chapter 2 (the same unit)", step)
+	}
+	if step := continueFor(plain); step == nil || step.ID != 9 {
+		t.Errorf("go on in a series with no range = %+v, want the old answer (the volumes come first)", step)
+	}
+}

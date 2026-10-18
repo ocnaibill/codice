@@ -121,23 +121,7 @@ func buildStory(all []storyItem) Story {
 		}
 	}
 
-	// The chapters the files contain: the whole numbers of every range, and the number of every chapter (10.5 is one).
-	universe := map[float64]bool{}
-	read := map[float64]bool{}
-	for _, it := range placed {
-		from, to, _ := it.span()
-		mark := func(n float64) {
-			universe[n] = true
-			if it.Done {
-				read[n] = true
-			}
-		}
-		mark(from)
-		mark(to)
-		for n := math.Ceil(from); n <= to; n++ {
-			mark(n)
-		}
-	}
+	universe, read := contentOf(placed)
 	numbers := make([]float64, 0, len(universe))
 	for n := range universe {
 		numbers = append(numbers, n)
@@ -157,8 +141,29 @@ func buildStory(all []storyItem) Story {
 			}
 		}
 	}
-	st.Continue = continueStory(placed, numbers, read)
+	st.Continue = continueStory(placed, numbers, read, nil)
 	return st
+}
+
+// contentOf is the chapters the files contain: the whole numbers of every range and the number of every chapter (10.5 is one), and which of
+// them are read, that is, contained in a work that is finished.
+func contentOf(placed []storyItem) (universe, read map[float64]bool) {
+	universe, read = map[float64]bool{}, map[float64]bool{}
+	for _, it := range placed {
+		from, to, _ := it.span()
+		mark := func(n float64) {
+			universe[n] = true
+			if it.Done {
+				read[n] = true
+			}
+		}
+		mark(from)
+		mark(to)
+		for n := math.Ceil(from); n <= to; n++ {
+			mark(n)
+		}
+	}
+	return universe, read
 }
 
 // extend adds a whole number to the last stretch when it follows it, and otherwise begins another.
@@ -173,7 +178,7 @@ func extend(spans []NumberRange, n float64) []NumberRange {
 // continueStory is the work to go on with: the one the caller has begun and read last, else the one that holds the first chapter they have not
 // read, taking among the works that contain it the one they have begun, else of the same unit as what they read last, else the one that
 // contains the most.
-func continueStory(placed []storyItem, numbers []float64, read map[float64]bool) int {
+func continueStory(placed []storyItem, numbers []float64, read map[float64]bool, after *float64) int {
 	var last *storyItem
 	for i := range placed {
 		it := &placed[i]
@@ -181,7 +186,8 @@ func continueStory(placed []storyItem, numbers []float64, read map[float64]bool)
 			last = it
 		}
 	}
-	if last != nil {
+	// With `after`, what is asked is what follows a point of the story, not where the caller left off.
+	if last != nil && after == nil {
 		return last.ID
 	}
 	var lastRead *storyItem
@@ -192,7 +198,7 @@ func continueStory(placed []storyItem, numbers []float64, read map[float64]bool)
 		}
 	}
 	for _, n := range numbers {
-		if read[n] {
+		if read[n] || (after != nil && n <= *after) {
 			continue
 		}
 		var best *storyItem
@@ -227,4 +233,81 @@ func prefer(a, b, lastRead *storyItem) bool {
 		return ta-fa > tb-fb
 	}
 	return a.ID < b.ID
+}
+
+// storyItemsOf are the works of a series as the story reads them.
+func storyItemsOf(entries []seriesEntry) []storyItem {
+	items := make([]storyItem, 0, len(entries))
+	for _, e := range entries {
+		items = append(items, storyItem{ID: e.ID, Unit: e.Unit, Position: e.Position, From: e.From, To: e.To, Done: e.Done, Started: e.Started, LastAt: e.LastAt})
+	}
+	return items
+}
+
+// stepOf is the work of the series with that id as a button to it, and whether the caller has read anything of the series.
+func stepOf(entries []seriesEntry, id int) *SeriesStep {
+	begun := false
+	for i := range entries {
+		if entries[i].Unit != unitExtra && (entries[i].Done || entries[i].Started) {
+			begun = true
+		}
+	}
+	for i := range entries {
+		if entries[i].ID == id {
+			step := entries[i].SeriesStep
+			step.Begun = begun
+			return &step
+		}
+	}
+	return nil
+}
+
+// continueFor is the work to go on with: by the story when some work of the series says what it contains (DEC-202), and as it always was
+// otherwise.
+func continueFor(entries []seriesEntry) *SeriesStep {
+	st := buildStory(storyItemsOf(entries))
+	if !st.Ranged {
+		return continueSeries(entries)
+	}
+	if st.Continue == 0 {
+		return nil
+	}
+	return stepOf(entries, st.Continue)
+}
+
+// nextFor is the work that follows workID once it is read: by the story when the series has one, the first chapter after the last one the work
+// contains that is not read yet, and as it always was otherwise. A work with no place in the story has no next.
+func nextFor(entries []seriesEntry, workID int) *SeriesStep {
+	items := storyItemsOf(entries)
+	if !buildStory(items).Ranged {
+		return nextInSeries(entries, workID)
+	}
+	var end *float64
+	for i := range items {
+		if items[i].ID == workID {
+			if _, to, ok := items[i].span(); ok {
+				end = &to
+			}
+			items[i].Done = true
+		}
+	}
+	if end == nil {
+		return nil
+	}
+	var placed []storyItem
+	for _, it := range items {
+		if _, _, ok := it.span(); ok && it.Unit != unitExtra {
+			placed = append(placed, it)
+		}
+	}
+	universe, read := contentOf(placed)
+	numbers := make([]float64, 0, len(universe))
+	for n := range universe {
+		numbers = append(numbers, n)
+	}
+	sort.Float64s(numbers)
+	if id := continueStory(placed, numbers, read, end); id != 0 {
+		return stepOf(entries, id)
+	}
+	return nil
 }

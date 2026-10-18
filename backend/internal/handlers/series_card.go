@@ -103,7 +103,7 @@ func loadSeriesCards(db *sql.DB, collectionIDs []int64, userID string) (map[int6
 		if err != nil {
 			return nil, err
 		}
-		card.Continue = continueSeries(entries)
+		card.Continue = continueFor(entries)
 		for _, e := range entries {
 			if e.New && !e.Done {
 				card.NewCount++

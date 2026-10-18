@@ -28,8 +28,10 @@ type SeriesStep struct {
 // seriesEntry is a work of the official collection of a series, in the order of the collection, with what the caller did of it.
 type seriesEntry struct {
 	SeriesStep
-	Done   bool
-	LastAt *time.Time
+	// From and To are the part of the story the work says it contains (DEC-202).
+	From, To *float64
+	Done     bool
+	LastAt   *time.Time
 	// New: the work arrived in the library within seriesNewDays days.
 	New bool
 }
@@ -53,7 +55,7 @@ func loadSeries(db *sql.DB, collectionID int64, userID string) ([]seriesEntry, e
 	rows, err := db.Query(`
 		SELECT w.id, COALESCE(w.original_title, ''), COALESCE(w.unit, ''), cw.position,
 		       (wrs.work_id IS NOT NULL OR (rp.n > 0 AND NOT rp.open)), (rp.n > 0 AND rp.open AND wrs.work_id IS NULL), rp.last_at,
-		       COALESCE(w.created_at > now() - make_interval(days => $3), FALSE)
+		       COALESCE(w.created_at > now() - make_interval(days => $3), FALSE), w.covers_from, w.covers_to
 		FROM collection_works cw
 		JOIN works w ON w.id = cw.work_id AND w.retired_at IS NULL
 		LEFT JOIN work_reading_state wrs ON wrs.work_id = w.id AND wrs.user_id = $1::uuid
@@ -76,7 +78,7 @@ func loadSeries(db *sql.DB, collectionID int64, userID string) ([]seriesEntry, e
 	for rows.Next() {
 		var e seriesEntry
 		var lastAt sql.NullTime
-		if err := rows.Scan(&e.ID, &e.Title, &e.Unit, &e.Position, &e.Done, &e.Started, &lastAt, &e.New); err != nil {
+		if err := rows.Scan(&e.ID, &e.Title, &e.Unit, &e.Position, &e.Done, &e.Started, &lastAt, &e.New, &e.From, &e.To); err != nil {
 			return nil, err
 		}
 		if lastAt.Valid {
@@ -188,6 +190,6 @@ func (h *CollectionsHandler) WorkSeries(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"collection": map[string]any{"id": collectionID, "name": name},
-		"next":       nextInSeries(entries, id),
+		"next":       nextFor(entries, id),
 	})
 }
