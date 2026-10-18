@@ -1,14 +1,10 @@
 package handlers
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
-	"image/jpeg"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -32,27 +28,10 @@ type WorkCoverHandler struct {
 	RedisClient *redis.Client
 }
 
-const (
-	maxManualCoverBytes = 2 << 20
-	// A cover the page produces is 600×900; the limits only keep a hand-made request from asking the server to decode something huge.
-	minManualCoverWidth  = 200
-	maxManualCoverWidth  = 2000
-	maxManualCoverHeight = 3000
-)
-
 // manualCoverPrefix is what names the covers chosen by hand of a work: they are the only ones of the folder that the work owns and that this
 // handler may remove (the worker owns the others).
 func manualCoverPrefix(workID int) string {
 	return fmt.Sprintf("/covers/cover_manual_%d_", workID)
-}
-
-// proportionOK says whether a picture is 2:3, within what rounding a cut in a browser leaves (2%).
-func proportionOK(w, h int) bool {
-	diff := h*2 - w*3
-	if diff < 0 {
-		diff = -diff
-	}
-	return diff*50 <= w*3
 }
 
 // Set answers PUT /works/{id}/cover (staff): the cover of the work, sent as a JPEG in "image". It is locked against the worker from then on,
@@ -67,38 +46,8 @@ func (h *WorkCoverHandler) Set(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Covers cannot be kept here", http.StatusInternalServerError)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxManualCoverBytes+(64<<10))
-	if err := r.ParseMultipartForm(maxManualCoverBytes); err != nil {
-		http.Error(w, "A capa tem até 2 MB.", http.StatusRequestEntityTooLarge)
-		return
-	}
-	file, _, err := r.FormFile("image")
-	if err != nil {
-		http.Error(w, "Envie a capa no campo image.", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxManualCoverBytes+1))
-	if err != nil || len(data) > maxManualCoverBytes {
-		http.Error(w, "A capa tem até 2 MB.", http.StatusRequestEntityTooLarge)
-		return
-	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || format != "jpeg" {
-		http.Error(w, "A capa deve ser um JPEG.", http.StatusBadRequest)
-		return
-	}
-	if cfg.Width < minManualCoverWidth || cfg.Width > maxManualCoverWidth || cfg.Height > maxManualCoverHeight {
-		http.Error(w, "A capa tem de 200 a 2000 pixels de largura.", http.StatusBadRequest)
-		return
-	}
-	if !proportionOK(cfg.Width, cfg.Height) {
-		http.Error(w, "A capa deve ter a proporção 2:3.", http.StatusBadRequest)
-		return
-	}
-	// The whole picture is read once, so that a file that has a good header and a broken body is not kept as a cover.
-	if _, err := jpeg.Decode(bytes.NewReader(data)); err != nil {
-		http.Error(w, "A capa deve ser um JPEG.", http.StatusBadRequest)
+	data, ok := readManualJPEG(w, r, coverImage)
+	if !ok {
 		return
 	}
 	if err := os.MkdirAll(h.CoversDir, 0o755); err != nil {

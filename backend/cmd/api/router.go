@@ -88,6 +88,7 @@ func newRouter(d routerDeps) http.Handler {
 	favoritesHandler := &handlers.FavoritesHandler{DB: db}
 	collectionsHandler := &handlers.CollectionsHandler{DB: db}
 	collectionsAdmin := &handlers.CollectionsAdminHandler{DB: db}
+	collectionImages := &handlers.CollectionImagesHandler{DB: db, CoversDir: filepath.Join(d.StoragePath, "covers")}
 	personalCollections := &handlers.PersonalCollectionsHandler{DB: db}
 	workTitles := &handlers.WorkTitlesHandler{DB: db}
 	workCover := &handlers.WorkCoverHandler{DB: db, CoversDir: filepath.Join(d.StoragePath, "covers"),
@@ -195,6 +196,10 @@ func newRouter(d routerDeps) http.Handler {
 	r.With(staff).Put("/collections/{id}/works/{workId}", collectionsAdmin.AddWork)
 	r.With(staff).Delete("/collections/{id}/works/{workId}", collectionsAdmin.RemoveWork)
 	r.With(staff).Put("/collections/{id}/order", collectionsAdmin.Order)
+	r.With(staff).Put("/collections/{id}/cover", collectionImages.SetCover)
+	r.With(staff).Delete("/collections/{id}/cover", collectionImages.ResetCover)
+	r.With(staff).Put("/collections/{id}/banner", collectionImages.SetBanner)
+	r.With(staff).Delete("/collections/{id}/banner", collectionImages.ResetBanner)
 	r.With(staff).Put("/collections/{id}/classification", collectionsAdmin.Classify)
 	r.With(staff).Put("/collections/{id}/grouping", collectionsAdmin.Group)
 	// The lists of a person: anyone signed in keeps their own (RN-006), and nobody reaches another person's.

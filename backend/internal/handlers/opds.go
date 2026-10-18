@@ -288,24 +288,29 @@ func opdsEntry(base string, wk opdsWork) string {
 		}
 		b.WriteString("  " + link)
 	}
-	cover := wk.Cover
+	b.WriteString(opdsImageLinks(base, wk.Cover))
+	b.WriteString("  </entry>\n")
+	return b.String()
+}
+
+// opdsImageLinks are the links of the picture of an entry: the cover as it is and, when the server can reduce it, the same cover for a small
+// screen on a home network. With no cover the placeholder is the picture.
+func opdsImageLinks(base, cover string) string {
 	if cover == "" {
 		cover = "/covers/placeholder.svg"
 	}
 	if !strings.Contains(cover, "://") {
 		cover = base + cover
 	}
-	b.WriteString("  " + opdsLink("http://opds-spec.org/image", cover, opdsCoverMime(cover)))
-	// the same cover reduced, for a small screen on a home network (a cover that is not a picture the server reduces comes whole)
+	out := "  " + opdsLink("http://opds-spec.org/image", cover, opdsCoverMime(cover))
 	if opdsCoverMime(cover) != "image/svg+xml" && strings.HasPrefix(cover, base+"/covers/") {
 		sep := "?"
 		if strings.Contains(cover, "?") {
 			sep = "&"
 		}
-		b.WriteString("  " + opdsLink("http://opds-spec.org/image/thumbnail", cover+sep+"w=240", "image/jpeg"))
+		out += "  " + opdsLink("http://opds-spec.org/image/thumbnail", cover+sep+"w=240", "image/jpeg")
 	}
-	b.WriteString("  </entry>\n")
-	return b.String()
+	return out
 }
 
 // opdsPageNumber is the page asked for: from 1, and a nonsense one is the first.

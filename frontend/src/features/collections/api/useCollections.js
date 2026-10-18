@@ -159,3 +159,27 @@ export function useClassifyCollection() {
     onSuccess: refresh,
   });
 }
+
+/** Sends the cover or the banner of a series, already cut (staff, DEC-201): `which` is "cover" (2:3) or "banner" (3:1). */
+export function useSetCollectionImage(id, which) {
+  const refresh = useRefreshing();
+  return useMutation({
+    mutationFn: async (blob) => {
+      const form = new FormData();
+      form.append('image', blob, which === 'banner' ? 'fundo.jpg' : 'capa.jpg');
+      return (await api.put(`/collections/${id}/${which}`, form)).data; // { url }
+    },
+    onSuccess: refresh,
+  });
+}
+
+/** Goes back to the automatic cover of the series (the first work that has one) or takes its banner away (staff). */
+export function useResetCollectionImage(id, which) {
+  const refresh = useRefreshing();
+  return useMutation({
+    mutationFn: async () => {
+      await api.delete(`/collections/${id}/${which}`);
+    },
+    onSuccess: refresh,
+  });
+}

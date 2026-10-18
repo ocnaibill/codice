@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-  FRAME_WIDTH, FRAME_HEIGHT, OUTPUT_WIDTH, OUTPUT_HEIGHT, baseScale, centered, clampOffset, cutToBlob, sourceRect, zoomAround,
+  BANNER, COVER, FRAME_WIDTH, FRAME_HEIGHT, OUTPUT_WIDTH, OUTPUT_HEIGHT, baseScale, centered, clampOffset, cutToBlob, sourceRect, zoomAround,
 } from './coverCrop';
 
 afterEach(() => vi.restoreAllMocks());
@@ -81,5 +81,32 @@ describe('the geometry of the cut of a cover (DEC-173)', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ fillRect() {}, drawImage() {} });
     vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb) => cb(null));
     await expect(cutToBlob({ naturalWidth: 600, naturalHeight: 900 }, { x: 0, y: 0 }, 1)).rejects.toThrow();
+  });
+});
+
+describe('the cut of the banner of a series (DEC-201)', () => {
+  it('has the proportion 3:1 in the frame and in what is sent', () => {
+    expect(BANNER.frameWidth / BANNER.frameHeight).toBe(3);
+    expect(BANNER.outputWidth / BANNER.outputHeight).toBe(3);
+    expect([COVER.outputWidth, COVER.outputHeight]).toEqual([OUTPUT_WIDTH, OUTPUT_HEIGHT]);
+  });
+
+  it('covers the wide frame whatever the picture, and starts centred', () => {
+    expect(baseScale(1500, 500, BANNER)).toBeCloseTo(BANNER.frameWidth / 1500);
+    expect(baseScale(600, 900, BANNER)).toBeCloseTo(BANNER.frameWidth / 600); // a tall picture: the width decides
+    expect(centered(1500, 500, 1, BANNER)).toEqual({ x: 0, y: 0 });
+    const tall = centered(600, 900, 1, BANNER);
+    expect(tall.x).toBe(0);
+    expect(tall.y).toBeCloseTo(-(900 * (BANNER.frameWidth / 600) - BANNER.frameHeight) / 2);
+  });
+
+  it('cuts to 1500×500', async () => {
+    const calls = {};
+    const context = { fillRect: vi.fn(), drawImage: vi.fn((...args) => { calls.draw = args; }), fillStyle: '' };
+    const canvas = { getContext: () => context, toBlob: (done) => done(new Blob(['x'])) };
+    vi.spyOn(document, 'createElement').mockReturnValue(canvas);
+    await cutToBlob({ naturalWidth: 1500, naturalHeight: 500 }, { x: 0, y: 0 }, 1, BANNER);
+    expect([canvas.width, canvas.height]).toEqual([1500, 500]);
+    expect(calls.draw.slice(5)).toEqual([0, 0, 1500, 500]);
   });
 });
