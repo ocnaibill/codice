@@ -55,6 +55,8 @@ type ingestOptions struct {
 	Actor    string
 	Priority int
 	MaxBytes int64
+	// Place, when given, is written on the work in the transaction that makes it, and locked (DEC-200).
+	Place *seriesPlace
 }
 
 // ingest is the single path by which a file enters the library, for uploads and
@@ -177,6 +179,12 @@ func (h *UploadHandler) ingest(ctx context.Context, src io.Reader, filename stri
 	if _, err := tx.ExecContext(ctx, `INSERT INTO storage_locations (file_id, mode, path) VALUES ($1, 'managed', $2)`, fileID, stored); err != nil {
 		cleanup()
 		return nil, err
+	}
+	if opts.Place != nil {
+		if err := placeInSeries(ctx, tx, workID, opts.Actor, opts.Place); err != nil {
+			cleanup()
+			return nil, err
+		}
 	}
 	jobID, err := jobs.Enqueue(ctx, tx, jobs.TypeIngest, workID, map[string]any{"file_path": mustAbs(finalPath)}, opts.Priority, opts.Actor)
 	if err != nil {
