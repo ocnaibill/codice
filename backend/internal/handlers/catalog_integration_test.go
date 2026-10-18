@@ -322,6 +322,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/device/config", device.Config)
 	r.Get("/device/home", device.Home)
 	r.Get("/device/shelf", device.ShelfState)
+	r.Get("/device/people", device.People)
 	r.Get("/device/works/{id}/files", device.WorkFiles)
 	r.Get("/auth/device/{code}", device.Show)
 	r.Post("/auth/device/{code}/approve", device.Approve)

@@ -312,6 +312,7 @@ func TestAuthRoutes_RequireASession(t *testing.T) {
 		{"GET", "/device/stats"},
 		{"GET", "/device/search?q=x"},
 		{"GET", "/device/shelf?works=1"},
+		{"GET", "/device/people"},
 		{"GET", "/works/1/series"},
 		{"GET", "/categories"},
 		{"GET", "/notes"},
