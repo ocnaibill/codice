@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, newText, numberText, seriesCounts, sequenceWord, stepText, UNITS, unitLabel, viewsOf, wordsOf, worksText, groupByVolume, groupByArc, extraGroup, groupByStory, gapText } from './text';
+import { collectionLine, COMIC_KINDS, goOnText, groupByUnit, newText, numberText, seriesCounts, sequenceWord, stepText, UNITS, unitLabel, viewsOf, wordsOf, worksText, groupByVolume, groupByArc, extraGroup, groupByStory, gapText, markOf, marksOf, dividersOf } from './text';
 
 describe('the text of a collection', () => {
   it('counts the works, in the singular too', () => {
@@ -251,5 +251,68 @@ describe('the story of a series (DEC-202)', () => {
     const [flat] = groupByStory(works, story, { flat: true });
     expect(flat.works.map((x) => x.id)).toEqual([1, 2, 30, 4, 8]);
     expect(flat.after).toEqual({});
+  });
+});
+
+describe('the dividers of the story (DEC-202)', () => {
+  const w = (id, unit, position, extra = {}) => ({ id, entryId: id * 10, unit, position, title: `W${id}`, ...extra });
+  // chapters 1 to 5 say volume 1, 6 to 9 say volume 2, 10 has none; the arcs cross the volumes
+  const chapters = [
+    ...[1, 2, 3, 4, 5].map((n) => w(n, 'chapter', n, { volumeNumber: 1, storyArc: n < 4 ? 'Eclipse' : 'Retorno' })),
+    ...[6, 7, 8, 9].map((n) => w(n, 'chapter', n, { volumeNumber: 2, storyArc: 'Retorno' })),
+    w(10, 'chapter', 10),
+  ];
+  const top = chapters;
+  const story = { ranged: false, order: chapters.map((c) => c.id), nested: {}, unplaced: [], gaps: [] };
+
+  it('marks a work with its volume (a volume file is its own) or its arc, and with nothing when it has none', () => {
+    expect(markOf(w(1, 'chapter', 1, { volumeNumber: 3 }), 'volume')).toBe(3);
+    expect(markOf(w(2, 'volume', 4), 'volume')).toBe(4);
+    expect(markOf(w(3, 'chapter', 3), 'volume')).toBeNull();
+    expect(markOf(w(4, 'chapter', 4, { storyArc: 'Eclipse' }), 'arc')).toBe('Eclipse');
+    expect(markOf(w(5, 'extra', 1, { volumeNumber: 3 }), 'volume')).toBeNull();
+    expect(markOf(w(6, 'chapter', 6, { volumeNumber: 3 }), 'none')).toBeNull();
+  });
+
+  it('offers the marks the works carry, the volume first', () => {
+    expect(marksOf(chapters).map((m) => m.key)).toEqual(['volume', 'arc']);
+    expect(marksOf([w(1, 'chapter', 1)])).toEqual([]);
+    expect(marksOf([w(1, 'chapter', 1, { storyArc: 'X' })]).map((m) => m.key)).toEqual(['arc']);
+  });
+
+  it('puts a divider where the volume changes, with the stretch and how many chapters it holds, computed from the chapters', () => {
+    const d = dividersOf(top, chapters, 'volume');
+    expect(d[1]).toEqual({ heading: 'Volume 1', note: 'caps. 1 a 5 · 5 capítulos' });
+    expect(d[6]).toEqual({ heading: 'Volume 2', note: 'caps. 6 a 9 · 4 capítulos' });
+    expect(d[10]).toEqual({ heading: 'Sem volume', note: null });
+    expect(Object.keys(d)).toEqual(['1', '6', '10']);
+  });
+
+  it('divides by arc as well, and an arc may cross the volumes', () => {
+    const d = dividersOf(top, chapters, 'arc');
+    expect(d[1].heading).toBe('Eclipse');
+    expect(d[4]).toEqual({ heading: 'Retorno', note: 'caps. 4 a 9 · 6 capítulos' });
+    expect(d[10].heading).toBe('Sem arco');
+  });
+
+  it('has none when nothing is marked by, or when no work carries the mark', () => {
+    expect(dividersOf(top, chapters, 'none')).toEqual({});
+    expect(dividersOf([w(1, 'chapter', 1), w(2, 'chapter', 2)], [w(1, 'chapter', 1), w(2, 'chapter', 2)], 'volume')).toEqual({});
+  });
+
+  it('counts the works, not the chapters, when the mark is a volume file with no chapters of its own', () => {
+    const vols = [w(1, 'volume', 1), w(2, 'volume', 2)];
+    expect(dividersOf(vols, vols, 'volume')[1]).toEqual({ heading: 'Volume 1', note: '1 obra' });
+  });
+
+  it('is put in the group of the story, and not while a filter is on', () => {
+    expect(groupByStory(chapters, story, { mark: 'volume' })[0].dividers[6].heading).toBe('Volume 2');
+    expect(groupByStory(chapters, story, { mark: 'volume', flat: true })[0].dividers).toEqual({});
+    expect(groupByStory(chapters, story)[0].dividers).toEqual({});
+  });
+
+  it('reads a series whose chapters say their volume as a story too, with no range at all', () => {
+    expect(viewsOf(chapters, story).map((v) => v.label)).toEqual(['Na ordem da história', 'Por unidade', 'Por volumes', 'Por arcos']);
+    expect(viewsOf([w(1, 'chapter', 1)], story).map((v) => v.label)).toEqual(['Todas']);
   });
 });

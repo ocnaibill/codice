@@ -198,7 +198,7 @@ export function extraGroup(works) {
  * its volume (`after` has it, with a line for the numbers that are missing right after the work that precedes them); with `flat` (a filter is
  * on) every placed work is a row of its own, so that the search finds it. Works with no place end the view, and the complementary ones after them.
  */
-export function groupByStory(works, story, { flat = false } = {}) {
+export function groupByStory(works, story, { flat = false, mark = 'none' } = {}) {
   const byId = new Map(works.map((w) => [w.id, w]));
   const pick = (ids) => (ids ?? []).map((id) => byId.get(id)).filter(Boolean);
   const endOf = (w) => w.coversTo ?? w.position ?? 0;
@@ -219,7 +219,8 @@ export function groupByStory(works, story, { flat = false } = {}) {
       if (before) aside(before.id).gaps.push(gap);
     }
   }
-  const groups = [{ key: 'story', heading: '', works: flat ? ordered : top, after }];
+  const dividers = flat ? {} : dividersOf(top, works, mark);
+  const groups = [{ key: 'story', heading: '', works: flat ? ordered : top, after, dividers }];
   const unplaced = pick(story.unplaced);
   if (unplaced.length > 0) {
     groups.push({
@@ -230,6 +231,52 @@ export function groupByStory(works, story, { flat = false } = {}) {
     });
   }
   return groups;
+}
+
+/** What a work is marked with in the list of the story (DEC-202): the volume it is in (a volume file is its own) or its arc; null when it has none. */
+export function markOf(work, mark) {
+  if (work.unit === 'extra') return null;
+  if (mark === 'volume') return (work.unit === 'volume' ? work.position : work.volumeNumber) ?? null;
+  if (mark === 'arc') return work.storyArc || null;
+  return null;
+}
+
+/** The marks the works of a series carry, to offer "Marcar por": the volume when some work says it, then the arc. */
+export function marksOf(works) {
+  const sequence = works.filter((w) => w.unit !== 'extra');
+  return [
+    ...(sequence.some((w) => w.volumeNumber != null) ? [{ key: 'volume', label: 'Volume' }] : []),
+    ...(sequence.some((w) => w.storyArc) ? [{ key: 'arc', label: 'Arco' }] : []),
+  ];
+}
+
+/**
+ * The dividers of the list of the story (DEC-202): where the volume (or the arc) changes from one work to the next a divider says which it is, how
+ * many chapters it holds and from which to which. It is calculated from the works that carry the mark, and it is not a file: it has no progress, and
+ * it does not count as coverage. Works with no mark after a marked stretch go under "Sem volume" or "Sem arco"; a series nothing marks has no divider.
+ * `top` are the rows of the list, in order; `all` every work of the series, nested ones too. Keyed by the work that comes right after the divider.
+ */
+export function dividersOf(top, all, mark) {
+  if (mark !== 'volume' && mark !== 'arc') return {};
+  const out = {};
+  let previous;
+  for (const work of top) {
+    const key = markOf(work, mark);
+    if (key !== previous && (key != null || previous != null)) {
+      if (key == null) {
+        out[work.id] = { heading: mark === 'volume' ? 'Sem volume' : 'Sem arco', note: null };
+      } else {
+        const members = all.filter((w) => markOf(w, mark) === key);
+        const numbers = members.flatMap((w) => (w.unit === 'chapter' && w.position != null ? [w.position] : [w.coversFrom, w.coversTo].filter((n) => n != null)));
+        const chapters = members.filter((w) => w.unit === 'chapter').length;
+        const span = numbers.length === 0 ? '' : Math.min(...numbers) === Math.max(...numbers) ? `cap. ${numberText(numbers[0])}` : `caps. ${numberText(Math.min(...numbers))} a ${numberText(Math.max(...numbers))}`;
+        const count = chapters > 0 ? `${chapters} ${chapters === 1 ? 'capítulo' : 'capítulos'}` : `${members.length} ${members.length === 1 ? 'obra' : 'obras'}`;
+        out[work.id] = { heading: mark === 'volume' ? `Volume ${numberText(key)}` : key, note: [span, count].filter(Boolean).join(' · ') };
+      }
+    }
+    previous = key;
+  }
+  return out;
 }
 
 /** "faltam os caps 10 a 11" for the stretch of a gap. */
@@ -244,9 +291,11 @@ export function gapText({ from, to }) {
 export function viewsOf(works, story = null) {
   const sequence = works.filter((w) => w.unit !== 'extra');
   const ranged = story?.ranged === true;
+  // The story also reads a series whose chapters say their volume or arc: the dividers are made of them.
+  const marked = story != null && marksOf(works).length > 0;
   return [
-    ...(ranged ? [{ key: 'story', label: 'Na ordem da história' }] : []),
-    { key: 'units', label: ranged ? 'Por unidade' : 'Todas' },
+    ...(ranged || marked ? [{ key: 'story', label: 'Na ordem da história' }] : []),
+    { key: 'units', label: ranged || marked ? 'Por unidade' : 'Todas' },
     ...(sequence.some((w) => w.volumeNumber != null) ? [{ key: 'volumes', label: 'Por volumes' }] : []),
     ...(sequence.some((w) => w.storyArc) ? [{ key: 'arcs', label: 'Por arcos' }] : []),
   ];

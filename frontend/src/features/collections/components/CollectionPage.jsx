@@ -17,9 +17,11 @@ import {
   useRestoreCollection,
   useRetireCollection,
 } from '../api/useCollections';
-import { collectionLine, COMIC_KINDS, extraGroup, gapText, groupByArc, groupByStory, groupByUnit, groupByVolume, numberText, goOnText, sequenceWord, UNITS, unitLabel, viewsOf, wordsOf, worksText } from '../text';
+import { collectionLine, COMIC_KINDS, extraGroup, gapText, groupByArc, groupByStory, marksOf, groupByUnit, groupByVolume, numberText, goOnText, sequenceWord, UNITS, unitLabel, viewsOf, wordsOf, worksText } from '../text';
 import { CollectionFavoriteButton } from './CollectionFavoriteButton';
 import { SeriesImages } from './SeriesImages';
+import { SeriesRuler } from './SeriesRuler';
+import { rulerOf } from '../ruler';
 import { ProgressBar } from '../../../components/ui/ProgressBar';
 import { formatReadingTime } from '../../home/utils/format';
 import { placeLabel, remainingText } from '../../reader/placeInWords';
@@ -325,6 +327,18 @@ function WorkRow({ work, label, index, count, staff, movable, confirming, busy, 
 const SHOWN = 50;
 
 /** One group of the works of a collection (the volumes, the chapters…), of which the first are shown and the rest come when asked. */
+/** A divider of the list of the story: the volume or the arc that begins here. It is a label, not a file. */
+function StoryDivider({ divider }) {
+  return (
+    <li className="flex items-center gap-3 pt-2 text-xs text-ink-soft" aria-label={[divider.heading, divider.note].filter(Boolean).join(' · ')}>
+      <span aria-hidden="true" className="h-px w-4 bg-border-hairline" />
+      <span className="font-semibold text-ink">{divider.heading}</span>
+      {divider.note && <span>· {divider.note}</span>}
+      <span aria-hidden="true" className="h-px flex-1 bg-border-hairline" />
+    </li>
+  );
+}
+
 /**
  * What the story says right after a work (DEC-202): the loose chapters its range already contains, folded ("também neste volume"), and the
  * chapters that no file contains from there on.
@@ -371,6 +385,7 @@ function WorkGroup({ group, heading, note, groupKey, words, official, rowProps, 
       <ol aria-label={heading ? `${heading} da ${words.thing}` : `Obras da ${words.thing}`} className="flex flex-col gap-2">
         {visible.map((work, index) => (
           <React.Fragment key={work.entryId}>
+            {group.dividers?.[work.id] && <StoryDivider divider={group.dividers[work.id]} />}
             <WorkRow
               work={work}
               label={official ? unitLabel(work.unit, work.position) : numberText(work.position)}
@@ -570,6 +585,7 @@ export function CollectionPage() {
   const [query, setQuery] = React.useState('');
   const [status, setStatus] = React.useState('all'); // 'all' | 'unread' | 'read' | 'saved'
   const [descending, setDescending] = React.useState(false);
+  const [markBy, setMarkBy] = React.useState(null); // null: the one the works carry; 'volume' | 'arc' | 'none' (DEC-202)
   const [groupView, setGroupView] = React.useState(null); // null: the one the series reads best; 'story' | 'units' | 'volumes' | 'arcs' (DEC-169, DEC-202)
 
   React.useEffect(() => {
@@ -580,6 +596,7 @@ export function CollectionPage() {
     setStatus('all');
     setDescending(false);
     setGroupView(null);
+    setMarkBy(null);
   }, [id]);
 
   // A page that opens starts at its top, with the focus on what it is about.
@@ -604,11 +621,15 @@ export function CollectionPage() {
   const official = kind === 'official';
   const story = official ? data?.story ?? null : null;
   const views = official ? viewsOf(works, story) : [{ key: 'units', label: 'Todas' }];
-  const shownView = views.some((v) => v.key === groupView) ? groupView : story?.ranged ? 'story' : 'units';
+  const storyRead = views.some((v) => v.key === 'story');
+  const shownView = views.some((v) => v.key === groupView) ? groupView : storyRead ? 'story' : 'units';
+  const marks = official ? marksOf(works) : [];
+  const ruler = official ? rulerOf(works, story) : null;
+  const shownMark = markBy === 'none' || marks.some((m) => m.key === markBy) ? markBy : marks[0]?.key ?? 'none';
   const byUnit = official ? groupByUnit(works) : { groups: [{ key: '', heading: '', works }], headings: false };
   // The views by volume and by arc (DEC-169) put the works in other groups; the complementary ones end every view.
   const regrouped = shownView === 'volumes' ? groupByVolume(works) : shownView === 'arcs' ? groupByArc(works) : null;
-  const storyGroups = shownView === 'story' ? groupByStory(works, story, { flat: query.trim() !== '' || status !== 'all' }) : null;
+  const storyGroups = shownView === 'story' ? groupByStory(works, story, { flat: query.trim() !== '' || status !== 'all', mark: shownMark }) : null;
   const allGroups = storyGroups ? [...storyGroups, ...extraGroup(works)] : regrouped ? [...regrouped, ...extraGroup(works)] : byUnit.groups;
   const headings = storyGroups || regrouped ? true : byUnit.headings;
   // The filters and the order of the list (DEC-165): a view over the groups, which never changes the order of the collection.
@@ -743,7 +764,9 @@ export function CollectionPage() {
                     </div>
                     <ProgressBar percent={summary.percent} color="brand" />
                     <p className="mt-2 font-mono text-[11px] text-ink-soft">
-                      {summary.finished} de {summary.works} {sequence ? `${sequence.noun} ${sequence.read}` : summary.works === 1 ? 'lida' : 'lidas'}
+                      {story?.ranged && story.chapters > 0
+                        ? `${story.read} de ${story.chapters} ${story.chapters === 1 ? 'capítulo lido' : 'capítulos lidos'}, contando o que os volumes reúnem`
+                        : `${summary.finished} de ${summary.works} ${sequence ? `${sequence.noun} ${sequence.read}` : summary.works === 1 ? 'lida' : 'lidas'}`}
                       {summary.inProgress > 0 ? ` · ${summary.inProgress} em andamento` : ''}
                       {summary.readingSeconds > 0 ? ` · ${formatReadingTime(summary.readingSeconds)} lidas` : ''}
                     </p>
@@ -844,6 +867,17 @@ export function CollectionPage() {
               ))}
             </div>
           )}
+          {shownView === 'story' && marks.length > 0 && (
+            <div role="radiogroup" aria-label="Marcar por" className="flex flex-wrap items-center gap-2 text-xs text-ink-soft">
+              Marcar por:
+              {[...marks, { key: 'none', label: 'Nada' }].map((m) => (
+                <label key={m.key} className="flex items-center gap-1.5">
+                  <input type="radio" name="mark-by" checked={shownMark === m.key} onChange={() => setMarkBy(m.key)} />
+                  {m.label}
+                </label>
+              ))}
+            </div>
+          )}
           {shownView === 'arcs' && groups.filter((g) => g.key.startsWith('arc:') && g.key !== 'arc:none').length > 1 && (
             <nav aria-label="Saltar para o arco" className="flex flex-wrap items-center gap-2 text-xs text-ink-soft">
               Saltar para:
@@ -888,6 +922,8 @@ export function CollectionPage() {
               </div>
             </div>
           )}
+          {ruler && <SeriesRuler ruler={ruler} onOpen={(workId) => openWork(workId)} />}
+
           {works.length > 0 && (
             <div role="group" aria-label="Como ver as obras" className="flex items-center gap-2 text-xs text-ink-soft">
               Exibir:

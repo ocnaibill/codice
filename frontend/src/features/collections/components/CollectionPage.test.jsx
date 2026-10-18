@@ -1538,9 +1538,10 @@ describe('CollectionPage, the story of the series (DEC-202)', () => {
   it('folds the loose chapters under the volume, and opens them on request', async () => {
     await open({ role: 'reader', data: storyData(story, ranged) });
     expect(container.textContent).toContain('1 capítulo avulso também está neste volume');
-    expect(container.textContent).not.toContain('Obra 4');
+    const list = () => container.querySelector('[data-group="story"]').textContent; // the ruler has the titles of the works too
+    expect(list()).not.toContain('Obra 4');
     await click(button('▸ 1 capítulo avulso também está neste volume · mostrar'));
-    expect(container.textContent).toContain('Obra 4');
+    expect(list()).toContain('Obra 4');
   });
 
   it('says what no file contains', async () => {
@@ -1558,5 +1559,70 @@ describe('CollectionPage, the story of the series (DEC-202)', () => {
   it('is the page it always was when no work says what it contains', async () => {
     await open({ role: 'reader', data: storyData({ ranged: false, order: [], nested: {}, unplaced: [], gaps: [] }, trio) });
     expect(button('Na ordem da história')).toBeUndefined();
+  });
+});
+
+describe('CollectionPage, the dividers of the story (DEC-202)', () => {
+  const ch = (n, volume) => ({ ...work(n, `Cap ${n}`, n), unit: 'chapter', volumeNumber: volume ?? undefined });
+  const works = [ch(1, 1), ch(2, 1), ch(3, 2), ch(4, 2), ch(5)];
+  const data = { ...detail(works), story: { ranged: false, order: [1, 2, 3, 4, 5], nested: {}, unplaced: [], gaps: [], chapters: 5, read: 0 } };
+  const dividers = () => [...container.querySelectorAll('[data-group="story"] > ol > li[aria-label]')].map((li) => li.getAttribute('aria-label'));
+
+  it('says the volume of loose chapters with a label, in the order of the story, with no file to open', async () => {
+    await open({ role: 'reader', data });
+    expect(container.querySelector('[role="tab"][aria-selected="true"]').textContent).toBe('Na ordem da história');
+    expect(dividers()).toEqual(['Volume 1 · caps. 1 a 2 · 2 capítulos', 'Volume 2 · caps. 3 a 4 · 2 capítulos', 'Sem volume']);
+    expect(container.querySelectorAll('[data-group="story"] > ol > li[aria-label] button')).toHaveLength(0);
+  });
+
+  it('marks by volume when the chapters have one, and can mark by nothing', async () => {
+    await open({ role: 'reader', data });
+    expect(container.querySelector('input[name="mark-by"]:checked').parentElement.textContent).toBe('Volume');
+    const none = [...container.querySelectorAll('input[name="mark-by"]')].find((i) => i.parentElement.textContent === 'Nada');
+    await click(none);
+    expect(dividers()).toEqual([]);
+  });
+
+  it('offers no choice of mark to a series nothing marks', async () => {
+    await open({ role: 'reader', data: { ...detail(trio), story: { ranged: false, order: [], nested: {}, unplaced: [], gaps: [] } } });
+    expect(container.querySelector('[aria-label="Marcar por"]')).toBeNull();
+  });
+});
+
+describe('CollectionPage, what is read by content (DEC-202)', () => {
+  it('counts the chapters a volume holds when a work says what it contains', async () => {
+    const works = [{ ...work(1, 'Vol 1', 1, true), unit: 'volume', coversFrom: 1, coversTo: 9 }, { ...work(2, 'Cap 10', 10), unit: 'chapter' }];
+    const data = { ...detail(works), summary: { works: 2, finished: 1, inProgress: 0, percent: 50, readingSeconds: 0, notes: 0, bookmarks: 0, missing: [], authors: [], translators: [], tags: [] }, story: { ranged: true, order: [1, 2], nested: {}, unplaced: [], gaps: [], chapters: 10, read: 9 } };
+    await open({ role: 'reader', data });
+    expect(labelled('Seu progresso').textContent).toContain('9 de 10 capítulos lidos, contando o que os volumes reúnem');
+  });
+
+  it('counts the works as always when none says what it contains', async () => {
+    const data = { ...detail(trio), summary: { works: 3, finished: 1, inProgress: 0, percent: 33, readingSeconds: 0, notes: 0, bookmarks: 0, missing: [], authors: [], translators: [], tags: [] }, story: { ranged: false, order: [], nested: {}, unplaced: [], gaps: [], chapters: 0, read: 0 } };
+    await open({ role: 'reader', data });
+    expect(labelled('Seu progresso').textContent).toContain('1 de 3 lidas');
+  });
+});
+
+describe('CollectionPage, the ruler of the series (DEC-202)', () => {
+  const rw = [
+    { ...work(1, 'Vol 1', 1, true), unit: 'volume', coversFrom: 1, coversTo: 9 },
+    { ...work(2, 'Vol 3', 3), unit: 'volume', coversFrom: 18, coversTo: 26 },
+    { ...work(31, 'Cap 31', 31), unit: 'chapter' },
+  ];
+  const st = { ranged: true, order: [1, 2, 31], nested: {}, unplaced: [], gaps: [{ from: 10, to: 17 }, { from: 27, to: 30 }], chapters: 20, read: 9, readSpans: [{ from: 1, to: 9 }] };
+
+  it('draws it when some work says what it contains, with the chips that say the same in words', async () => {
+    await open({ role: 'reader', data: { ...detail(rw), story: st } });
+    const ruler = labelled('Régua da série');
+    expect(ruler).not.toBeNull();
+    expect(ruler.textContent).toContain('Lido: caps. 1 a 9');
+    expect(ruler.textContent).toContain('Sem arquivo: caps. 10 a 17 · caps. 27 a 30');
+    expect(ruler.querySelector('svg').getAttribute('aria-label')).toContain('Régua dos capítulos 1 a 31');
+  });
+
+  it('is not there when no work says what it contains', async () => {
+    await open({ role: 'reader', data: { ...detail(trio), story: { ranged: false, order: [], nested: {}, unplaced: [], gaps: [] } } });
+    expect(labelled('Régua da série')).toBeNull();
   });
 });
