@@ -21,6 +21,7 @@ import { WorkCategoriesEditor } from '../../categories/components/WorkCategories
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { CoverCropDialog } from './CoverCropDialog';
 import { CoverSearchDialog } from './CoverSearchDialog';
+import { CoversFields } from './CoversFields';
 import { SHARE_FIELDS, SHARE_MODES, SHARE_WHERE, previewLines, shareRequest } from '../shareToSeries';
 import { useResetWorkCover, useSetWorkCover } from '../api/useWorkCover';
 
@@ -172,6 +173,9 @@ function EditForm({ work, onClose }) {
   // Where a chapter sits (DEC-169): the bound volume that collected it, and its arc.
   const [volumeNumber, setVolumeNumber] = useState(meta.volumeNumber ? String(meta.volumeNumber) : '');
   const [storyArc, setStoryArc] = useState(meta.storyArc || '');
+  // The part of the story the file contains (DEC-202): from which chapter to which.
+  const [coversFrom, setCoversFrom] = useState(meta.coversFrom != null ? String(meta.coversFrom) : '');
+  const [coversTo, setCoversTo] = useState(meta.coversTo != null ? String(meta.coversTo) : '');
   const [isbn, setIsbn] = useState(meta.isbn || '');
   const [publisher, setPublisher] = useState(meta.publisher || '');
   const [language, setLanguage] = useState(meta.language || '');
@@ -242,6 +246,8 @@ function EditForm({ work, onClose }) {
       comic_kind: comicKind,
       volume_number: volumeNumber.trim(),
       story_arc: storyArc.trim(),
+      covers_from: coversFrom.trim(),
+      covers_to: coversTo.trim(),
       isbn,
       publisher,
       language,
@@ -306,6 +312,9 @@ function EditForm({ work, onClose }) {
         <Field label="Arco">
           <input className={inputClass} value={storyArc} maxLength={255} onChange={(e) => setStoryArc(e.target.value)} placeholder="Ex.: A Era de Ouro" disabled={busy} />
         </Field>
+        {['volume', 'oneshot', 'chapter'].includes(unit) && (
+          <CoversFields from={coversFrom} to={coversTo} onFrom={setCoversFrom} onTo={setCoversTo} unit={unit} position={seriesIndex} collectionId={collectionId} disabled={busy} />
+        )}
         <Field label="Quadrinho ou mangá">
           <select className={inputClass} value={comicKind} onChange={(e) => setComicKind(e.target.value)} disabled={busy}>
             <option value="">Não informado</option>

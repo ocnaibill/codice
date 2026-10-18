@@ -319,6 +319,7 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// Where to go on in a series (#187), for the page of an official collection that is not retired: a personal list is not a
 	// series, and a retired collection is not read on.
 	var goOn *SeriesStep
+	var story *Story
 	if c.Kind == "official" && !c.Retired {
 		entries, err := loadSeries(h.DB, c.ID, userID)
 		if err != nil {
@@ -326,7 +327,9 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error fetching the collection", http.StatusInternalServerError)
 			return
 		}
-		goOn = continueSeries(entries)
+		goOn = continueFor(entries)
+		built := buildStory(storyItemsOf(entries))
+		story = &built
 	}
 	summary, err := h.summarize(r.Context(), userID, order, works)
 	if err != nil {
@@ -335,5 +338,5 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"collection": c, "works": works, "continue": goOn, "summary": summary})
+	json.NewEncoder(w).Encode(map[string]any{"collection": c, "works": works, "continue": goOn, "summary": summary, "story": story})
 }
