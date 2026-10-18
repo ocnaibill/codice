@@ -261,6 +261,7 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/collections/{id}", cols.Get)
 	r.Get("/works/{id}/series", cols.WorkSeries)
 	colsAdmin := &CollectionsAdminHandler{DB: db}
+	colImages := &CollectionImagesHandler{DB: db, CoversDir: filepath.Join(storageDir, "covers")}
 	r.Post("/collections", colsAdmin.Create)
 	r.Patch("/collections/{id}", colsAdmin.Rename)
 	r.Delete("/collections/{id}", colsAdmin.Retire)
@@ -268,6 +269,10 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Put("/collections/{id}/works/{workId}", colsAdmin.AddWork)
 	r.Delete("/collections/{id}/works/{workId}", colsAdmin.RemoveWork)
 	r.Put("/collections/{id}/order", colsAdmin.Order)
+	r.Put("/collections/{id}/cover", colImages.SetCover)
+	r.Delete("/collections/{id}/cover", colImages.ResetCover)
+	r.Put("/collections/{id}/banner", colImages.SetBanner)
+	r.Delete("/collections/{id}/banner", colImages.ResetBanner)
 	r.Put("/collections/{id}/classification", colsAdmin.Classify)
 	r.Put("/collections/{id}/grouping", colsAdmin.Group)
 	mine := &PersonalCollectionsHandler{DB: db}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { LoadError } from '../../../components/ui/LoadError';
+import { authenticatedUrl } from '../../../lib/api';
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { useGlobalStore } from '../../../store/useGlobalStore';
 import { isStaff, useMe } from '../../auth/api/useMe';
@@ -18,6 +19,7 @@ import {
 } from '../api/useCollections';
 import { collectionLine, COMIC_KINDS, extraGroup, groupByArc, groupByUnit, groupByVolume, numberText, goOnText, sequenceWord, UNITS, unitLabel, viewsOf, wordsOf, worksText } from '../text';
 import { CollectionFavoriteButton } from './CollectionFavoriteButton';
+import { SeriesImages } from './SeriesImages';
 import { ProgressBar } from '../../../components/ui/ProgressBar';
 import { formatReadingTime } from '../../home/utils/format';
 import { placeLabel, remainingText } from '../../reader/placeInWords';
@@ -643,6 +645,9 @@ export function CollectionPage() {
       {collection && (
         <div className="mt-4 flex flex-col gap-6">
           <section className="relative overflow-hidden rounded-2xl bg-surface-alt p-4 shadow-sm sm:p-6" aria-label="Sobre a coleção">
+            {collection.bannerUrl && (
+              <img src={authenticatedUrl(collection.bannerUrl)} alt="" data-testid="series-banner" className="-mx-4 -mt-4 mb-4 aspect-[3/1] w-[calc(100%+2rem)] max-w-none object-cover sm:-mx-6 sm:-mt-6 sm:mb-6 sm:w-[calc(100%+3rem)]" />
+            )}
             <div className="relative grid gap-5 md:grid-cols-[minmax(140px,200px)_minmax(0,1fr)] md:gap-8">
               <div className="mx-auto w-32 md:mx-0 md:w-full">
                 <div className="relative">
@@ -757,6 +762,7 @@ export function CollectionPage() {
                   </button>
                 )}
                 <button onClick={() => setMode(mode === 'add' ? null : 'add')} aria-pressed={mode === 'add'} className={BUTTON}>Acrescentar obra</button>
+                {official && <button onClick={() => setMode(mode === 'images' ? null : 'images')} aria-pressed={mode === 'images'} className={BUTTON}>Capa e fundo</button>}
                 {official && <button onClick={() => setMode(mode === 'classify' ? null : 'classify')} aria-pressed={mode === 'classify'} className={BUTTON}>Classificar obras</button>}
                 {official && <button onClick={() => setMode(mode === 'group' ? null : 'group')} aria-pressed={mode === 'group'} className={BUTTON}>Agrupar capítulos</button>}
                 {!collection.system && <button onClick={() => setMode(mode === 'retire' ? null : 'retire')} aria-pressed={mode === 'retire'} className={BUTTON}>Aposentar</button>}
@@ -779,6 +785,7 @@ export function CollectionPage() {
           {staff && mode === 'describe' && <DescribeForm collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'add' && <AddWorkPanel collection={collection} members={works} onDone={() => setMode(null)} />}
           {staff && official && mode === 'group' && <GroupPanel collection={collection} onDone={() => setMode(null)} />}
+          {staff && official && mode === 'images' && <SeriesImages collection={collection} onDone={() => setMode(null)} />}
           {staff && official && mode === 'classify' && <ClassifyPanel collection={collection} onDone={() => setMode(null)} />}
           {staff && mode === 'retire' && (
             <div role="alertdialog" aria-label={`Aposentar a ${words.thing}`} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-hairline bg-white p-4 text-sm text-ink-soft">

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"html"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/lib/pq"
 	"github.com/ocnaibill/codice/backend/internal/people"
 )
 
@@ -24,6 +26,8 @@ type opdsNav struct {
 	Count   int // how many works it leads to; 0 leaves it unsaid
 	// Navigation says it leads to a list of other feeds (the authors) and not to a list of books.
 	Navigation bool
+	// Cover is the picture of the entry (the cover of a series), "" for an entry that has none.
+	Cover string
 }
 
 func opdsNavEntry(base string, n opdsNav) string {
@@ -56,6 +60,9 @@ func opdsNavEntry(base string, n opdsNav) string {
 		link = strings.Replace(link, "/>", fmt.Sprintf(" thr:count=\"%d\"/>", n.Count), 1)
 	}
 	b.WriteString("  " + link)
+	if n.Cover != "" {
+		b.WriteString(opdsImageLinks(base, n.Cover))
+	}
 	b.WriteString("  </entry>\n")
 	return b.String()
 }
@@ -228,7 +235,44 @@ func (h *OPDSHandler) SeriesFeed(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error fetching series", http.StatusInternalServerError)
 		return
 	}
+	h.seriesCovers(r.Context(), entries)
 	h.opdsNavFeed(w, r, "urn:uuid:codice-series", "Séries", "/opds/v1.2/series", entries, total, page)
+}
+
+// seriesCovers gives each series of a page its cover (DEC-201): the one the staff chose, or the cover of its first work that has one. A series
+// with none keeps no picture, and a failure here only leaves the pictures out.
+func (h *OPDSHandler) seriesCovers(ctx context.Context, entries []opdsNav) {
+	ids := make([]int64, 0, len(entries))
+	for _, e := range entries {
+		if id, err := strconv.ParseInt(strings.TrimPrefix(e.ID, "series-"), 10, 64); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows, err := h.DB.QueryContext(ctx, `
+		SELECT c.id, COALESCE(NULLIF(c.cover_url, ''), (array_agg(wp.cover_url ORDER BY cw.position NULLS LAST, w.original_title, w.id)
+		                                                 FILTER (WHERE wp.cover_url IS NOT NULL AND wp.cover_url <> ''))[1], '')
+		FROM collections c
+		JOIN collection_works cw ON cw.collection_id = c.id
+		JOIN works w ON w.id = cw.work_id AND w.retired_at IS NULL
+		LEFT JOIN work_primary wp ON wp.work_id = w.id
+		WHERE c.id = ANY($1)
+		GROUP BY c.id, c.cover_url`, pq.Array(ids))
+	if err != nil {
+		log.Println("Error fetching the covers of the series:", err)
+		return
+	}
+	defer rows.Close()
+	covers := map[string]string{}
+	for rows.Next() {
+		var id int64
+		var cover string
+		if rows.Scan(&id, &cover) == nil && cover != "" {
+			covers["series-"+strconv.FormatInt(id, 10)] = cover
+		}
+	}
+	for i := range entries {
+		entries[i].Cover = covers[entries[i].ID]
+	}
 }
 
 // collectionWorksFeed is the works of a collection, in the order the collection gives them (the number in the series, then the order

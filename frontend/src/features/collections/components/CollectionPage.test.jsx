@@ -1453,3 +1453,56 @@ describe('CollectionPage: a book outside the main line of the series (DEC-188)',
     expect(withBadge[0].textContent).toContain('As Foices');
   });
 });
+
+describe('CollectionPage, the cover and the banner of the series (DEC-201)', () => {
+  it('shows the banner at the top, when the staff chose one', async () => {
+    await open({ role: 'reader', data: detail(trio, { bannerUrl: '/covers/cover_manual_banner_c5_1.jpg' }) });
+    expect(container.querySelector('[data-testid="series-banner"]').getAttribute('src')).toBe('/covers/cover_manual_banner_c5_1.jpg');
+  });
+
+  it('has no banner when nobody chose one', async () => {
+    await open({ role: 'reader', data: detail(trio) });
+    expect(container.querySelector('[data-testid="series-banner"]')).toBeNull();
+  });
+
+  it('is changed by the staff only', async () => {
+    await open({ role: 'reader' });
+    expect(button('Capa e fundo')).toBeUndefined();
+    await act(async () => { root.render(<div />); });
+    await open({ role: 'admin' });
+    await click(button('Capa e fundo'));
+    expect(labelled('Capa e fundo da série')).toBeTruthy();
+    await click(button('Capa e fundo'));
+    expect(labelled('Capa e fundo da série')).toBeNull();
+  });
+
+  it('goes back to the automatic cover and takes the banner away, with the calls of the server', async () => {
+    await open({ role: 'admin', data: detail(trio, { coverManual: true, coverUrl: '/covers/cover_manual_c5_1.jpg', bannerUrl: '/covers/cover_manual_banner_c5_1.jpg' }) });
+    await click(button('Capa e fundo'));
+    await click(button('Voltar à capa automática'));
+    expect(api.delete).toHaveBeenCalledWith('/collections/5/cover');
+    await click(button('Tirar o fundo'));
+    expect(api.delete).toHaveBeenCalledWith('/collections/5/banner');
+  });
+
+  it('offers to go back only to what was chosen', async () => {
+    await open({ role: 'admin', data: detail(trio) });
+    await click(button('Capa e fundo'));
+    expect(button('Voltar à capa automática')).toBeUndefined();
+    expect(button('Tirar o fundo')).toBeUndefined();
+    expect(button('Trocar capa…')).toBeTruthy();
+    expect(button('Escolher fundo…')).toBeTruthy();
+  });
+
+  it('refuses a file that is not a picture, before sending anything', async () => {
+    await open({ role: 'admin' });
+    await click(button('Capa e fundo'));
+    const input = container.querySelector('input[aria-label="Imagem da capa"]');
+    await act(async () => {
+      Object.defineProperty(input, 'files', { value: [new File(['x'], 'a.pdf', { type: 'application/pdf' })], configurable: true });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(container.textContent).toContain('Escolha uma imagem JPEG, PNG ou WebP.');
+    expect(api.put).not.toHaveBeenCalled();
+  });
+});

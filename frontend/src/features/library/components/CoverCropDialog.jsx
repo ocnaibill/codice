@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useDialog } from '../../../lib/useDialog';
 import {
-  FRAME_WIDTH, FRAME_HEIGHT, MAX_ZOOM, baseScale, centered, clampOffset, cutToBlob, zoomAround,
+  BANNER, COVER, MAX_ZOOM, baseScale, centered, clampOffset, cutToBlob, zoomAround,
 } from '../coverCrop';
 
 const STEP = 12;
@@ -11,9 +11,11 @@ const STEP = 12;
  * zoom is a slider. What leaves here is the cut (a JPEG of 600×900), which is what the server is sent, and the frame is what the
  * card will show.
  *
- * `file` is the picture chosen; onConfirm(blob) is called with the cut; `busy` and `error` are of whoever sends it.
+ * `file` is the picture chosen; onConfirm(blob) is called with the cut; `busy` and `error` are of whoever sends it. With `banner` the
+ * frame is the wide one of the banner of a series (3:1, DEC-201).
  */
-export function CoverCropDialog({ file, onConfirm, onCancel, busy = false, error = '' }) {
+export function CoverCropDialog({ file, onConfirm, onCancel, busy = false, error = '', banner = false }) {
+  const shape = banner ? BANNER : COVER;
   const dialogRef = useRef(null);
   const frameRef = useRef(null);
   // The focus goes to the frame, so that the arrow keys move the picture at once (and the dialog is not scrolled to a button).
@@ -33,21 +35,21 @@ export function CoverCropDialog({ file, onConfirm, onCancel, busy = false, error
     picture.onload = () => {
       setImage(picture);
       setZoom(1);
-      setOffset(centered(picture.naturalWidth, picture.naturalHeight, 1));
+      setOffset(centered(picture.naturalWidth, picture.naturalHeight, 1, shape));
     };
     picture.onerror = () => setFailed(true);
     picture.src = url;
     return () => URL.revokeObjectURL(url);
-  }, [file]);
+  }, [file, shape]);
 
   const width = image?.naturalWidth;
   const height = image?.naturalHeight;
-  const scale = image ? baseScale(width, height) * zoom : 1;
+  const scale = image ? baseScale(width, height, shape) * zoom : 1;
 
-  const move = (dx, dy) => image && setOffset((current) => clampOffset({ x: current.x + dx, y: current.y + dy }, width, height, zoom));
+  const move = (dx, dy) => image && setOffset((current) => clampOffset({ x: current.x + dx, y: current.y + dy }, width, height, zoom, shape));
   const changeZoom = (next) => {
     if (!image) return;
-    setOffset((current) => zoomAround(current, width, height, zoom, next));
+    setOffset((current) => zoomAround(current, width, height, zoom, next, shape));
     setZoom(next);
   };
 
@@ -73,7 +75,7 @@ export function CoverCropDialog({ file, onConfirm, onCancel, busy = false, error
     setCutFailed(false);
     setCutting(true);
     try {
-      onConfirm(await cutToBlob(image, offset, zoom));
+      onConfirm(await cutToBlob(image, offset, zoom, shape));
     } catch {
       setCutFailed(true);
     } finally {
@@ -86,10 +88,12 @@ export function CoverCropDialog({ file, onConfirm, onCancel, busy = false, error
       className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center bg-black/50 p-4"
       onClick={(event) => event.target === event.currentTarget && !busy && onCancel()}
     >
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Recortar a capa" className="max-h-full w-full max-w-sm animate-pop-in overflow-y-auto rounded-xl bg-white p-5 shadow-2xl">
-        <h2 className="font-display text-xl font-semibold text-ink">Recortar a capa</h2>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={banner ? 'Recortar o fundo' : 'Recortar a capa'} className={`max-h-full w-full ${banner ? 'max-w-md' : 'max-w-sm'} animate-pop-in overflow-y-auto rounded-xl bg-white p-5 shadow-2xl`}>
+        <h2 className="font-display text-xl font-semibold text-ink">{banner ? 'Recortar o fundo' : 'Recortar a capa'}</h2>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-soft">
-          Arraste a imagem e ajuste o zoom até a capa ficar como você quer. Toda capa do acervo tem a proporção 2:3.
+          {banner
+            ? 'Arraste a imagem e ajuste o zoom até o fundo ficar como você quer. O fundo da série tem a proporção 3:1, larga como uma faixa.'
+            : 'Arraste a imagem e ajuste o zoom até a capa ficar como você quer. Toda capa do acervo tem a proporção 2:3.'}
         </p>
 
         {failed ? (
@@ -100,7 +104,7 @@ export function CoverCropDialog({ file, onConfirm, onCancel, busy = false, error
               ref={frameRef}
               role="group"
               tabIndex={0}
-              aria-label="Área da capa. Use as setas do teclado para mover a imagem."
+              aria-label={`Área d${banner ? 'o fundo' : 'a capa'}. Use as setas do teclado para mover a imagem.`}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
@@ -108,7 +112,7 @@ export function CoverCropDialog({ file, onConfirm, onCancel, busy = false, error
               onKeyDown={onKeyDown}
               data-testid="cover-frame"
               className="relative mx-auto mt-4 cursor-grab touch-none select-none overflow-hidden rounded-md bg-surface-alt outline-none ring-1 ring-border-hairline focus-visible:ring-2 focus-visible:ring-brand active:cursor-grabbing"
-              style={{ width: FRAME_WIDTH, height: FRAME_HEIGHT }}
+              style={{ width: shape.frameWidth, height: shape.frameHeight }}
             >
               {image && (
                 <img
@@ -150,7 +154,7 @@ export function CoverCropDialog({ file, onConfirm, onCancel, busy = false, error
             disabled={!image || busy || cutting}
             className="min-h-10 rounded bg-brand px-4 py-2 text-[13px] font-medium text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {busy || cutting ? 'Salvando…' : 'Usar esta capa'}
+            {busy || cutting ? 'Salvando…' : `Usar ${banner ? 'este fundo' : 'esta capa'}`}
           </button>
         </div>
       </div>

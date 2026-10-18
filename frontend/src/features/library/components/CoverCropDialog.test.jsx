@@ -150,4 +150,13 @@ describe('CoverCropDialog (DEC-173)', () => {
     const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results.violations.map((v) => v.id)).toEqual([]);
   });
+
+  it('is the wide frame of the banner of a series when asked, and says so', async () => {
+    size = { w: 1500, h: 500 };
+    await show({ banner: true });
+    const frame = container.querySelector('[data-testid="cover-frame"]');
+    expect([frame.style.width, frame.style.height]).toEqual(['360px', '120px']);
+    expect(container.querySelector('[role="dialog"]').getAttribute('aria-label')).toBe('Recortar o fundo');
+    expect(button('Usar este fundo')).toBeTruthy();
+  });
 });

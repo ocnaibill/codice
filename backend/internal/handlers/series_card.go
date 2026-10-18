@@ -74,14 +74,14 @@ func loadSeriesCards(db *sql.DB, collectionIDs []int64, userID string) (map[int6
 	rows, err := db.Query(`
 		SELECT cw.collection_id, c.name,
 		       COUNT(*) FILTER (WHERE w.unit = 'volume'), COUNT(*) FILTER (WHERE w.unit = 'chapter'), COUNT(*) FILTER (WHERE w.unit = 'oneshot'),
-		       COALESCE((array_agg(wp.cover_url ORDER BY cw.position NULLS LAST, w.original_title, w.id)
+		       COALESCE(NULLIF(c.cover_url, ''), (array_agg(wp.cover_url ORDER BY cw.position NULLS LAST, w.original_title, w.id)
 		                 FILTER (WHERE wp.cover_url IS NOT NULL AND wp.cover_url <> ''))[1], '')
 		FROM collection_works cw
 		JOIN collections c ON c.id = cw.collection_id
 		JOIN works w ON w.id = cw.work_id AND w.retired_at IS NULL AND w.unit IS NOT NULL
 		LEFT JOIN work_primary wp ON wp.work_id = w.id
 		WHERE cw.collection_id = ANY($1) AND cw.official
-		GROUP BY cw.collection_id, c.name`, pq.Array(collectionIDs))
+		GROUP BY cw.collection_id, c.name, c.cover_url`, pq.Array(collectionIDs))
 	if err != nil {
 		return nil, err
 	}

@@ -33,8 +33,11 @@ type Collection struct {
 	WorkCount         int    `json:"workCount"`
 	CompletedCount    int    `json:"completedCount"`
 	CoverURL          string `json:"coverUrl"`
-	Retired           bool   `json:"retired,omitempty"`
-	IsFavorite        bool   `json:"isFavorite"`
+	// CoverIsManual says the cover was chosen by the staff (DEC-201), and BannerURL is the banner they chose, if any; only the page of one asks.
+	CoverIsManual bool   `json:"coverManual,omitempty"`
+	BannerURL     string `json:"bannerUrl,omitempty"`
+	Retired       bool   `json:"retired,omitempty"`
+	IsFavorite    bool   `json:"isFavorite"`
 	// System is the key of a list the Códice keeps for the person ("read_later"): it is not renamed or put away. Empty for the others.
 	System string `json:"system,omitempty"`
 }
@@ -131,8 +134,8 @@ const collectionStats = `
 	LEFT JOIN LATERAL (
 		SELECT count(*) AS works,
 		       count(*) FILTER (WHERE rp.completed_at IS NOT NULL) AS completed,
-		       (array_agg(wp.cover_url ORDER BY cw.position NULLS LAST, w.original_title, w.id)
-		         FILTER (WHERE wp.cover_url IS NOT NULL AND wp.cover_url <> ''))[1] AS cover
+		       COALESCE(NULLIF(c.cover_url, ''), (array_agg(wp.cover_url ORDER BY cw.position NULLS LAST, w.original_title, w.id)
+		         FILTER (WHERE wp.cover_url IS NOT NULL AND wp.cover_url <> ''))[1]) AS cover
 		FROM collection_works cw
 		JOIN works w ON w.id = cw.work_id AND w.retired_at IS NULL
 		LEFT JOIN work_primary wp ON wp.work_id = w.id
@@ -220,9 +223,11 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		visible = `(c.kind = 'official' OR c.owner_id = $1::uuid)`
 	}
 	var c Collection
+	var manualCover string
 	err = h.DB.QueryRow(`SELECT c.id, c.kind, c.name, c.retired_at IS NOT NULL, `+isFavoriteCollection+`, COALESCE(c.system_key, ''), COALESCE(c.description, ''), COALESCE(c.reading_direction, ''),
-		       COALESCE(c.publication_status, ''), COALESCE(c.original_title, '') FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
-		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite, &c.System, &c.Description, &c.ReadingDirection, &c.PublicationStatus, &c.OriginalTitle)
+		       COALESCE(c.publication_status, ''), COALESCE(c.original_title, ''), COALESCE(c.cover_url, ''), COALESCE(c.banner_url, '')
+		FROM collections c WHERE c.id = $2 AND `+visible, userID, id).
+		Scan(&c.ID, &c.Kind, &c.Name, &c.Retired, &c.IsFavorite, &c.System, &c.Description, &c.ReadingDirection, &c.PublicationStatus, &c.OriginalTitle, &manualCover, &c.BannerURL)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Collection not found", http.StatusNotFound)
 		return
@@ -285,13 +290,16 @@ func (h *CollectionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 			c.CompletedCount++
 		}
 	}
-	// The cover of the collection is the first one a work of it has.
+	// The cover of the collection is the one the staff chose (DEC-201), or else the first one a work of it has.
 	c.CoverURL = "/covers/placeholder.svg"
 	for _, cw := range works {
 		if cw.Available && cw.CoverURL != "/covers/placeholder.svg" {
 			c.CoverURL = cw.CoverURL
 			break
 		}
+	}
+	if manualCover != "" {
+		c.CoverURL, c.CoverIsManual = manualCover, true
 	}
 	// Where to go on in a series (#187), for the page of an official collection that is not retired: a personal list is not a
 	// series, and a retired collection is not read on.
