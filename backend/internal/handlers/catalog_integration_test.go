@@ -331,6 +331,10 @@ func newCatalogStack(t *testing.T) *catalogStack {
 	r.Get("/admin/device-pairing", device.PairingSettings)
 	r.Put("/admin/device-pairing", device.SetPairingSettings)
 	kosync := &KosyncHandler{DB: db, Sessions: &sessions.Store{DB: db}, StorageRoot: storageDir}
+	deviceNotes := &DeviceNotesHandler{DB: db, Kosync: kosync, StorageRoot: storageDir}
+	r.Get("/device/files/{fileId}/notes", deviceNotes.List)
+	r.Put("/device/files/{fileId}/notes/{ref}", deviceNotes.Put)
+	r.Delete("/device/files/{fileId}/notes/{ref}", deviceNotes.Delete)
 	r.Post("/kosync/users/create", kosync.Create)
 	r.With(kosync.Auth).Get("/kosync/users/auth", kosync.Authorize)
 	r.With(kosync.Auth).Put("/kosync/syncs/progress", kosync.PutProgress)

@@ -113,7 +113,9 @@ var xpointerStep = regexp.MustCompile(`^([A-Za-z][\w.-]*)(?:\[(\d+)\])?$`)
 // far into the chapter it is (by the characters before it). False when the path does not lead to an element of the chapter.
 func cfiOfXPointer(html *xnode, total, item int, tail string) (string, float64, bool) {
 	steps := strings.Split(strings.Trim(tail, "/"), "/")
-	if len(steps) == 0 || steps[0] != "body" {
+	// KOReader writes the places of its highlights with the index of every step, even the first ("body[1]/div[1]/p[7]"); its progress leaves the
+	// first out. Both are the same element.
+	if len(steps) == 0 || (steps[0] != "body" && steps[0] != "body[1]") {
 		return "", 0, false
 	}
 	var body *xnode

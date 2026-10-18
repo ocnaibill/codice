@@ -1,6 +1,6 @@
 # Proposta: destaques e notas do leitor, a par do Códice web
 
-**Proposta, aguardando confirmação do mantenedor.** A regra de fundo foi decidida em 18/10/2026 (DEC-199): o leitor passa a escrever anotações no Códice, além do progresso, e a Anotações do leitor e a do web mostram as mesmas coisas. Este documento diz *como*; nada dele foi implementado, e o que está aqui não é decisão até ser confirmado. Parte da issue [#327](https://github.com/ocnaibill/codice/issues/327).
+**Decidida pelo mantenedor em 18/10/2026 (respostas na seção 5), implementada em seguida.** A regra de fundo é a DEC-199: o leitor passa a escrever anotações no Códice, além do progresso, e a Anotações do leitor e a do web mostram as mesmas coisas. Este documento diz *como*. Parte da issue [#327](https://github.com/ocnaibill/codice/issues/327).
 
 ## 1. O que existe hoje
 
@@ -48,13 +48,18 @@ PDF e quadrinho (só EPUB e formatos de texto reflowable primeiro); marcadores d
 **Servidor:** migração (`device_ref`, origem, carimbos), as três rotas, o conversor de ponto a intervalo (reaproveita `kosync_place.go`), testes de ida e volta (xpointer → CFI → xpointer), idempotência, escopo do acesso, apagar só o que é do aparelho, cor.
 **Plugin:** a fila, o ouvinte do KOReader, o envio, a junção ao abrir, a tela de conflito quando uma edição colide, testes com um KOReader de mentira e no emulador.
 
-## 5. Decisões que peço ao mantenedor
+## 5. Decisões do mantenedor (18/10/2026)
 
-1. **Origem do apagar:** apagar no aparelho apaga no web (só o que o aparelho criou, ou também o que veio do web)? Eu proponho: o que o aparelho **criou ou já recebeu** apaga nos dois lados; o que só existe no web e nunca foi ao aparelho não é tocado.
-2. **Cores:** aceita a tabela fixa com a cor original guardada?
-3. **Primeira versão só EPUB (e textos reflowable)**, PDF e quadrinhos depois?
-4. **Notas do web sem lugar no livro** ficam só na aba Anotações do plugin?
-5. **Ordem:** primeiro aparelho → Códice (grifar no Kindle e aparecer no web), depois Códice → aparelho; ou os dois juntos?
+1. **Origem do apagar:** como proposto. Apagar no aparelho apaga no web o que o aparelho criou **ou já recebeu**; o que só existe no web e nunca foi ao aparelho não é tocado.
+2. **Cores:** **sem tabela.** O Kindle é preto e branco: a cor não é do aparelho para dizer. Um destaque novo do aparelho recebe a cor com que o Códice começa; um editado mantém a que tinha; o que o web grifou chega ao livro com o traço padrão (`lighten`), e a cor fica guardada no Códice.
+3. **Primeira versão só EPUB.** PDF e quadrinhos entram depois, junto com uma atualização das anotações de quadrinhos no web e no Kindle (issue no repositório).
+4. **Notas do web sem lugar que o Kindle entenda** ficam só na aba Anotações do plugin.
+5. **Os dois sentidos já, na mesma entrega** (fases 1 e 2 juntas).
+
+## 5.1. Como ficou
+
+- **Servidor:** migração 00094 (`device_ref`, `device_pos0/pos1`, `device_name`, `device_at`; índice único por pessoa, arquivo e referência); `PUT /device/files/{fileId}/notes/{ref}` (cria ou muda; com `id` no corpo, a nota que o web já tinha vira do aparelho, mantendo cor e etiquetas), `DELETE /device/files/{fileId}/notes/{ref}` (só a do aparelho; com `?id=`, a que o aparelho recebeu do web), `GET /device/files/{fileId}/notes?known=…` (as anotações do arquivo, e quais das conhecidas sumiram). A conversão do ponto do destaque para o CFI reaproveita a do progresso, e aprendeu o jeito de o KOReader escrever os passos (`body[1]/div[1]/p[7]/text()[1].12`).
+- **Plugin:** `codice/notesync.lua` (decisões, testadas) e `codice/annotations.lua` (documento, estado do livro, rede); a fila fica no estado do livro e se esvazia com rede; o envio espera 5 s sem mudanças; ao abrir o livro com rede o que o Códice tem é trazido (o trecho do web é achado no livro pelo texto, a partir do parágrafo).
 
 ## 6. Fases (um PR por fase)
 
