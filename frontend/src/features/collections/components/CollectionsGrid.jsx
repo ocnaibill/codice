@@ -63,6 +63,7 @@ function CollectionCard({ item, onOpen, canRestore, kind }) {
           <p className="library-book-status">{item.retired ? words.retired : words.dialog}</p>
           <h3 title={item.name}>{item.name}</h3>
           <p className="library-author">{collectionLine(item)}</p>
+          {item.publisher && <p className="library-book-tags" title="Editora">{item.publisher}</p>}
         </div>
       </div>
       {!item.retired && (

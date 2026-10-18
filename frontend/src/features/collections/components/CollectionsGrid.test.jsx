@@ -271,4 +271,11 @@ describe('CollectionsGrid: favoriting a collection', () => {
     expect(container.querySelector('.library-favorite')).toBeNull();
     expect(container.querySelector('[aria-label="Restaurar a coleção Antiga"]')).not.toBeNull();
   });
+
+  it('names the publisher on the card of a series (DEC-203)', async () => {
+    await open({ list: page([col(1, 'Berserk', { publisher: 'Panini, JBC' }), col(2, 'Duna')]) });
+    const cards = [...container.querySelectorAll('article')];
+    expect(cards[0].querySelector('[title="Editora"]').textContent).toBe('Panini, JBC');
+    expect(cards[1].querySelector('[title="Editora"]')).toBeNull();
+  });
 });

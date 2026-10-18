@@ -21,6 +21,7 @@ import { WorkCategoriesEditor } from '../../categories/components/WorkCategories
 import { WorkCover } from '../../../components/ui/WorkCover';
 import { CoverCropDialog } from './CoverCropDialog';
 import { CoverSearchDialog } from './CoverSearchDialog';
+import { SHARE_FIELDS, SHARE_MODES, SHARE_WHERE, previewLines, shareRequest } from '../shareToSeries';
 import { useResetWorkCover, useSetWorkCover } from '../api/useWorkCover';
 
 const LOCKS = [
@@ -181,11 +182,28 @@ function EditForm({ work, onClose }) {
   const [tags, setTags] = useState((work.tags || []).join(', '));
   const [locks, setLocks] = useState(meta.locks || {});
   const [retiring, setRetiring] = useState(false);
+  // What to hand on to the other works of the series once this one is saved (DEC-203), and what the preview said of it.
+  const collectionId = meta.seriesCollectionId;
+  const [share, setShare] = useState({ fields: [], where: 'all', mode: 'fill' });
+  const [offer, setOffer] = useState(null);
+  const sharing = !!collectionId && share.fields.length > 0;
+  const ask = useMutation({
+    mutationFn: (preview) => api.post(`/collections/${collectionId}/share`, shareRequest({ source: work.id, ...share, preview })).then((response) => response.data),
+  });
 
   const save = useMutation({
     mutationFn: (body) => api.put(`/works/${work.id}`, body),
     onSuccess: () => {
       refreshLibrary(queryClient);
+      if (!sharing) return onClose();
+      // The preview is of what was just saved: the server takes the values from the work as it is stored.
+      ask.mutate(true, { onSuccess: setOffer, onError: onClose });
+    },
+  });
+  const applyShare = () => ask.mutate(false, {
+    onSuccess: (done) => {
+      refreshLibrary(queryClient);
+      toast.success('Levado para a série', { message: `${done.worksChanged} ${done.worksChanged === 1 ? 'obra atualizada' : 'obras atualizadas'}.` });
       onClose();
     },
   });
@@ -209,7 +227,7 @@ function EditForm({ work, onClose }) {
       });
     },
   });
-  const busy = save.isPending || retire.isPending;
+  const busy = save.isPending || retire.isPending || ask.isPending;
 
   const submit = (event) => {
     event.preventDefault();
@@ -245,6 +263,7 @@ function EditForm({ work, onClose }) {
   };
 
   return (
+    <>
     <form onSubmit={submit} className="flex flex-col gap-4">
       <p className="text-sm text-ink-soft">
         Corrija à mão o que o arquivo e os provedores não acertaram. O que você salva fica travado contra a extração automática.
@@ -325,6 +344,48 @@ function EditForm({ work, onClose }) {
         <textarea className={`${inputClass} resize-y`} rows={4} value={description} onChange={(e) => setDescription(e.target.value)} disabled={busy} />
       </Field>
 
+      {collectionId && (
+        <fieldset aria-label="Levar para a série" className="flex flex-col gap-3 border-t border-border-hairline pt-4">
+          <legend className="mb-1 text-xs font-medium text-ink-soft">Levar para a série (opcional)</legend>
+          <p className="text-xs text-ink-faint">
+            Depois de salvar, o que você marcar vai para as outras obras da série, e você vê quantas mudam antes de confirmar.
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {SHARE_FIELDS.map(([field, label]) => (
+              <label key={field} className="flex items-center gap-2 text-xs text-ink-soft">
+                <input
+                  type="checkbox"
+                  checked={share.fields.includes(field)}
+                  disabled={busy}
+                  onChange={(e) => setShare((prev) => ({ ...prev, fields: e.target.checked ? [...prev.fields, field] : prev.fields.filter((f) => f !== field) }))}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          {share.fields.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-lg bg-surface-alt p-3 text-xs text-ink-soft">
+              <div className="flex flex-wrap gap-x-4 gap-y-1" role="radiogroup" aria-label="Para quais obras">
+                {SHARE_WHERE.map(([id, label]) => (
+                  <label key={id} className="flex items-center gap-2">
+                    <input type="radio" name="share-where" checked={share.where === id} onChange={() => setShare((prev) => ({ ...prev, where: id }))} disabled={busy} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1" role="radiogroup" aria-label="Como">
+                {SHARE_MODES.map(([id, label]) => (
+                  <label key={id} className="flex items-center gap-2">
+                    <input type="radio" name="share-mode" checked={share.mode === id} onChange={() => setShare((prev) => ({ ...prev, mode: id }))} disabled={busy} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </fieldset>
+      )}
+
       <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border-hairline pt-4">
         <legend className="mb-1 text-xs font-medium text-ink-soft">Travar contra a extração automática</legend>
         {LOCKS.map(([field, label]) => (
@@ -373,6 +434,23 @@ function EditForm({ work, onClose }) {
         />
       )}
     </form>
+    {/* outside the form: the buttons of the dialog would send it again */}
+    {offer && (
+      <ConfirmDialog
+        title="Levar para a série?"
+        message={(
+          <div className="flex flex-col gap-2">
+            {previewLines(offer, share.mode).map((line) => <p key={line}>{line}</p>)}
+            {ask.isError && <p role="alert" className="text-danger">{reasonOf(ask.error, 'Não foi possível levar para a série.')}</p>}
+          </div>
+        )}
+        choices={offer.worksChanged > 0 ? [{ label: 'Levar para a série', value: true }] : []}
+        cancelLabel={offer.worksChanged > 0 ? 'Agora não' : 'Fechar'}
+        onChoose={applyShare}
+        onCancel={onClose}
+      />
+    )}
+    </>
   );
 }
 

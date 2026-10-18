@@ -182,3 +182,23 @@ func TestPublisher_TheCardOfASeriesNamesThePublishersOfItsWorksMostCommonFirst(t
 		t.Errorf("after the chapter went to the trash: %q", got)
 	}
 }
+
+func TestShare_TheMetadataOfAWorkSaysWhichSeriesItIsInForTheEditor(t *testing.T) {
+	s := newCatalogStack(t)
+	col, vol, _, _ := s.aSeries()
+	loose := s.addWork("Solto", "X", "solto.epub", "epub")
+	var m struct {
+		Metadata struct {
+			SeriesCollectionID *int64 `json:"seriesCollectionId"`
+		} `json:"metadata"`
+	}
+	json.Unmarshal(s.do(admin, "GET", fmt.Sprintf("/works/%d", vol), "").Body.Bytes(), &m)
+	if m.Metadata.SeriesCollectionID == nil || *m.Metadata.SeriesCollectionID != col {
+		t.Errorf("series collection of a work in a series = %v, want %d", m.Metadata.SeriesCollectionID, col)
+	}
+	m.Metadata.SeriesCollectionID = nil
+	json.Unmarshal(s.do(admin, "GET", fmt.Sprintf("/works/%d", loose), "").Body.Bytes(), &m)
+	if m.Metadata.SeriesCollectionID != nil {
+		t.Errorf("a work in no series has none: %v", *m.Metadata.SeriesCollectionID)
+	}
+}
