@@ -109,6 +109,10 @@ func newAuthStack(t *testing.T) *authStack {
 	r.With(a.Middleware).Delete("/users/{id}/sessions/{sid}", sess.RevokeFor)
 	r.With(a.Middleware).Get("/probe", probe)
 	r.With(a.AssetsWithBasic).Get("/files/probe", probe)
+	// what a reading device reads (DEC-197): the web's handlers, opened by the access of the device
+	deviceLibrary := &LibraryHandler{DB: db}
+	r.With(a.WithBasic).Get("/device/works", deviceLibrary.GetWorks)
+	r.With(a.WithBasic).Get("/device/notes", (&NotesHandler{DB: db}).ListNotes)
 	s.router = r
 	return s
 }
