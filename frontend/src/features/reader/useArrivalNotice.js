@@ -8,9 +8,10 @@ import { arrivalOf, lastTold, markPendingTold, markTold, pendingOf, pendingTold 
  * person chose to start over: those do not open at the saved place.
  *
  * When a device sent a place that was kept apart because the web had a newer one (DEC-191), the person is asked once: the notice has "Ir para
- * lá" (`onGoTo(locator)` opens the book there), and leaving it is staying where they are.
+ * lá" (`onGoTo(locator)` opens the book there), and leaving it is staying where they are. With `onAsk`, the question is not a notice but that
+ * function's to show (the window that puts both places side by side): it gets what `pendingOf` found.
  */
-export function useArrivalNotice(fileId, progress, enabled, onGoTo) {
+export function useArrivalNotice(fileId, progress, enabled, onGoTo, onAsk) {
   const [arrival, setArrival] = useState(null);
   const told = useRef(null);
   const asked = useRef(null);
@@ -34,11 +35,15 @@ export function useArrivalNotice(fileId, progress, enabled, onGoTo) {
     if (!found) return;
     asked.current = fileId;
     markPendingTold(fileId, found.at);
+    if (onAsk) {
+      onAsk(found);
+      return;
+    }
     toast.info(found.message, {
       key: 'pending',
       duration: 15000,
       action: onGoTo ? { label: 'Ir para lá', onClick: () => onGoTo(found.locator) } : undefined,
     });
-  }, [enabled, fileId, progress, onGoTo]);
+  }, [enabled, fileId, progress, onGoTo, onAsk]);
   return arrival;
 }
