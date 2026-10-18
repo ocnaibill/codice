@@ -538,6 +538,7 @@ func newRouter(d routerDeps) http.Handler {
 	// What a reading device reads to draw its screens (DEC-197): the same handlers the web asks, mounted here so that the access of the device
 	// (Basic, the short password of the pairing) opens them. Only reads; what the device writes is the progress, by KOSync.
 	deviceRead := r.With(catalog, d.Auth.WithBasic)
+	deviceRead.Get("/device/shelf", device.ShelfState)
 	deviceRead.Get("/device/works", libHandler.GetWorks)
 	deviceRead.Get("/device/categories", categories.List)
 	deviceRead.Get("/device/collections", collectionsHandler.List)
