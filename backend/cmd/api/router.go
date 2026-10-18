@@ -538,6 +538,12 @@ func newRouter(d routerDeps) http.Handler {
 	// What a reading device reads to draw its screens (DEC-197): the same handlers the web asks, mounted here so that the access of the device
 	// (Basic, the short password of the pairing) opens them. Only reads; what the device writes is the progress, by KOSync.
 	deviceRead := r.With(catalog, d.Auth.WithBasic)
+	// The annotations of the owner, written by the device too (DEC-199): the highlights and notes it makes, deleted when it deletes them, and the list the
+	// Códice has so that the two are the same.
+	deviceNotes := &handlers.DeviceNotesHandler{DB: db, Kosync: kosync, StorageRoot: d.StoragePath}
+	deviceRead.Get("/device/files/{fileId}/notes", deviceNotes.List)
+	deviceRead.Put("/device/files/{fileId}/notes/{ref}", deviceNotes.Put)
+	deviceRead.Delete("/device/files/{fileId}/notes/{ref}", deviceNotes.Delete)
 	deviceRead.Get("/device/shelf", device.ShelfState)
 	deviceRead.Get("/device/progress/files/{id}/compare", progressHandler.Compare)
 	deviceRead.Get("/device/people", device.People)

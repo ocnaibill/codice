@@ -165,6 +165,9 @@ describe('what the server says', () => {
     "scope must be 'assets' or 'ws'",
     'scope must be app or koreader', // the page offers the two: only a program sends another
     'letter must be A-Z or #', // the list of authors of a reading device: only the device asks for it, and it sends one of them
+    'A place is too long', // a note made on a reading device: the device sends the place KOReader gives, never one that long
+    'The reference of a note is 8 to 64 letters, digits, - or _', // the reference a reading device makes for its own highlights
+    'The notes of this format are not kept yet', // the device only sends the notes of an EPUB (DEC-199); the rest waits
     'Author not found', // the OPDS catalog: a reading app follows the links it was given, no page asks for them
     'Series not found',
     'List not found',
